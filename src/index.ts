@@ -61,6 +61,15 @@ async function bootstrapApplication(): Promise<void> {
   const handleIncomingUserMessage = async (event: IncomingUserMessageEvent): Promise<void> => {
     applicationLogger.chat(`Message received from ${event.senderPhoneNumber} (${event.messageType}): "${event.textPayload || '[Image]'}"`);
 
+    applicationLogger.fileDetail('chat', 'Incoming User Message Event', {
+      senderPhoneNumber: event.senderPhoneNumber,
+      remoteJid: event.remoteJid,
+      messageType: event.messageType,
+      textPayload: event.textPayload,
+      hasImageBuffer: Boolean(event.imageBuffer),
+      imageMimeType: event.imageMimeType,
+    });
+
     try {
       let extractedIntent: ExtractedFinancialIntent;
 
@@ -83,10 +92,20 @@ async function bootstrapApplication(): Promise<void> {
       }
 
       applicationLogger.ai(`Decision: ${extractedIntent.action} | ${extractedIntent.explanation || ''}`);
+      applicationLogger.fileDetail('ai', 'Parsed Financial Intent Result', {
+        action: extractedIntent.action,
+        explanation: extractedIntent.explanation,
+        records: extractedIntent.records,
+      });
 
       // Route actions based on AI analysis
       if (extractedIntent.action === 'CREATE_RECORD' && extractedIntent.records && extractedIntent.records.length > 0) {
         applicationLogger.mcp(`Creating ${extractedIntent.records.length} record(s) in Wallet...`);
+
+        applicationLogger.fileDetail('mcp', 'Dispatching Record Creation to Wallet MCP', {
+          recordsCount: extractedIntent.records.length,
+          records: extractedIntent.records,
+        });
 
         await walletMcpClient.createRecords(extractedIntent.records);
 
@@ -110,6 +129,12 @@ async function bootstrapApplication(): Promise<void> {
         }).join('\n\n');
 
         const replyMessage = `[success] ✅ *Transaksi Berhasil Dicatat!*\n\n${recordDetailsList}\n\n⏰ Waktu: ${getFormattedTimestamp()}\n${extractedIntent.explanation ? `💡 ${extractedIntent.explanation}` : ''}`;
+        
+        applicationLogger.fileDetail('chat', 'Dispatched Record Creation Success Reply', {
+          recipientJid: event.remoteJid,
+          replyText: replyMessage,
+        });
+
         await whatsappBot.sendTextMessageReply(event.remoteJid, replyMessage.trim());
         return;
       }
@@ -124,6 +149,13 @@ async function bootstrapApplication(): Promise<void> {
           .join('\n');
 
         const replyMessage = `[info] 📊 *Saldo Rekening Saat Ini* (${getFormattedTimestamp()}):\n\n${balanceSummary || 'Tidak ada data rekening'}`;
+
+        applicationLogger.fileDetail('mcp', 'Dispatched Balance Summary Reply', {
+          freshAccountsCount: freshAccounts.length,
+          balanceList: freshAccounts.map(account => ({ name: account.name, balance: account.balance, currency: account.currency })),
+          replyText: replyMessage,
+        });
+
         await whatsappBot.sendTextMessageReply(event.remoteJid, replyMessage);
         return;
       }
@@ -139,16 +171,48 @@ async function bootstrapApplication(): Promise<void> {
         }).join('\n');
 
         const replyMessage = `[info] 📈 *Status Anggaran* (${getFormattedTimestamp()}):\n\n${budgetSummary || 'Belum ada anggaran yang aktif'}`;
+
+        applicationLogger.fileDetail('mcp', 'Dispatched Budget Summary Reply', {
+          budgetCount: budgetList.length,
+          budgets: budgetList,
+          replyText: replyMessage,
+        });
+
         await whatsappBot.sendTextMessageReply(event.remoteJid, replyMessage);
         return;
       }
 
       // Default: general reply or guidance
       const replyMessage = extractedIntent.explanation || '👋 Halo! Kirimkan pengeluaran Anda (misal: "Makan siang 25rb pakai Cash") atau foto struk belanja untuk dicatat ke Wallet.';
+      
+      applicationLogger.fileDetail('chat', 'Dispatched General Guidance Reply', {
+        recipientJid: event.remoteJid,
+        replyText: replyMessage,
+      });
+
       await whatsappBot.sendTextMessageReply(event.remoteJid, replyMessage);
 
     } catch (processingError: unknown) {
       applicationLogger.error(`Error while processing user message: ${processingError}`);
+      
+      applicationLogger.fileDetail('error', 'User Message Processing Error Details', {
+        error: processingError instanceof Error
+          ? {
+              name: processingError.name,
+              message: processingError.message,
+              stack: processingError.stack,
+            }
+          : String(processingError),
+        incomingEvent: {
+          senderPhoneNumber: event.senderPhoneNumber,
+          remoteJid: event.remoteJid,
+          messageType: event.messageType,
+          textPayload: event.textPayload,
+        },
+        cachedAccountsCount: cachedAccounts.length,
+        cachedCategoriesCount: cachedCategories.length,
+      });
+
       const errorMessage = processingError instanceof Error ? processingError.message : 'Terjadi kesalahan sistem';
       await whatsappBot.sendTextMessageReply(
         event.remoteJid,
@@ -170,4 +234,7 @@ async function bootstrapApplication(): Promise<void> {
 
 bootstrapApplication().catch(error => {
   applicationLogger.error(`Application encountered an unhandled fatal error: ${error}`);
+  applicationLogger.fileDetail('fatal', 'Bootstrap Unhandled Fatal Error', {
+    error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error),
+  });
 });
