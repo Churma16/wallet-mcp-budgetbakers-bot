@@ -11,6 +11,7 @@ import {
   getHumanReadableTimestamp,
 } from './utils/humanResponseFormatter.js';
 import { validateAndSanitizeFinancialRecords } from './utils/recordValidator.js';
+import { detectFastPathAction } from './utils/fastPathIntentDetector.js';
 
 async function bootstrapApplication(): Promise<void> {
   console.log('====================================================');
@@ -88,6 +89,62 @@ async function bootstrapApplication(): Promise<void> {
     });
 
     try {
+      // Fast-path intent classifier: Skip Gemini AI entirely for simple balance/budget/help queries (0 tokens used)
+      if (event.messageType === 'text' && event.textPayload) {
+        const fastPathAction = detectFastPathAction(event.textPayload);
+
+        if (fastPathAction === 'CHECK_BALANCE') {
+          applicationLogger.info('Fast-path matched: CHECK_BALANCE (0 Gemini tokens consumed)');
+          applicationLogger.mcp('Fetching updated balances...');
+          const freshAccounts = await walletMcpClient.fetchAccounts(true);
+          cachedAccounts = freshAccounts;
+
+          const replyMessage = formatBalanceSummaryMessage(freshAccounts);
+          applicationLogger.fileDetail('mcp', 'Dispatched Balance Summary Reply (Fast-path)', {
+            freshAccountsCount: freshAccounts.length,
+            replyText: replyMessage,
+          });
+
+          await whatsappBot.sendTextMessageReply(event.remoteJid, replyMessage);
+          return;
+        }
+
+        if (fastPathAction === 'CHECK_BUDGET') {
+          applicationLogger.info('Fast-path matched: CHECK_BUDGET (0 Gemini tokens consumed)');
+          applicationLogger.mcp('Fetching budget status...');
+          const budgetList = await walletMcpClient.fetchBudgets();
+          const replyMessage = formatBudgetSummaryMessage(budgetList);
+
+          applicationLogger.fileDetail('mcp', 'Dispatched Budget Summary Reply (Fast-path)', {
+            budgetCount: budgetList.length,
+            replyText: replyMessage,
+          });
+
+          await whatsappBot.sendTextMessageReply(event.remoteJid, replyMessage);
+          return;
+        }
+
+        if (fastPathAction === 'HELP_MENU') {
+          applicationLogger.info('Fast-path matched: HELP_MENU (0 Gemini tokens consumed)');
+          const helpGuidanceMessage = [
+            '👋 Halo! Kirimkan pengeluaran Anda (misal: "Makan siang 25rb pakai Cash") atau foto struk belanja untuk dicatat ke Wallet.',
+            '',
+            '*Perintah Cepat (0 Token AI):*',
+            '• *Saldo* / *Cek Saldo*: Cek saldo semua rekening',
+            '• *Budget* / *Cek Budget*: Cek status limit anggaran',
+            '• *Menu* / *Bantuan*: Menampilkan petunjuk ini',
+          ].join('\n');
+
+          applicationLogger.fileDetail('chat', 'Dispatched Fast-path Help Guidance Reply', {
+            recipientJid: event.remoteJid,
+            replyText: helpGuidanceMessage,
+          });
+
+          await whatsappBot.sendTextMessageReply(event.remoteJid, helpGuidanceMessage);
+          return;
+        }
+      }
+
       let extractedIntent: ExtractedFinancialIntent;
 
       if (event.messageType === 'image' && event.imageBuffer) {
