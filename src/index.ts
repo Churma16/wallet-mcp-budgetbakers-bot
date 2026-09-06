@@ -157,6 +157,9 @@ async function bootstrapApplication(): Promise<void> {
       }
     }
 
+    const matchedAccountItem = cachedAccounts.find(acc => acc.id === resolvedAccountId);
+    const resolvedCurrency = matchedAccountItem?.currency || environmentConfig.defaultCurrency;
+
     const pendingItem = pendingTransactionManager.addPendingTransaction({
       sourceType: 'EMAIL',
       bankDisplayName: detectedEvent.gateResult.matchedBankRule?.displayName || 'Bank / E-Wallet',
@@ -166,6 +169,7 @@ async function bootstrapApplication(): Promise<void> {
       matchedDestinationAccountId: resolvedDestinationAccountId,
       counterParty: parsedData.counterParty || '',
       amount: parsedData.amount,
+      currency: resolvedCurrency,
       transactionType: parsedData.transactionType,
       matchedCategoryId: parsedData.matchedCategoryId,
       matchedCategoryName: parsedData.matchedCategoryName,

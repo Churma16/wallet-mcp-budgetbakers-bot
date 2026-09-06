@@ -1,4 +1,4 @@
-﻿import assert from 'node:assert';
+import assert from 'node:assert';
 import {
   getDictionary,
   setActiveLanguage,
@@ -227,4 +227,70 @@ assert.deepStrictEqual(detectPendingConfirmationAction('yes 101'), { actionType:
 
 console.log('[PASS] Fast-path intent detection handles all Indonesian & English command phrases.');
 
-console.log('\n[SUCCESS] ALL RESPONSE DICTIONARY TESTS PASSED!');
+// 8. Test Account-Aware Multi-Currency & Decimal Precision Formatting
+console.log('\n[8] Testing Account-Aware Multi-Currency & Decimal Precision Formatting...');
+
+// A. Unit tests for formatCurrencyAmount
+assert.strictEqual(formatCurrencyAmount(-5.75, 'USD', 'en'), '$5.75', 'USD decimal cents formatting');
+assert.strictEqual(formatCurrencyAmount(-5, 'USD', 'en'), '$5.00', 'USD whole number with 2 decimals');
+assert.strictEqual(formatCurrencyAmount(-35000, 'IDR', 'id'), 'Rp 35.000', 'IDR zero-decimal formatting');
+assert.strictEqual(formatCurrencyAmount(-12.5, 'EUR', 'en'), '€12.50', 'EUR decimal cents formatting');
+assert.strictEqual(formatCurrencyAmount(-1000, 'JPY', 'en'), '¥1,000', 'JPY zero-decimal formatting');
+assert.strictEqual(formatCurrencyAmount(-8.2, 'GBP', 'en'), '£8.20', 'GBP decimal formatting');
+
+// B. Account-aware single record formatting
+const mockUsAccounts: WalletAccountItem[] = [
+  { id: 'acc-chase', name: 'Chase Checking', currency: 'USD' },
+  { id: 'acc-bca', name: 'BCA Prioritas', currency: 'IDR' },
+];
+
+const mockUsdRecord: CreateRecordInputPayload[] = [
+  {
+    accountId: 'acc-chase',
+    categoryId: 'cat-1',
+    amount: -5.75,
+    note: 'Pizza Slice',
+    recordDate: new Date().toISOString(),
+  },
+];
+
+const usdReceiptOutput = formatRecordSuccessMessage(mockUsdRecord, mockUsAccounts, mockCategories, 'en');
+assert(usdReceiptOutput.includes('$5.75'), `Expected receipt to display '$5.75', got: ${usdReceiptOutput}`);
+assert(usdReceiptOutput.includes('Chase Checking'), 'Expected receipt to mention Chase Checking');
+
+// C. Multi-currency batch formatting
+const mockMultiCurrencyBatch: CreateRecordInputPayload[] = [
+  {
+    accountId: 'acc-chase',
+    amount: -15.5,
+    note: 'Uber Ride',
+    recordDate: new Date().toISOString(),
+  },
+  {
+    accountId: 'acc-bca',
+    amount: -45000,
+    note: 'Lunch Warteg',
+    recordDate: new Date().toISOString(),
+  },
+];
+
+const batchReceiptOutput = formatRecordSuccessMessage(mockMultiCurrencyBatch, mockUsAccounts, mockCategories, 'en');
+assert(batchReceiptOutput.includes('$15.50'), `Expected batch receipt to display '$15.50', got: ${batchReceiptOutput}`);
+assert(batchReceiptOutput.includes('Rp 45'), `Expected batch receipt to display 'Rp 45,000' or 'Rp 45.000', got: ${batchReceiptOutput}`);
+
+// D. Timezone adaptation test
+const originalTimezone = process.env.APP_TIMEZONE;
+process.env.APP_TIMEZONE = 'America/New_York';
+const nyReceiptOutput = formatRecordSuccessMessage(mockUsdRecord, mockUsAccounts, mockCategories, 'en');
+assert(nyReceiptOutput.includes('EDT') || nyReceiptOutput.includes('EST') || nyReceiptOutput.includes('GMT-4') || nyReceiptOutput.includes('UTC-4'), 'Expected NY timezone receipt to include EDT/EST abbreviation');
+process.env.APP_TIMEZONE = originalTimezone;
+
+console.log('[PASS] Multi-currency account resolution and timezone adaptation operate accurately.');
+
+console.log('\n--- Sample English USD Receipt Output ---');
+console.log(usdReceiptOutput);
+console.log('\n--- Sample Multi-Currency Batch Receipt Output ---');
+console.log(batchReceiptOutput);
+
+console.log('\n[SUCCESS] ALL RESPONSE DICTIONARY & MULTI-CURRENCY TESTS PASSED!');
+

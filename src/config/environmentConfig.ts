@@ -32,6 +32,8 @@ export interface ApplicationEnvironmentConfiguration {
   emailImapPassword: string;
   emailLookbackMinutes: number;
   appLanguage: 'id' | 'en';
+  defaultCurrency: string;
+  appTimezone: string;
 }
 
 interface ProviderConfigStrategy {
@@ -147,6 +149,8 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
 
   const rawLanguage = (process.env.APP_LANGUAGE || process.env.BOT_LANGUAGE || 'id').toLowerCase().trim();
   const appLanguage: 'id' | 'en' = rawLanguage === 'en' ? 'en' : 'id';
+  const defaultCurrency = (process.env.DEFAULT_CURRENCY || 'IDR').toUpperCase().trim();
+  const appTimezone = process.env.APP_TIMEZONE || 'Asia/Jakarta';
 
   return {
     aiProvider,
@@ -174,5 +178,7 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     emailImapPassword,
     emailLookbackMinutes,
     appLanguage,
+    defaultCurrency,
+    appTimezone,
   };
 }
