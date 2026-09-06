@@ -1,7 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { WalletAccountItem, WalletCategoryItem } from '../../types/walletTypes.js';
 import { GateEvaluationResult } from '../../utils/emailLogicGate.js';
-import { applicationLogger } from '../../utils/logger.js';
+import { applicationLogger, formatConciseErrorMessage } from '../../utils/logger.js';
 import {
   FinancialAiProvider,
   ExtractedFinancialIntent,
@@ -248,8 +248,9 @@ RULES:
 
         if (isRecoverableModelError && hasNextFallbackModel) {
           const nextCandidateModel = this.candidateModelList[modelIndex + 1];
+          const conciseErrorSummary = formatConciseErrorMessage(errorMessage);
           applicationLogger.warn(
-            `Model '${currentCandidateModel}' failed / timed out (${errorMessage}). Retrying with fallback model '${nextCandidateModel}'...`
+            `Model '${currentCandidateModel}' failed (${conciseErrorSummary}). Retrying with fallback model '${nextCandidateModel}'...`
           );
           continue;
         }
