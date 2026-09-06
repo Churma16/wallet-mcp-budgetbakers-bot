@@ -18,7 +18,8 @@ export class GeminiAiService {
   constructor(
     apiKey: string,
     primaryModelName: string = process.env.GEMINI_MODEL || 'gemini-3.6-flash',
-    fallbackModelList: string[] = ['gemini-3.5-flash', 'gemini-3.5-flash-lite']
+    fallbackModelList: string[] = ['gemini-3.5-flash', 'gemini-3.5-flash-lite'],
+    private readonly requestTimeoutMilliseconds: number = 20000
   ) {
     this.googleGenAiClient = new GoogleGenAI({ apiKey });
     this.candidateModelList = Array.from(new Set([primaryModelName, ...fallbackModelList]));
@@ -136,8 +137,22 @@ RULES:
         contents: this.sanitizeContentsForLogging(generationRequestOptions.contents),
       });
 
+      // Periodic heartbeat indicator in console to show active progress
+      const heartbeatIntervalMilliseconds = 5000;
+      const heartbeatTimer = setInterval(() => {
+        const elapsedExecutionSeconds = Math.round((Date.now() - startExecutionTimestamp) / 1000);
+        applicationLogger.ai(
+          `Waiting for Gemini [${currentCandidateModel}] response... (${elapsedExecutionSeconds}s elapsed)`
+        );
+      }, heartbeatIntervalMilliseconds);
+
+      const abortController = new AbortController();
+      const timeoutTimer = setTimeout(() => {
+        abortController.abort(new Error(`Request timed out after ${this.requestTimeoutMilliseconds / 1000}s`));
+      }, this.requestTimeoutMilliseconds);
+
       try {
-        const generationResponse = await this.googleGenAiClient.models.generateContent({
+        const generationPromise = this.googleGenAiClient.models.generateContent({
           model: currentCandidateModel,
           contents: generationRequestOptions.contents,
           config: {
@@ -145,8 +160,20 @@ RULES:
             responseMimeType: 'application/json',
             temperature: 0.1,
             maxOutputTokens: 800,
+            httpOptions: {
+              timeout: this.requestTimeoutMilliseconds,
+            },
+            abortSignal: abortController.signal,
           },
         });
+
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          abortController.signal.addEventListener('abort', () => {
+            reject(new Error(`Request timed out after ${this.requestTimeoutMilliseconds / 1000}s`));
+          });
+        });
+
+        const generationResponse = await Promise.race([generationPromise, timeoutPromise]);
 
         const executionDurationMilliseconds = Date.now() - startExecutionTimestamp;
         const responseText = generationResponse.text || '{}';
@@ -172,7 +199,9 @@ RULES:
           errorMessage.includes('UNAVAILABLE') ||
           errorMessage.includes('RESOURCE_EXHAUSTED') ||
           errorMessage.includes('NOT_FOUND') ||
-          errorMessage.includes('overloaded');
+          errorMessage.includes('overloaded') ||
+          errorMessage.toLowerCase().includes('time') ||
+          errorMessage.toLowerCase().includes('abort');
 
         const hasNextFallbackModel = modelIndex + 1 < this.candidateModelList.length;
 
@@ -188,12 +217,15 @@ RULES:
         if (isRecoverableModelError && hasNextFallbackModel) {
           const nextCandidateModel = this.candidateModelList[modelIndex + 1];
           applicationLogger.warn(
-            `Model '${currentCandidateModel}' error/high demand. Retrying with fallback model '${nextCandidateModel}'...`
+            `Model '${currentCandidateModel}' failed / timed out (${errorMessage}). Retrying with fallback model '${nextCandidateModel}'...`
           );
           continue;
         }
 
         throw error;
+      } finally {
+        clearInterval(heartbeatTimer);
+        clearTimeout(timeoutTimer);
       }
     }
 
