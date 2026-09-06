@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload } from '../types/walletTypes.js';
+import { applicationLogger } from '../utils/logger.js';
 
 export interface ExtractedFinancialIntent {
   action: 'CREATE_RECORD' | 'CHECK_BUDGET' | 'CHECK_BALANCE' | 'GENERAL_REPLY';
@@ -9,10 +10,15 @@ export interface ExtractedFinancialIntent {
 
 export class GeminiAiService {
   private readonly googleGenAiClient: GoogleGenAI;
-  private readonly modelName: string = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+  private readonly candidateModelList: string[];
 
-  constructor(apiKey: string) {
+  constructor(
+    apiKey: string,
+    primaryModelName: string = process.env.GEMINI_MODEL || 'gemini-3.6-flash',
+    fallbackModelList: string[] = ['gemini-3.5-flash', 'gemini-3.5-flash-lite']
+  ) {
     this.googleGenAiClient = new GoogleGenAI({ apiKey });
+    this.candidateModelList = Array.from(new Set([primaryModelName, ...fallbackModelList]));
   }
 
   /**
@@ -62,12 +68,70 @@ You MUST respond with valid JSON ONLY (no markdown formatting, no code fences, n
       "amount": number,
       "recordDate": "ISO 8601 string",
       "note": "string description",
-      "paymentType": "Cash" | "DebitCard" | "CreditCard" | "Transfer" | "MobilePayment"
+      "counterParty": "string payee or store name (optional)"
     }
   ],
   "explanation": "Human friendly brief summary in Indonesian explaining what will be recorded or answered."
 }
 `;
+  }
+
+  /**
+   * Executes content generation with automatic multi-model failover on 503 (High demand) or 429 (Rate limit)
+   */
+  private async executeGenerationWithFallback(
+    generationRequestOptions: {
+      contents: Parameters<GoogleGenAI['models']['generateContent']>[0]['contents'];
+      systemInstruction: string;
+    }
+  ): Promise<string> {
+    let lastEncounteredError: unknown = null;
+
+    for (let modelIndex = 0; modelIndex < this.candidateModelList.length; modelIndex++) {
+      const currentCandidateModel = this.candidateModelList[modelIndex];
+
+      try {
+        const generationResponse = await this.googleGenAiClient.models.generateContent({
+          model: currentCandidateModel,
+          contents: generationRequestOptions.contents,
+          config: {
+            systemInstruction: generationRequestOptions.systemInstruction,
+            responseMimeType: 'application/json',
+            temperature: 0.1,
+          },
+        });
+
+        return generationResponse.text || '{}';
+      } catch (error: unknown) {
+        lastEncounteredError = error;
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        const isRecoverableModelError =
+          errorMessage.includes('503') ||
+          errorMessage.includes('429') ||
+          errorMessage.includes('404') ||
+          errorMessage.includes('500') ||
+          errorMessage.includes('high demand') ||
+          errorMessage.includes('UNAVAILABLE') ||
+          errorMessage.includes('RESOURCE_EXHAUSTED') ||
+          errorMessage.includes('NOT_FOUND') ||
+          errorMessage.includes('overloaded');
+
+        const hasNextFallbackModel = modelIndex + 1 < this.candidateModelList.length;
+
+        if (isRecoverableModelError && hasNextFallbackModel) {
+          const nextCandidateModel = this.candidateModelList[modelIndex + 1];
+          applicationLogger.warn(
+            `Model '${currentCandidateModel}' error/high demand. Retrying with fallback model '${nextCandidateModel}'...`
+          );
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    throw lastEncounteredError || new Error('All candidate Gemini models failed to generate content');
   }
 
   /**
@@ -80,22 +144,16 @@ You MUST respond with valid JSON ONLY (no markdown formatting, no code fences, n
   ): Promise<ExtractedFinancialIntent> {
     const systemInstructionContent = this.buildSystemInstruction(availableAccountList, availableCategoryList);
 
-    const generationResponse = await this.googleGenAiClient.models.generateContent({
-      model: this.modelName,
+    const responseText = await this.executeGenerationWithFallback({
       contents: [
         {
           role: 'user',
           parts: [{ text: userMessageText }],
         },
       ],
-      config: {
-        systemInstruction: systemInstructionContent,
-        responseMimeType: 'application/json',
-        temperature: 0.1,
-      },
+      systemInstruction: systemInstructionContent,
     });
 
-    const responseText = generationResponse.text || '{}';
     try {
       return JSON.parse(responseText) as ExtractedFinancialIntent;
     } catch {
@@ -122,8 +180,7 @@ You MUST respond with valid JSON ONLY (no markdown formatting, no code fences, n
       ? `Extract transactions from this receipt photo. User caption: "${optionalCaption}"`
       : 'Extract transactions from this receipt photo.';
 
-    const generationResponse = await this.googleGenAiClient.models.generateContent({
-      model: this.modelName,
+    const responseText = await this.executeGenerationWithFallback({
       contents: [
         {
           role: 'user',
@@ -138,14 +195,9 @@ You MUST respond with valid JSON ONLY (no markdown formatting, no code fences, n
           ],
         },
       ],
-      config: {
-        systemInstruction: systemInstructionContent,
-        responseMimeType: 'application/json',
-        temperature: 0.1,
-      },
+      systemInstruction: systemInstructionContent,
     });
 
-    const responseText = generationResponse.text || '{}';
     try {
       return JSON.parse(responseText) as ExtractedFinancialIntent;
     } catch {
