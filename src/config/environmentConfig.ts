@@ -30,6 +30,45 @@ export interface ApplicationEnvironmentConfiguration {
   emailLookbackMinutes: number;
 }
 
+interface ProviderConfigStrategy {
+  getDefaultBaseUrl(): string;
+  getDefaultModel(fallbackModel: string): string;
+  getDefaultApiKey(fallbackApiKey: string): string;
+}
+
+const PROVIDER_CONFIG_STRATEGIES: Record<SupportedAiProviderType, ProviderConfigStrategy> = {
+  openrouter: {
+    getDefaultBaseUrl: () => 'https://openrouter.ai/api/v1',
+    getDefaultModel: () => 'google/gemini-2.0-flash-exp:free',
+    getDefaultApiKey: () => process.env.OPENROUTER_API_KEY || '',
+  },
+  groq: {
+    getDefaultBaseUrl: () => 'https://api.groq.com/openai/v1',
+    getDefaultModel: () => 'llama-3.3-70b-versatile',
+    getDefaultApiKey: () => process.env.GROQ_API_KEY || '',
+  },
+  ollama: {
+    getDefaultBaseUrl: () => 'http://localhost:11434/v1',
+    getDefaultModel: () => 'llama3.2',
+    getDefaultApiKey: () => 'ollama',
+  },
+  openai: {
+    getDefaultBaseUrl: () => 'https://api.openai.com/v1',
+    getDefaultModel: () => 'gpt-4o-mini',
+    getDefaultApiKey: () => process.env.OPENAI_API_KEY || '',
+  },
+  gemini: {
+    getDefaultBaseUrl: () => '',
+    getDefaultModel: (fallbackModel: string) => fallbackModel,
+    getDefaultApiKey: (fallbackApiKey: string) => fallbackApiKey,
+  },
+  custom: {
+    getDefaultBaseUrl: () => process.env.AI_BASE_URL || '',
+    getDefaultModel: (fallbackModel: string) => fallbackModel,
+    getDefaultApiKey: () => process.env.AI_API_KEY || '',
+  },
+};
+
 export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfiguration {
   const rawAiProvider = (process.env.AI_PROVIDER || 'gemini').toLowerCase().trim() as SupportedAiProviderType;
   const aiProvider: SupportedAiProviderType = ['gemini', 'openrouter', 'groq', 'ollama', 'openai', 'custom'].includes(rawAiProvider)
@@ -45,31 +84,11 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
   const geminiRequestTimeoutSeconds = parseInt(process.env.GEMINI_TIMEOUT_SECONDS || '20', 10) || 20;
   const geminiRequestTimeoutMilliseconds = geminiRequestTimeoutSeconds * 1000;
 
-  // Resolve generic AI settings with fallback to provider-specific keys
-  let defaultBaseUrl = '';
-  let defaultModel = '';
-  let defaultApiKey = '';
-
-  if (aiProvider === 'openrouter') {
-    defaultBaseUrl = 'https://openrouter.ai/api/v1';
-    defaultModel = 'google/gemini-2.0-flash-exp:free';
-    defaultApiKey = process.env.OPENROUTER_API_KEY || '';
-  } else if (aiProvider === 'groq') {
-    defaultBaseUrl = 'https://api.groq.com/openai/v1';
-    defaultModel = 'llama-3.3-70b-versatile';
-    defaultApiKey = process.env.GROQ_API_KEY || '';
-  } else if (aiProvider === 'ollama') {
-    defaultBaseUrl = 'http://localhost:11434/v1';
-    defaultModel = 'llama3.2';
-    defaultApiKey = 'ollama';
-  } else if (aiProvider === 'openai') {
-    defaultBaseUrl = 'https://api.openai.com/v1';
-    defaultModel = 'gpt-4o-mini';
-    defaultApiKey = process.env.OPENAI_API_KEY || '';
-  } else {
-    defaultModel = geminiModel;
-    defaultApiKey = geminiApiKey;
-  }
+  // Resolve generic AI settings using Strategy Pattern
+  const activeStrategy = PROVIDER_CONFIG_STRATEGIES[aiProvider] || PROVIDER_CONFIG_STRATEGIES.gemini;
+  const defaultBaseUrl = activeStrategy.getDefaultBaseUrl();
+  const defaultModel = activeStrategy.getDefaultModel(geminiModel);
+  const defaultApiKey = activeStrategy.getDefaultApiKey(geminiApiKey);
 
   const aiBaseUrl = process.env.AI_BASE_URL || defaultBaseUrl;
   const aiApiKey = process.env.AI_API_KEY || defaultApiKey;
