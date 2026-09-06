@@ -62,6 +62,20 @@ export class WhatsappBotService {
     this.socketInstance.ev.on('connection.update', async connectionUpdate => {
       const { connection, lastDisconnect, qr } = connectionUpdate;
 
+      applicationLogger.fileDetail('whatsapp', 'Connection Lifecycle Update Event', {
+        connection,
+        isNewLogin: connectionUpdate.isNewLogin,
+        receivedQr: Boolean(qr),
+        lastDisconnectError: lastDisconnect?.error instanceof Error
+          ? {
+              name: lastDisconnect.error.name,
+              message: lastDisconnect.error.message,
+              stack: lastDisconnect.error.stack,
+              statusCode: (lastDisconnect.error as any)?.output?.statusCode,
+            }
+          : lastDisconnect?.error,
+      });
+
       if (qr) {
         console.log('\n');
         applicationLogger.info('WhatsApp Pairing QR Code Generated. Please scan with WhatsApp:');
@@ -244,7 +258,14 @@ export class WhatsappBotService {
           imageMimeType,
         });
       } catch (downloadError: unknown) {
-        console.error('[error] Failed to download incoming image media:', downloadError);
+        applicationLogger.error(`Failed to download incoming image media from ${senderIdentifier}: ${downloadError}`);
+        applicationLogger.fileDetail('error', 'WhatsApp Media Download Failure', {
+          error: downloadError instanceof Error
+            ? { name: downloadError.name, message: downloadError.message, stack: downloadError.stack }
+            : String(downloadError),
+          remoteJid,
+          senderIdentifier,
+        });
       }
     }
   }
@@ -257,8 +278,26 @@ export class WhatsappBotService {
       throw new Error('[error] WhatsApp socket is not connected');
     }
 
-    await this.socketInstance.sendMessage(targetRemoteJid, {
-      text: messageText,
-    });
+    try {
+      await this.socketInstance.sendMessage(targetRemoteJid, {
+        text: messageText,
+      });
+
+      applicationLogger.fileDetail('whatsapp', 'Dispatched WhatsApp Text Message', {
+        targetRemoteJid,
+        messageLength: messageText.length,
+        messagePreview: messageText.substring(0, 120),
+      });
+    } catch (sendError: unknown) {
+      applicationLogger.error(`Failed to send WhatsApp message to ${targetRemoteJid}: ${sendError}`);
+      applicationLogger.fileDetail('error', 'WhatsApp Message Dispatch Failure', {
+        targetRemoteJid,
+        messageText,
+        error: sendError instanceof Error
+          ? { name: sendError.name, message: sendError.message, stack: sendError.stack }
+          : String(sendError),
+      });
+      throw sendError;
+    }
   }
 }
