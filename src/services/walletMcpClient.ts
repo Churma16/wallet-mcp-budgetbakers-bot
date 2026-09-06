@@ -6,6 +6,7 @@ import {
   WalletCreateRecordsResponse,
   WalletBudgetItem,
 } from '../types/walletTypes.js';
+import { applicationLogger } from '../utils/logger.js';
 
 export class WalletMcpClientService {
   private readonly httpClient: AxiosInstance;
@@ -37,16 +38,35 @@ export class WalletMcpClientService {
       params: requestParameters,
     };
 
+    applicationLogger.fileDetail('mcp', `Dispatched Wallet MCP Request [${methodName}]`, {
+      method: methodName,
+      params: requestParameters,
+    });
+
     try {
       const httpResponse = await this.httpClient.post('', jsonRpcPayload);
       const responseBody = httpResponse.data;
 
       if (responseBody.error) {
+        applicationLogger.fileDetail('error', `Wallet MCP Server Returned Error [${methodName}]`, {
+          error: responseBody.error,
+          payloadSent: jsonRpcPayload,
+        });
         throw new Error(`[error] MCP JSON-RPC Error: ${responseBody.error.message || JSON.stringify(responseBody.error)}`);
       }
 
+      applicationLogger.fileDetail('mcp', `Received Wallet MCP Response [${methodName}]`, {
+        method: methodName,
+        resultSummary: responseBody.result,
+      });
+
       return responseBody.result as TResult;
     } catch (error: unknown) {
+      applicationLogger.fileDetail('error', `Wallet MCP HTTP/Network Failure [${methodName}]`, {
+        error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error),
+        payloadSent: jsonRpcPayload,
+      });
+
       if (axios.isAxiosError(error) && error.response) {
         const errorDataString = typeof error.response.data === 'object' 
           ? JSON.stringify(error.response.data) 
@@ -210,6 +230,11 @@ export class WalletMcpClientService {
       }
 
       return sanitizedRecordItem;
+    });
+
+    applicationLogger.fileDetail('mcp', `Prepared ${sanitizedRecordPayloadList.length} Record(s) for MCP Dispatch`, {
+      originalRecords: recordsPayload,
+      sanitizedRecords: sanitizedRecordPayloadList,
     });
 
     return await this.callMcpTool<WalletCreateRecordsResponse>('create_records', {
