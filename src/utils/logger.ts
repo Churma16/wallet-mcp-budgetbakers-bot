@@ -26,6 +26,24 @@ function getCurrentLogFilePath(): string {
 }
 
 /**
+ * Helper to format objects, errors, and primitive values for file logging
+ */
+function formatLogPayload(dataItem: unknown, indentationSpaces: string = '  '): string {
+  if (dataItem instanceof Error) {
+    return `\n${indentationSpaces}Error Name: ${dataItem.name}\n${indentationSpaces}Error Message: ${dataItem.message}\n${indentationSpaces}Stack: ${dataItem.stack || 'No stack trace'}`;
+  }
+  if (typeof dataItem === 'object' && dataItem !== null) {
+    try {
+      const jsonString = JSON.stringify(dataItem, null, 2);
+      return '\n' + jsonString.split('\n').map(line => `${indentationSpaces}${line}`).join('\n');
+    } catch {
+      return ` ${String(dataItem)}`;
+    }
+  }
+  return ` ${String(dataItem)}`;
+}
+
+/**
  * Appends a log line to the daily log file with ISO timestamp and full error details
  */
 function appendLogToFile(logLevelTag: string, message: string, optionalArguments: unknown[]): void {
@@ -34,21 +52,9 @@ function appendLogToFile(logLevelTag: string, message: string, optionalArguments
     let formattedArguments = '';
 
     if (optionalArguments && optionalArguments.length > 0) {
-      formattedArguments = ' ' + optionalArguments
-        .map(argumentItem => {
-          if (argumentItem instanceof Error) {
-            return `${argumentItem.message}\n${argumentItem.stack || ''}`;
-          }
-          if (typeof argumentItem === 'object' && argumentItem !== null) {
-            try {
-              return JSON.stringify(argumentItem, null, 2);
-            } catch {
-              return String(argumentItem);
-            }
-          }
-          return String(argumentItem);
-        })
-        .join(' ');
+      formattedArguments = optionalArguments
+        .map(argumentItem => formatLogPayload(argumentItem, '  '))
+        .join('');
     }
 
     const logEntry = `[${isoTimestamp}] [${logLevelTag.toUpperCase()}] ${message}${formattedArguments}\n`;
@@ -136,5 +142,12 @@ export const applicationLogger = {
   security: (message: string, ...optionalArguments: unknown[]): void => {
     console.log(`${getFormattedTimestamp()} [security] ${message}`, ...optionalArguments);
     appendLogToFile('security', message, optionalArguments);
+  },
+  /**
+   * Writes detailed debug information (payloads, state objects) directly to the log file
+   * without cluttering the terminal output
+   */
+  fileDetail: (logLevelTag: string, summaryTitle: string, detailPayload?: unknown): void => {
+    appendLogToFile(logLevelTag, summaryTitle, detailPayload !== undefined ? [detailPayload] : []);
   },
 };
