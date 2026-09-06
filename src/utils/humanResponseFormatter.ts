@@ -1,13 +1,66 @@
-﻿import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload, WalletBudgetItem } from '../types/walletTypes.js';
+import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload, WalletBudgetItem } from '../types/walletTypes.js';
 import { PendingTransactionItem } from '../services/pendingTransactionManager.js';
 import { getDictionary, SupportedLanguage } from '../i18n/index.js';
 
+const ZERO_DECIMAL_CURRENCY_SET = new Set([
+  'IDR', 'JPY', 'KRW', 'VND', 'CLP', 'PYG', 'RWF', 'UGX', 'BIF', 'DJF', 'GNF', 'KMF',
+]);
+
+const CURRENCY_SYMBOL_MAP: Record<string, string> = {
+  USD: '$',
+  EUR: '€',
+  GBP: '£',
+  JPY: '¥',
+  IDR: 'Rp',
+  SGD: 'S$',
+  AUD: 'A$',
+  CAD: 'C$',
+  MYR: 'RM',
+  THB: '฿',
+  PHP: '₱',
+  CNY: '¥',
+  INR: '₹',
+};
+
 /**
- * Generates human readable time format, e.g. "15:05 WIB" (id) or "15:05 WIB" (en)
+ * Resolves the application timezone safely from environment variables or defaults to Asia/Jakarta
+ */
+export function getApplicationTimezone(): string {
+  const configuredTimezone = process.env.APP_TIMEZONE?.trim();
+  if (!configuredTimezone) {
+    return 'Asia/Jakarta';
+  }
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: configuredTimezone });
+    return configuredTimezone;
+  } catch {
+    return 'Asia/Jakarta';
+  }
+}
+
+/**
+ * Resolves short timezone abbreviation or falls back to timeZone name
+ */
+function resolveTimezoneAbbreviation(date: Date, timeZone: string, localeIdentifier: string): string {
+  try {
+    const formatter = new Intl.DateTimeFormat(localeIdentifier, {
+      timeZone,
+      timeZoneName: 'short',
+    });
+    const parts = formatter.formatToParts(date);
+    const timeZonePart = parts.find(part => part.type === 'timeZoneName');
+    return timeZonePart?.value || timeZone;
+  } catch {
+    return timeZone;
+  }
+}
+
+/**
+ * Generates human readable time format, adapting to the configured application timezone
  */
 export function getHumanReadableTimestamp(date: Date = new Date(), languageCode?: SupportedLanguage): string {
   const dictionary = getDictionary(languageCode);
-  const timeZone = 'Asia/Jakarta';
+  const timeZone = getApplicationTimezone();
   const timeFormatter = new Intl.DateTimeFormat(dictionary.localeIdentifier, {
     timeZone,
     hour: '2-digit',
@@ -15,13 +68,15 @@ export function getHumanReadableTimestamp(date: Date = new Date(), languageCode?
     hour12: false,
   });
   const formattedTime = timeFormatter.format(date).replace('.', ':');
-  return `${formattedTime} ${dictionary.timeZoneLabel}`;
+  const timeZoneLabel = timeZone === 'Asia/Jakarta'
+    ? dictionary.timeZoneLabel
+    : resolveTimezoneAbbreviation(date, timeZone, dictionary.localeIdentifier);
+
+  return `${formattedTime} ${timeZoneLabel}`.trim();
 }
 
 /**
- * Formats a transaction timestamp for human display in WIB.
- * If the transaction occurred today, shows time (e.g. "17:15 WIB").
- * If the transaction occurred on a different date, shows date and time (e.g. "3 Sep 2026, 17:15 WIB").
+ * Formats a transaction timestamp for human display in the configured application timezone.
  */
 export function formatTransactionDate(dateInput?: string | Date, languageCode?: SupportedLanguage): string {
   const dictionary = getDictionary(languageCode);
@@ -34,7 +89,7 @@ export function formatTransactionDate(dateInput?: string | Date, languageCode?: 
     return getHumanReadableTimestamp(new Date(), languageCode);
   }
 
-  const timeZone = 'Asia/Jakarta';
+  const timeZone = getApplicationTimezone();
 
   const timeFormatter = new Intl.DateTimeFormat(dictionary.localeIdentifier, {
     timeZone,
@@ -62,7 +117,11 @@ export function formatTransactionDate(dateInput?: string | Date, languageCode?: 
   const nowDateKey = dateComparisonFormatter.format(now);
 
   const formattedTime = timeFormatter.format(transactionDate).replace('.', ':');
-  const timeString = `${formattedTime} ${dictionary.timeZoneLabel}`;
+  const timeZoneLabel = timeZone === 'Asia/Jakarta'
+    ? dictionary.timeZoneLabel
+    : resolveTimezoneAbbreviation(transactionDate, timeZone, dictionary.localeIdentifier);
+
+  const timeString = `${formattedTime} ${timeZoneLabel}`.trim();
 
   if (transactionDateKey === nowDateKey) {
     return timeString;
@@ -73,23 +132,38 @@ export function formatTransactionDate(dateInput?: string | Date, languageCode?: 
 }
 
 /**
- * Formats numeric currency to clean string (e.g. "Rp 35.000")
+ * Formats numeric currency to clean string preserving decimals for subunits (e.g. "$5.75" or "Rp 35.000")
  */
 export function formatCurrencyAmount(
   amount: number,
-  currencyCode: string = 'IDR',
+  currencyCode?: string,
   languageCode?: SupportedLanguage
 ): string {
   const dictionary = getDictionary(languageCode);
+  const resolvedCurrencyCode = (
+    currencyCode ||
+    process.env.DEFAULT_CURRENCY ||
+    'IDR'
+  ).toUpperCase().trim();
+
   const absoluteAmount = Math.abs(amount);
+  const isZeroDecimal = ZERO_DECIMAL_CURRENCY_SET.has(resolvedCurrencyCode);
+  const fractionDigits = isZeroDecimal ? 0 : 2;
+
   const formattedNumber = new Intl.NumberFormat(dictionary.localeIdentifier, {
-    maximumFractionDigits: 0,
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
   }).format(absoluteAmount);
 
-  if (currencyCode.toUpperCase() === 'IDR') {
-    return `Rp ${formattedNumber}`;
+  const matchedSymbol = CURRENCY_SYMBOL_MAP[resolvedCurrencyCode];
+  if (matchedSymbol) {
+    if (resolvedCurrencyCode === 'IDR') {
+      return `Rp ${formattedNumber}`;
+    }
+    return `${matchedSymbol}${formattedNumber}`;
   }
-  return `${currencyCode.toUpperCase()} ${formattedNumber}`;
+
+  return `${resolvedCurrencyCode} ${formattedNumber}`;
 }
 
 /**
@@ -99,12 +173,14 @@ function formatSingleRecordSuccess(
   recordItem: CreateRecordInputPayload,
   accountName: string,
   categoryName: string,
-  languageCode?: SupportedLanguage
+  languageCode?: SupportedLanguage,
+  accountCurrency?: string
 ): string {
   const dictionary = getDictionary(languageCode);
   const isExpense = recordItem.amount < 0;
   const transactionTypeIcon = isExpense ? '💸' : '💰';
-  const formattedAmount = formatCurrencyAmount(recordItem.amount, 'IDR', languageCode);
+  const resolvedCurrency = accountCurrency || process.env.DEFAULT_CURRENCY || 'IDR';
+  const formattedAmount = formatCurrencyAmount(recordItem.amount, resolvedCurrency, languageCode);
   const defaultTitle = isExpense ? dictionary.labels.expense : dictionary.labels.income;
   const transactionTitle = recordItem.note || recordItem.counterParty || defaultTitle;
   const recordTimestampDisplay = formatTransactionDate(recordItem.recordDate, languageCode);
@@ -136,8 +212,10 @@ function formatMultipleRecordsSuccess(
   const recordEntries = recordList.map((recordItem, recordIndex) => {
     const isExpense = recordItem.amount < 0;
     const transactionTypeIcon = isExpense ? '💸' : '💰';
-    const formattedAmount = formatCurrencyAmount(recordItem.amount, 'IDR', languageCode);
-    const accountName = availableAccounts.find(account => account.id === recordItem.accountId)?.name || dictionary.labels.defaultAccount;
+    const targetAccount = availableAccounts.find(account => account.id === recordItem.accountId);
+    const resolvedCurrency = targetAccount?.currency || process.env.DEFAULT_CURRENCY || 'IDR';
+    const formattedAmount = formatCurrencyAmount(recordItem.amount, resolvedCurrency, languageCode);
+    const accountName = targetAccount?.name || dictionary.labels.defaultAccount;
     const categoryName = availableCategories.find(category => category.id === recordItem.categoryId)?.name || dictionary.labels.defaultCategory;
     const defaultDescription = isExpense ? dictionary.labels.expense : dictionary.labels.income;
     const transactionDescription = recordItem.note || recordItem.counterParty || defaultDescription;
@@ -173,9 +251,10 @@ export function formatRecordSuccessMessage(
   const dictionary = getDictionary(languageCode);
   if (recordList.length === 1) {
     const singleRecord = recordList[0];
-    const accountName = availableAccounts.find(account => account.id === singleRecord.accountId)?.name || dictionary.labels.defaultAccount;
+    const targetAccount = availableAccounts.find(account => account.id === singleRecord.accountId);
+    const accountName = targetAccount?.name || dictionary.labels.defaultAccount;
     const categoryName = availableCategories.find(category => category.id === singleRecord.categoryId)?.name || dictionary.labels.defaultCategory;
-    return formatSingleRecordSuccess(singleRecord, accountName, categoryName, languageCode);
+    return formatSingleRecordSuccess(singleRecord, accountName, categoryName, languageCode, targetAccount?.currency);
   }
 
   return formatMultipleRecordsSuccess(recordList, availableAccounts, availableCategories, languageCode);
@@ -202,7 +281,8 @@ export function formatBalanceSummaryMessage(
     if (accountItem.balance !== undefined && accountItem.balance !== null) {
       hasValidNumericBalance = true;
       totalBalanceAccumulator += accountItem.balance;
-      const formattedBalance = formatCurrencyAmount(accountItem.balance, accountItem.currency || 'IDR', languageCode);
+      const resolvedCurrency = accountItem.currency || process.env.DEFAULT_CURRENCY || 'IDR';
+      const formattedBalance = formatCurrencyAmount(accountItem.balance, resolvedCurrency, languageCode);
       return `• *${accountItem.name}*: ${formattedBalance}`;
     }
     return `• *${accountItem.name}*: ${dictionary.balance.notAvailable}`;
@@ -215,7 +295,8 @@ export function formatBalanceSummaryMessage(
   ];
 
   if (hasValidNumericBalance) {
-    const formattedGrandTotal = formatCurrencyAmount(totalBalanceAccumulator, 'IDR', languageCode);
+    const fallbackCurrency = process.env.DEFAULT_CURRENCY || 'IDR';
+    const formattedGrandTotal = formatCurrencyAmount(totalBalanceAccumulator, fallbackCurrency, languageCode);
     messageParts.push('', dictionary.balance.grandTotal(formattedGrandTotal));
   }
 
@@ -240,9 +321,10 @@ export function formatBudgetSummaryMessage(
     const spentAmount = budgetItem.spentAmount || 0;
     const limitAmount = budgetItem.limitAmount || 0;
     const remainingAmount = limitAmount - spentAmount;
-    const formattedSpent = formatCurrencyAmount(spentAmount, budgetItem.currency || 'IDR', languageCode);
-    const formattedLimit = formatCurrencyAmount(limitAmount, budgetItem.currency || 'IDR', languageCode);
-    const formattedRemaining = formatCurrencyAmount(Math.max(0, remainingAmount), budgetItem.currency || 'IDR', languageCode);
+    const budgetCurrency = budgetItem.currency || process.env.DEFAULT_CURRENCY || 'IDR';
+    const formattedSpent = formatCurrencyAmount(spentAmount, budgetCurrency, languageCode);
+    const formattedLimit = formatCurrencyAmount(limitAmount, budgetCurrency, languageCode);
+    const formattedRemaining = formatCurrencyAmount(Math.max(0, remainingAmount), budgetCurrency, languageCode);
 
     return dictionary.budget.budgetItem(budgetItem.name, formattedSpent, formattedLimit, formattedRemaining);
   });
@@ -322,7 +404,8 @@ export function formatPendingEmailTransactionNotification(
   const isExpense = pendingItem.amount < 0 || pendingItem.transactionType === 'EXPENSE';
   const typeLabel = isTransfer ? dictionary.labels.transfer : isExpense ? dictionary.labels.expense : dictionary.labels.income;
   const typeIcon = isTransfer ? '🔄' : isExpense ? '💸' : '💰';
-  const formattedAmount = formatCurrencyAmount(pendingItem.amount, 'IDR', languageCode);
+  const itemCurrency = pendingItem.currency || process.env.DEFAULT_CURRENCY || 'IDR';
+  const formattedAmount = formatCurrencyAmount(pendingItem.amount, itemCurrency, languageCode);
   const formattedTime = formatTransactionDate(pendingItem.recordDate, languageCode);
 
   return dictionary.emailPending.formatNotification({
@@ -350,7 +433,8 @@ export function formatPendingConfirmationSuccess(
 ): string {
   const dictionary = getDictionary(languageCode);
   const isTransfer = item.transactionType === 'TRANSFER';
-  const formattedAmount = formatCurrencyAmount(item.amount, 'IDR', languageCode);
+  const itemCurrency = item.currency || process.env.DEFAULT_CURRENCY || 'IDR';
+  const formattedAmount = formatCurrencyAmount(item.amount, itemCurrency, languageCode);
   const formattedTime = formatTransactionDate(item.recordDate, languageCode);
 
   if (isTransfer) {
@@ -391,12 +475,15 @@ export function formatBulkPendingConfirmationSuccess(
   const dictionary = getDictionary(languageCode);
   const currentTimestamp = getHumanReadableTimestamp(new Date(), languageCode);
 
-  const bulkItemParams = items.map(item => ({
-    ticketId: item.ticketId,
-    title: item.counterParty || item.note || item.bankDisplayName,
-    formattedAmount: formatCurrencyAmount(item.amount, 'IDR', languageCode),
-    accountNameHint: item.accountNameHint || dictionary.labels.defaultAccount,
-  }));
+  const bulkItemParams = items.map(item => {
+    const itemCurrency = item.currency || process.env.DEFAULT_CURRENCY || 'IDR';
+    return {
+      ticketId: item.ticketId,
+      title: item.counterParty || item.note || item.bankDisplayName,
+      formattedAmount: formatCurrencyAmount(item.amount, itemCurrency, languageCode),
+      accountNameHint: item.accountNameHint || dictionary.labels.defaultAccount,
+    };
+  });
 
   return dictionary.confirmation.bulkSuccess(bulkItemParams, currentTimestamp);
 }
@@ -415,7 +502,8 @@ export function formatPendingCancellationMessage(
       count: item.length,
     });
   }
-  const formattedAmount = formatCurrencyAmount(item.amount, 'IDR', languageCode);
+  const itemCurrency = item.currency || process.env.DEFAULT_CURRENCY || 'IDR';
+  const formattedAmount = formatCurrencyAmount(item.amount, itemCurrency, languageCode);
   const title = item.counterParty || item.note || item.bankDisplayName;
   return dictionary.confirmation.cancellation({
     isBulk: false,

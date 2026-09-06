@@ -13,6 +13,7 @@ export interface PendingTransactionItem {
   matchedCategoryName?: string;
   note: string;
   recordDate: string; // ISO 8601 string
+  currency?: string;
   referenceNumber?: string;
   emailSubject?: string;
   createdAt: Date;
