@@ -62,20 +62,49 @@ export function validateAndSanitizeFinancialRecords(
       continue;
     }
 
-    // 2. Account ID Resolution & Validation
-    let resolvedAccountId = currentRecord.accountId;
-    const exactAccountMatch = availableAccountList.find(account => account.id === resolvedAccountId);
+    // 2. Account ID Resolution & Validation (supports UUID, 1-based index number, exact name, or partial name)
+    let resolvedAccountId: string | undefined = undefined;
+    const rawAccountIdStr = String(currentRecord.accountId ?? '').trim();
 
-    if (!exactAccountMatch) {
-      // Check if the AI returned the account name instead of the UUID
+    // Strategy A: Exact UUID match
+    const exactAccountMatch = availableAccountList.find(account => account.id === rawAccountIdStr);
+    if (exactAccountMatch) {
+      resolvedAccountId = exactAccountMatch.id;
+    }
+
+    // Strategy B: 1-based index number (e.g. 1, 2, "1", "2")
+    if (!resolvedAccountId && /^\d+$/.test(rawAccountIdStr)) {
+      const accountIndex = parseInt(rawAccountIdStr, 10) - 1;
+      if (accountIndex >= 0 && accountIndex < availableAccountList.length) {
+        resolvedAccountId = availableAccountList[accountIndex].id;
+      }
+    }
+
+    // Strategy C: Exact name match (case-insensitive)
+    if (!resolvedAccountId) {
       const nameAccountMatch = availableAccountList.find(
-        account => account.name.toLowerCase() === String(currentRecord.accountId || '').toLowerCase()
+        account => account.name.toLowerCase() === rawAccountIdStr.toLowerCase()
       );
-
       if (nameAccountMatch) {
         resolvedAccountId = nameAccountMatch.id;
-      } else if (availableAccountList.length > 0) {
-        // Fallback to first available account (e.g. primary cash or bank account)
+      }
+    }
+
+    // Strategy D: Substring / partial name match
+    if (!resolvedAccountId && rawAccountIdStr.length > 1) {
+      const partialAccountMatch = availableAccountList.find(
+        account =>
+          account.name.toLowerCase().includes(rawAccountIdStr.toLowerCase()) ||
+          rawAccountIdStr.toLowerCase().includes(account.name.toLowerCase())
+      );
+      if (partialAccountMatch) {
+        resolvedAccountId = partialAccountMatch.id;
+      }
+    }
+
+    // Fallback: Default to first account or error if no accounts
+    if (!resolvedAccountId) {
+      if (availableAccountList.length > 0) {
         resolvedAccountId = availableAccountList[0].id;
       } else {
         validationErrors.push(`${recordLabel}: ID Akun tidak ditemukan dan belum ada akun terdaftar di Wallet.`);
@@ -83,19 +112,47 @@ export function validateAndSanitizeFinancialRecords(
       }
     }
 
-    // 3. Category ID Validation (optional field)
+    // 3. Category ID Validation (supports UUID, 1-based index number, exact name, or partial name)
     let resolvedCategoryId: string | undefined = undefined;
     if (currentRecord.categoryId) {
-      const categoryMatch = availableCategoryList.find(
-        category =>
-          category.id === currentRecord.categoryId ||
-          category.name.toLowerCase() === String(currentRecord.categoryId).toLowerCase()
-      );
+      const rawCategoryIdStr = String(currentRecord.categoryId).trim();
 
-      if (categoryMatch) {
-        resolvedCategoryId = categoryMatch.id;
+      // Strategy A: Exact UUID match
+      const exactCategoryMatch = availableCategoryList.find(category => category.id === rawCategoryIdStr);
+      if (exactCategoryMatch) {
+        resolvedCategoryId = exactCategoryMatch.id;
       }
-      // If hallucinated or non-existent, omit categoryId rather than failing the transaction with bad UUID
+
+      // Strategy B: 1-based index number (e.g. 1, 24, "1", "24")
+      if (!resolvedCategoryId && /^\d+$/.test(rawCategoryIdStr)) {
+        const categoryIndex = parseInt(rawCategoryIdStr, 10) - 1;
+        if (categoryIndex >= 0 && categoryIndex < availableCategoryList.length) {
+          resolvedCategoryId = availableCategoryList[categoryIndex].id;
+        }
+      }
+
+      // Strategy C: Exact name match (case-insensitive)
+      if (!resolvedCategoryId) {
+        const nameCategoryMatch = availableCategoryList.find(
+          category => category.name.toLowerCase() === rawCategoryIdStr.toLowerCase()
+        );
+        if (nameCategoryMatch) {
+          resolvedCategoryId = nameCategoryMatch.id;
+        }
+      }
+
+      // Strategy D: Substring / partial name match
+      if (!resolvedCategoryId && rawCategoryIdStr.length > 2) {
+        const partialCategoryMatch = availableCategoryList.find(
+          category =>
+            category.name.toLowerCase().includes(rawCategoryIdStr.toLowerCase()) ||
+            rawCategoryIdStr.toLowerCase().includes(category.name.toLowerCase())
+        );
+        if (partialCategoryMatch) {
+          resolvedCategoryId = partialCategoryMatch.id;
+        }
+      }
+      // If still not matched, omit categoryId rather than failing the transaction with bad UUID
     }
 
     // 4. Record Date Validation
