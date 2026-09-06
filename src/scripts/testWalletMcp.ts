@@ -23,7 +23,6 @@ async function runWalletMcpVerification(): Promise<void> {
     applicationLogger.info('1. Checking client profile...');
     const clientProfileResult = await walletMcpClient.verifyClientProfile();
     applicationLogger.success('Client Profile Verified:');
-    console.log(JSON.stringify(clientProfileResult, null, 2));
 
     console.log('');
     applicationLogger.info('2. Fetching accounts...');

@@ -15,7 +15,11 @@ async function runGeminiAiVerification(): Promise<void> {
   const accountList = await walletMcpClient.fetchAccounts(true);
   const categoryList = await walletMcpClient.fetchCategories(true);
 
-  const geminiAiService = new GeminiAiService(environmentConfig.geminiApiKey);
+  const geminiAiService = new GeminiAiService(
+    environmentConfig.geminiApiKey,
+    environmentConfig.geminiModel,
+    environmentConfig.geminiFallbackModels
+  );
 
   const testUserMessage = 'Makan siang di bakso solo 35rb bayar pakai Gopay';
   console.log('');
