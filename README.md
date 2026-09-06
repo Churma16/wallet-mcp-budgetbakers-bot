@@ -69,15 +69,15 @@ flowchart TD
 ## Key Features
 
 - **Natural Language Transaction Recording**: Parse casual Indonesian shorthand (e.g., *"Kopi kenangan 28rb bca"*, *"Makan siang padang 35rb tunai"*, or *"Gaji masuk 7.5jt ke Mandiri"*).
-- **Physical Receipt Photo OCR**: Send photos of physical paper receipts or invoices; Google Gemini extracts merchant, transaction timestamp, line items, total amount, and categorizes automatically.
+- **Physical Receipt Photo OCR**: Send photos of physical paper receipts or invoices; AI vision extracts merchant, transaction timestamp, line items, total amount, and categorizes automatically.
 - **Real-Time Bank & E-Wallet Email Sync**: Automatically monitors transaction emails via Gmail IMAP IDLE for **Bank Mandiri (Livin), Bank Jago, GoPay, OVO, DANA, and ShopeePay**.
 - **Two-Gate Spam & Promo Defense Engine**:
   - **Gate 1**: Header, sender domain, regex validation, security keyword blacklist (OTP, login alerts, promos), and in-memory deduplication (zero AI tokens spent).
-  - **Gate 2**: Gemini structured schema extraction for verified financial notifications.
-- **Interactive WhatsApp Confirmation Queue**: Bank email transactions generate numbered interactive tickets (`#1`, `#2`). Confirm individually (`Ya 1`, `Catat 1`), in bulk (`Ya semua`, `Catat semua`), or cancel (`Batal 1`, `Batal semua`).
+  - **Gate 2**: AI structured schema extraction for verified financial notifications.
+- **Interactive Multi-Channel Confirmation Queue**: Bank email transactions generate numbered interactive tickets (`#1`, `#2`) broadcasted to WhatsApp and Telegram. Confirm individually (`Ya 1`, `Catat 1`), in bulk (`Ya semua`, `Catat semua`), or cancel (`Batal 1`, `Batal semua`).
 - **Budget & Balance Inquiries**: Check balances across accounts (*"Cek saldo rekening"*, *"Berapa sisa BCA?"*) or inspect budget limits (*"Status budget bulan ini"*).
 - **Zero-Token Fast-Path Processor**: Confirmation commands and simple keywords bypass LLM processing entirely for instant response times and token savings.
-- **Security Whitelist**: Strict phone number restriction ensures only authorized users can interact with the bot.
+- **Channel Security Whitelist**: Strict WhatsApp phone number and Telegram User ID whitelist restrictions ensure only authorized users can interact with the bot.
 
 ---
 
@@ -119,7 +119,7 @@ flowchart TD
 ### 1. Clone and Install Dependencies
 
 ```bash
-git clone https://github.com/username/wallet_mcp.git
+git clone https://github.com/churma16/wallet_mcp.git
 cd wallet_mcp
 npm install
 ```
@@ -195,19 +195,22 @@ Or start for production:
 npm start
 ```
 
-**WhatsApp Pairing Steps:**
-1. A QR code will display in the terminal.
-2. Open WhatsApp on your phone: Settings > **Linked Devices** > **Link a Device**.
-3. Scan the terminal QR code.
-4. Credentials will be persisted inside `./auth_session`. Subsequent restarts will reconnect automatically without re-scanning.
+**Messaging Channel Setup:**
+- **WhatsApp**:
+  1. A QR code will display in the terminal upon startup.
+  2. Open WhatsApp: Settings > **Linked Devices** > **Link a Device** and scan.
+  3. Credentials persist inside `./auth_session`. Subsequent restarts reconnect automatically.
+- **Telegram**:
+  1. Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_ALLOWED_USER_ID` in `.env`.
+  2. Start your bot on Telegram by sending `/start` from your whitelisted user account.
 
 ---
 
 ## Usage Scenarios & Commands
 
-Send messages from your whitelisted WhatsApp number to the bot:
+Send messages from your whitelisted WhatsApp or Telegram account to the bot:
 
-| Scenario | WhatsApp Message Example | System Action |
+| Scenario | Message Example (WhatsApp / Telegram) | System Action |
 | :--- | :--- | :--- |
 | **Expense Recording** | *"Kopi kenangan 28rb bca"* | Resolves account `BCA`, categorizes as `Food & Beverage`, creates expense record. |
 | **Detailed Expense** | *"Beli bensin pertamax 50rb cash, note: rest area km 57"* | Creates expense under `Cash` with category `Transportation` and custom note. |
@@ -233,30 +236,42 @@ wallet_mcp/
 │   ├── types/
 │   │   └── walletTypes.ts               # Wallet MCP interfaces (Account, Category, Record, Budget)
 │   ├── services/
+│   │   ├── ai/                          # Agnostic AI Provider implementations
+│   │   │   ├── aiProvider.ts            # Common AI provider contract & factory
+│   │   │   ├── geminiProvider.ts        # Google Gemini native provider with model fallback
+│   │   │   └── openAiCompatibleProvider.ts # OpenAI / OpenRouter / Groq / Ollama provider
+│   │   ├── messaging/                   # Channel-agnostic messaging gateways
+│   │   │   ├── types.ts                 # Adapter interfaces and messaging event contracts
+│   │   │   ├── messagingGatewayService.ts # Gateway orchestrator managing active channels
+│   │   │   ├── messageFormatHelper.ts   # Formatting converter (WhatsApp markup to Telegram HTML)
+│   │   │   ├── whatsappAdapter.ts       # Baileys WhatsApp Web socket adapter
+│   │   │   └── telegramAdapter.ts       # grammY Telegram Bot adapter
 │   │   ├── emailListenerService.ts      # Gmail IMAP IDLE real-time subscriber and parser
-│   │   ├── geminiAiService.ts           # Gemini NLU, multi-modal OCR, and fallback cascades
-│   │   ├── pendingTransactionManager.ts # Interactive WhatsApp confirmation ticket queue
-│   │   ├── walletMcpClient.ts           # BudgetBakers Wallet MCP HTTP JSON-RPC client
-│   │   └── whatsappBotService.ts        # Baileys WhatsApp Web socket gateway & event handler
+│   │   ├── pendingTransactionManager.ts # Interactive confirmation ticket queue
+│   │   └── walletMcpClient.ts           # BudgetBakers Wallet MCP HTTP JSON-RPC client
 │   ├── utils/
 │   │   ├── emailLogicGate.ts            # Gate 1 rule evaluator (sender domain, blacklist, anti-dupe)
 │   │   ├── fastPathIntentDetector.ts    # Zero-token intent classifier and confirmation parser
-│   │   ├── humanResponseFormatter.ts    # Indonesian WhatsApp response templates and formatting
+│   │   ├── humanResponseFormatter.ts    # Indonesian response templates and formatting
 │   │   ├── logger.ts                    # Pino logger instance with daily file rotation
 │   │   └── recordValidator.ts           # Account/category index resolver and payload sanitizer
 │   ├── scripts/
+│   │   ├── testAiProvider.ts            # Diagnostic script for active AI provider NLU
 │   │   ├── testEmailGateRules.ts        # Unit test suite for Gate 1 filtering logic
 │   │   ├── testEmailImap.ts             # Diagnostic script for Gmail IMAP connectivity
 │   │   ├── testFetchRealEmailsGate.ts   # Live inbox diagnostic for Gate 1 rule evaluation
 │   │   ├── testFormatter.ts             # Validation script for human-friendly response strings
-│   │   ├── testGemini.ts                # Diagnostic script for Gemini NLU models
+│   │   ├── testMessageFormat.ts         # Unit test for WhatsApp markup to Telegram HTML converter
+│   │   ├── testTelegramBot.ts           # Diagnostic script for Telegram bot connectivity & dispatch
 │   │   └── testWalletMcp.ts             # Diagnostic script for BudgetBakers MCP endpoints
 │   └── index.ts                         # Application bootstrap and service orchestrator
 ├── .env.example                         # Environment variable template
 ├── package.json                         # Node dependencies and execution scripts
 ├── tsconfig.json                        # TypeScript compiler configuration
+├── LICENSE                              # MIT License
 └── README.md                            # Project documentation
 ```
+
 
 ---
 
@@ -277,8 +292,8 @@ This is an independent open-source project and is **not** officially affiliated 
 ---
 
 ## Author
-
-Personal project developed for automated BudgetBakers Wallet bookkeeping.
+ 
+ Developed by [churma16](https://github.com/churma16).
 
 ---
 
