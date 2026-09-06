@@ -83,12 +83,20 @@ You MUST respond with valid JSON ONLY (no markdown formatting, no code fences, n
     generationRequestOptions: {
       contents: Parameters<GoogleGenAI['models']['generateContent']>[0]['contents'];
       systemInstruction: string;
+      requestContextDescription?: string;
     }
   ): Promise<string> {
     let lastEncounteredError: unknown = null;
 
     for (let modelIndex = 0; modelIndex < this.candidateModelList.length; modelIndex++) {
       const currentCandidateModel = this.candidateModelList[modelIndex];
+      const startExecutionTimestamp = Date.now();
+
+      applicationLogger.fileDetail('ai', `Dispatched Gemini Request [${currentCandidateModel}]`, {
+        model: currentCandidateModel,
+        context: generationRequestOptions.requestContextDescription || 'General message processing',
+        contents: generationRequestOptions.contents,
+      });
 
       try {
         const generationResponse = await this.googleGenAiClient.models.generateContent({
@@ -101,9 +109,19 @@ You MUST respond with valid JSON ONLY (no markdown formatting, no code fences, n
           },
         });
 
-        return generationResponse.text || '{}';
+        const executionDurationMilliseconds = Date.now() - startExecutionTimestamp;
+        const responseText = generationResponse.text || '{}';
+
+        applicationLogger.fileDetail('ai', `Received Gemini Response [${currentCandidateModel}] (${executionDurationMilliseconds}ms)`, {
+          model: currentCandidateModel,
+          latencyMilliseconds: executionDurationMilliseconds,
+          rawResponse: responseText,
+        });
+
+        return responseText;
       } catch (error: unknown) {
         lastEncounteredError = error;
+        const executionDurationMilliseconds = Date.now() - startExecutionTimestamp;
         const errorMessage = error instanceof Error ? error.message : String(error);
 
         const isRecoverableModelError =
@@ -118,6 +136,15 @@ You MUST respond with valid JSON ONLY (no markdown formatting, no code fences, n
           errorMessage.includes('overloaded');
 
         const hasNextFallbackModel = modelIndex + 1 < this.candidateModelList.length;
+
+        applicationLogger.fileDetail('error', `Gemini Model Execution Failed [${currentCandidateModel}] (${executionDurationMilliseconds}ms)`, {
+          model: currentCandidateModel,
+          duration: `${executionDurationMilliseconds}ms`,
+          errorMessage,
+          isRecoverable: isRecoverableModelError,
+          hasNextFallback: hasNextFallbackModel,
+          errorStack: error instanceof Error ? error.stack : undefined,
+        });
 
         if (isRecoverableModelError && hasNextFallbackModel) {
           const nextCandidateModel = this.candidateModelList[modelIndex + 1];
@@ -152,10 +179,13 @@ You MUST respond with valid JSON ONLY (no markdown formatting, no code fences, n
         },
       ],
       systemInstruction: systemInstructionContent,
+      requestContextDescription: `Text message: "${userMessageText}"`,
     });
 
     try {
-      return JSON.parse(responseText) as ExtractedFinancialIntent;
+      const parsedIntent = JSON.parse(responseText) as ExtractedFinancialIntent;
+      applicationLogger.fileDetail('ai', 'Parsed Financial Intent from Gemini', parsedIntent);
+      return parsedIntent;
     } catch {
       return {
         action: 'GENERAL_REPLY',
@@ -196,10 +226,13 @@ You MUST respond with valid JSON ONLY (no markdown formatting, no code fences, n
         },
       ],
       systemInstruction: systemInstructionContent,
+      requestContextDescription: `Receipt photo message (mime: ${mimeType}, size: ${imageBuffer.length} bytes, caption: "${optionalCaption}")`,
     });
 
     try {
-      return JSON.parse(responseText) as ExtractedFinancialIntent;
+      const parsedIntent = JSON.parse(responseText) as ExtractedFinancialIntent;
+      applicationLogger.fileDetail('ai', 'Parsed Financial Intent from Gemini Vision', parsedIntent);
+      return parsedIntent;
     } catch {
       return {
         action: 'GENERAL_REPLY',
