@@ -192,8 +192,28 @@ export class WalletMcpClientService {
    * Create one or more transaction records in Wallet
    */
   public async createRecords(recordsPayload: CreateRecordInputPayload[]): Promise<WalletCreateRecordsResponse> {
+    const sanitizedRecordPayloadList = recordsPayload.map(recordItem => {
+      const sanitizedRecordItem: Record<string, unknown> = {
+        accountId: recordItem.accountId,
+        amount: recordItem.amount,
+        recordDate: recordItem.recordDate,
+      };
+
+      if (recordItem.categoryId) {
+        sanitizedRecordItem.categoryId = recordItem.categoryId;
+      }
+      if (recordItem.note) {
+        sanitizedRecordItem.note = recordItem.note;
+      }
+      if (recordItem.counterParty) {
+        sanitizedRecordItem.counterParty = recordItem.counterParty;
+      }
+
+      return sanitizedRecordItem;
+    });
+
     return await this.callMcpTool<WalletCreateRecordsResponse>('create_records', {
-      records: recordsPayload,
+      records: sanitizedRecordPayloadList,
     });
   }
 }
