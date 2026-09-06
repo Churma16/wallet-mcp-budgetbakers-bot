@@ -25,7 +25,8 @@ export function formatCurrencyAmount(amount: number, currencyCode: string = 'IDR
 }
 
 /**
- * Formats a single transaction record into modern compact WhatsApp layout
+ * Formats a single transaction record using Context-First psychological hierarchy:
+ * Title answers "What?", followed by "How much & from where?", then "Category & Time".
  */
 function formatSingleRecordSuccess(
   recordItem: CreateRecordInputPayload,
@@ -36,13 +37,13 @@ function formatSingleRecordSuccess(
   const isExpense = recordItem.amount < 0;
   const transactionTypeIcon = isExpense ? '💸' : '💰';
   const formattedAmount = formatCurrencyAmount(recordItem.amount);
-  const transactionDescription = recordItem.note || recordItem.counterParty || (isExpense ? 'Pengeluaran' : 'Pemasukan');
+  const transactionTitle = recordItem.note || recordItem.counterParty || (isExpense ? 'Pengeluaran' : 'Pemasukan');
 
   return [
-    `✅ *${formattedAmount}* sudah dicatat!`,
+    `✅ *${transactionTitle}* berhasil dicatat!`,
     '',
-    `${transactionTypeIcon} ${transactionDescription}  •  ${categoryName}`,
-    `💳 ${accountName}  •  ${currentTimestamp}`,
+    `${transactionTypeIcon} ${formattedAmount}  •  ${accountName}`,
+    `🏷️ ${categoryName}  •  ${currentTimestamp}`,
   ].join('\n');
 }
 
@@ -56,7 +57,7 @@ function formatMultipleRecordsSuccess(
   currentTimestamp: string
 ): string {
   const totalRecordsCount = recordList.length;
-  const headerMessage = `✅ *${totalRecordsCount} transaksi berhasil dicatat!*`;
+  const headerMessage = `✅ *${totalRecordsCount} transaksi* berhasil dicatat! (${currentTimestamp})`;
 
   const recordEntries = recordList.map((recordItem, recordIndex) => {
     const isExpense = recordItem.amount < 0;
@@ -67,8 +68,8 @@ function formatMultipleRecordsSuccess(
     const transactionDescription = recordItem.note || recordItem.counterParty || (isExpense ? 'Pengeluaran' : 'Pemasukan');
 
     return [
-      `${recordIndex + 1}. ${transactionTypeIcon} *${formattedAmount}* — ${transactionDescription}`,
-      `   💳 ${accountName}  •  ${categoryName}`,
+      `${recordIndex + 1}. ${transactionTypeIcon} ${transactionDescription} — *${formattedAmount}* dari ${accountName}`,
+      `   🏷️ ${categoryName}`,
     ].join('\n');
   });
 
@@ -76,8 +77,6 @@ function formatMultipleRecordsSuccess(
     headerMessage,
     '',
     recordEntries.join('\n\n'),
-    '',
-    `⏰ ${currentTimestamp}`,
   ].join('\n');
 }
 
@@ -102,13 +101,13 @@ export function formatRecordSuccessMessage(
 }
 
 /**
- * Formats account balances into a clean aligned list with a grand total
+ * Formats account balances into a clean, mobile-friendly list with bold labels and a grand total
  */
 export function formatBalanceSummaryMessage(accountList: WalletAccountItem[]): string {
   const currentTimestamp = getHumanReadableTimestamp();
 
   if (!accountList || accountList.length === 0) {
-    return `📊 *Saldo Rekening* — ${currentTimestamp}\n\nBelum ada data rekening yang terhubung.`;
+    return `📊 *Saldo Rekening* (${currentTimestamp})\n\nBelum ada data rekening yang terhubung.`;
   }
 
   let totalBalanceAccumulator = 0;
@@ -119,13 +118,13 @@ export function formatBalanceSummaryMessage(accountList: WalletAccountItem[]): s
       hasValidNumericBalance = true;
       totalBalanceAccumulator += accountItem.balance;
       const formattedBalance = formatCurrencyAmount(accountItem.balance, accountItem.currency || 'IDR');
-      return `• ${accountItem.name.padEnd(16, ' ')} ${formattedBalance}`;
+      return `• *${accountItem.name}*: ${formattedBalance}`;
     }
-    return `• ${accountItem.name.padEnd(16, ' ')} N/A`;
+    return `• *${accountItem.name}*: N/A`;
   });
 
   const messageParts = [
-    `📊 *Saldo Rekening* — ${currentTimestamp}`,
+    `📊 *Saldo Rekening* (${currentTimestamp})`,
     '',
     accountLines.join('\n'),
   ];
@@ -145,7 +144,7 @@ export function formatBudgetSummaryMessage(budgetList: WalletBudgetItem[]): stri
   const currentTimestamp = getHumanReadableTimestamp();
 
   if (!budgetList || budgetList.length === 0) {
-    return `📈 *Status Anggaran* — ${currentTimestamp}\n\nBelum ada anggaran aktif yang ditemukan.`;
+    return `📈 *Status Anggaran* (${currentTimestamp})\n\nBelum ada anggaran aktif yang ditemukan.`;
   }
 
   const budgetLines = budgetList.map(budgetItem => {
@@ -156,11 +155,11 @@ export function formatBudgetSummaryMessage(budgetList: WalletBudgetItem[]): stri
     const formattedLimit = formatCurrencyAmount(limitAmount, budgetItem.currency || 'IDR');
     const formattedRemaining = formatCurrencyAmount(Math.max(0, remainingAmount), budgetItem.currency || 'IDR');
 
-    return `• ${budgetItem.name}: ${formattedSpent} / ${formattedLimit} _(sisa ${formattedRemaining})_`;
+    return `• *${budgetItem.name}*: ${formattedSpent} / ${formattedLimit} _(sisa ${formattedRemaining})_`;
   });
 
   return [
-    `📈 *Status Anggaran* — ${currentTimestamp}`,
+    `📈 *Status Anggaran* (${currentTimestamp})`,
     '',
     budgetLines.join('\n'),
   ].join('\n');
