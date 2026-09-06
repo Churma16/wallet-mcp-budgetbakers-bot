@@ -3,13 +3,13 @@ import { ImapFlow } from 'imapflow';
 
 async function testGmailImapConnection(): Promise<void> {
   console.log('====================================================');
-  console.log('📬 Testing Gmail IMAP Connection & INBOX Status');
+  console.log('[test] Testing Gmail IMAP Connection & INBOX Status');
   console.log('====================================================\n');
 
   const config = loadEnvironmentConfiguration();
 
   if (!config.emailImapUser || !config.emailImapPassword) {
-    console.error('❌ Error: EMAIL_IMAP_USER or EMAIL_IMAP_PASSWORD is not configured in .env');
+    console.error('[error] EMAIL_IMAP_USER or EMAIL_IMAP_PASSWORD is not configured in .env');
     console.log('[hint] Add to your .env file:');
     console.log('EMAIL_SYNC_ENABLED=true');
     console.log('EMAIL_IMAP_USER=your_email@gmail.com');
@@ -33,7 +33,7 @@ async function testGmailImapConnection(): Promise<void> {
 
   try {
     await imapClient.connect();
-    console.log('✅ Connection to Gmail IMAP established successfully!\n');
+    console.log('[success] Connection to Gmail IMAP established successfully!\n');
 
     console.log('Checking IMAP Capabilities:');
     console.log(`- IDLE supported: ${Boolean(imapClient.capabilities.get('IDLE'))}`);
@@ -47,7 +47,7 @@ async function testGmailImapConnection(): Promise<void> {
         unseen: true,
       });
 
-      console.log('\n📬 INBOX Status:');
+      console.log('\n[info] INBOX Status:');
       console.log(`- Total Messages: ${mailboxStatus.messages}`);
       console.log(`- Unseen Messages: ${mailboxStatus.unseen}`);
       console.log(`- Recent Messages: ${mailboxStatus.recent}`);
@@ -56,9 +56,9 @@ async function testGmailImapConnection(): Promise<void> {
     }
 
     await imapClient.logout();
-    console.log('\n🎉 Gmail IMAP test completed successfully!');
+    console.log('\n[success] Gmail IMAP test completed successfully!');
   } catch (testError: unknown) {
-    console.error('\n❌ Gmail IMAP connection failed:');
+    console.error('\n[error] Gmail IMAP connection failed:');
     if (testError instanceof Error) {
       console.error(`- ${testError.message}`);
       if (testError.message.includes('Invalid credentials') || testError.message.includes('AUTHENTICATIONFAILED')) {

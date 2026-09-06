@@ -5,14 +5,14 @@ import { evaluateEmailThroughGateOne, GateEvaluationResult } from '../utils/emai
 
 async function testFetchRecentEmailsThroughGateOne(): Promise<void> {
   console.log('====================================================');
-  console.log('📬 Testing Gate 1 Logic with 50 Real Gmail Emails');
+  console.log('[test] Testing Gate 1 Logic with 50 Real Gmail Emails');
   console.log('   (0 Token AI - No Gemini API calls, Read-Only)');
   console.log('====================================================\n');
 
   const config = loadEnvironmentConfiguration();
 
   if (!config.emailImapUser || !config.emailImapPassword) {
-    console.error('❌ Error: EMAIL_IMAP_USER or EMAIL_IMAP_PASSWORD is not set in .env');
+    console.error('[error] EMAIL_IMAP_USER or EMAIL_IMAP_PASSWORD is not set in .env');
     process.exit(1);
   }
 
@@ -30,7 +30,7 @@ async function testFetchRecentEmailsThroughGateOne(): Promise<void> {
   try {
     console.log(`Connecting to ${config.emailImapHost} as ${config.emailImapUser}...`);
     await imapClient.connect();
-    console.log('✅ Connected successfully!\n');
+    console.log('[success] Connected successfully!\n');
 
     // Open mailbox in readOnly mode so no flags or read states are changed
     const lock = await imapClient.getMailboxLock('INBOX', { readOnly: true });
@@ -137,14 +137,14 @@ async function testFetchRecentEmailsThroughGateOne(): Promise<void> {
 
       // Print Report
       console.log('====================================================');
-      console.log('📊 GATE 1 EVALUATION RESULTS');
+      console.log('[report] GATE 1 EVALUATION RESULTS');
       console.log('====================================================');
       console.log(`Total Emails Scanned: ${totalScanned}`);
       console.log(`Transactions Passed Gate 1: ${passedList.length}`);
       console.log(`Emails Filtered Out: ${totalScanned - passedList.length}\n`);
 
       if (passedList.length > 0) {
-        console.log('🎯 DETECTED BANK / E-WALLET TRANSACTIONS:');
+        console.log('[info] DETECTED BANK / E-WALLET TRANSACTIONS:');
         passedList.forEach((item, index) => {
           console.log(`\n[#${index + 1}] ${item.bank}`);
           console.log(`   - Subject   : "${item.subject}"`);
@@ -153,16 +153,16 @@ async function testFetchRecentEmailsThroughGateOne(): Promise<void> {
           console.log(`   - Ref ID    : ${item.ref}`);
           console.log(`   - Timestamp : ${item.date}`);
           if (item.isTransfer) {
-            console.log(`   - Note      : 🔄 Detected as Transfer/Top-Up candidate`);
+            console.log(`   - Note      : [TRANSFER] Detected as Transfer/Top-Up candidate`);
           }
         });
       } else {
-        console.log('ℹ️ No bank transactions found in the last 50 emails.');
+        console.log('[info] No bank transactions found in the last 50 emails.');
         console.log('   (Your last 50 emails might be personal/marketing/newsletter emails from non-bank domains).');
       }
 
       console.log('\n----------------------------------------------------');
-      console.log('🛡️ Filtered Out Breakdown (0 Tokens Consumed):');
+      console.log('[info] Filtered Out Breakdown (0 Tokens Consumed):');
       for (const [reason, count] of Object.entries(skippedCountByReason)) {
         console.log(`   • ${reason}: ${count} email(s)`);
       }

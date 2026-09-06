@@ -3,7 +3,7 @@ import { parseCurrencyAmountStringToNumber } from '../utils/emailLogicGate.js';
 import { detectPendingConfirmationAction } from '../utils/fastPathIntentDetector.js';
 
 console.log('====================================================');
-console.log('🧪 Running Email Logic Gate & Dictionary Test Suite');
+console.log('[test] Running Email Logic Gate & Dictionary Test Suite');
 console.log('====================================================\n');
 
 let passedTestsCount = 0;
@@ -12,10 +12,10 @@ let totalTestsCount = 0;
 function assertCondition(testName: string, condition: boolean, extraDetail?: string): void {
   totalTestsCount++;
   if (condition) {
-    console.log(`✅ [PASS] ${testName}`);
+    console.log(`[PASS] ${testName}`);
     passedTestsCount++;
   } else {
-    console.error(`❌ [FAIL] ${testName}${extraDetail ? ` -> ${extraDetail}` : ''}`);
+    console.error(`[FAIL] ${testName}${extraDetail ? ` -> ${extraDetail}` : ''}`);
   }
 }
 
@@ -233,9 +233,9 @@ console.log(`Test Results: ${passedTestsCount}/${totalTestsCount} assertions pas
 console.log('====================================================');
 
 if (passedTestsCount === totalTestsCount) {
-  console.log('🎉 All Email Gate Rules & Intent Detector Tests Passed Successfully!\n');
+  console.log('[SUCCESS] All Email Gate Rules & Intent Detector Tests Passed Successfully!\n');
   process.exit(0);
 } else {
-  console.error('⚠️ Some tests failed. Please review the output above.\n');
+  console.error('[WARN] Some tests failed. Please review the output above.\n');
   process.exit(1);
 }

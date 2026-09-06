@@ -1,10 +1,21 @@
 # Project Rules - wallet_mcp
 
-## Emoji Usage Allowed
-In this project (`wallet_mcp`), raw emojis are **explicitly allowed** in the codebase.
-- **WhatsApp Chat & Templates**: Raw emojis (e.g., 👋, ✅, ⚠️, 📊, 📈, 💰) are permitted in WhatsApp messages, user-facing formatting templates, and bot replies.
-- **Exceptions**: Maintain standard alphanumeric conventions for identifiers, functions, variables, and API contracts.
-- **Precedence**: This overrides the global "No Emojis in Codebase" rule for this project repository only.
+## Strict Emoji Boundaries (Human-Facing Only)
+In this project (`wallet_mcp`), raw emojis are **strictly restricted** to human-facing communication channels:
+- **Allowed Only For Human Responses**: Raw emojis (e.g., 👋, ✅, ⚠️, 📊, 📈, 💰) are permitted **only** in user-facing WhatsApp messages, chat responses, and human-facing app templates/replies.
+- **Forbidden in System Outputs & Code**: Do **NOT** use emojis in:
+  - Console logs (`console.log`, `console.info`, `console.debug`)
+  - Console errors (`console.error`, `console.warn`)
+  - Internal logger outputs (e.g. Pino)
+  - Error messages, exceptions, or rejection reasons
+  - Internal code logic, variable/function identifiers, and code comments
+- **Standard Console Placeholders**: When logging in terminal or console, use clean text tags instead of emojis:
+  - `[SUCCESS]` instead of ✅
+  - `[ERROR]` instead of ❌
+  - `[WARN]` instead of ⚠️
+  - `[INFO]` instead of ℹ️ / 📬 / 📊
+  - `[TRANSFER]` instead of 🔄
+- **Precedence**: Clarifies and scopes the global "No Emojis in Codebase" rule: emojis are strictly allowed in human-facing chat/app responses only, and strictly forbidden in console logs, errors, and system output.
 
 ## Personal Project - No JIRA Required
 This repository (`wallet_mcp`) is a personal project, not an enterprise/company project.
