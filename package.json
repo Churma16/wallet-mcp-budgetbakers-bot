@@ -1,6 +1,6 @@
 {
     "name": "wallet_mcp",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "Automated personal bookkeeping assistant via WhatsApp and Telegram for BudgetBakers Wallet via MCP",
     "author": "churma16",
     "license": "MIT",
