@@ -209,6 +209,38 @@ export class WalletMcpClientService {
   }
 
   /**
+   * Normalizes recordDate: if given timestamp has midnight UTC (00:00:00.000Z),
+   * injects current UTC hours/minutes/seconds so that Wallet timezone rendering (e.g. WIB / UTC+7)
+   * does not show 07:00 AM instead of the actual transaction time.
+   */
+  private normalizeRecordDate(recordDateString?: string): string {
+    const currentTimestamp = new Date();
+    if (!recordDateString) {
+      return currentTimestamp.toISOString();
+    }
+
+    const parsedDate = new Date(recordDateString);
+    if (isNaN(parsedDate.getTime())) {
+      return currentTimestamp.toISOString();
+    }
+
+    // Check if the timestamp has midnight UTC (00:00:00.000Z)
+    const isMidnightUtc =
+      parsedDate.getUTCHours() === 0 &&
+      parsedDate.getUTCMinutes() === 0 &&
+      parsedDate.getUTCSeconds() === 0;
+
+    if (isMidnightUtc) {
+      parsedDate.setUTCHours(currentTimestamp.getUTCHours());
+      parsedDate.setUTCMinutes(currentTimestamp.getUTCMinutes());
+      parsedDate.setUTCSeconds(currentTimestamp.getUTCSeconds());
+      parsedDate.setUTCMilliseconds(currentTimestamp.getUTCMilliseconds());
+    }
+
+    return parsedDate.toISOString();
+  }
+
+  /**
    * Create one or more transaction records in Wallet
    */
   public async createRecords(recordsPayload: CreateRecordInputPayload[]): Promise<WalletCreateRecordsResponse> {
@@ -216,7 +248,7 @@ export class WalletMcpClientService {
       const sanitizedRecordItem: Record<string, unknown> = {
         accountId: recordItem.accountId,
         amount: recordItem.amount,
-        recordDate: recordItem.recordDate,
+        recordDate: this.normalizeRecordDate(recordItem.recordDate),
       };
 
       if (recordItem.categoryId) {
