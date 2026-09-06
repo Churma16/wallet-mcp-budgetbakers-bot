@@ -68,11 +68,12 @@ async function bootstrapApplication(): Promise<void> {
 
   applicationLogger.success(`Cached ${cachedAccounts.length} accounts and ${cachedCategories.length} categories.`);
 
-  // 2. Initialize Gemini AI Service with fallback models
+  // 2. Initialize Gemini AI Service with fallback models and timeout
   const geminiAiService = new GeminiAiService(
     environmentConfig.geminiApiKey,
     environmentConfig.geminiModel,
-    environmentConfig.geminiFallbackModels
+    environmentConfig.geminiFallbackModels,
+    environmentConfig.geminiRequestTimeoutMilliseconds
   );
 
   // 3. Define message processing handler
@@ -87,6 +88,9 @@ async function bootstrapApplication(): Promise<void> {
       hasImageBuffer: Boolean(event.imageBuffer),
       imageMimeType: event.imageMimeType,
     });
+
+    // Notify user on WhatsApp with typing indicator
+    await whatsappBot.sendTypingPresence(event.remoteJid);
 
     try {
       // Fast-path intent classifier: Skip Gemini AI entirely for simple balance/budget/help queries (0 tokens used)
@@ -289,6 +293,9 @@ async function bootstrapApplication(): Promise<void> {
         event.remoteJid,
         humanErrorMessage
       );
+    } finally {
+      // Clear WhatsApp typing indicator
+      await whatsappBot.clearTypingPresence(event.remoteJid);
     }
   };
 
