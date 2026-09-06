@@ -1,9 +1,10 @@
 import { loadEnvironmentConfiguration } from '../config/environmentConfig.js';
 import { WalletMcpClientService } from '../services/walletMcpClient.js';
 import { GeminiAiService } from '../services/geminiAiService.js';
+import { applicationLogger } from '../utils/logger.js';
 
 async function runGeminiAiVerification(): Promise<void> {
-  console.log('[info] Testing Gemini AI Service & Transaction Parsing...');
+  applicationLogger.info('Testing Gemini AI Service & Transaction Parsing...');
 
   const environmentConfig = loadEnvironmentConfiguration();
   const walletMcpClient = new WalletMcpClientService(
@@ -17,7 +18,8 @@ async function runGeminiAiVerification(): Promise<void> {
   const geminiAiService = new GeminiAiService(environmentConfig.geminiApiKey);
 
   const testUserMessage = 'Makan siang di bakso solo 35rb bayar pakai Gopay';
-  console.log(`\n[test] User Message: "${testUserMessage}"`);
+  console.log('');
+  applicationLogger.chat(`Simulated User Message: "${testUserMessage}"`);
 
   const extractionResult = await geminiAiService.processTextMessage(
     testUserMessage,
@@ -25,14 +27,16 @@ async function runGeminiAiVerification(): Promise<void> {
     categoryList
   );
 
-  console.log('\n[success] Gemini Output:');
+  console.log('');
+  applicationLogger.success('Gemini Extraction Output:');
   console.log(JSON.stringify(extractionResult, null, 2));
 
   if (extractionResult.records && extractionResult.records.length > 0) {
     const matchedAccount = accountList.find(acc => acc.id === extractionResult.records![0].accountId);
-    console.log(`\n[info] Matched Account: ${matchedAccount?.name} (${matchedAccount?.id})`);
-    console.log(`[info] Extracted Amount: ${extractionResult.records[0].amount} (Negative for expense: ${extractionResult.records[0].amount < 0})`);
+    console.log('');
+    applicationLogger.info(`Matched Account: ${matchedAccount?.name} (${matchedAccount?.id})`);
+    applicationLogger.info(`Extracted Amount: ${extractionResult.records[0].amount} (Negative for expense: ${extractionResult.records[0].amount < 0})`);
   }
 }
 
-runGeminiAiVerification().catch(err => console.error('[error]', err));
+runGeminiAiVerification().catch(err => applicationLogger.error(String(err)));
