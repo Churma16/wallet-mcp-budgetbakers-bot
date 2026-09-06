@@ -1,0 +1,194 @@
+import axios, { AxiosInstance } from 'axios';
+import {
+  WalletAccountItem,
+  WalletCategoryItem,
+  CreateRecordInputPayload,
+  WalletCreateRecordsResponse,
+  WalletBudgetItem,
+} from '../types/walletTypes.js';
+
+export class WalletMcpClientService {
+  private readonly httpClient: AxiosInstance;
+  private cachedAccountList: WalletAccountItem[] = [];
+  private cachedCategoryList: WalletCategoryItem[] = [];
+  private cacheLastUpdatedTimestamp: number = 0;
+  private readonly cacheDurationMilliseconds: number = 1000 * 60 * 30; // 30 minutes
+
+  constructor(private readonly baseUrl: string, private readonly accessToken: string) {
+    this.httpClient = axios.create({
+      baseURL: this.baseUrl,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.accessToken}`,
+        'Accept': 'application/json, text/event-stream',
+      },
+      timeout: 15000,
+    });
+  }
+
+  /**
+   * Send a generic JSON-RPC 2.0 request to the Wallet MCP Server
+   */
+  private async executeJsonRpcRequest<TResult>(methodName: string, requestParameters: Record<string, unknown> = {}): Promise<TResult> {
+    const jsonRpcPayload = {
+      jsonrpc: '2.0',
+      id: Date.now(),
+      method: methodName,
+      params: requestParameters,
+    };
+
+    try {
+      const httpResponse = await this.httpClient.post('', jsonRpcPayload);
+      const responseBody = httpResponse.data;
+
+      if (responseBody.error) {
+        throw new Error(`[error] MCP JSON-RPC Error: ${responseBody.error.message || JSON.stringify(responseBody.error)}`);
+      }
+
+      return responseBody.result as TResult;
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error) && error.response) {
+        const errorDataString = typeof error.response.data === 'object' 
+          ? JSON.stringify(error.response.data) 
+          : String(error.response.data);
+        throw new Error(`[error] Wallet MCP HTTP ${error.response.status}: ${errorDataString}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Helper to execute a tool call via tools/call and unpack text content
+   */
+  public async callMcpTool<TToolOutput>(toolName: string, toolArguments: Record<string, unknown> = {}): Promise<TToolOutput> {
+    const toolCallResult = await this.executeJsonRpcRequest<{
+      content?: Array<{ type: string; text: string }>;
+      structuredContent?: any;
+      isError?: boolean;
+    }>('tools/call', {
+      name: toolName,
+      arguments: toolArguments,
+    });
+
+    if (toolCallResult.isError) {
+      const errorMessage = toolCallResult.content?.map(contentItem => contentItem.text).join('\n') || 'Unknown tool error';
+      throw new Error(`[error] MCP Tool '${toolName}' failed: ${errorMessage}`);
+    }
+
+    if (toolCallResult.structuredContent !== undefined) {
+      return toolCallResult.structuredContent as TToolOutput;
+    }
+
+    if (toolCallResult.content && toolCallResult.content.length > 0) {
+      const primaryTextContent = toolCallResult.content[0].text;
+      try {
+        return JSON.parse(primaryTextContent) as TToolOutput;
+      } catch {
+        return primaryTextContent as unknown as TToolOutput;
+      }
+    }
+
+    return toolCallResult as unknown as TToolOutput;
+  }
+
+  /**
+   * Verify client profile and connection to Wallet MCP
+   */
+  public async verifyClientProfile(): Promise<unknown> {
+    return await this.callMcpTool('get_client_profile');
+  }
+
+  /**
+   * Retrieve all bank accounts and wallets
+   */
+  public async fetchAccounts(forceRefresh: boolean = false): Promise<WalletAccountItem[]> {
+    const isCacheExpired = Date.now() - this.cacheLastUpdatedTimestamp > this.cacheDurationMilliseconds;
+
+    if (!forceRefresh && this.cachedAccountList.length > 0 && !isCacheExpired) {
+      return this.cachedAccountList;
+    }
+
+    const fetchedAccountData = await this.callMcpTool<any>('get_accounts');
+    
+    // Normalize response if it is wrapped in an array or records property
+    const rawAccountArray: any[] = Array.isArray(fetchedAccountData)
+      ? fetchedAccountData
+      : (fetchedAccountData?.accounts || fetchedAccountData?.items || []);
+
+    this.cachedAccountList = rawAccountArray.map(item => {
+      let resolvedBalance: number | undefined = undefined;
+      let resolvedCurrency: string | undefined = item.currency;
+
+      if (typeof item.balance === 'number') {
+        resolvedBalance = item.balance;
+      } else if (typeof item.balance === 'object' && item.balance !== null) {
+        resolvedBalance = item.balance.amount ?? item.balance.value ?? item.balance.current;
+        resolvedCurrency = item.balance.currency ?? item.currency;
+      }
+
+      return {
+        id: item.id || item.accountId,
+        name: item.name || item.accountName || 'Unnamed Account',
+        currency: resolvedCurrency,
+        balance: resolvedBalance,
+        accountType: item.type || item.accountType,
+      };
+    });
+
+    this.cacheLastUpdatedTimestamp = Date.now();
+    return this.cachedAccountList;
+  }
+
+  /**
+   * Retrieve all expense and income categories
+   */
+  public async fetchCategories(forceRefresh: boolean = false): Promise<WalletCategoryItem[]> {
+    const isCacheExpired = Date.now() - this.cacheLastUpdatedTimestamp > this.cacheDurationMilliseconds;
+
+    if (!forceRefresh && this.cachedCategoryList.length > 0 && !isCacheExpired) {
+      return this.cachedCategoryList;
+    }
+
+    const fetchedCategoryData = await this.callMcpTool<any>('get_categories');
+
+    const rawCategoryArray: any[] = Array.isArray(fetchedCategoryData)
+      ? fetchedCategoryData
+      : (fetchedCategoryData?.categories || fetchedCategoryData?.items || []);
+
+    this.cachedCategoryList = rawCategoryArray.map(item => ({
+      id: item.id || item.categoryId,
+      name: item.name || item.categoryName || 'Unnamed Category',
+      parentCategoryId: item.parentId || item.parentCategoryId,
+    }));
+
+    return this.cachedCategoryList;
+  }
+
+  /**
+   * Retrieve all budgets
+   */
+  public async fetchBudgets(): Promise<WalletBudgetItem[]> {
+    const fetchedBudgetData = await this.callMcpTool<any>('get_budgets');
+
+    const rawBudgetArray: any[] = Array.isArray(fetchedBudgetData)
+      ? fetchedBudgetData
+      : (fetchedBudgetData?.budgets || fetchedBudgetData?.items || []);
+
+    return rawBudgetArray.map(item => ({
+      id: item.id,
+      name: item.name,
+      spentAmount: item.spent || item.currentSpent,
+      limitAmount: item.limit || item.amount,
+      currency: item.currency,
+    }));
+  }
+
+  /**
+   * Create one or more transaction records in Wallet
+   */
+  public async createRecords(recordsPayload: CreateRecordInputPayload[]): Promise<WalletCreateRecordsResponse> {
+    return await this.callMcpTool<WalletCreateRecordsResponse>('create_records', {
+      records: recordsPayload,
+    });
+  }
+}
