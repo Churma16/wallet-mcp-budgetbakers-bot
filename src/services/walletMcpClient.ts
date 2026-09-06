@@ -117,21 +117,26 @@ export class WalletMcpClientService {
 
     this.cachedAccountList = rawAccountArray.map(item => {
       let resolvedBalance: number | undefined = undefined;
-      let resolvedCurrency: string | undefined = item.currency;
+      let resolvedCurrency: string | undefined = item.currency || item.currencyCode;
 
       if (typeof item.balance === 'number') {
         resolvedBalance = item.balance;
       } else if (typeof item.balance === 'object' && item.balance !== null) {
-        resolvedBalance = item.balance.amount ?? item.balance.value ?? item.balance.current;
-        resolvedCurrency = item.balance.currency ?? item.currency;
+        resolvedBalance =
+          item.balance.currentBalance ??
+          item.balance.rawCurrentBalance ??
+          item.balance.amount ??
+          item.balance.value ??
+          item.balance.current;
+        resolvedCurrency = item.balance.currencyCode ?? item.balance.currency ?? resolvedCurrency;
       }
 
       return {
         id: item.id || item.accountId,
         name: item.name || item.accountName || 'Unnamed Account',
-        currency: resolvedCurrency,
+        currency: resolvedCurrency || 'IDR',
         balance: resolvedBalance,
-        accountType: item.type || item.accountType,
+        accountType: item.accountType || item.type,
       };
     });
 
