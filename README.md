@@ -68,15 +68,18 @@ flowchart TD
 
 ## Key Features
 
-- **Natural Language Transaction Recording**: Parse casual Indonesian shorthand (e.g., *"Kopi kenangan 28rb bca"*, *"Makan siang padang 35rb tunai"*, or *"Gaji masuk 7.5jt ke Mandiri"*).
+- **Natural Language Transaction Recording**: Parse casual shorthand in Indonesian or English (e.g., *"Kopi kenangan 28rb bca"*, *"Lunch sandwich $7.50 cash"*, *"Gaji masuk 7.5jt ke Mandiri"*).
 - **Physical Receipt Photo OCR**: Send photos of physical paper receipts or invoices; AI vision extracts merchant, transaction timestamp, line items, total amount, and categorizes automatically.
+- **Account-Aware Multi-Currency & Precision Formatting**: Automatically inspects account currencies configured in BudgetBakers Wallet (e.g. USD, EUR, IDR, SGD, GBP) and formats amounts accordingly with proper decimal precision (e.g., `$5.75` vs `Rp 45.000`).
+- **Multi-Language Support (i18n)**: Fully localized human responses and interactive ticket confirmations in **Bahasa Indonesia** (`id`) and **English** (`en`), configurable via `APP_LANGUAGE`.
+- **Configurable Timezone**: Formats transaction receipts and contextual timestamps matching your IANA timezone (e.g., `Asia/Jakarta`, `America/New_York`, `Europe/London`).
 - **Real-Time Bank & E-Wallet Email Sync**: Automatically monitors transaction emails via Gmail IMAP IDLE for **Bank Mandiri (Livin), Bank Jago, GoPay, OVO, DANA, and ShopeePay**.
 - **Two-Gate Spam & Promo Defense Engine**:
   - **Gate 1**: Header, sender domain, regex validation, security keyword blacklist (OTP, login alerts, promos), and in-memory deduplication (zero AI tokens spent).
   - **Gate 2**: AI structured schema extraction for verified financial notifications.
-- **Interactive Multi-Channel Confirmation Queue**: Bank email transactions generate numbered interactive tickets (`#1`, `#2`) broadcasted to WhatsApp and Telegram. Confirm individually (`Ya 1`, `Catat 1`), in bulk (`Ya semua`, `Catat semua`), or cancel (`Batal 1`, `Batal semua`).
-- **Budget & Balance Inquiries**: Check balances across accounts (*"Cek saldo rekening"*, *"Berapa sisa BCA?"*) or inspect budget limits (*"Status budget bulan ini"*).
-- **Zero-Token Fast-Path Processor**: Confirmation commands and simple keywords bypass LLM processing entirely for instant response times and token savings.
+- **Interactive Multi-Channel Confirmation Queue**: Bank email transactions generate numbered interactive tickets (`#1`, `#2`) broadcasted to WhatsApp and Telegram. Confirm individually (`Ya 1` / `Yes 1`), in bulk (`Ya semua` / `Yes all`), or cancel (`Batal 1` / `Cancel 1`).
+- **Budget & Balance Inquiries**: Check balances across accounts (*"Cek saldo rekening"*, *"Check balance"*, *"Berapa sisa BCA?"*) or inspect budget limits (*"Status budget bulan ini"*, *"Budget status"*).
+- **Zero-Token Fast-Path Processor**: Bilingual confirmation commands and simple keywords bypass LLM processing entirely for instant response times and token savings.
 - **Channel Security Whitelist**: Strict WhatsApp phone number and Telegram User ID whitelist restrictions ensure only authorized users can interact with the bot.
 
 ---
@@ -158,6 +161,9 @@ Key environment variables:
 | `EMAIL_IMAP_USER` | Gmail address receiving bank notifications | `user@gmail.com` |
 | `EMAIL_IMAP_PASSWORD` | 16-character Google App Password | `abcd efgh ijkl mnop` |
 | `EMAIL_LOOKBACK_MINUTES`| Lookback window on initial startup | `10` |
+| `APP_LANGUAGE` | Bot response language (`id` for Indonesian, `en` for English) | `id` |
+| `DEFAULT_CURRENCY` | Fallback and summary currency code (e.g., `IDR`, `USD`, `EUR`, `SGD`) | `IDR` |
+| `APP_TIMEZONE` | IANA Timezone identifier for timestamps and receipts | `Asia/Jakarta` |
 
 ### 3. Verify Integrations & Connection Tests
 
@@ -181,6 +187,12 @@ npm run test:email-gate-live
 
 # Verify Telegram Bot API token & whitelisted user dispatch
 npm run test:telegram
+
+# Verify response dictionary & multi-language localization (i18n)
+npm run test:i18n
+
+# Verify message markup formatting and HTML escaping
+npm run test:format
 ```
 
 ### 4. Start the Application
@@ -212,16 +224,16 @@ Send messages from your whitelisted WhatsApp or Telegram account to the bot:
 
 | Scenario | Message Example (WhatsApp / Telegram) | System Action |
 | :--- | :--- | :--- |
-| **Expense Recording** | *"Kopi kenangan 28rb bca"* | Resolves account `BCA`, categorizes as `Food & Beverage`, creates expense record. |
+| **Expense Recording** | *"Kopi kenangan 28rb bca"* or *"Lunch salad $8.50 cash"* | Resolves account, categorizes appropriately, creates expense record with correct currency. |
 | **Detailed Expense** | *"Beli bensin pertamax 50rb cash, note: rest area km 57"* | Creates expense under `Cash` with category `Transportation` and custom note. |
-| **Income Recording** | *"Gaji masuk 7.5jt ke Mandiri"* | Resolves account `Mandiri`, categorizes as `Salary`, creates income record. |
+| **Income Recording** | *"Gaji masuk 7.5jt ke Mandiri"* or *"Salary received $3500 into Checking"* | Resolves account, categorizes as `Salary` / income, creates income record. |
 | **Receipt OCR** | Send an image of a physical receipt | Extracts merchant name, line items, transaction date, and creates record. |
-| **Confirm Single Email** | *"Ya"* or *"Catat"* | Confirms and records the most recent bank email notification ticket. |
-| **Confirm Specific Ticket**| *"Ya 1"* or *"Catat #2"* | Confirms and records ticket `#1` or `#2` from the queue. |
-| **Bulk Confirmation** | *"Ya semua"* or *"Catat semua"* | Processes and records all pending tickets sequentially. |
-| **Cancel Ticket** | *"Batal 1"* or *"Batal semua"* | Dismisses transaction tickets from the pending queue. |
-| **Check Balances** | *"Cek saldo rekening"* or *"Berapa saldo BCA?"* | Queries Wallet MCP and lists current balances for specified or all accounts. |
-| **Check Budgets** | *"Status budget bulan ini"* | Queries Wallet MCP and summarizes spending limits vs remaining amounts. |
+| **Confirm Single Email** | *"Ya"* / *"Catat"* or *"Yes"* / *"Save"* | Confirms and records the most recent bank email notification ticket. |
+| **Confirm Specific Ticket**| *"Ya 1"* / *"Catat #2"* or *"Yes 1"* / *"Save #2"* | Confirms and records ticket `#1` or `#2` from the queue. |
+| **Bulk Confirmation** | *"Ya semua"* / *"Catat semua"* or *"Yes all"* / *"Save all"* | Processes and records all pending tickets sequentially. |
+| **Cancel Ticket** | *"Batal 1"* / *"Batal semua"* or *"Cancel 1"* / *"Cancel all"* | Dismisses transaction tickets from the pending queue. |
+| **Check Balances** | *"Cek saldo rekening"* or *"Check balance BCA"* | Queries Wallet MCP and lists current balances for specified or all accounts. |
+| **Check Budgets** | *"Status budget bulan ini"* or *"Budget status"* | Queries Wallet MCP and summarizes spending limits vs remaining amounts. |
 
 ---
 
@@ -233,13 +245,20 @@ wallet-mcp-budgetbakers-bot/
 │   ├── config/
 │   │   ├── bankEmailRules.ts            # Rule definitions for Mandiri, Jago, GoPay, OVO, DANA, ShopeePay
 │   │   └── environmentConfig.ts         # Environment validation and typed configurations
+│   ├── i18n/                            # Internationalization (i18n) and response dictionaries
+│   │   ├── locales/
+│   │   │   ├── en.ts                    # English dictionary & templates
+│   │   │   └── id.ts                    # Indonesian dictionary & templates
+│   │   ├── types.ts                     # Dictionary type definitions & interfaces
+│   │   └── index.ts                     # Language manager & active dictionary getter
 │   ├── types/
 │   │   └── walletTypes.ts               # Wallet MCP interfaces (Account, Category, Record, Budget)
 │   ├── services/
 │   │   ├── ai/                          # Agnostic AI Provider implementations
-│   │   │   ├── aiProvider.ts            # Common AI provider contract & factory
-│   │   │   ├── geminiProvider.ts        # Google Gemini native provider with model fallback
-│   │   │   └── openAiCompatibleProvider.ts # OpenAI / OpenRouter / Groq / Ollama provider
+│   │   │   ├── aiPromptBuilder.ts       # Centralized system instruction & prompt builder
+│   │   │   ├── financialAiProvider.ts   # Common AI provider contract & factory
+│   │   │   ├── geminiAiProvider.ts      # Google Gemini native provider with model fallback
+│   │   │   └── openAiCompatibleAiProvider.ts # OpenAI / OpenRouter / Groq / Ollama provider
 │   │   ├── messaging/                   # Channel-agnostic messaging gateways
 │   │   │   ├── types.ts                 # Adapter interfaces and messaging event contracts
 │   │   │   ├── messagingGatewayService.ts # Gateway orchestrator managing active channels
@@ -252,7 +271,7 @@ wallet-mcp-budgetbakers-bot/
 │   ├── utils/
 │   │   ├── emailLogicGate.ts            # Gate 1 rule evaluator (sender domain, blacklist, anti-dupe)
 │   │   ├── fastPathIntentDetector.ts    # Zero-token intent classifier and confirmation parser
-│   │   ├── humanResponseFormatter.ts    # Indonesian response templates and formatting
+│   │   ├── humanResponseFormatter.ts    # Multi-language response templates and formatting
 │   │   ├── logger.ts                    # Pino logger instance with daily file rotation
 │   │   └── recordValidator.ts           # Account/category index resolver and payload sanitizer
 │   ├── scripts/
@@ -262,12 +281,14 @@ wallet-mcp-budgetbakers-bot/
 │   │   ├── testFetchRealEmailsGate.ts   # Live inbox diagnostic for Gate 1 rule evaluation
 │   │   ├── testFormatter.ts             # Validation script for human-friendly response strings
 │   │   ├── testMessageFormat.ts         # Unit test for WhatsApp markup to Telegram HTML converter
+│   │   ├── testResponseDictionary.ts    # Verification script for i18n & multi-currency formatting
 │   │   ├── testTelegramBot.ts           # Diagnostic script for Telegram bot connectivity & dispatch
 │   │   └── testWalletMcp.ts             # Diagnostic script for BudgetBakers MCP endpoints
 │   └── index.ts                         # Application bootstrap and service orchestrator
 ├── .env.example                         # Environment variable template
 ├── package.json                         # Node dependencies and execution scripts
 ├── tsconfig.json                        # TypeScript compiler configuration
+├── CONTRIBUTING.md                      # Contribution guidelines & workflows
 ├── LICENSE                              # MIT License
 └── README.md                            # Project documentation
 ```
@@ -299,7 +320,31 @@ wallet-mcp-budgetbakers-bot/
 
 ---
 
+## Contributing
+
+Contributions are welcome! Whether you are implementing new features, refactoring existing code, or adding tests, please read our [Contributing Guide](CONTRIBUTING.md) for details on our branching model, coding standards, testing workflows, and pull request guidelines.
+
+### [Help Wanted] We Especially Need Testing Contributions!
+
+Since this project interfaces with diverse real-world messaging apps, bank emails, and AI models, **community testing is currently our highest-priority need**. If you would like to help, here are key areas where tests and real-world feedback are greatly appreciated:
+
+1. **Bank & E-Wallet Email Formats**:
+   - Test and share (anonymized/sanitized) transaction email samples from additional Indonesian banks (e.g., **BCA, BNI, BRI, CIMB Niaga, Jenius, SeaBank**) or international banks to expand our Gate 1 regex rules and parser accuracy.
+2. **Alternative AI Providers & Local Models**:
+   - Benchmark and report reliability when using **Ollama (local Llama 3, DeepSeek, Qwen)**, **Groq**, or **OpenRouter** instead of Google Gemini.
+3. **Multi-Currency & Physical Receipt OCR**:
+   - Test receipt photo recognition across various lighting conditions, wrinkled paper, and international currencies (`USD`, `EUR`, `SGD`, `MYR`, `JPY`, etc.).
+4. **Automated Unit & Regression Tests**:
+   - Help expand test suites in `src/scripts/` covering network timeouts, edge cases in shorthand parsing, and malformed JSON recovery.
+5. **Multi-Device Messaging Scenarios**:
+   - Verify connection stability across different operating systems (Windows, Linux, macOS, Docker) and multi-device WhatsApp/Telegram edge cases.
+
+To get started with running and contributing tests, see the [Testing & Quality Verification](CONTRIBUTING.md#testing--quality-verification) section in `CONTRIBUTING.md`.
+
+---
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
 
