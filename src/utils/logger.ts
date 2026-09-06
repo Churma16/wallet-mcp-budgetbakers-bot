@@ -108,6 +108,74 @@ export function getFormattedTimestamp(): string {
 }
 
 /**
+ * Summarizes an error into a clean, concise, single-line string suitable for terminal display.
+ * Strips raw JSON RPC dumps, URL links, and massive stack dumps.
+ */
+export function formatConciseErrorMessage(rawError: unknown): string {
+  if (!rawError) {
+    return 'Unknown error';
+  }
+
+  const rawErrorMessage = rawError instanceof Error ? rawError.message : String(rawError);
+  const trimmedMessage = rawErrorMessage.trim();
+
+  // 1. Try parsing direct JSON or embedded JSON error object
+  const jsonCandidateMatch = trimmedMessage.startsWith('{') && trimmedMessage.endsWith('}')
+    ? trimmedMessage
+    : trimmedMessage.match(/\{[\s\S]*"error"[\s\S]*\}/)?.[0];
+
+  if (jsonCandidateMatch) {
+    try {
+      const parsedJson = JSON.parse(jsonCandidateMatch);
+      const errorObject = parsedJson.error || parsedJson;
+      const statusCode = errorObject.code || errorObject.status;
+      const statusText = errorObject.status;
+
+      if (statusCode === 429 || statusText === 'RESOURCE_EXHAUSTED') {
+        return 'Rate limit / Quota exceeded (429 RESOURCE_EXHAUSTED)';
+      }
+      if (statusCode === 503 || statusText === 'UNAVAILABLE') {
+        return 'Model high demand / Temporarily unavailable (503 UNAVAILABLE)';
+      }
+      if (statusCode === 504 || statusText === 'DEADLINE_EXCEEDED') {
+        return 'Gateway timeout / Deadline exceeded (504 DEADLINE_EXCEEDED)';
+      }
+      if (statusCode === 404 || statusText === 'NOT_FOUND') {
+        return 'Model not found (404 NOT_FOUND)';
+      }
+      if (errorObject.message) {
+        const firstLine = String(errorObject.message).split('\n')[0].trim();
+        return `${statusCode ? `${statusCode}: ` : ''}${firstLine.length > 70 ? firstLine.slice(0, 67) + '...' : firstLine}`;
+      }
+      return `${statusCode || 'Error'}: ${statusText || 'API failure'}`;
+    } catch {
+      // Continue to pattern checks
+    }
+  }
+
+  // 2. Substring pattern heuristics
+  if (trimmedMessage.includes('RESOURCE_EXHAUSTED') || trimmedMessage.includes('429')) {
+    return 'Rate limit / Quota exceeded (429)';
+  }
+  if (trimmedMessage.includes('503') || trimmedMessage.includes('UNAVAILABLE') || trimmedMessage.includes('high demand')) {
+    return 'Model high demand / Temporarily unavailable (503)';
+  }
+  if (trimmedMessage.includes('504') || trimmedMessage.includes('DEADLINE_EXCEEDED')) {
+    return 'Gateway timeout (504)';
+  }
+  if (trimmedMessage.toLowerCase().includes('time') || trimmedMessage.toLowerCase().includes('abort')) {
+    return 'Request timed out';
+  }
+  if (trimmedMessage.includes('404') || trimmedMessage.includes('NOT_FOUND')) {
+    return 'Model not found (404)';
+  }
+
+  // 3. Clean single line fallback (max 80 chars)
+  const firstLine = trimmedMessage.split('\n')[0].trim();
+  return firstLine.length > 80 ? `${firstLine.slice(0, 77)}...` : firstLine;
+}
+
+/**
  * Standardized logger with [HH:mm] timestamp, level tags, and persistent daily file logging
  */
 export const applicationLogger = {
