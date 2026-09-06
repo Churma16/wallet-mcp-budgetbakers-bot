@@ -1,6 +1,10 @@
 import { loadEnvironmentConfiguration } from './config/environmentConfig.js';
 import { WalletMcpClientService } from './services/walletMcpClient.js';
-import { GeminiAiService, ExtractedFinancialIntent } from './services/geminiAiService.js';
+import {
+  createFinancialAiProvider,
+  FinancialAiProvider,
+  ExtractedFinancialIntent,
+} from './services/ai/index.js';
 import { WhatsappBotService, IncomingUserMessageEvent } from './services/whatsappBotService.js';
 import { EmailListenerService, EmailTransactionCallback } from './services/emailListenerService.js';
 import { PendingTransactionManager, PendingTransactionItem } from './services/pendingTransactionManager.js';
@@ -31,9 +35,20 @@ async function bootstrapApplication(): Promise<void> {
   purgeExpiredLogFiles(environmentConfig.logRetentionDays);
 
   // Validate critical configuration variables
-  if (!environmentConfig.geminiApiKey) {
-    applicationLogger.error('GEMINI_API_KEY is not defined in .env file!');
-    console.log('[hint] Get your free API key at: https://aistudio.google.com');
+  const isAiConfigured =
+    (environmentConfig.aiProvider === 'gemini' && Boolean(environmentConfig.geminiApiKey)) ||
+    (environmentConfig.aiProvider === 'ollama') ||
+    (Boolean(environmentConfig.aiApiKey));
+
+  if (!isAiConfigured) {
+    if (environmentConfig.aiProvider === 'gemini') {
+      applicationLogger.error('GEMINI_API_KEY is not defined in .env file!');
+      console.log('[hint] Get your free API key at: https://aistudio.google.com');
+    } else {
+      applicationLogger.error(
+        `API key for provider '${environmentConfig.aiProvider}' (AI_API_KEY / ${environmentConfig.aiProvider.toUpperCase()}_API_KEY) is not defined in .env file!`
+      );
+    }
   }
 
   if (!environmentConfig.walletMcpAccessToken) {
@@ -47,7 +62,7 @@ async function bootstrapApplication(): Promise<void> {
   }
 
   if (
-    !environmentConfig.geminiApiKey ||
+    !isAiConfigured ||
     !environmentConfig.walletMcpAccessToken ||
     !environmentConfig.allowedPhoneNumber
   ) {
@@ -75,13 +90,8 @@ async function bootstrapApplication(): Promise<void> {
 
   applicationLogger.success(`Cached ${cachedAccounts.length} accounts and ${cachedCategories.length} categories.`);
 
-  // 2. Initialize Gemini AI Service with fallback models and timeout
-  const geminiAiService = new GeminiAiService(
-    environmentConfig.geminiApiKey,
-    environmentConfig.geminiModel,
-    environmentConfig.geminiFallbackModels,
-    environmentConfig.geminiRequestTimeoutMilliseconds
-  );
+  // 2. Initialize Agnostic Financial AI Provider via Factory
+  const financialAiProvider: FinancialAiProvider = createFinancialAiProvider(environmentConfig);
 
   // 3. Initialize Pending Transaction Manager
   const pendingTransactionManager = new PendingTransactionManager();
@@ -93,7 +103,7 @@ async function bootstrapApplication(): Promise<void> {
   const handleEmailTransactionDetected: EmailTransactionCallback = async detectedEvent => {
     applicationLogger.info(`Processing detected email transaction: "${detectedEvent.emailSubject}"`);
 
-    const parsedData = await geminiAiService.processEmailTransactionMessage(
+    const parsedData = await financialAiProvider.processEmailTransactionMessage(
       detectedEvent.gateResult,
       detectedEvent.emailSubject,
       detectedEvent.emailSender,
@@ -347,8 +357,8 @@ async function bootstrapApplication(): Promise<void> {
       let extractedIntent: ExtractedFinancialIntent;
 
       if (event.messageType === 'image' && event.imageBuffer) {
-        applicationLogger.ai('Processing receipt photo with Gemini Vision...');
-        extractedIntent = await geminiAiService.processImageMessage(
+        applicationLogger.ai(`Processing receipt photo with ${financialAiProvider.providerName.toUpperCase()} Vision...`);
+        extractedIntent = await financialAiProvider.processImageMessage(
           event.imageBuffer,
           event.imageMimeType || 'image/jpeg',
           event.textPayload || '',
@@ -356,8 +366,8 @@ async function bootstrapApplication(): Promise<void> {
           cachedCategories
         );
       } else {
-        applicationLogger.ai('Analyzing message intent with Gemini...');
-        extractedIntent = await geminiAiService.processTextMessage(
+        applicationLogger.ai(`Analyzing message intent with ${financialAiProvider.providerName.toUpperCase()}...`);
+        extractedIntent = await financialAiProvider.processTextMessage(
           event.textPayload || '',
           cachedAccounts,
           cachedCategories
