@@ -5,7 +5,12 @@ import {
   FinancialAiProvider,
   ExtractedFinancialIntent,
 } from './services/ai/index.js';
-import { WhatsappBotService, IncomingUserMessageEvent } from './services/whatsappBotService.js';
+import {
+  MessagingGatewayService,
+  WhatsappMessagingAdapter,
+  TelegramMessagingAdapter,
+  IncomingUserMessageEvent,
+} from './services/messaging/index.js';
 import { EmailListenerService, EmailTransactionCallback } from './services/emailListenerService.js';
 import { PendingTransactionManager, PendingTransactionItem } from './services/pendingTransactionManager.js';
 import { applicationLogger, purgeExpiredLogFiles } from './utils/logger.js';
@@ -26,7 +31,7 @@ import { CreateRecordInputPayload } from './types/walletTypes.js';
 
 async function bootstrapApplication(): Promise<void> {
   console.log('====================================================');
-  applicationLogger.info('Starting WhatsApp AI Bookkeeper for Wallet');
+  applicationLogger.info('Starting AI Bookkeeper for Wallet');
   console.log('====================================================');
 
   const environmentConfig = loadEnvironmentConfiguration();
@@ -56,15 +61,23 @@ async function bootstrapApplication(): Promise<void> {
     console.log('[hint] Generate your personal access token at: https://web.budgetbakers.com/settings/mcp-server');
   }
 
-  if (!environmentConfig.allowedPhoneNumber) {
-    applicationLogger.error('ALLOWED_PHONE_NUMBER is not defined in .env file! Refusing to start for security.');
-    console.log('[hint] Set your WhatsApp phone number in .env: ALLOWED_PHONE_NUMBER=6281234567890');
+  const isWhatsAppConfigured =
+    environmentConfig.enabledMessengerChannels.includes('whatsapp') &&
+    Boolean(environmentConfig.allowedPhoneNumber);
+  const isTelegramConfigured =
+    environmentConfig.enabledMessengerChannels.includes('telegram') &&
+    Boolean(environmentConfig.telegramBotToken);
+
+  if (!isWhatsAppConfigured && !isTelegramConfigured) {
+    applicationLogger.error(
+      'No messaging channels are properly configured! Configure either WhatsApp (ALLOWED_PHONE_NUMBER) or Telegram (TELEGRAM_BOT_TOKEN) in .env.'
+    );
   }
 
   if (
     !isAiConfigured ||
     !environmentConfig.walletMcpAccessToken ||
-    !environmentConfig.allowedPhoneNumber
+    (!isWhatsAppConfigured && !isTelegramConfigured)
   ) {
     applicationLogger.warn('Please configure all required environment variables in your .env file before running the bot.');
     applicationLogger.info('You can test the Wallet MCP connection independently with: npm run test:mcp\n');
@@ -96,10 +109,13 @@ async function bootstrapApplication(): Promise<void> {
   // 3. Initialize Pending Transaction Manager
   const pendingTransactionManager = new PendingTransactionManager();
 
+  // 4. Initialize Channel-Agnostic Messaging Gateway
+  const messagingGateway = new MessagingGatewayService();
+
   // Forward declaration for emailListenerService so handlers can access it
   let emailListenerService: EmailListenerService | null = null;
 
-  // 4. Define email transaction detection handler
+  // 5. Define email transaction detection handler
   const handleEmailTransactionDetected: EmailTransactionCallback = async detectedEvent => {
     applicationLogger.info(`Processing detected email transaction: "${detectedEvent.emailSubject}"`);
 
@@ -159,26 +175,28 @@ async function bootstrapApplication(): Promise<void> {
     const totalPendingCount = pendingTransactionManager.getAllPendingTransactions().length;
     const notificationText = formatPendingEmailTransactionNotification(pendingItem, totalPendingCount);
 
-    const recipientJid = `${environmentConfig.allowedPhoneNumber}@s.whatsapp.net`;
-    await whatsappBot.sendTextMessageReply(recipientJid, notificationText);
-    applicationLogger.success(`Dispatched pending transaction notification (#${pendingItem.ticketId}) to WhatsApp.`);
+    await messagingGateway.broadcastNotification(notificationText);
+    applicationLogger.success(`Dispatched pending transaction notification (#${pendingItem.ticketId}) to active messaging channels.`);
   };
 
-  // 5. Define message processing handler
+  // 6. Define unified message processing handler
   const handleIncomingUserMessage = async (event: IncomingUserMessageEvent): Promise<void> => {
-    applicationLogger.chat(`Message received from ${event.senderPhoneNumber} (${event.messageType}): "${event.textPayload || '[Image]'}"`);
+    applicationLogger.chat(
+      `[${event.channel.toUpperCase()}] Message received from ${event.senderIdentifier} (${event.messageType}): "${event.textPayload || '[Image]'}"`
+    );
 
     applicationLogger.fileDetail('chat', 'Incoming User Message Event', {
-      senderPhoneNumber: event.senderPhoneNumber,
-      remoteJid: event.remoteJid,
+      channel: event.channel,
+      senderIdentifier: event.senderIdentifier,
+      chatIdentifier: event.chatIdentifier,
       messageType: event.messageType,
       textPayload: event.textPayload,
       hasImageBuffer: Boolean(event.imageBuffer),
       imageMimeType: event.imageMimeType,
     });
 
-    // Notify user on WhatsApp with typing indicator
-    await whatsappBot.sendTypingPresence(event.remoteJid);
+    // Notify user with typing presence indicator
+    await messagingGateway.sendTypingPresence(event.channel, event.chatIdentifier);
 
     try {
       // 0. Pending confirmation handler (checks if user is confirming or canceling a pending ticket)
@@ -205,8 +223,9 @@ async function bootstrapApplication(): Promise<void> {
             }
 
             if (itemsToRecord.length === 0) {
-              await whatsappBot.sendTextMessageReply(
-                event.remoteJid,
+              await messagingGateway.sendMessage(
+                event.channel,
+                event.chatIdentifier,
                 '⚠️ Tiket transaksi pending tersebut tidak ditemukan atau sudah kadaluarsa.'
               );
               return;
@@ -259,7 +278,7 @@ async function bootstrapApplication(): Promise<void> {
               ? formatPendingConfirmationSuccess(itemsToRecord[0])
               : formatBulkPendingConfirmationSuccess(itemsToRecord);
 
-            await whatsappBot.sendTextMessageReply(event.remoteJid, replyMessage);
+            await messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
             return;
           }
 
@@ -282,8 +301,9 @@ async function bootstrapApplication(): Promise<void> {
             }
 
             if (rejectedItems.length === 0) {
-              await whatsappBot.sendTextMessageReply(
-                event.remoteJid,
+              await messagingGateway.sendMessage(
+                event.channel,
+                event.chatIdentifier,
                 '⚠️ Tiket transaksi pending tersebut tidak ditemukan atau sudah kadaluarsa.'
               );
               return;
@@ -292,49 +312,51 @@ async function bootstrapApplication(): Promise<void> {
             const replyMessage = formatPendingCancellationMessage(
               rejectedItems.length === 1 ? rejectedItems[0] : rejectedItems
             );
-            await whatsappBot.sendTextMessageReply(event.remoteJid, replyMessage);
+            await messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
             return;
           }
         }
       }
 
-      // Fast-path intent classifier: Skip Gemini AI entirely for simple balance/budget/help queries (0 tokens used)
+      // Fast-path intent classifier: Skip AI entirely for simple balance/budget/help queries (0 tokens used)
       if (event.messageType === 'text' && event.textPayload) {
         const fastPathAction = detectFastPathAction(event.textPayload);
 
         if (fastPathAction === 'CHECK_BALANCE') {
-          applicationLogger.info('Fast-path matched: CHECK_BALANCE (0 Gemini tokens consumed)');
+          applicationLogger.info('Fast-path matched: CHECK_BALANCE (0 AI tokens consumed)');
           applicationLogger.mcp('Fetching updated balances...');
           const freshAccounts = await walletMcpClient.fetchAccounts(true);
           cachedAccounts = freshAccounts;
 
           const replyMessage = formatBalanceSummaryMessage(freshAccounts);
           applicationLogger.fileDetail('mcp', 'Dispatched Balance Summary Reply (Fast-path)', {
+            channel: event.channel,
             freshAccountsCount: freshAccounts.length,
             replyText: replyMessage,
           });
 
-          await whatsappBot.sendTextMessageReply(event.remoteJid, replyMessage);
+          await messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
           return;
         }
 
         if (fastPathAction === 'CHECK_BUDGET') {
-          applicationLogger.info('Fast-path matched: CHECK_BUDGET (0 Gemini tokens consumed)');
+          applicationLogger.info('Fast-path matched: CHECK_BUDGET (0 AI tokens consumed)');
           applicationLogger.mcp('Fetching budget status...');
           const budgetList = await walletMcpClient.fetchBudgets();
           const replyMessage = formatBudgetSummaryMessage(budgetList);
 
           applicationLogger.fileDetail('mcp', 'Dispatched Budget Summary Reply (Fast-path)', {
+            channel: event.channel,
             budgetCount: budgetList.length,
             replyText: replyMessage,
           });
 
-          await whatsappBot.sendTextMessageReply(event.remoteJid, replyMessage);
+          await messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
           return;
         }
 
         if (fastPathAction === 'HELP_MENU') {
-          applicationLogger.info('Fast-path matched: HELP_MENU (0 Gemini tokens consumed)');
+          applicationLogger.info('Fast-path matched: HELP_MENU (0 AI tokens consumed)');
           const helpGuidanceMessage = [
             '👋 Halo! Kirimkan pengeluaran Anda (misal: "Makan siang 25rb pakai Cash") atau foto struk belanja untuk dicatat ke Wallet.',
             '',
@@ -345,11 +367,12 @@ async function bootstrapApplication(): Promise<void> {
           ].join('\n');
 
           applicationLogger.fileDetail('chat', 'Dispatched Fast-path Help Guidance Reply', {
-            recipientJid: event.remoteJid,
+            channel: event.channel,
+            recipientChatId: event.chatIdentifier,
             replyText: helpGuidanceMessage,
           });
 
-          await whatsappBot.sendTextMessageReply(event.remoteJid, helpGuidanceMessage);
+          await messagingGateway.sendMessage(event.channel, event.chatIdentifier, helpGuidanceMessage);
           return;
         }
       }
@@ -398,8 +421,9 @@ async function bootstrapApplication(): Promise<void> {
             validationErrors: validationResult.validationErrors,
           });
 
-          await whatsappBot.sendTextMessageReply(
-            event.remoteJid,
+          await messagingGateway.sendMessage(
+            event.channel,
+            event.chatIdentifier,
             `⚠️ Transaksi tidak dapat disimpan karena data tidak valid:\n${validationErrorMessage}`
           );
           return;
@@ -420,13 +444,14 @@ async function bootstrapApplication(): Promise<void> {
           cachedAccounts,
           cachedCategories
         );
-        
+
         applicationLogger.fileDetail('chat', 'Dispatched Record Creation Success Reply', {
-          recipientJid: event.remoteJid,
+          channel: event.channel,
+          recipientChatId: event.chatIdentifier,
           replyText: replyMessage,
         });
 
-        await whatsappBot.sendTextMessageReply(event.remoteJid, replyMessage.trim());
+        await messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage.trim());
         return;
       }
 
@@ -438,12 +463,13 @@ async function bootstrapApplication(): Promise<void> {
         const replyMessage = formatBalanceSummaryMessage(freshAccounts);
 
         applicationLogger.fileDetail('mcp', 'Dispatched Balance Summary Reply', {
+          channel: event.channel,
           freshAccountsCount: freshAccounts.length,
           balanceList: freshAccounts.map(account => ({ name: account.name, balance: account.balance, currency: account.currency })),
           replyText: replyMessage,
         });
 
-        await whatsappBot.sendTextMessageReply(event.remoteJid, replyMessage);
+        await messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
         return;
       }
 
@@ -453,28 +479,30 @@ async function bootstrapApplication(): Promise<void> {
         const replyMessage = formatBudgetSummaryMessage(budgetList);
 
         applicationLogger.fileDetail('mcp', 'Dispatched Budget Summary Reply', {
+          channel: event.channel,
           budgetCount: budgetList.length,
           budgets: budgetList,
           replyText: replyMessage,
         });
 
-        await whatsappBot.sendTextMessageReply(event.remoteJid, replyMessage);
+        await messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
         return;
       }
 
       // Default: general reply or guidance
       const replyMessage = extractedIntent.explanation || '👋 Halo! Kirimkan pengeluaran Anda (misal: "Makan siang 25rb pakai Cash") atau foto struk belanja untuk dicatat ke Wallet.';
-      
+
       applicationLogger.fileDetail('chat', 'Dispatched General Guidance Reply', {
-        recipientJid: event.remoteJid,
+        channel: event.channel,
+        recipientChatId: event.chatIdentifier,
         replyText: replyMessage,
       });
 
-      await whatsappBot.sendTextMessageReply(event.remoteJid, replyMessage);
+      await messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
 
     } catch (processingError: unknown) {
       applicationLogger.error(`Error while processing user message: ${processingError}`);
-      
+
       applicationLogger.fileDetail('error', 'User Message Processing Error Details', {
         error: processingError instanceof Error
           ? {
@@ -484,8 +512,9 @@ async function bootstrapApplication(): Promise<void> {
             }
           : String(processingError),
         incomingEvent: {
-          senderPhoneNumber: event.senderPhoneNumber,
-          remoteJid: event.remoteJid,
+          channel: event.channel,
+          senderIdentifier: event.senderIdentifier,
+          chatIdentifier: event.chatIdentifier,
           messageType: event.messageType,
           textPayload: event.textPayload,
         },
@@ -494,27 +523,48 @@ async function bootstrapApplication(): Promise<void> {
       });
 
       const humanErrorMessage = formatErrorMessageForHuman(processingError, getHumanReadableTimestamp());
-      await whatsappBot.sendTextMessageReply(
-        event.remoteJid,
+      await messagingGateway.sendMessage(
+        event.channel,
+        event.chatIdentifier,
         humanErrorMessage
       );
     } finally {
-      // Clear WhatsApp typing indicator
-      await whatsappBot.clearTypingPresence(event.remoteJid);
+      // Clear typing presence indicator
+      await messagingGateway.clearTypingPresence(event.channel, event.chatIdentifier);
     }
   };
 
-  // 4. Initialize & Start WhatsApp Bot Gateway
-  const whatsappBot = new WhatsappBotService(
-    environmentConfig.whatsappSessionPath,
-    environmentConfig.allowedPhoneNumber,
-    handleIncomingUserMessage
-  );
+  // 7. Register & Start Messaging Adapters in Gateway
+  if (environmentConfig.enabledMessengerChannels.includes('whatsapp')) {
+    if (environmentConfig.allowedPhoneNumber) {
+      const whatsappAdapter = new WhatsappMessagingAdapter(
+        environmentConfig.whatsappSessionPath,
+        environmentConfig.allowedPhoneNumber,
+        handleIncomingUserMessage
+      );
+      messagingGateway.registerAdapter(whatsappAdapter);
+    } else {
+      applicationLogger.warn('WhatsApp is enabled in configuration but ALLOWED_PHONE_NUMBER is not set. WhatsApp adapter skipped.');
+    }
+  }
 
-  applicationLogger.info('Initializing WhatsApp Socket...');
-  await whatsappBot.startConnection();
+  if (environmentConfig.enabledMessengerChannels.includes('telegram')) {
+    if (environmentConfig.telegramBotToken) {
+      const telegramAdapter = new TelegramMessagingAdapter(
+        environmentConfig.telegramBotToken,
+        environmentConfig.telegramAllowedUserId,
+        handleIncomingUserMessage
+      );
+      messagingGateway.registerAdapter(telegramAdapter);
+    } else {
+      applicationLogger.warn('Telegram is enabled in configuration but TELEGRAM_BOT_TOKEN is not set. Telegram adapter skipped.');
+    }
+  }
 
-  // 6. Initialize & Start Email Listener (if toggled on in .env)
+  applicationLogger.info('Starting registered messaging adapter connections...');
+  await messagingGateway.startAll();
+
+  // 8. Initialize & Start Email Listener (if toggled on in .env)
   if (environmentConfig.emailSyncEnabled) {
     if (!environmentConfig.emailImapUser || !environmentConfig.emailImapPassword) {
       applicationLogger.warn(
@@ -535,7 +585,7 @@ async function bootstrapApplication(): Promise<void> {
       });
     }
   } else {
-    applicationLogger.info('Email sync is disabled (EMAIL_SYNC_ENABLED=false). Bot running in WhatsApp-only mode.');
+    applicationLogger.info('Email sync is disabled (EMAIL_SYNC_ENABLED=false).');
   }
 }
 

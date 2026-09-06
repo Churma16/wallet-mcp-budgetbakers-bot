@@ -21,6 +21,9 @@ export interface ApplicationEnvironmentConfiguration {
   walletMcpAccessToken: string;
   allowedPhoneNumber: string;
   whatsappSessionPath: string;
+  telegramBotToken: string;
+  telegramAllowedUserId: string;
+  enabledMessengerChannels: ('whatsapp' | 'telegram')[];
   logRetentionDays: number;
   emailSyncEnabled: boolean;
   emailImapHost: string;
@@ -118,6 +121,29 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
   const emailImapPassword = process.env.EMAIL_IMAP_PASSWORD || '';
   const emailLookbackMinutes = parseInt(process.env.EMAIL_LOOKBACK_MINUTES || '10', 10) || 10;
 
+  const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN || '';
+  const telegramAllowedUserId = (process.env.TELEGRAM_ALLOWED_USER_ID || '').trim();
+
+  // Resolve enabled messenger channels
+  let enabledMessengerChannels: ('whatsapp' | 'telegram')[] = [];
+  if (process.env.ENABLED_MESSENGER_CHANNELS) {
+    const rawChannels = process.env.ENABLED_MESSENGER_CHANNELS.split(',')
+      .map(channel => channel.trim().toLowerCase())
+      .filter((channel): channel is 'whatsapp' | 'telegram' => channel === 'whatsapp' || channel === 'telegram');
+    enabledMessengerChannels = Array.from(new Set(rawChannels));
+  } else {
+    // Auto-detect based on provided credentials
+    if (allowedPhoneNumber) {
+      enabledMessengerChannels.push('whatsapp');
+    }
+    if (telegramBotToken) {
+      enabledMessengerChannels.push('telegram');
+    }
+    if (enabledMessengerChannels.length === 0) {
+      enabledMessengerChannels.push('whatsapp');
+    }
+  }
+
   return {
     aiProvider,
     aiApiKey,
@@ -133,6 +159,9 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     walletMcpAccessToken,
     allowedPhoneNumber,
     whatsappSessionPath,
+    telegramBotToken,
+    telegramAllowedUserId,
+    enabledMessengerChannels,
     logRetentionDays,
     emailSyncEnabled,
     emailImapHost,
