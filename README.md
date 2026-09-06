@@ -119,8 +119,8 @@ flowchart TD
 ### 1. Clone and Install Dependencies
 
 ```bash
-git clone https://github.com/churma16/wallet_mcp.git
-cd wallet_mcp
+git clone https://github.com/Churma16/wallet-mcp-budgetbakers-bot.git
+cd wallet-mcp-budgetbakers-bot
 npm install
 ```
 
@@ -228,7 +228,7 @@ Send messages from your whitelisted WhatsApp or Telegram account to the bot:
 ## Project Structure
 
 ```
-wallet_mcp/
+wallet-mcp-budgetbakers-bot/
 ├── src/
 │   ├── config/
 │   │   ├── bankEmailRules.ts            # Rule definitions for Mandiri, Jago, GoPay, OVO, DANA, ShopeePay
@@ -277,7 +277,7 @@ wallet_mcp/
 
 ## Security & Privacy Considerations
 
-- **Self-Hosted & Zero Cloud Intermediary**: This tool is strictly a self-hosted client application. Financial records, chat payloads, and auth credentials travel directly between your machine, the AI provider, and BudgetBakers MCP endpoints without any third-party intermediary servers.
+- **Self-Hosted, No Intermediary Proxy**: This tool is a self-hosted client application with no additional relay, proxy, or intermediary servers. Your messages and financial data travel directly between your machine and the respective endpoints (AI provider API and BudgetBakers MCP). Note that **NLU processing and receipt OCR do require sending transaction text or images to your configured AI provider** (e.g. Google Gemini, OpenRouter) as part of the cloud API call — no third-party middleware is involved beyond that direct connection.
 - **Whitelisted Access**: Incoming messages from unapproved numbers are rejected immediately before reaching the AI or MCP layers.
 - **Isolated Local Sessions**: WhatsApp connection tokens and keys are stored in the local `./auth_session` folder and excluded from git tracking.
 - **Two-Gate Email Protection**: Promotional campaigns, newsletter updates, and sensitive security alerts (such as OTP codes or device verification notifications) are dropped by Gate 1 regex patterns without transmitting content to cloud AI APIs.
