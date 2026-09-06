@@ -2,7 +2,14 @@ import { loadEnvironmentConfiguration } from './config/environmentConfig.js';
 import { WalletMcpClientService } from './services/walletMcpClient.js';
 import { GeminiAiService, ExtractedFinancialIntent } from './services/geminiAiService.js';
 import { WhatsappBotService, IncomingUserMessageEvent } from './services/whatsappBotService.js';
-import { applicationLogger, getFormattedTimestamp, purgeExpiredLogFiles } from './utils/logger.js';
+import { applicationLogger, purgeExpiredLogFiles } from './utils/logger.js';
+import {
+  formatRecordSuccessMessage,
+  formatBalanceSummaryMessage,
+  formatBudgetSummaryMessage,
+  formatErrorMessageForHuman,
+  getHumanReadableTimestamp,
+} from './utils/humanResponseFormatter.js';
 
 async function bootstrapApplication(): Promise<void> {
   console.log('====================================================');
@@ -109,26 +116,11 @@ async function bootstrapApplication(): Promise<void> {
 
         await walletMcpClient.createRecords(extractedIntent.records);
 
-        const currentFormattedTime = new Date().toLocaleTimeString('id-ID', {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false,
-        });
-
-        const recordDetailsList = extractedIntent.records.map(record => {
-          const accountName = cachedAccounts.find(acc => acc.id === record.accountId)?.name || 'Account';
-          const categoryName = cachedCategories.find(cat => cat.id === record.categoryId)?.name || 'General';
-          const formattedAmount = new Intl.NumberFormat('id-ID', {
-            style: 'currency',
-            currency: 'IDR',
-            maximumFractionDigits: 0,
-          }).format(Math.abs(record.amount));
-
-          const recordTypeSign = record.amount < 0 ? '💸 [Pengeluaran]' : '💰 [Pemasukan]';
-          return `${recordTypeSign} *${formattedAmount}*\n  🏷️ Kategori: ${categoryName}\n  💳 Akun: ${accountName}\n  📝 Catatan: ${record.note || '-'}`;
-        }).join('\n\n');
-
-        const replyMessage = `[success] ✅ *Transaksi Berhasil Dicatat!*\n\n${recordDetailsList}\n\n⏰ Waktu: ${getFormattedTimestamp()}\n${extractedIntent.explanation ? `💡 ${extractedIntent.explanation}` : ''}`;
+        const replyMessage = formatRecordSuccessMessage(
+          extractedIntent.records,
+          cachedAccounts,
+          cachedCategories
+        );
         
         applicationLogger.fileDetail('chat', 'Dispatched Record Creation Success Reply', {
           recipientJid: event.remoteJid,
@@ -144,11 +136,7 @@ async function bootstrapApplication(): Promise<void> {
         const freshAccounts = await walletMcpClient.fetchAccounts(true);
         cachedAccounts = freshAccounts;
 
-        const balanceSummary = freshAccounts
-          .map(acc => `• *${acc.name}*: ${acc.balance !== undefined ? new Intl.NumberFormat('id-ID', { style: 'currency', currency: acc.currency || 'IDR', maximumFractionDigits: 0 }).format(acc.balance) : 'N/A'}`)
-          .join('\n');
-
-        const replyMessage = `[info] 📊 *Saldo Rekening Saat Ini* (${getFormattedTimestamp()}):\n\n${balanceSummary || 'Tidak ada data rekening'}`;
+        const replyMessage = formatBalanceSummaryMessage(freshAccounts);
 
         applicationLogger.fileDetail('mcp', 'Dispatched Balance Summary Reply', {
           freshAccountsCount: freshAccounts.length,
@@ -163,14 +151,7 @@ async function bootstrapApplication(): Promise<void> {
       if (extractedIntent.action === 'CHECK_BUDGET') {
         applicationLogger.mcp('Fetching budget status...');
         const budgetList = await walletMcpClient.fetchBudgets();
-        const budgetSummary = budgetList.map(budget => {
-          const spent = budget.spentAmount || 0;
-          const limit = budget.limitAmount || 0;
-          const remaining = limit - spent;
-          return `• *${budget.name}*: Terpakai ${spent.toLocaleString('id-ID')} / ${limit.toLocaleString('id-ID')} (Sisa: ${remaining.toLocaleString('id-ID')})`;
-        }).join('\n');
-
-        const replyMessage = `[info] 📈 *Status Anggaran* (${getFormattedTimestamp()}):\n\n${budgetSummary || 'Belum ada anggaran yang aktif'}`;
+        const replyMessage = formatBudgetSummaryMessage(budgetList);
 
         applicationLogger.fileDetail('mcp', 'Dispatched Budget Summary Reply', {
           budgetCount: budgetList.length,
@@ -213,10 +194,10 @@ async function bootstrapApplication(): Promise<void> {
         cachedCategoriesCount: cachedCategories.length,
       });
 
-      const errorMessage = processingError instanceof Error ? processingError.message : 'Terjadi kesalahan sistem';
+      const humanErrorMessage = formatErrorMessageForHuman(processingError, getHumanReadableTimestamp());
       await whatsappBot.sendTextMessageReply(
         event.remoteJid,
-        `[error] ❌ Maaf, gagal memproses transaksi (${getFormattedTimestamp()}):\n${errorMessage}`
+        humanErrorMessage
       );
     }
   };
