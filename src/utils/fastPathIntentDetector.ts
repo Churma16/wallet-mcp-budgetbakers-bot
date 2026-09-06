@@ -39,3 +39,61 @@ export function detectFastPathAction(userMessageText: string): FastPathAction {
 
   return null;
 }
+
+export interface PendingConfirmationIntent {
+  actionType: 'CONFIRM' | 'REJECT';
+  targetScope: 'LATEST' | 'ALL' | number;
+}
+
+/**
+ * Detects WhatsApp confirmation/cancellation replies for pending transaction tickets.
+ * Handles "ya", "catat", "ya 1", "ya semua", "batal", "batal 2", "batal semua", etc.
+ */
+export function detectPendingConfirmationAction(userMessageText: string): PendingConfirmationIntent | null {
+  if (!userMessageText || typeof userMessageText !== 'string') {
+    return null;
+  }
+
+  const trimmedText = userMessageText.toLowerCase().trim();
+
+  // 1. Confirm All (e.g. "ya semua", "catat semua", "ok semua", "y all")
+  if (/^(?:ya|catat|ok|oke|y|yes|confirm)\s+(?:semua|all)$/i.test(trimmedText)) {
+    return { actionType: 'CONFIRM', targetScope: 'ALL' };
+  }
+
+  // 2. Reject All (e.g. "batal semua", "abaikan semua", "cancel all")
+  if (/^(?:batal|abaikan|gak|ga|gajadi|cancel|tolak)\s+(?:semua|all)$/i.test(trimmedText)) {
+    return { actionType: 'REJECT', targetScope: 'ALL' };
+  }
+
+  // 3. Confirm Specific Ticket (e.g. "ya 1", "catat #2", "ok 3", "y 1")
+  const confirmSpecificMatch = trimmedText.match(/^(?:ya|catat|ok|oke|y|yes|confirm)\s+#?(\d+)$/i);
+  if (confirmSpecificMatch && confirmSpecificMatch[1]) {
+    const ticketNumber = parseInt(confirmSpecificMatch[1], 10);
+    if (!isNaN(ticketNumber) && ticketNumber > 0) {
+      return { actionType: 'CONFIRM', targetScope: ticketNumber };
+    }
+  }
+
+  // 4. Reject Specific Ticket (e.g. "batal 1", "abaikan #2", "cancel 3")
+  const rejectSpecificMatch = trimmedText.match(/^(?:batal|abaikan|gak|ga|gajadi|cancel|tolak)\s+#?(\d+)$/i);
+  if (rejectSpecificMatch && rejectSpecificMatch[1]) {
+    const ticketNumber = parseInt(rejectSpecificMatch[1], 10);
+    if (!isNaN(ticketNumber) && ticketNumber > 0) {
+      return { actionType: 'REJECT', targetScope: ticketNumber };
+    }
+  }
+
+  // 5. Confirm Latest Single (e.g. "ya", "catat", "ok", "oke", "y", "yes", "confirm")
+  if (/^(?:ya|catat|ok|oke|y|yes|confirm)$/i.test(trimmedText)) {
+    return { actionType: 'CONFIRM', targetScope: 'LATEST' };
+  }
+
+  // 6. Reject Latest Single (e.g. "batal", "abaikan", "gak", "ga", "gajadi", "cancel", "tolak")
+  if (/^(?:batal|abaikan|gak|ga|gajadi|cancel|tolak)$/i.test(trimmedText)) {
+    return { actionType: 'REJECT', targetScope: 'LATEST' };
+  }
+
+  return null;
+}
+

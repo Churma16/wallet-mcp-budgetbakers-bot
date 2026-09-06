@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload } from '../types/walletTypes.js';
+import { GateEvaluationResult } from '../utils/emailLogicGate.js';
 import { applicationLogger } from '../utils/logger.js';
 
 export interface ExtractedFinancialIntent {
@@ -13,6 +14,30 @@ export interface ExtractedFinancialIntent {
     counterParty?: string;
   }>;
   explanation?: string;
+  tokenUsage?: {
+    promptTokens: number;
+    candidatesTokens: number;
+    totalTokens: number;
+    cachedContentTokens?: number;
+    thoughtsTokens?: number;
+  };
+}
+
+export interface ExtractedEmailTransactionData {
+  isTransaction: boolean;
+  transactionType: 'EXPENSE' | 'INCOME' | 'TRANSFER';
+  amount: number;
+  counterParty: string;
+  accountNameHint: string;
+  matchedAccountId?: string;
+  destinationAccountNameHint?: string;
+  matchedDestinationAccountId?: string;
+  matchedCategoryId?: string;
+  matchedCategoryName?: string;
+  note: string;
+  recordDate: string;
+  referenceNumber?: string;
+  explanation: string;
   tokenUsage?: {
     promptTokens: number;
     candidatesTokens: number;
@@ -366,4 +391,159 @@ RULES:
       };
     }
   }
+
+  /**
+   * Process email transaction message through Gate 2 (AI context validation & entity extraction)
+   */
+  public async processEmailTransactionMessage(
+    gateResult: GateEvaluationResult,
+    emailSubject: string,
+    emailSender: string,
+    emailBodyText: string,
+    emailDate: Date,
+    availableAccountList: WalletAccountItem[],
+    availableCategoryList: WalletCategoryItem[]
+  ): Promise<ExtractedEmailTransactionData> {
+    const formattedAccounts = availableAccountList
+      .map(acc => `ID "${acc.id}": "${acc.name}"`)
+      .join(', ');
+
+    const formattedCategories = availableCategoryList
+      .map(cat => `ID "${cat.id}": "${cat.name}"`)
+      .join(', ');
+
+    const emailSystemInstruction = `You are an expert financial transaction extractor for Indonesian banking and e-wallet notification emails.
+CURRENT ACCOUNTS:
+${formattedAccounts || 'None'}
+
+CURRENT CATEGORIES:
+${formattedCategories || 'None'}
+
+RULES:
+1. Determine if this email represents an actual financial transaction.
+   If it is a promo, newsletter, OTP, or non-transaction, set "isTransaction": false.
+2. "transactionType":
+   - "EXPENSE": Purchase, QRIS payment, debit, transfer out to another person/merchant.
+   - "INCOME": Money received, transfer in from another person/employer, cashback.
+   - "TRANSFER": Internal transfer or top-up between user's own accounts (e.g. Mandiri to GoPay, Mandiri to Jago).
+3. "amount": Must be a POSITIVE number representing the total amount deducted or received.
+4. "counterParty": Name of merchant, store, or recipient (e.g., "Kopi Kenangan", "Indomaret", "GoFood", "PLN").
+5. "matchedAccountId": Pick the exact account ID from CURRENT ACCOUNTS that corresponds to the source bank/e-wallet.
+6. "matchedCategoryId": Pick the best matching category ID from CURRENT CATEGORIES.
+7. "recordDate": ISO 8601 UTC timestamp based on the transaction date in the email.
+8. Respond strictly with JSON matching this schema:
+{
+  "isTransaction": boolean,
+  "transactionType": "EXPENSE" | "INCOME" | "TRANSFER",
+  "amount": number,
+  "counterParty": "string",
+  "accountNameHint": "string",
+  "matchedAccountId": "string (optional)",
+  "destinationAccountNameHint": "string (optional)",
+  "matchedDestinationAccountId": "string (optional)",
+  "matchedCategoryId": "string (optional)",
+  "matchedCategoryName": "string (optional)",
+  "note": "string",
+  "recordDate": "ISO 8601 UTC",
+  "referenceNumber": "string (optional)",
+  "explanation": "string summary in Indonesian"
+}`;
+
+    const promptText = `Evaluate this bank notification email:
+Bank Detected: ${gateResult.matchedBankRule?.displayName || 'Unknown'}
+Email Subject: "${emailSubject}"
+Sender: "${emailSender}"
+Original Date: ${emailDate.toISOString()}
+Candidate Amount (from Gate 1): ${gateResult.candidateAmount || 'Unknown'}
+Candidate Reference ID (from Gate 1): ${gateResult.referenceNumber || 'Unknown'}
+Is Top-Up/Transfer Candidate: ${Boolean(gateResult.isTransferCandidate)}
+
+Email Body:
+${emailBodyText}
+`;
+
+    const generationResult = await this.executeGenerationWithFallback({
+      contents: [{ role: 'user', parts: [{ text: promptText }] }],
+      systemInstruction: emailSystemInstruction,
+      requestContextDescription: `Email transaction parsing: "${emailSubject}" from ${emailSender}`,
+    });
+
+    try {
+      const parsedData = JSON.parse(generationResult.responseText) as ExtractedEmailTransactionData;
+      parsedData.tokenUsage = generationResult.tokenUsage;
+
+      // Fallback matching if AI returned an account/category name instead of valid ID
+      if (!parsedData.matchedAccountId && (parsedData.accountNameHint || gateResult.matchedBankRule?.accountNameHint)) {
+        const targetSearch = (parsedData.accountNameHint || gateResult.matchedBankRule?.accountNameHint || '').toLowerCase();
+        const matched = availableAccountList.find(acc => acc.name.toLowerCase().includes(targetSearch));
+        if (matched) {
+          parsedData.matchedAccountId = matched.id;
+          parsedData.accountNameHint = matched.name;
+        }
+      }
+
+      // If matchedAccountId was returned as a name instead of ID, resolve it
+      if (parsedData.matchedAccountId) {
+        const directMatch = availableAccountList.find(acc => acc.id === parsedData.matchedAccountId);
+        if (!directMatch) {
+          const nameMatch = availableAccountList.find(
+            acc => acc.name.toLowerCase() === parsedData.matchedAccountId?.toLowerCase()
+          );
+          if (nameMatch) {
+            parsedData.matchedAccountId = nameMatch.id;
+            parsedData.accountNameHint = nameMatch.name;
+          }
+        } else {
+          parsedData.accountNameHint = directMatch.name;
+        }
+      }
+
+      // If category returned as name, resolve ID
+      if (parsedData.matchedCategoryId) {
+        const directCat = availableCategoryList.find(cat => cat.id === parsedData.matchedCategoryId);
+        if (directCat) {
+          parsedData.matchedCategoryName = directCat.name;
+        } else {
+          const nameCat = availableCategoryList.find(
+            cat => cat.name.toLowerCase() === parsedData.matchedCategoryId?.toLowerCase()
+          );
+          if (nameCat) {
+            parsedData.matchedCategoryId = nameCat.id;
+            parsedData.matchedCategoryName = nameCat.name;
+          }
+        }
+      }
+
+      // Fallback amount to candidateAmount from Gate 1 if AI failed to extract
+      if (!parsedData.amount && gateResult.candidateAmount) {
+        parsedData.amount = gateResult.candidateAmount;
+      }
+
+      // Fallback referenceNumber if not returned by AI
+      if (!parsedData.referenceNumber && gateResult.referenceNumber) {
+        parsedData.referenceNumber = gateResult.referenceNumber;
+      }
+
+      // Fallback recordDate if missing
+      if (!parsedData.recordDate) {
+        parsedData.recordDate = emailDate.toISOString();
+      }
+
+      return parsedData;
+    } catch {
+      return {
+        isTransaction: false,
+        transactionType: 'EXPENSE',
+        amount: gateResult.candidateAmount || 0,
+        counterParty: '',
+        accountNameHint: gateResult.matchedBankRule?.accountNameHint || '',
+        note: emailSubject,
+        recordDate: emailDate.toISOString(),
+        referenceNumber: gateResult.referenceNumber,
+        explanation: 'Failed to parse JSON response from Gemini for email transaction',
+        tokenUsage: generationResult.tokenUsage,
+      };
+    }
+  }
 }
+

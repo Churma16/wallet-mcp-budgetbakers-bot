@@ -1,4 +1,5 @@
 import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload, WalletBudgetItem } from '../types/walletTypes.js';
+import { PendingTransactionItem } from '../services/pendingTransactionManager.js';
 
 /**
  * Generates human readable Indonesian time format, e.g. "15:05 WIB"
@@ -288,3 +289,133 @@ export function formatErrorMessageForHuman(
     `_(${timestampString})_`,
   ].join('\n');
 }
+
+/**
+ * Formats a WhatsApp notification prompt for an incoming email transaction requiring confirmation
+ */
+export function formatPendingEmailTransactionNotification(
+  pendingItem: PendingTransactionItem,
+  totalPendingCount: number = 1
+): string {
+  const isTransfer = pendingItem.transactionType === 'TRANSFER';
+  const isExpense = pendingItem.amount < 0 || pendingItem.transactionType === 'EXPENSE';
+  const typeLabel = isTransfer ? 'Transfer / Top-Up' : isExpense ? 'Pengeluaran' : 'Pemasukan';
+  const typeIcon = isTransfer ? '🔄' : isExpense ? '💸' : '💰';
+  const formattedAmount = formatCurrencyAmount(pendingItem.amount);
+  const formattedTime = formatTransactionDate(pendingItem.recordDate);
+
+  const lines = [
+    `📩 *Transaksi Email Baru Terdeteksi (#${pendingItem.ticketId})*`,
+    `🏦 *Sumber:* ${pendingItem.bankDisplayName}`,
+    `${typeIcon} *Nominal:* ${formattedAmount} (${typeLabel})`,
+  ];
+
+  if (isTransfer && pendingItem.destinationAccountNameHint) {
+    lines.push(`🎯 *Tujuan:* ${pendingItem.destinationAccountNameHint}`);
+  } else if (pendingItem.counterParty) {
+    lines.push(`🏪 *Merchant/Pihak:* ${pendingItem.counterParty}`);
+  }
+
+  if (pendingItem.matchedCategoryName) {
+    lines.push(`📂 *Kategori:* ${pendingItem.matchedCategoryName}`);
+  }
+
+  if (pendingItem.accountNameHint) {
+    lines.push(`💳 *Akun Wallet:* ${pendingItem.accountNameHint}`);
+  }
+
+  lines.push(`🕒 *Waktu:* ${formattedTime}`);
+
+  if (pendingItem.referenceNumber) {
+    lines.push(`🔢 *Ref ID:* \`${pendingItem.referenceNumber}\``);
+  }
+
+  lines.push('');
+  if (totalPendingCount > 1) {
+    lines.push(`_Terdapat ${totalPendingCount} transaksi yang menunggu konfirmasi._`);
+    lines.push(`• Balas *Ya ${pendingItem.ticketId}* untuk mencatat tiket ini`);
+    lines.push(`• Balas *Ya semua* untuk mencatat semua tiket`);
+    lines.push(`• Balas *Batal ${pendingItem.ticketId}* untuk membatalkan`);
+  } else {
+    lines.push('• Balas *Ya* atau *Catat* untuk menyimpan ke Wallet');
+    lines.push('• Balas *Batal* untuk mengabaikan');
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Formats success message after user confirms a single pending transaction
+ */
+export function formatPendingConfirmationSuccess(item: PendingTransactionItem): string {
+  const isTransfer = item.transactionType === 'TRANSFER';
+  const formattedAmount = formatCurrencyAmount(item.amount);
+  const formattedTime = formatTransactionDate(item.recordDate);
+
+  if (isTransfer) {
+    return [
+      `✅ *Transfer Dicatat ke Wallet!* (#${item.ticketId})`,
+      `🔄 ${formattedAmount}`,
+      `💳 Dari: ${item.accountNameHint}${item.destinationAccountNameHint ? ` ➔ ${item.destinationAccountNameHint}` : ''}`,
+      `_(${formattedTime})_`,
+    ].join('\n');
+  }
+
+  const isExpense = item.amount < 0 || item.transactionType === 'EXPENSE';
+  const icon = isExpense ? '💸' : '💰';
+  const merchantOrNote = item.counterParty || item.note || (isExpense ? 'Pengeluaran' : 'Pemasukan');
+
+  const lines = [
+    `✅ *Transaksi Dicatat ke Wallet!* (#${item.ticketId})`,
+    `${icon} ${merchantOrNote} — ${formattedAmount}`,
+  ];
+
+  const metaParts: string[] = [];
+  if (item.accountNameHint) {
+    metaParts.push(`💳 ${item.accountNameHint}`);
+  }
+  if (item.matchedCategoryName) {
+    metaParts.push(`📂 ${item.matchedCategoryName}`);
+  }
+  if (metaParts.length > 0) {
+    lines.push(metaParts.join(' • '));
+  }
+
+  lines.push(`_(${formattedTime})_`);
+  return lines.join('\n');
+}
+
+/**
+ * Formats success message after user confirms multiple pending transactions at once
+ */
+export function formatBulkPendingConfirmationSuccess(items: PendingTransactionItem[]): string {
+  const lines = [
+    `✅ *${items.length} Transaksi Berhasil Dicatat ke Wallet!*`,
+    '',
+  ];
+
+  for (const item of items) {
+    const formattedAmount = formatCurrencyAmount(item.amount);
+    const title = item.counterParty || item.note || item.bankDisplayName;
+    lines.push(`• [#${item.ticketId}] ${title}: ${formattedAmount} (${item.accountNameHint})`);
+  }
+
+  lines.push('');
+  lines.push(`_(${getHumanReadableTimestamp()})_`);
+  return lines.join('\n');
+}
+
+/**
+ * Formats cancellation message when user rejects a pending transaction
+ */
+export function formatPendingCancellationMessage(
+  item: PendingTransactionItem | PendingTransactionItem[]
+): string {
+  if (Array.isArray(item)) {
+    return `❌ *${item.length} Transaksi Dibatalkan*\nSemua transaksi pending telah dihapus dan tidak dicatat ke Wallet.`;
+  }
+  const formattedAmount = formatCurrencyAmount(item.amount);
+  const title = item.counterParty || item.note || item.bankDisplayName;
+  return `❌ *Transaksi #${item.ticketId} Dibatalkan*\nTransaksi "${title}" (${formattedAmount}) tidak dicatat ke Wallet.`;
+}
+

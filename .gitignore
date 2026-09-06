@@ -14,6 +14,9 @@ logs/
 *.log
 npm-debug.log*
 
+# Persistent local cache data
+data/
+
 # OS Files
 .DS_Store
 Thumbs.db

@@ -2,6 +2,8 @@ import { loadEnvironmentConfiguration } from './config/environmentConfig.js';
 import { WalletMcpClientService } from './services/walletMcpClient.js';
 import { GeminiAiService, ExtractedFinancialIntent } from './services/geminiAiService.js';
 import { WhatsappBotService, IncomingUserMessageEvent } from './services/whatsappBotService.js';
+import { EmailListenerService, EmailTransactionCallback } from './services/emailListenerService.js';
+import { PendingTransactionManager, PendingTransactionItem } from './services/pendingTransactionManager.js';
 import { applicationLogger, purgeExpiredLogFiles } from './utils/logger.js';
 import {
   formatRecordSuccessMessage,
@@ -9,9 +11,14 @@ import {
   formatBudgetSummaryMessage,
   formatErrorMessageForHuman,
   getHumanReadableTimestamp,
+  formatPendingEmailTransactionNotification,
+  formatPendingConfirmationSuccess,
+  formatBulkPendingConfirmationSuccess,
+  formatPendingCancellationMessage,
 } from './utils/humanResponseFormatter.js';
 import { validateAndSanitizeFinancialRecords } from './utils/recordValidator.js';
-import { detectFastPathAction } from './utils/fastPathIntentDetector.js';
+import { detectFastPathAction, detectPendingConfirmationAction } from './utils/fastPathIntentDetector.js';
+import { CreateRecordInputPayload } from './types/walletTypes.js';
 
 async function bootstrapApplication(): Promise<void> {
   console.log('====================================================');
@@ -76,7 +83,78 @@ async function bootstrapApplication(): Promise<void> {
     environmentConfig.geminiRequestTimeoutMilliseconds
   );
 
-  // 3. Define message processing handler
+  // 3. Initialize Pending Transaction Manager
+  const pendingTransactionManager = new PendingTransactionManager();
+
+  // Forward declaration for emailListenerService so handlers can access it
+  let emailListenerService: EmailListenerService | null = null;
+
+  // 4. Define email transaction detection handler
+  const handleEmailTransactionDetected: EmailTransactionCallback = async detectedEvent => {
+    applicationLogger.info(`Processing detected email transaction: "${detectedEvent.emailSubject}"`);
+
+    const parsedData = await geminiAiService.processEmailTransactionMessage(
+      detectedEvent.gateResult,
+      detectedEvent.emailSubject,
+      detectedEvent.emailSender,
+      detectedEvent.cleanedBodyText,
+      detectedEvent.emailDate,
+      cachedAccounts,
+      cachedCategories
+    );
+
+    if (!parsedData.isTransaction) {
+      applicationLogger.info(`[Gate 2 Filtered Out] ${parsedData.explanation}`);
+      return;
+    }
+
+    let resolvedAccountId = parsedData.matchedAccountId;
+    let resolvedAccountName = parsedData.accountNameHint;
+    if (!resolvedAccountId) {
+      const defaultAccount = cachedAccounts[0];
+      resolvedAccountId = defaultAccount?.id || '';
+      resolvedAccountName = defaultAccount?.name || 'Cash';
+    }
+
+    let resolvedDestinationAccountId = parsedData.matchedDestinationAccountId;
+    let resolvedDestinationAccountName = parsedData.destinationAccountNameHint;
+    if (parsedData.transactionType === 'TRANSFER' && !resolvedDestinationAccountId && parsedData.destinationAccountNameHint) {
+      const matchedDest = cachedAccounts.find(acc =>
+        acc.name.toLowerCase().includes(parsedData.destinationAccountNameHint!.toLowerCase())
+      );
+      if (matchedDest) {
+        resolvedDestinationAccountId = matchedDest.id;
+        resolvedDestinationAccountName = matchedDest.name;
+      }
+    }
+
+    const pendingItem = pendingTransactionManager.addPendingTransaction({
+      sourceType: 'EMAIL',
+      bankDisplayName: detectedEvent.gateResult.matchedBankRule?.displayName || 'Bank / E-Wallet',
+      accountNameHint: resolvedAccountName,
+      matchedAccountId: resolvedAccountId,
+      destinationAccountNameHint: resolvedDestinationAccountName,
+      matchedDestinationAccountId: resolvedDestinationAccountId,
+      counterParty: parsedData.counterParty || '',
+      amount: parsedData.amount,
+      transactionType: parsedData.transactionType,
+      matchedCategoryId: parsedData.matchedCategoryId,
+      matchedCategoryName: parsedData.matchedCategoryName,
+      note: parsedData.note || detectedEvent.emailSubject,
+      recordDate: parsedData.recordDate || detectedEvent.emailDate.toISOString(),
+      referenceNumber: parsedData.referenceNumber || detectedEvent.gateResult.referenceNumber,
+      emailSubject: detectedEvent.emailSubject,
+    });
+
+    const totalPendingCount = pendingTransactionManager.getAllPendingTransactions().length;
+    const notificationText = formatPendingEmailTransactionNotification(pendingItem, totalPendingCount);
+
+    const recipientJid = `${environmentConfig.allowedPhoneNumber}@s.whatsapp.net`;
+    await whatsappBot.sendTextMessageReply(recipientJid, notificationText);
+    applicationLogger.success(`Dispatched pending transaction notification (#${pendingItem.ticketId}) to WhatsApp.`);
+  };
+
+  // 5. Define message processing handler
   const handleIncomingUserMessage = async (event: IncomingUserMessageEvent): Promise<void> => {
     applicationLogger.chat(`Message received from ${event.senderPhoneNumber} (${event.messageType}): "${event.textPayload || '[Image]'}"`);
 
@@ -93,6 +171,123 @@ async function bootstrapApplication(): Promise<void> {
     await whatsappBot.sendTypingPresence(event.remoteJid);
 
     try {
+      // 0. Pending confirmation handler (checks if user is confirming or canceling a pending ticket)
+      if (event.messageType === 'text' && event.textPayload && pendingTransactionManager.hasPendingTransactions()) {
+        const confirmationIntent = detectPendingConfirmationAction(event.textPayload);
+
+        if (confirmationIntent) {
+          if (confirmationIntent.actionType === 'CONFIRM') {
+            let itemsToRecord: PendingTransactionItem[] = [];
+
+            if (confirmationIntent.targetScope === 'ALL') {
+              itemsToRecord = pendingTransactionManager.resolveAllPendingTransactions();
+            } else if (typeof confirmationIntent.targetScope === 'number') {
+              const item = pendingTransactionManager.resolvePendingTransaction(confirmationIntent.targetScope);
+              if (item) {
+                itemsToRecord.push(item);
+              }
+            } else {
+              const item = pendingTransactionManager.getLatestPendingTransaction();
+              if (item) {
+                pendingTransactionManager.resolvePendingTransaction(item.ticketId);
+                itemsToRecord.push(item);
+              }
+            }
+
+            if (itemsToRecord.length === 0) {
+              await whatsappBot.sendTextMessageReply(
+                event.remoteJid,
+                '⚠️ Tiket transaksi pending tersebut tidak ditemukan atau sudah kadaluarsa.'
+              );
+              return;
+            }
+
+            const recordsToCreate: CreateRecordInputPayload[] = [];
+            for (const item of itemsToRecord) {
+              if (item.transactionType === 'TRANSFER') {
+                recordsToCreate.push({
+                  accountId: item.matchedAccountId,
+                  amount: -Math.abs(item.amount),
+                  recordDate: item.recordDate,
+                  note: item.note || `Transfer ke ${item.destinationAccountNameHint || 'akun lain'}`,
+                  counterParty: item.destinationAccountNameHint || '',
+                });
+
+                if (item.matchedDestinationAccountId) {
+                  recordsToCreate.push({
+                    accountId: item.matchedDestinationAccountId,
+                    amount: Math.abs(item.amount),
+                    recordDate: item.recordDate,
+                    note: item.note || `Transfer dari ${item.accountNameHint || 'akun lain'}`,
+                    counterParty: item.accountNameHint || '',
+                  });
+                }
+              } else {
+                const finalAmount = item.transactionType === 'EXPENSE'
+                  ? -Math.abs(item.amount)
+                  : Math.abs(item.amount);
+
+                recordsToCreate.push({
+                  accountId: item.matchedAccountId,
+                  categoryId: item.matchedCategoryId,
+                  amount: finalAmount,
+                  recordDate: item.recordDate,
+                  note: item.note,
+                  counterParty: item.counterParty,
+                });
+              }
+
+              if (emailListenerService) {
+                emailListenerService.recordProcessedTransaction(undefined, item.referenceNumber);
+              }
+            }
+
+            applicationLogger.mcp(`Recording ${recordsToCreate.length} confirmed transaction(s) to Wallet MCP...`);
+            await walletMcpClient.createRecords(recordsToCreate);
+
+            const replyMessage = itemsToRecord.length === 1
+              ? formatPendingConfirmationSuccess(itemsToRecord[0])
+              : formatBulkPendingConfirmationSuccess(itemsToRecord);
+
+            await whatsappBot.sendTextMessageReply(event.remoteJid, replyMessage);
+            return;
+          }
+
+          if (confirmationIntent.actionType === 'REJECT') {
+            let rejectedItems: PendingTransactionItem[] = [];
+
+            if (confirmationIntent.targetScope === 'ALL') {
+              rejectedItems = pendingTransactionManager.rejectAllPendingTransactions();
+            } else if (typeof confirmationIntent.targetScope === 'number') {
+              const item = pendingTransactionManager.rejectPendingTransaction(confirmationIntent.targetScope);
+              if (item) {
+                rejectedItems.push(item);
+              }
+            } else {
+              const item = pendingTransactionManager.getLatestPendingTransaction();
+              if (item) {
+                pendingTransactionManager.rejectPendingTransaction(item.ticketId);
+                rejectedItems.push(item);
+              }
+            }
+
+            if (rejectedItems.length === 0) {
+              await whatsappBot.sendTextMessageReply(
+                event.remoteJid,
+                '⚠️ Tiket transaksi pending tersebut tidak ditemukan atau sudah kadaluarsa.'
+              );
+              return;
+            }
+
+            const replyMessage = formatPendingCancellationMessage(
+              rejectedItems.length === 1 ? rejectedItems[0] : rejectedItems
+            );
+            await whatsappBot.sendTextMessageReply(event.remoteJid, replyMessage);
+            return;
+          }
+        }
+      }
+
       // Fast-path intent classifier: Skip Gemini AI entirely for simple balance/budget/help queries (0 tokens used)
       if (event.messageType === 'text' && event.textPayload) {
         const fastPathAction = detectFastPathAction(event.textPayload);
@@ -308,6 +503,30 @@ async function bootstrapApplication(): Promise<void> {
 
   applicationLogger.info('Initializing WhatsApp Socket...');
   await whatsappBot.startConnection();
+
+  // 6. Initialize & Start Email Listener (if toggled on in .env)
+  if (environmentConfig.emailSyncEnabled) {
+    if (!environmentConfig.emailImapUser || !environmentConfig.emailImapPassword) {
+      applicationLogger.warn(
+        'EMAIL_SYNC_ENABLED is true, but EMAIL_IMAP_USER or EMAIL_IMAP_PASSWORD is not set. Email listener is disabled.'
+      );
+    } else {
+      emailListenerService = new EmailListenerService(
+        environmentConfig.emailImapHost,
+        environmentConfig.emailImapPort,
+        environmentConfig.emailImapUser,
+        environmentConfig.emailImapPassword,
+        environmentConfig.emailLookbackMinutes,
+        handleEmailTransactionDetected
+      );
+
+      emailListenerService.startListening().catch(emailStartError => {
+        applicationLogger.error(`Failed to start Gmail IMAP listener: ${emailStartError.message}`);
+      });
+    }
+  } else {
+    applicationLogger.info('Email sync is disabled (EMAIL_SYNC_ENABLED=false). Bot running in WhatsApp-only mode.');
+  }
 }
 
 bootstrapApplication().catch(error => {

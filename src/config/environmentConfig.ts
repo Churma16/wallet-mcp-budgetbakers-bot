@@ -12,6 +12,12 @@ export interface ApplicationEnvironmentConfiguration {
   allowedPhoneNumber: string;
   whatsappSessionPath: string;
   logRetentionDays: number;
+  emailSyncEnabled: boolean;
+  emailImapHost: string;
+  emailImapPort: number;
+  emailImapUser: string;
+  emailImapPassword: string;
+  emailLookbackMinutes: number;
 }
 
 export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfiguration {
@@ -31,6 +37,12 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
   const allowedPhoneNumber = rawAllowedPhoneNumber.replace(/[^0-9]/g, '');
   const whatsappSessionPath = process.env.WHATSAPP_SESSION_PATH || './auth_session';
   const logRetentionDays = parseInt(process.env.LOG_RETENTION_DAYS || '7', 10) || 7;
+  const emailSyncEnabled = process.env.EMAIL_SYNC_ENABLED === 'true';
+  const emailImapHost = process.env.EMAIL_IMAP_HOST || 'imap.gmail.com';
+  const emailImapPort = parseInt(process.env.EMAIL_IMAP_PORT || '993', 10) || 993;
+  const emailImapUser = process.env.EMAIL_IMAP_USER || '';
+  const emailImapPassword = process.env.EMAIL_IMAP_PASSWORD || '';
+  const emailLookbackMinutes = parseInt(process.env.EMAIL_LOOKBACK_MINUTES || '10', 10) || 10;
 
   return {
     geminiApiKey,
@@ -42,5 +54,11 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     allowedPhoneNumber,
     whatsappSessionPath,
     logRetentionDays,
+    emailSyncEnabled,
+    emailImapHost,
+    emailImapPort,
+    emailImapUser,
+    emailImapPassword,
+    emailLookbackMinutes,
   };
 }
