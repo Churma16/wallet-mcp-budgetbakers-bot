@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.2](https://github.com/Churma16/wallet-mcp-budgetbakers-bot/compare/v0.1.1...v0.1.2) (2026-09-06)
+
+
+### Features
+
+* **currency:** account-aware multi-currency formatting and default currency configuration ([3def789](https://github.com/Churma16/wallet-mcp-budgetbakers-bot/commit/3def7899fa2b3da90f7aac906e065bd258cb56b8))
+
 ## 0.1.1 (2026-09-06)
 
 
