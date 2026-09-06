@@ -2,7 +2,7 @@
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Node.js](https://img.shields.io/badge/Node.js-%3E=18.0.0-339933?logo=node.js&logoColor=white)](https://nodejs.org/) [![Google Gemini](https://img.shields.io/badge/Google%20Gemini-2.0%20Flash-4285F4?logo=google&logoColor=white)](https://aistudio.google.com/) [![Baileys](https://img.shields.io/badge/WhatsApp-Baileys-25D366?logo=whatsapp&logoColor=white)](https://github.com/WhiskeySockets/Baileys) [![Telegram](https://img.shields.io/badge/Telegram-grammY-26A5E4?logo=telegram&logoColor=white)](https://grammy.dev/) [![BudgetBakers MCP](https://img.shields.io/badge/BudgetBakers-Wallet%20MCP-FF6B6B)](https://web.budgetbakers.com/settings/mcp-server) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-An automated personal bookkeeping assistant via **WhatsApp** and **Telegram** integrated directly with BudgetBakers Wallet through the official Model Context Protocol (MCP) Streamable HTTP endpoint. Powered by an agnostic AI provider (Google Gemini, OpenRouter, Groq, Ollama, OpenAI), the system converts natural language chats and physical receipt photos into structured wallet records, monitors bank/e-wallet notification emails in real time, and requests interactive confirmation before committing financial records.
+An automated personal bookkeeping assistant via **WhatsApp** and **Telegram** integrated directly with BudgetBakers Wallet through the official Model Context Protocol (MCP) Streamable HTTP endpoint. Powered by an agnostic AI provider (Google Gemini, OpenRouter, Groq, Ollama, OpenAI — currently only tested for Gemini API), the system converts natural language chats and physical receipt photos into structured wallet records, monitors bank/e-wallet notification emails in real time, and requests interactive confirmation before committing financial records.
 
 ---
 
@@ -84,7 +84,7 @@ flowchart TD
 ## Tech Stack & Libraries
 
 - **Language & Runtime**: TypeScript 5.x on Node.js (tested on LTS v18 and v20+ via `tsx`)
-- **AI / NLU Engine**: Agnostic AI Provider supporting Google Gemini API via `@google/genai`, plus OpenRouter, Groq, Ollama, OpenAI
+- **AI / NLU Engine**: Agnostic AI Provider supporting Google Gemini API via `@google/genai`, plus OpenRouter, Groq, Ollama, OpenAI (*currently only tested with Gemini API*)
 - **Messaging Gateways**:
   - WhatsApp: `@whiskeysockets/baileys` (Multi-device WhatsApp Web socket API)
   - Telegram: `grammy` (Modern, native TypeScript Telegram Bot framework)
@@ -98,7 +98,7 @@ flowchart TD
 
 1. **Node.js**: Version 18.0.0 or higher.
 2. **AI Provider API Key**:
-   - Google Gemini: Obtain a free key from [Google AI Studio](https://aistudio.google.com).
+   - Google Gemini: Obtain a free key from [Google AI Studio](https://aistudio.google.com) (*currently only tested with Gemini API*).
    - Or OpenRouter / Groq / OpenAI / Ollama.
 3. **BudgetBakers Wallet MCP Token**:
    - Access [BudgetBakers MCP Server Settings](https://web.budgetbakers.com/settings/mcp-server).
@@ -281,13 +281,15 @@ wallet-mcp-budgetbakers-bot/
 - **Whitelisted Access**: Incoming messages from unapproved numbers are rejected immediately before reaching the AI or MCP layers.
 - **Isolated Local Sessions**: WhatsApp connection tokens and keys are stored in the local `./auth_session` folder and excluded from git tracking.
 - **Two-Gate Email Protection**: Promotional campaigns, newsletter updates, and sensitive security alerts (such as OTP codes or device verification notifications) are dropped by Gate 1 regex patterns without transmitting content to cloud AI APIs.
-- **Zero Raw Emojis in System Logs**: System outputs and logs follow strict formatting tags (`[INFO]`, `[SUCCESS]`, `[WARN]`, `[ERROR]`) for clean and predictable terminal/file parsing.
 
 ---
 
-## Disclaimer
+## Disclaimer, Legal Notice & Risk Warning
 
-This is an independent open-source project and is **not** officially affiliated with, maintained by, or endorsed by BudgetBakers or Meta Platforms, Inc. (WhatsApp). WhatsApp automation relies on multi-device Web protocols via Baileys; use this software responsibly and at your own discretion.
+- **Financial & Data Accuracy Disclaimer**: This software is provided "as is", without warranty of any kind, express or implied. AI extraction (NLU and Vision OCR) may produce inaccurate, incomplete, or hallucinated results. Users are solely responsible for reviewing and verifying all financial records before and after logging. The author accepts no liability for any financial losses, misrecorded expenses, budget discrepancies, or damages resulting from the use of this software.
+- **Unofficial WhatsApp Integration (Baileys)**: This project uses [Baileys](https://github.com/WhiskeySockets/Baileys) to connect via WhatsApp Web multi-device protocols. Baileys is an unofficial, reverse-engineered library and is not endorsed or supported by Meta Platforms, Inc. Automating WhatsApp carries an inherent risk of phone number bans or temporary suspensions under WhatsApp's Terms of Service. For a zero-risk alternative, use the included **Telegram adapter** (official Bot API) or pair with a secondary WhatsApp number.
+- **Credential & Inbox Security**: Users are solely responsible for securing their local `.env` configuration, Google App Passwords, and MCP tokens. Never commit private credentials to version control. The author has no access to your machine, emails, messages, or financial records.
+- **Trademarks & Non-Affiliation**: All product names, trademarks, logos, and brands (including BudgetBakers, Bank Mandiri, Bank Jago, GoPay, OVO, DANA, ShopeePay, WhatsApp, Meta, Telegram, and Google) are property of their respective owners. Their mention in this repository is strictly for technical compatibility and descriptive purposes, and does not imply any endorsement, sponsorship, or affiliation.
 
 ---
 

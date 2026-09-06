@@ -1,58 +1,60 @@
-import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload, WalletBudgetItem } from '../types/walletTypes.js';
+﻿import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload, WalletBudgetItem } from '../types/walletTypes.js';
 import { PendingTransactionItem } from '../services/pendingTransactionManager.js';
+import { getDictionary, SupportedLanguage } from '../i18n/index.js';
 
 /**
- * Generates human readable Indonesian time format, e.g. "15:05 WIB"
+ * Generates human readable time format, e.g. "15:05 WIB" (id) or "15:05 WIB" (en)
  */
-export function getHumanReadableTimestamp(date: Date = new Date()): string {
-  const jakartaTimeZone = 'Asia/Jakarta';
-  const timeFormatter = new Intl.DateTimeFormat('id-ID', {
-    timeZone: jakartaTimeZone,
+export function getHumanReadableTimestamp(date: Date = new Date(), languageCode?: SupportedLanguage): string {
+  const dictionary = getDictionary(languageCode);
+  const timeZone = 'Asia/Jakarta';
+  const timeFormatter = new Intl.DateTimeFormat(dictionary.localeIdentifier, {
+    timeZone,
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
   });
   const formattedTime = timeFormatter.format(date).replace('.', ':');
-  return `${formattedTime} WIB`;
+  return `${formattedTime} ${dictionary.timeZoneLabel}`;
 }
 
 /**
- * Formats a transaction timestamp for Indonesian human display in WIB.
+ * Formats a transaction timestamp for human display in WIB.
  * If the transaction occurred today, shows time (e.g. "17:15 WIB").
- * If the transaction occurred on a different date (e.g. past transaction),
- * shows date and time (e.g. "3 Sep 2026, 17:15 WIB").
+ * If the transaction occurred on a different date, shows date and time (e.g. "3 Sep 2026, 17:15 WIB").
  */
-export function formatTransactionDate(dateInput?: string | Date): string {
+export function formatTransactionDate(dateInput?: string | Date, languageCode?: SupportedLanguage): string {
+  const dictionary = getDictionary(languageCode);
   if (!dateInput) {
-    return getHumanReadableTimestamp();
+    return getHumanReadableTimestamp(new Date(), languageCode);
   }
 
   const transactionDate = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
   if (isNaN(transactionDate.getTime())) {
-    return getHumanReadableTimestamp();
+    return getHumanReadableTimestamp(new Date(), languageCode);
   }
 
-  const jakartaTimeZone = 'Asia/Jakarta';
+  const timeZone = 'Asia/Jakarta';
 
-  const timeFormatter = new Intl.DateTimeFormat('id-ID', {
-    timeZone: jakartaTimeZone,
+  const timeFormatter = new Intl.DateTimeFormat(dictionary.localeIdentifier, {
+    timeZone,
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
   });
 
-  const dateFormatter = new Intl.DateTimeFormat('id-ID', {
-    timeZone: jakartaTimeZone,
+  const dateFormatter = new Intl.DateTimeFormat(dictionary.localeIdentifier, {
+    timeZone,
     day: 'numeric',
     month: 'short',
     year: 'numeric',
   });
 
-  const dateComparisonFormatter = new Intl.DateTimeFormat('id-ID', {
-    timeZone: jakartaTimeZone,
+  const dateComparisonFormatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
     year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
   });
 
   const now = new Date();
@@ -60,7 +62,7 @@ export function formatTransactionDate(dateInput?: string | Date): string {
   const nowDateKey = dateComparisonFormatter.format(now);
 
   const formattedTime = timeFormatter.format(transactionDate).replace('.', ':');
-  const timeString = `${formattedTime} WIB`;
+  const timeString = `${formattedTime} ${dictionary.timeZoneLabel}`;
 
   if (transactionDateKey === nowDateKey) {
     return timeString;
@@ -71,11 +73,16 @@ export function formatTransactionDate(dateInput?: string | Date): string {
 }
 
 /**
- * Formats numeric currency to clean Indonesian Rupiah string (e.g. "Rp 35.000")
+ * Formats numeric currency to clean string (e.g. "Rp 35.000")
  */
-export function formatCurrencyAmount(amount: number, currencyCode: string = 'IDR'): string {
+export function formatCurrencyAmount(
+  amount: number,
+  currencyCode: string = 'IDR',
+  languageCode?: SupportedLanguage
+): string {
+  const dictionary = getDictionary(languageCode);
   const absoluteAmount = Math.abs(amount);
-  const formattedNumber = new Intl.NumberFormat('id-ID', {
+  const formattedNumber = new Intl.NumberFormat(dictionary.localeIdentifier, {
     maximumFractionDigits: 0,
   }).format(absoluteAmount);
 
@@ -86,26 +93,30 @@ export function formatCurrencyAmount(amount: number, currencyCode: string = 'IDR
 }
 
 /**
- * Formats a single transaction record using Context-First psychological hierarchy:
- * Title answers "What?", followed by "How much & from where?", then "Category & Time".
+ * Formats a single transaction record using Context-First psychological hierarchy
  */
 function formatSingleRecordSuccess(
   recordItem: CreateRecordInputPayload,
   accountName: string,
-  categoryName: string
+  categoryName: string,
+  languageCode?: SupportedLanguage
 ): string {
+  const dictionary = getDictionary(languageCode);
   const isExpense = recordItem.amount < 0;
   const transactionTypeIcon = isExpense ? '💸' : '💰';
-  const formattedAmount = formatCurrencyAmount(recordItem.amount);
-  const transactionTitle = recordItem.note || recordItem.counterParty || (isExpense ? 'Pengeluaran' : 'Pemasukan');
-  const recordTimestampDisplay = formatTransactionDate(recordItem.recordDate);
+  const formattedAmount = formatCurrencyAmount(recordItem.amount, 'IDR', languageCode);
+  const defaultTitle = isExpense ? dictionary.labels.expense : dictionary.labels.income;
+  const transactionTitle = recordItem.note || recordItem.counterParty || defaultTitle;
+  const recordTimestampDisplay = formatTransactionDate(recordItem.recordDate, languageCode);
 
-  return [
-    `✅ *${transactionTitle}* berhasil dicatat!`,
-    '',
-    `${transactionTypeIcon} ${formattedAmount}  •  ${accountName}`,
-    `🏷️ ${categoryName}  •  ${recordTimestampDisplay}`,
-  ].join('\n');
+  return dictionary.records.singleSuccess({
+    transactionTitle,
+    formattedAmount,
+    accountName,
+    categoryName,
+    recordTimestampDisplay,
+    transactionTypeIcon,
+  });
 }
 
 /**
@@ -114,25 +125,33 @@ function formatSingleRecordSuccess(
 function formatMultipleRecordsSuccess(
   recordList: CreateRecordInputPayload[],
   availableAccounts: WalletAccountItem[],
-  availableCategories: WalletCategoryItem[]
+  availableCategories: WalletCategoryItem[],
+  languageCode?: SupportedLanguage
 ): string {
+  const dictionary = getDictionary(languageCode);
   const totalRecordsCount = recordList.length;
-  const currentTimestamp = getHumanReadableTimestamp();
-  const headerMessage = `✅ *${totalRecordsCount} transaksi* berhasil dicatat! (${currentTimestamp})`;
+  const currentTimestamp = getHumanReadableTimestamp(new Date(), languageCode);
+  const headerMessage = dictionary.records.multipleSuccessHeader(totalRecordsCount, currentTimestamp);
 
   const recordEntries = recordList.map((recordItem, recordIndex) => {
     const isExpense = recordItem.amount < 0;
     const transactionTypeIcon = isExpense ? '💸' : '💰';
-    const formattedAmount = formatCurrencyAmount(recordItem.amount);
-    const accountName = availableAccounts.find(account => account.id === recordItem.accountId)?.name || 'Akun';
-    const categoryName = availableCategories.find(category => category.id === recordItem.categoryId)?.name || 'Umum';
-    const transactionDescription = recordItem.note || recordItem.counterParty || (isExpense ? 'Pengeluaran' : 'Pemasukan');
-    const recordTimestampDisplay = formatTransactionDate(recordItem.recordDate);
+    const formattedAmount = formatCurrencyAmount(recordItem.amount, 'IDR', languageCode);
+    const accountName = availableAccounts.find(account => account.id === recordItem.accountId)?.name || dictionary.labels.defaultAccount;
+    const categoryName = availableCategories.find(category => category.id === recordItem.categoryId)?.name || dictionary.labels.defaultCategory;
+    const defaultDescription = isExpense ? dictionary.labels.expense : dictionary.labels.income;
+    const transactionDescription = recordItem.note || recordItem.counterParty || defaultDescription;
+    const recordTimestampDisplay = formatTransactionDate(recordItem.recordDate, languageCode);
 
-    return [
-      `${recordIndex + 1}. ${transactionTypeIcon} ${transactionDescription} — *${formattedAmount}* dari ${accountName}`,
-      `   🏷️ ${categoryName}  •  ${recordTimestampDisplay}`,
-    ].join('\n');
+    return dictionary.records.multipleRecordItem({
+      itemIndex: recordIndex,
+      transactionTypeIcon,
+      transactionDescription,
+      formattedAmount,
+      accountName,
+      categoryName,
+      recordTimestampDisplay,
+    });
   });
 
   return [
@@ -148,26 +167,32 @@ function formatMultipleRecordsSuccess(
 export function formatRecordSuccessMessage(
   recordList: CreateRecordInputPayload[],
   availableAccounts: WalletAccountItem[],
-  availableCategories: WalletCategoryItem[]
+  availableCategories: WalletCategoryItem[],
+  languageCode?: SupportedLanguage
 ): string {
+  const dictionary = getDictionary(languageCode);
   if (recordList.length === 1) {
     const singleRecord = recordList[0];
-    const accountName = availableAccounts.find(account => account.id === singleRecord.accountId)?.name || 'Akun';
-    const categoryName = availableCategories.find(category => category.id === singleRecord.categoryId)?.name || 'Umum';
-    return formatSingleRecordSuccess(singleRecord, accountName, categoryName);
+    const accountName = availableAccounts.find(account => account.id === singleRecord.accountId)?.name || dictionary.labels.defaultAccount;
+    const categoryName = availableCategories.find(category => category.id === singleRecord.categoryId)?.name || dictionary.labels.defaultCategory;
+    return formatSingleRecordSuccess(singleRecord, accountName, categoryName, languageCode);
   }
 
-  return formatMultipleRecordsSuccess(recordList, availableAccounts, availableCategories);
+  return formatMultipleRecordsSuccess(recordList, availableAccounts, availableCategories, languageCode);
 }
 
 /**
  * Formats account balances into a clean, mobile-friendly list with bold labels and a grand total
  */
-export function formatBalanceSummaryMessage(accountList: WalletAccountItem[]): string {
-  const currentTimestamp = getHumanReadableTimestamp();
+export function formatBalanceSummaryMessage(
+  accountList: WalletAccountItem[],
+  languageCode?: SupportedLanguage
+): string {
+  const dictionary = getDictionary(languageCode);
+  const currentTimestamp = getHumanReadableTimestamp(new Date(), languageCode);
 
   if (!accountList || accountList.length === 0) {
-    return `📊 *Saldo Rekening* (${currentTimestamp})\n\nBelum ada data rekening yang terhubung.`;
+    return `${dictionary.balance.header(currentTimestamp)}\n\n${dictionary.balance.emptyState}`;
   }
 
   let totalBalanceAccumulator = 0;
@@ -177,21 +202,21 @@ export function formatBalanceSummaryMessage(accountList: WalletAccountItem[]): s
     if (accountItem.balance !== undefined && accountItem.balance !== null) {
       hasValidNumericBalance = true;
       totalBalanceAccumulator += accountItem.balance;
-      const formattedBalance = formatCurrencyAmount(accountItem.balance, accountItem.currency || 'IDR');
+      const formattedBalance = formatCurrencyAmount(accountItem.balance, accountItem.currency || 'IDR', languageCode);
       return `• *${accountItem.name}*: ${formattedBalance}`;
     }
-    return `• *${accountItem.name}*: N/A`;
+    return `• *${accountItem.name}*: ${dictionary.balance.notAvailable}`;
   });
 
   const messageParts = [
-    `📊 *Saldo Rekening* (${currentTimestamp})`,
+    dictionary.balance.header(currentTimestamp),
     '',
     accountLines.join('\n'),
   ];
 
   if (hasValidNumericBalance) {
-    const formattedGrandTotal = formatCurrencyAmount(totalBalanceAccumulator, 'IDR');
-    messageParts.push('', `*Total: ${formattedGrandTotal}*`);
+    const formattedGrandTotal = formatCurrencyAmount(totalBalanceAccumulator, 'IDR', languageCode);
+    messageParts.push('', dictionary.balance.grandTotal(formattedGrandTotal));
   }
 
   return messageParts.join('\n');
@@ -200,26 +225,30 @@ export function formatBalanceSummaryMessage(accountList: WalletAccountItem[]): s
 /**
  * Formats budget status into a clean list showing spent, limit, and remaining amounts
  */
-export function formatBudgetSummaryMessage(budgetList: WalletBudgetItem[]): string {
-  const currentTimestamp = getHumanReadableTimestamp();
+export function formatBudgetSummaryMessage(
+  budgetList: WalletBudgetItem[],
+  languageCode?: SupportedLanguage
+): string {
+  const dictionary = getDictionary(languageCode);
+  const currentTimestamp = getHumanReadableTimestamp(new Date(), languageCode);
 
   if (!budgetList || budgetList.length === 0) {
-    return `📈 *Status Anggaran* (${currentTimestamp})\n\nBelum ada anggaran aktif yang ditemukan.`;
+    return `${dictionary.budget.header(currentTimestamp)}\n\n${dictionary.budget.emptyState}`;
   }
 
   const budgetLines = budgetList.map(budgetItem => {
     const spentAmount = budgetItem.spentAmount || 0;
     const limitAmount = budgetItem.limitAmount || 0;
     const remainingAmount = limitAmount - spentAmount;
-    const formattedSpent = formatCurrencyAmount(spentAmount, budgetItem.currency || 'IDR');
-    const formattedLimit = formatCurrencyAmount(limitAmount, budgetItem.currency || 'IDR');
-    const formattedRemaining = formatCurrencyAmount(Math.max(0, remainingAmount), budgetItem.currency || 'IDR');
+    const formattedSpent = formatCurrencyAmount(spentAmount, budgetItem.currency || 'IDR', languageCode);
+    const formattedLimit = formatCurrencyAmount(limitAmount, budgetItem.currency || 'IDR', languageCode);
+    const formattedRemaining = formatCurrencyAmount(Math.max(0, remainingAmount), budgetItem.currency || 'IDR', languageCode);
 
-    return `• *${budgetItem.name}*: ${formattedSpent} / ${formattedLimit} _(sisa ${formattedRemaining})_`;
+    return dictionary.budget.budgetItem(budgetItem.name, formattedSpent, formattedLimit, formattedRemaining);
   });
 
   return [
-    `📈 *Status Anggaran* (${currentTimestamp})`,
+    dictionary.budget.header(currentTimestamp),
     '',
     budgetLines.join('\n'),
   ].join('\n');
@@ -230,8 +259,12 @@ export function formatBudgetSummaryMessage(budgetList: WalletBudgetItem[]): stri
  */
 export function formatErrorMessageForHuman(
   encounteredError: unknown,
-  timestampString: string = getHumanReadableTimestamp()
+  timestampString?: string,
+  languageCode?: SupportedLanguage
 ): string {
+  const dictionary = getDictionary(languageCode);
+  const resolvedTimestamp = timestampString || getHumanReadableTimestamp(new Date(), languageCode);
+
   const rawErrorMessage = encounteredError instanceof Error 
     ? encounteredError.message 
     : String(encounteredError);
@@ -247,10 +280,7 @@ export function formatErrorMessageForHuman(
     lowerCaseErrorMessage.includes('resource_exhausted') ||
     lowerCaseErrorMessage.includes('overloaded')
   ) {
-    return [
-      '⚠️ Layanan AI lagi ramai, coba lagi ya dalam beberapa detik!',
-      `_(${timestampString})_`,
-    ].join('\n');
+    return dictionary.errors.aiBusy(resolvedTimestamp);
   }
 
   // 2. Schema validation / MCP argument format failure
@@ -260,11 +290,7 @@ export function formatErrorMessageForHuman(
     lowerCaseErrorMessage.includes('failed to parse') ||
     lowerCaseErrorMessage.includes('create_records')
   ) {
-    return [
-      '⚠️ Transaksi belum tersimpan nih, format datanya kurang pas.',
-      'Coba kirim ulang dengan lebih jelas ya, contoh: _"Makan siang 35rb pakai Gopay"_',
-      `_(${timestampString})_`,
-    ].join('\n');
+    return dictionary.errors.schemaValidation(resolvedTimestamp);
   }
 
   // 3. Network connection / Timeout failure
@@ -276,146 +302,125 @@ export function formatErrorMessageForHuman(
     lowerCaseErrorMessage.includes('504') ||
     lowerCaseErrorMessage.includes('network')
   ) {
-    return [
-      '⚠️ Koneksi ke server lagi gangguan sebentar, coba lagi ya!',
-      `_(${timestampString})_`,
-    ].join('\n');
+    return dictionary.errors.networkConnection(resolvedTimestamp);
   }
 
   // 4. Default generic unexpected error
-  return [
-    '⚠️ Ada kendala saat memproses pesanmu.',
-    'Detail sudah dicatat di log sistem untuk diperiksa.',
-    `_(${timestampString})_`,
-  ].join('\n');
+  return dictionary.errors.generic(resolvedTimestamp);
 }
 
 /**
- * Formats a WhatsApp notification prompt for an incoming email transaction requiring confirmation
+ * Formats a notification prompt for an incoming email transaction requiring confirmation
  */
 export function formatPendingEmailTransactionNotification(
   pendingItem: PendingTransactionItem,
-  totalPendingCount: number = 1
+  totalPendingCount: number = 1,
+  languageCode?: SupportedLanguage
 ): string {
+  const dictionary = getDictionary(languageCode);
   const isTransfer = pendingItem.transactionType === 'TRANSFER';
   const isExpense = pendingItem.amount < 0 || pendingItem.transactionType === 'EXPENSE';
-  const typeLabel = isTransfer ? 'Transfer / Top-Up' : isExpense ? 'Pengeluaran' : 'Pemasukan';
+  const typeLabel = isTransfer ? dictionary.labels.transfer : isExpense ? dictionary.labels.expense : dictionary.labels.income;
   const typeIcon = isTransfer ? '🔄' : isExpense ? '💸' : '💰';
-  const formattedAmount = formatCurrencyAmount(pendingItem.amount);
-  const formattedTime = formatTransactionDate(pendingItem.recordDate);
+  const formattedAmount = formatCurrencyAmount(pendingItem.amount, 'IDR', languageCode);
+  const formattedTime = formatTransactionDate(pendingItem.recordDate, languageCode);
 
-  const lines = [
-    `📩 *Transaksi Email Baru Terdeteksi (#${pendingItem.ticketId})*`,
-    `🏦 *Sumber:* ${pendingItem.bankDisplayName}`,
-    `${typeIcon} *Nominal:* ${formattedAmount} (${typeLabel})`,
-  ];
-
-  if (isTransfer && pendingItem.destinationAccountNameHint) {
-    lines.push(`🎯 *Tujuan:* ${pendingItem.destinationAccountNameHint}`);
-  } else if (pendingItem.counterParty) {
-    lines.push(`🏪 *Merchant/Pihak:* ${pendingItem.counterParty}`);
-  }
-
-  if (pendingItem.matchedCategoryName) {
-    lines.push(`📂 *Kategori:* ${pendingItem.matchedCategoryName}`);
-  }
-
-  if (pendingItem.accountNameHint) {
-    lines.push(`💳 *Akun Wallet:* ${pendingItem.accountNameHint}`);
-  }
-
-  lines.push(`🕒 *Waktu:* ${formattedTime}`);
-
-  if (pendingItem.referenceNumber) {
-    lines.push(`🔢 *Ref ID:* \`${pendingItem.referenceNumber}\``);
-  }
-
-  lines.push('');
-  if (totalPendingCount > 1) {
-    lines.push(`_Terdapat ${totalPendingCount} transaksi yang menunggu konfirmasi._`);
-    lines.push(`• Balas *Ya ${pendingItem.ticketId}* untuk mencatat tiket ini`);
-    lines.push(`• Balas *Ya semua* untuk mencatat semua tiket`);
-    lines.push(`• Balas *Batal ${pendingItem.ticketId}* untuk membatalkan`);
-  } else {
-    lines.push('• Balas *Ya* atau *Catat* untuk menyimpan ke Wallet');
-    lines.push('• Balas *Batal* untuk mengabaikan');
-  }
-
-  return lines.join('\n');
+  return dictionary.emailPending.formatNotification({
+    ticketId: pendingItem.ticketId,
+    bankDisplayName: pendingItem.bankDisplayName,
+    typeIcon,
+    formattedAmount,
+    typeLabel,
+    formattedTime,
+    destinationAccountNameHint: pendingItem.destinationAccountNameHint,
+    counterParty: pendingItem.counterParty,
+    matchedCategoryName: pendingItem.matchedCategoryName,
+    accountNameHint: pendingItem.accountNameHint,
+    referenceNumber: pendingItem.referenceNumber,
+    totalPendingCount,
+  });
 }
 
 /**
  * Formats success message after user confirms a single pending transaction
  */
-export function formatPendingConfirmationSuccess(item: PendingTransactionItem): string {
+export function formatPendingConfirmationSuccess(
+  item: PendingTransactionItem,
+  languageCode?: SupportedLanguage
+): string {
+  const dictionary = getDictionary(languageCode);
   const isTransfer = item.transactionType === 'TRANSFER';
-  const formattedAmount = formatCurrencyAmount(item.amount);
-  const formattedTime = formatTransactionDate(item.recordDate);
+  const formattedAmount = formatCurrencyAmount(item.amount, 'IDR', languageCode);
+  const formattedTime = formatTransactionDate(item.recordDate, languageCode);
 
   if (isTransfer) {
-    return [
-      `✅ *Transfer Dicatat ke Wallet!* (#${item.ticketId})`,
-      `🔄 ${formattedAmount}`,
-      `💳 Dari: ${item.accountNameHint}${item.destinationAccountNameHint ? ` ➔ ${item.destinationAccountNameHint}` : ''}`,
-      `_(${formattedTime})_`,
-    ].join('\n');
+    return dictionary.confirmation.singleSuccess({
+      ticketId: item.ticketId,
+      isTransfer: true,
+      formattedAmount,
+      formattedTime,
+      accountNameHint: item.accountNameHint,
+      destinationAccountNameHint: item.destinationAccountNameHint,
+    });
   }
 
   const isExpense = item.amount < 0 || item.transactionType === 'EXPENSE';
   const icon = isExpense ? '💸' : '💰';
-  const merchantOrNote = item.counterParty || item.note || (isExpense ? 'Pengeluaran' : 'Pemasukan');
+  const defaultNote = isExpense ? dictionary.labels.expense : dictionary.labels.income;
+  const merchantOrNote = item.counterParty || item.note || defaultNote;
 
-  const lines = [
-    `✅ *Transaksi Dicatat ke Wallet!* (#${item.ticketId})`,
-    `${icon} ${merchantOrNote} — ${formattedAmount}`,
-  ];
-
-  const metaParts: string[] = [];
-  if (item.accountNameHint) {
-    metaParts.push(`💳 ${item.accountNameHint}`);
-  }
-  if (item.matchedCategoryName) {
-    metaParts.push(`📂 ${item.matchedCategoryName}`);
-  }
-  if (metaParts.length > 0) {
-    lines.push(metaParts.join(' • '));
-  }
-
-  lines.push(`_(${formattedTime})_`);
-  return lines.join('\n');
+  return dictionary.confirmation.singleSuccess({
+    ticketId: item.ticketId,
+    isTransfer: false,
+    formattedAmount,
+    formattedTime,
+    accountNameHint: item.accountNameHint,
+    matchedCategoryName: item.matchedCategoryName,
+    icon,
+    merchantOrNote,
+  });
 }
 
 /**
  * Formats success message after user confirms multiple pending transactions at once
  */
-export function formatBulkPendingConfirmationSuccess(items: PendingTransactionItem[]): string {
-  const lines = [
-    `✅ *${items.length} Transaksi Berhasil Dicatat ke Wallet!*`,
-    '',
-  ];
+export function formatBulkPendingConfirmationSuccess(
+  items: PendingTransactionItem[],
+  languageCode?: SupportedLanguage
+): string {
+  const dictionary = getDictionary(languageCode);
+  const currentTimestamp = getHumanReadableTimestamp(new Date(), languageCode);
 
-  for (const item of items) {
-    const formattedAmount = formatCurrencyAmount(item.amount);
-    const title = item.counterParty || item.note || item.bankDisplayName;
-    lines.push(`• [#${item.ticketId}] ${title}: ${formattedAmount} (${item.accountNameHint})`);
-  }
+  const bulkItemParams = items.map(item => ({
+    ticketId: item.ticketId,
+    title: item.counterParty || item.note || item.bankDisplayName,
+    formattedAmount: formatCurrencyAmount(item.amount, 'IDR', languageCode),
+    accountNameHint: item.accountNameHint || dictionary.labels.defaultAccount,
+  }));
 
-  lines.push('');
-  lines.push(`_(${getHumanReadableTimestamp()})_`);
-  return lines.join('\n');
+  return dictionary.confirmation.bulkSuccess(bulkItemParams, currentTimestamp);
 }
 
 /**
  * Formats cancellation message when user rejects a pending transaction
  */
 export function formatPendingCancellationMessage(
-  item: PendingTransactionItem | PendingTransactionItem[]
+  item: PendingTransactionItem | PendingTransactionItem[],
+  languageCode?: SupportedLanguage
 ): string {
+  const dictionary = getDictionary(languageCode);
   if (Array.isArray(item)) {
-    return `❌ *${item.length} Transaksi Dibatalkan*\nSemua transaksi pending telah dihapus dan tidak dicatat ke Wallet.`;
+    return dictionary.confirmation.cancellation({
+      isBulk: true,
+      count: item.length,
+    });
   }
-  const formattedAmount = formatCurrencyAmount(item.amount);
+  const formattedAmount = formatCurrencyAmount(item.amount, 'IDR', languageCode);
   const title = item.counterParty || item.note || item.bankDisplayName;
-  return `❌ *Transaksi #${item.ticketId} Dibatalkan*\nTransaksi "${title}" (${formattedAmount}) tidak dicatat ke Wallet.`;
+  return dictionary.confirmation.cancellation({
+    isBulk: false,
+    ticketId: item.ticketId,
+    title,
+    formattedAmount,
+  });
 }
-

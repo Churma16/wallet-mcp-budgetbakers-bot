@@ -31,6 +31,7 @@ export interface ApplicationEnvironmentConfiguration {
   emailImapUser: string;
   emailImapPassword: string;
   emailLookbackMinutes: number;
+  appLanguage: 'id' | 'en';
 }
 
 interface ProviderConfigStrategy {
@@ -144,6 +145,9 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     }
   }
 
+  const rawLanguage = (process.env.APP_LANGUAGE || process.env.BOT_LANGUAGE || 'id').toLowerCase().trim();
+  const appLanguage: 'id' | 'en' = rawLanguage === 'en' ? 'en' : 'id';
+
   return {
     aiProvider,
     aiApiKey,
@@ -169,5 +173,6 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     emailImapUser,
     emailImapPassword,
     emailLookbackMinutes,
+    appLanguage,
   };
 }
