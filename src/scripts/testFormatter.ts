@@ -6,11 +6,24 @@ import {
   getHumanReadableTimestamp,
 } from '../utils/humanResponseFormatter.js';
 
-console.log('=== TEST 1: SINGLE RECORD ===');
+console.log('=== TEST 1A: TODAY SINGLE RECORD ===');
 console.log(formatRecordSuccessMessage(
   [{ accountId: 'acc1', amount: -35000, recordDate: new Date().toISOString(), categoryId: 'cat1', note: 'Makan siang' }],
   [{ id: 'acc1', name: 'Gopay' }],
   [{ id: 'cat1', name: 'Makanan & Minuman' }]
+));
+
+console.log('\n=== TEST 1B: PAST DATE TRANSACTION (e.g. 3 Sep 2026, 17:15 WIB) ===');
+console.log(formatRecordSuccessMessage(
+  [{
+    accountId: 'acc2',
+    amount: -5000,
+    recordDate: '2026-09-03T10:15:00.000Z',
+    categoryId: 'cat3',
+    note: 'Insufficient Funds Fee (Visa payment failed)',
+  }],
+  [{ id: 'acc2', name: 'Jago Expense' }],
+  [{ id: 'cat3', name: 'Charges, fees' }]
 ));
 
 console.log('\n=== TEST 2: MULTI RECORDS ===');
