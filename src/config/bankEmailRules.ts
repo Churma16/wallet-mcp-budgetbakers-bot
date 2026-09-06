@@ -47,7 +47,7 @@ export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
       /(?:Rp|IDR)\s*([\d.,]+)/i,
     ],
     referencePatterns: [
-      /(?:No\.?\s*Referensi|Nomor\s*Referensi|No\.?\s*Resi|Nomor\s*Transaksi|No\.?\s*Transaksi|RRN)[:\s]*([A-Za-z0-9]+)/i,
+      /(?:No\.?\s*Referensi|Nomor\s*Referensi|No\.?\s*Resi|Nomor\s*Transaksi|No\.?\s*Transaksi|RRN)(?:\s*(?:\([^\)]+\)|BI\s*Fast))?[:\s]*([A-Za-z0-9]+)/i,
       /Ref(?:erence)?\s*(?:No|ID)[:\s]*([A-Za-z0-9]+)/i,
     ],
     transferOrTopupKeywords: [
@@ -58,6 +58,7 @@ export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
       'dana',
       'shopeepay',
       'linkaja',
+      'jago',
       'transfer ke rekening sendiri',
     ],
   },
@@ -251,6 +252,11 @@ export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
       'koin shopee',
       'otp',
       'verifikasi',
+      'telah dikirim',
+      'sedang dikirim',
+      'pengiriman',
+      'dikirim',
+      'pesanan dibatalkan',
     ],
     bodyRequiredPatterns: [
       /(?:total pembayaran|shopeepay|total pesanan|rincian)/i,

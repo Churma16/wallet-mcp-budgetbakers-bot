@@ -9,6 +9,7 @@
     "test:mcp": "tsx src/scripts/testWalletMcp.ts",
     "test:email-rules": "tsx src/scripts/testEmailGateRules.ts",
     "test:email": "tsx src/scripts/testEmailImap.ts",
+    "test:email-gate-live": "tsx src/scripts/testFetchRealEmailsGate.ts",
     "build": "tsc"
   },
   "dependencies": {
