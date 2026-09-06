@@ -25,12 +25,27 @@ export type UserMessageCallback = (incomingEvent: IncomingUserMessageEvent) => P
 export class WhatsappBotService {
   private socketInstance: WASocket | null = null;
   private isReconnecting: boolean = false;
+  private readonly recentOutgoingMessageIdSet: Set<string> = new Set<string>();
+  private readonly maxTrackedOutgoingMessageIds: number = 500;
 
   constructor(
     private readonly sessionDataDirectoryPath: string,
     private readonly allowedPhoneNumber: string,
     private readonly onUserMessageReceived: UserMessageCallback
   ) {}
+
+  /**
+   * Tracks outgoing message IDs to prevent feedback loops in "Message Yourself" mode
+   */
+  private recordOutgoingMessageId(messageId: string): void {
+    if (this.recentOutgoingMessageIdSet.size >= this.maxTrackedOutgoingMessageIds) {
+      const oldestTrackedId = this.recentOutgoingMessageIdSet.values().next().value;
+      if (oldestTrackedId) {
+        this.recentOutgoingMessageIdSet.delete(oldestTrackedId);
+      }
+    }
+    this.recentOutgoingMessageIdSet.add(messageId);
+  }
 
   /**
    * Initializes and starts the WhatsApp connection
@@ -135,6 +150,12 @@ export class WhatsappBotService {
           continue;
         }
 
+        // Ignore messages sent by this bot instance
+        const incomingMessageId = rawMessage.key.id;
+        if (incomingMessageId && this.recentOutgoingMessageIdSet.has(incomingMessageId)) {
+          continue;
+        }
+
         // Ignore group chats and channel/newsletter updates
         const isGroupOrNewsletterChat = remoteJid.endsWith('@g.us') || remoteJid.endsWith('@newsletter');
         if (isGroupOrNewsletterChat) {
@@ -169,7 +190,12 @@ export class WhatsappBotService {
             unwrappedMessageContent.imageMessage?.caption ||
             '';
 
+          // Heuristic fallback guard for self-chat
           if (
+            textContent.startsWith('✅') ||
+            textContent.startsWith('⚠️') ||
+            textContent.startsWith('📊 *Saldo Rekening*') ||
+            textContent.startsWith('📈 *Status Anggaran*') ||
             textContent.startsWith('[success]') ||
             textContent.startsWith('[error]') ||
             textContent.startsWith('[info]') ||
@@ -279,12 +305,18 @@ export class WhatsappBotService {
     }
 
     try {
-      await this.socketInstance.sendMessage(targetRemoteJid, {
+      const dispatchedMessage = await this.socketInstance.sendMessage(targetRemoteJid, {
         text: messageText,
       });
 
+      const outgoingMessageId = dispatchedMessage?.key?.id;
+      if (outgoingMessageId) {
+        this.recordOutgoingMessageId(outgoingMessageId);
+      }
+
       applicationLogger.fileDetail('whatsapp', 'Dispatched WhatsApp Text Message', {
         targetRemoteJid,
+        messageId: outgoingMessageId,
         messageLength: messageText.length,
         messagePreview: messageText.substring(0, 120),
       });
