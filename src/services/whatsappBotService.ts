@@ -365,4 +365,40 @@ export class WhatsappBotService {
       throw sendError;
     }
   }
+
+  /**
+   * Sends typing presence indicator ("composing") to a WhatsApp chat
+   */
+  public async sendTypingPresence(targetRemoteJid: string): Promise<void> {
+    if (!this.socketInstance) {
+      return;
+    }
+
+    try {
+      await this.socketInstance.sendPresenceUpdate('composing', targetRemoteJid);
+    } catch (presenceError: unknown) {
+      applicationLogger.fileDetail('warn', 'Failed to send WhatsApp typing presence update', {
+        targetRemoteJid,
+        error: presenceError instanceof Error ? presenceError.message : String(presenceError),
+      });
+    }
+  }
+
+  /**
+   * Clears typing presence indicator ("paused") from a WhatsApp chat
+   */
+  public async clearTypingPresence(targetRemoteJid: string): Promise<void> {
+    if (!this.socketInstance) {
+      return;
+    }
+
+    try {
+      await this.socketInstance.sendPresenceUpdate('paused', targetRemoteJid);
+    } catch (presenceError: unknown) {
+      applicationLogger.fileDetail('warn', 'Failed to clear WhatsApp typing presence update', {
+        targetRemoteJid,
+        error: presenceError instanceof Error ? presenceError.message : String(presenceError),
+      });
+    }
+  }
 }
