@@ -13,7 +13,7 @@ import {
 } from './services/messaging/index.js';
 import { EmailListenerService, EmailTransactionCallback } from './services/emailListenerService.js';
 import { PendingTransactionManager, PendingTransactionItem } from './services/pendingTransactionManager.js';
-import { applicationLogger, purgeExpiredLogFiles } from './utils/logger.js';
+import { applicationLogger, purgeExpiredLogFiles, formatConciseErrorMessage } from './utils/logger.js';
 import {
   formatRecordSuccessMessage,
   formatBalanceSummaryMessage,
@@ -181,6 +181,7 @@ async function bootstrapApplication(): Promise<void> {
 
   // 6. Define unified message processing handler
   const handleIncomingUserMessage = async (event: IncomingUserMessageEvent): Promise<void> => {
+    const processingStartTimestamp = Date.now();
     applicationLogger.chat(
       `[${event.channel.toUpperCase()}] Message received from ${event.senderIdentifier} (${event.messageType}): "${event.textPayload || '[Image]'}"`
     );
@@ -279,6 +280,10 @@ async function bootstrapApplication(): Promise<void> {
               : formatBulkPendingConfirmationSuccess(itemsToRecord);
 
             await messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
+            const processingDurationMs = Date.now() - processingStartTimestamp;
+            applicationLogger.success(
+              `[${event.channel.toUpperCase()}] Confirmed & recorded ${recordsToCreate.length} pending transaction(s) to Wallet (${processingDurationMs}ms).`
+            );
             return;
           }
 
@@ -313,6 +318,10 @@ async function bootstrapApplication(): Promise<void> {
               rejectedItems.length === 1 ? rejectedItems[0] : rejectedItems
             );
             await messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
+            const processingDurationMs = Date.now() - processingStartTimestamp;
+            applicationLogger.success(
+              `[${event.channel.toUpperCase()}] Cancelled ${rejectedItems.length} pending transaction(s) (${processingDurationMs}ms).`
+            );
             return;
           }
         }
@@ -336,6 +345,10 @@ async function bootstrapApplication(): Promise<void> {
           });
 
           await messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
+          const processingDurationMs = Date.now() - processingStartTimestamp;
+          applicationLogger.success(
+            `[${event.channel.toUpperCase()}] Sent balance summary for ${freshAccounts.length} account(s) via Fast-path (${processingDurationMs}ms).`
+          );
           return;
         }
 
@@ -352,6 +365,10 @@ async function bootstrapApplication(): Promise<void> {
           });
 
           await messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
+          const processingDurationMs = Date.now() - processingStartTimestamp;
+          applicationLogger.success(
+            `[${event.channel.toUpperCase()}] Sent budget status summary for ${budgetList.length} budget(s) via Fast-path (${processingDurationMs}ms).`
+          );
           return;
         }
 
@@ -373,6 +390,10 @@ async function bootstrapApplication(): Promise<void> {
           });
 
           await messagingGateway.sendMessage(event.channel, event.chatIdentifier, helpGuidanceMessage);
+          const processingDurationMs = Date.now() - processingStartTimestamp;
+          applicationLogger.success(
+            `[${event.channel.toUpperCase()}] Sent help guidance menu via Fast-path (${processingDurationMs}ms).`
+          );
           return;
         }
       }
@@ -426,6 +447,10 @@ async function bootstrapApplication(): Promise<void> {
             event.chatIdentifier,
             `⚠️ Transaksi tidak dapat disimpan karena data tidak valid:\n${validationErrorMessage}`
           );
+          const processingDurationMs = Date.now() - processingStartTimestamp;
+          applicationLogger.warn(
+            `[${event.channel.toUpperCase()}] Validation rejected: ${validationErrorMessage} (${processingDurationMs}ms).`
+          );
           return;
         }
 
@@ -452,6 +477,10 @@ async function bootstrapApplication(): Promise<void> {
         });
 
         await messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage.trim());
+        const processingDurationMs = Date.now() - processingStartTimestamp;
+        applicationLogger.success(
+          `[${event.channel.toUpperCase()}] Successfully recorded ${validRecordsToCreate.length} transaction(s) to Wallet & sent confirmation (${processingDurationMs}ms).`
+        );
         return;
       }
 
@@ -470,6 +499,10 @@ async function bootstrapApplication(): Promise<void> {
         });
 
         await messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
+        const processingDurationMs = Date.now() - processingStartTimestamp;
+        applicationLogger.success(
+          `[${event.channel.toUpperCase()}] Sent balance summary for ${freshAccounts.length} account(s) (${processingDurationMs}ms).`
+        );
         return;
       }
 
@@ -486,6 +519,10 @@ async function bootstrapApplication(): Promise<void> {
         });
 
         await messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
+        const processingDurationMs = Date.now() - processingStartTimestamp;
+        applicationLogger.success(
+          `[${event.channel.toUpperCase()}] Sent budget status summary for ${budgetList.length} budget(s) (${processingDurationMs}ms).`
+        );
         return;
       }
 
@@ -499,9 +536,14 @@ async function bootstrapApplication(): Promise<void> {
       });
 
       await messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
+      const processingDurationMs = Date.now() - processingStartTimestamp;
+      applicationLogger.success(
+        `[${event.channel.toUpperCase()}] Sent guidance / general reply (${processingDurationMs}ms).`
+      );
 
     } catch (processingError: unknown) {
-      applicationLogger.error(`Error while processing user message: ${processingError}`);
+      const conciseErrorMessage = formatConciseErrorMessage(processingError);
+      applicationLogger.error(`Error while processing user message: ${conciseErrorMessage}`);
 
       applicationLogger.fileDetail('error', 'User Message Processing Error Details', {
         error: processingError instanceof Error
