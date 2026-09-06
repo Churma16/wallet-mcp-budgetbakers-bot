@@ -10,6 +10,7 @@ import {
   formatErrorMessageForHuman,
   getHumanReadableTimestamp,
 } from './utils/humanResponseFormatter.js';
+import { validateAndSanitizeFinancialRecords } from './utils/recordValidator.js';
 
 async function bootstrapApplication(): Promise<void> {
   console.log('====================================================');
@@ -32,8 +33,17 @@ async function bootstrapApplication(): Promise<void> {
     console.log('[hint] Generate your personal access token at: https://web.budgetbakers.com/settings/mcp-server');
   }
 
-  if (!environmentConfig.geminiApiKey || !environmentConfig.walletMcpAccessToken) {
-    applicationLogger.warn('Please configure the required environment variables in your .env file before running the bot.');
+  if (!environmentConfig.allowedPhoneNumber) {
+    applicationLogger.error('ALLOWED_PHONE_NUMBER is not defined in .env file! Refusing to start for security.');
+    console.log('[hint] Set your WhatsApp phone number in .env: ALLOWED_PHONE_NUMBER=6281234567890');
+  }
+
+  if (
+    !environmentConfig.geminiApiKey ||
+    !environmentConfig.walletMcpAccessToken ||
+    !environmentConfig.allowedPhoneNumber
+  ) {
+    applicationLogger.warn('Please configure all required environment variables in your .env file before running the bot.');
     applicationLogger.info('You can test the Wallet MCP connection independently with: npm run test:mcp\n');
     process.exit(1);
   }
@@ -107,17 +117,40 @@ async function bootstrapApplication(): Promise<void> {
 
       // Route actions based on AI analysis
       if (extractedIntent.action === 'CREATE_RECORD' && extractedIntent.records && extractedIntent.records.length > 0) {
-        applicationLogger.mcp(`Creating ${extractedIntent.records.length} record(s) in Wallet...`);
+        const validationResult = validateAndSanitizeFinancialRecords(
+          extractedIntent.records,
+          cachedAccounts,
+          cachedCategories
+        );
+
+        if (!validationResult.isValid || validationResult.sanitizedRecords.length === 0) {
+          const validationErrorMessage = validationResult.validationErrors.join('\n');
+          applicationLogger.warn(`Financial record validation rejected:\n${validationErrorMessage}`);
+
+          applicationLogger.fileDetail('error', 'Financial Record Validation Failure', {
+            originalRecords: extractedIntent.records,
+            validationErrors: validationResult.validationErrors,
+          });
+
+          await whatsappBot.sendTextMessageReply(
+            event.remoteJid,
+            `⚠️ Transaksi tidak dapat disimpan karena data tidak valid:\n${validationErrorMessage}`
+          );
+          return;
+        }
+
+        const validRecordsToCreate = validationResult.sanitizedRecords;
+        applicationLogger.mcp(`Creating ${validRecordsToCreate.length} record(s) in Wallet...`);
 
         applicationLogger.fileDetail('mcp', 'Dispatching Record Creation to Wallet MCP', {
-          recordsCount: extractedIntent.records.length,
-          records: extractedIntent.records,
+          recordsCount: validRecordsToCreate.length,
+          records: validRecordsToCreate,
         });
 
-        await walletMcpClient.createRecords(extractedIntent.records);
+        await walletMcpClient.createRecords(validRecordsToCreate);
 
         const replyMessage = formatRecordSuccessMessage(
-          extractedIntent.records,
+          validRecordsToCreate,
           cachedAccounts,
           cachedCategories
         );
