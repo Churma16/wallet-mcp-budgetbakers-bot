@@ -27,12 +27,30 @@ export class WhatsappBotService {
   private isReconnecting: boolean = false;
   private readonly recentOutgoingMessageIdSet: Set<string> = new Set<string>();
   private readonly maxTrackedOutgoingMessageIds: number = 500;
+  private readonly recentIncomingMessageIdSet: Set<string> = new Set<string>();
+  private readonly maxTrackedIncomingMessageIds: number = 500;
+  private readonly normalizedAllowedPhoneNumber: string;
 
   constructor(
     private readonly sessionDataDirectoryPath: string,
     private readonly allowedPhoneNumber: string,
     private readonly onUserMessageReceived: UserMessageCallback
-  ) {}
+  ) {
+    this.normalizedAllowedPhoneNumber = this.allowedPhoneNumber.replace(/[^0-9]/g, '');
+  }
+
+  /**
+   * Tracks incoming message IDs to prevent duplicate processing from network retries
+   */
+  private recordIncomingMessageId(messageId: string): void {
+    if (this.recentIncomingMessageIdSet.size >= this.maxTrackedIncomingMessageIds) {
+      const oldestTrackedId = this.recentIncomingMessageIdSet.values().next().value;
+      if (oldestTrackedId) {
+        this.recentIncomingMessageIdSet.delete(oldestTrackedId);
+      }
+    }
+    this.recentIncomingMessageIdSet.add(messageId);
+  }
 
   /**
    * Tracks outgoing message IDs to prevent feedback loops in "Message Yourself" mode
@@ -150,8 +168,16 @@ export class WhatsappBotService {
           continue;
         }
 
-        // Ignore messages sent by this bot instance
+        // Check incoming message ID for deduplication (idempotency against network retries)
         const incomingMessageId = rawMessage.key.id;
+        if (incomingMessageId) {
+          if (this.recentIncomingMessageIdSet.has(incomingMessageId)) {
+            continue;
+          }
+          this.recordIncomingMessageId(incomingMessageId);
+        }
+
+        // Ignore messages sent by this bot instance
         if (incomingMessageId && this.recentOutgoingMessageIdSet.has(incomingMessageId)) {
           continue;
         }
@@ -162,13 +188,18 @@ export class WhatsappBotService {
           continue;
         }
 
-        const botUserPhoneNumber = this.socketInstance?.user?.id?.split(':')[0]?.split('@')[0] || '';
-        const botUserLinkedDeviceIdentifier = (this.socketInstance?.user as any)?.lid?.split(':')[0]?.split('@')[0] || '';
+        const [senderRawIdentifier, jidDomain] = remoteJid.split('@');
+        const normalizedSenderDigits = senderRawIdentifier.replace(/[^0-9]/g, '');
+
+        const botUserPhoneNumber =
+          this.socketInstance?.user?.id?.split(':')[0]?.split('@')[0]?.replace(/[^0-9]/g, '') || '';
+        const botUserLinkedDeviceIdentifier =
+          (this.socketInstance?.user as any)?.lid?.split(':')[0]?.split('@')[0] || '';
 
         const isMessageTargetingSelf = Boolean(
-          (botUserPhoneNumber && remoteJid.includes(botUserPhoneNumber)) ||
-          (botUserLinkedDeviceIdentifier && remoteJid.includes(botUserLinkedDeviceIdentifier)) ||
-          (this.allowedPhoneNumber && remoteJid.includes(this.allowedPhoneNumber))
+          (botUserPhoneNumber && normalizedSenderDigits === botUserPhoneNumber) ||
+          (botUserLinkedDeviceIdentifier && senderRawIdentifier === botUserLinkedDeviceIdentifier) ||
+          (this.normalizedAllowedPhoneNumber && normalizedSenderDigits === this.normalizedAllowedPhoneNumber)
         );
 
         const unwrappedMessageContent = this.extractUnwrappedMessageContent(rawMessage);
@@ -205,16 +236,18 @@ export class WhatsappBotService {
           }
         }
 
-        // Extract sender phone number (strip '@s.whatsapp.net', '@lid' or group notation)
-        const senderIdentifier = remoteJid.split('@')[0];
+        // Apply strict whitelist check if configured (skip check if chatting with oneself)
+        if (this.normalizedAllowedPhoneNumber && !isMessageTargetingSelf) {
+          const isSenderWhitelisted =
+            jidDomain === 's.whatsapp.net' && normalizedSenderDigits === this.normalizedAllowedPhoneNumber;
 
-        // Apply whitelist check if configured (skip check if chatting with oneself)
-        if (this.allowedPhoneNumber && !isMessageTargetingSelf && !remoteJid.includes(this.allowedPhoneNumber)) {
-          applicationLogger.security(`Ignored message from unauthorized sender: ${senderIdentifier}`);
-          continue;
+          if (!isSenderWhitelisted) {
+            applicationLogger.security(`Ignored message from unauthorized sender: ${remoteJid}`);
+            continue;
+          }
         }
 
-        await this.handleIncomingMessage(rawMessage, unwrappedMessageContent, remoteJid, senderIdentifier);
+        await this.handleIncomingMessage(rawMessage, unwrappedMessageContent, remoteJid, senderRawIdentifier);
       }
     });
   }
