@@ -22,7 +22,10 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     .filter(Boolean);
   const walletMcpBaseUrl = process.env.WALLET_MCP_BASE_URL || 'https://mcp.wallet.budgetbakers.com';
   const walletMcpAccessToken = process.env.WALLET_MCP_ACCESS_TOKEN || '';
-  const allowedPhoneNumber = (process.env.ALLOWED_PHONE_NUMBER || process.env.OWNER_PHONE_NUMBER || '').replace('@s.whatsapp.net', '');
+  const rawAllowedPhoneNumber = (process.env.ALLOWED_PHONE_NUMBER || process.env.OWNER_PHONE_NUMBER || '')
+    .replace('@s.whatsapp.net', '')
+    .trim();
+  const allowedPhoneNumber = rawAllowedPhoneNumber.replace(/[^0-9]/g, '');
   const whatsappSessionPath = process.env.WHATSAPP_SESSION_PATH || './auth_session';
   const logRetentionDays = parseInt(process.env.LOG_RETENTION_DAYS || '7', 10) || 7;
 
