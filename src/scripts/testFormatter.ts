@@ -5,6 +5,7 @@ import {
   formatErrorMessageForHuman,
   getHumanReadableTimestamp,
 } from '../utils/humanResponseFormatter.js';
+import { formatConciseErrorMessage } from '../utils/logger.js';
 
 console.log('=== TEST 1A: TODAY SINGLE RECORD ===');
 console.log(formatRecordSuccessMessage(
@@ -52,3 +53,11 @@ console.log(formatErrorMessageForHuman(new Error('[error] MCP Tool create_record
 
 console.log('\n=== TEST 6: ERROR - NETWORK TIMEOUT ===');
 console.log(formatErrorMessageForHuman(new Error('connect ETIMEDOUT 104.26.12.31:443')));
+
+console.log('\n=== TEST 7: CONCISE ERROR - 429 QUOTA EXCEEDED ===');
+const sampleQuotaError = `{"error":{"code":429,"message":"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.6-flash\\nPlease retry in 37.417182623s.","status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.Help","links":[{"description":"Learn more about Gemini API quotas","url":"https://ai.google.dev/gemini-api/docs/rate-limits"}]}]}}`;
+console.log('Concise:', formatConciseErrorMessage(sampleQuotaError));
+
+console.log('\n=== TEST 8: CONCISE ERROR - 503 UNAVAILABLE ===');
+const sampleUnavailableError = `{"error":{"code":503,"message":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.","status":"UNAVAILABLE"}}`;
+console.log('Concise:', formatConciseErrorMessage(sampleUnavailableError));
