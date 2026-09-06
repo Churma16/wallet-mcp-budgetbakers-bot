@@ -2,7 +2,7 @@ import { loadEnvironmentConfiguration } from './config/environmentConfig.js';
 import { WalletMcpClientService } from './services/walletMcpClient.js';
 import { GeminiAiService, ExtractedFinancialIntent } from './services/geminiAiService.js';
 import { WhatsappBotService, IncomingUserMessageEvent } from './services/whatsappBotService.js';
-import { applicationLogger, getFormattedTimestamp } from './utils/logger.js';
+import { applicationLogger, getFormattedTimestamp, purgeExpiredLogFiles } from './utils/logger.js';
 
 async function bootstrapApplication(): Promise<void> {
   console.log('====================================================');
@@ -10,6 +10,9 @@ async function bootstrapApplication(): Promise<void> {
   console.log('====================================================');
 
   const environmentConfig = loadEnvironmentConfiguration();
+
+  // Enforce file logger retention policy on startup
+  purgeExpiredLogFiles(environmentConfig.logRetentionDays);
 
   // Validate critical configuration variables
   if (!environmentConfig.geminiApiKey) {
@@ -47,8 +50,12 @@ async function bootstrapApplication(): Promise<void> {
 
   applicationLogger.success(`Cached ${cachedAccounts.length} accounts and ${cachedCategories.length} categories.`);
 
-  // 2. Initialize Gemini AI Service
-  const geminiAiService = new GeminiAiService(environmentConfig.geminiApiKey);
+  // 2. Initialize Gemini AI Service with fallback models
+  const geminiAiService = new GeminiAiService(
+    environmentConfig.geminiApiKey,
+    environmentConfig.geminiModel,
+    environmentConfig.geminiFallbackModels
+  );
 
   // 3. Define message processing handler
   const handleIncomingUserMessage = async (event: IncomingUserMessageEvent): Promise<void> => {
