@@ -14,11 +14,10 @@ export interface WalletCategoryItem {
 
 export interface CreateRecordInputPayload {
   accountId: string;
-  categoryId?: string;
   amount: number;
   recordDate: string;
+  categoryId?: string;
   note?: string;
-  paymentType?: 'Cash' | 'DebitCard' | 'CreditCard' | 'Transfer' | 'Voucher' | 'MobilePayment' | 'WebPayment';
   counterParty?: string;
 }
 
