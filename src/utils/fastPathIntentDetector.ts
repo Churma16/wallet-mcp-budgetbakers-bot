@@ -1,8 +1,9 @@
-export type FastPathAction = 'CHECK_BALANCE' | 'CHECK_BUDGET' | 'HELP_MENU' | null;
+﻿export type FastPathAction = 'CHECK_BALANCE' | 'CHECK_BUDGET' | 'HELP_MENU' | null;
 
 /**
  * Fast-path deterministic classifier that intercepts common repetitive commands
- * (e.g. balance check, budget check, help menu) directly in code to save 100% of Gemini AI tokens.
+ * (e.g. balance check, budget check, help menu) directly in code to save 100% of AI tokens.
+ * Supports both Indonesian and English keywords.
  */
 export function detectFastPathAction(userMessageText: string): FastPathAction {
   if (!userMessageText || typeof userMessageText !== 'string') {
@@ -19,20 +20,20 @@ export function detectFastPathAction(userMessageText: string): FastPathAction {
     return null;
   }
 
-  // 1. Balance Checks (e.g. "saldo", "cek saldo", "lihat saldo", "info saldo", "balance", "rekening")
-  const balancePattern = /^(?:cek|lihat|info|total)?\s*(?:saldo|balance|rekening|total\s+saldo)(?:\s+(?:saya|rekening))?$/i;
+  // 1. Balance Checks (Indonesian: "saldo", "cek saldo", "rekening"; English: "balance", "check balance", "balances", "my balance")
+  const balancePattern = /^(?:cek|lihat|info|total|check|view|show|my)?\s*(?:saldo|balance|balances|rekening|total\s+saldo|account\s+balance|account\s+balances)(?:\s+(?:saya|rekening|accounts))?$/i;
   if (balancePattern.test(trimmedLowerText)) {
     return 'CHECK_BALANCE';
   }
 
-  // 2. Budget Checks (e.g. "budget", "cek budget", "lihat budget", "anggaran", "sisa budget")
-  const budgetPattern = /^(?:cek|lihat|info|status)?\s*(?:budget|anggaran|sisa\s+budget|status\s+budget|status\s+anggaran)(?:\s+(?:saya|aktif))?$/i;
+  // 2. Budget Checks (Indonesian: "budget", "cek budget", "anggaran"; English: "budget", "check budget", "budget status", "budgets")
+  const budgetPattern = /^(?:cek|lihat|info|status|check|view|show|my)?\s*(?:budget|budgets|anggaran|sisa\s+budget|status\s+budget|status\s+anggaran|budget\s+status)(?:\s+(?:saya|aktif|active))?$/i;
   if (budgetPattern.test(trimmedLowerText)) {
     return 'CHECK_BUDGET';
   }
 
-  // 3. Help / Greetings / Menu (e.g. "halo", "hi", "menu", "bantuan", "help", "ping", "p")
-  const helpPattern = /^(?:halo|hello|hi|hai|menu|help|bantuan|ping|p|panduan|mulai|start)$/i;
+  // 3. Help / Greetings / Menu (Indonesian: "halo", "bantuan", "panduan"; English: "hello", "hi", "help", "menu", "guide", "start")
+  const helpPattern = /^(?:halo|hello|hi|hai|menu|help|bantuan|ping|p|panduan|guide|mulai|start|commands)$/i;
   if (helpPattern.test(trimmedLowerText)) {
     return 'HELP_MENU';
   }
@@ -46,8 +47,9 @@ export interface PendingConfirmationIntent {
 }
 
 /**
- * Detects WhatsApp confirmation/cancellation replies for pending transaction tickets.
- * Handles "ya", "catat", "ya 1", "ya semua", "batal", "batal 2", "batal semua", etc.
+ * Detects confirmation/cancellation replies for pending transaction tickets.
+ * Supports Indonesian ("ya", "catat", "batal", "ya semua", "batal semua")
+ * and English ("yes", "record", "confirm", "cancel", "reject", "yes all", "cancel all").
  */
 export function detectPendingConfirmationAction(userMessageText: string): PendingConfirmationIntent | null {
   if (!userMessageText || typeof userMessageText !== 'string') {
@@ -56,18 +58,18 @@ export function detectPendingConfirmationAction(userMessageText: string): Pendin
 
   const trimmedText = userMessageText.toLowerCase().trim();
 
-  // 1. Confirm All (e.g. "ya semua", "catat semua", "ok semua", "y all")
-  if (/^(?:ya|catat|ok|oke|y|yes|confirm)\s+(?:semua|all)$/i.test(trimmedText)) {
+  // 1. Confirm All (e.g. "ya semua", "catat semua", "ok semua", "yes all", "confirm all")
+  if (/^(?:ya|catat|ok|oke|y|yes|confirm|record)\s+(?:semua|all)$/i.test(trimmedText)) {
     return { actionType: 'CONFIRM', targetScope: 'ALL' };
   }
 
-  // 2. Reject All (e.g. "batal semua", "abaikan semua", "cancel all")
-  if (/^(?:batal|abaikan|gak|ga|gajadi|cancel|tolak)\s+(?:semua|all)$/i.test(trimmedText)) {
+  // 2. Reject All (e.g. "batal semua", "abaikan semua", "cancel all", "reject all")
+  if (/^(?:batal|abaikan|gak|ga|gajadi|cancel|tolak|reject)\s+(?:semua|all)$/i.test(trimmedText)) {
     return { actionType: 'REJECT', targetScope: 'ALL' };
   }
 
-  // 3. Confirm Specific Ticket (e.g. "ya 1", "catat #2", "ok 3", "y 1")
-  const confirmSpecificMatch = trimmedText.match(/^(?:ya|catat|ok|oke|y|yes|confirm)\s+#?(\d+)$/i);
+  // 3. Confirm Specific Ticket (e.g. "ya 1", "catat #2", "yes 3", "record 1")
+  const confirmSpecificMatch = trimmedText.match(/^(?:ya|catat|ok|oke|y|yes|confirm|record)\s+#?(\d+)$/i);
   if (confirmSpecificMatch && confirmSpecificMatch[1]) {
     const ticketNumber = parseInt(confirmSpecificMatch[1], 10);
     if (!isNaN(ticketNumber) && ticketNumber > 0) {
@@ -75,8 +77,8 @@ export function detectPendingConfirmationAction(userMessageText: string): Pendin
     }
   }
 
-  // 4. Reject Specific Ticket (e.g. "batal 1", "abaikan #2", "cancel 3")
-  const rejectSpecificMatch = trimmedText.match(/^(?:batal|abaikan|gak|ga|gajadi|cancel|tolak)\s+#?(\d+)$/i);
+  // 4. Reject Specific Ticket (e.g. "batal 1", "cancel 2", "reject 3")
+  const rejectSpecificMatch = trimmedText.match(/^(?:batal|abaikan|gak|ga|gajadi|cancel|tolak|reject)\s+#?(\d+)$/i);
   if (rejectSpecificMatch && rejectSpecificMatch[1]) {
     const ticketNumber = parseInt(rejectSpecificMatch[1], 10);
     if (!isNaN(ticketNumber) && ticketNumber > 0) {
@@ -84,16 +86,15 @@ export function detectPendingConfirmationAction(userMessageText: string): Pendin
     }
   }
 
-  // 5. Confirm Latest Single (e.g. "ya", "catat", "ok", "oke", "y", "yes", "confirm")
-  if (/^(?:ya|catat|ok|oke|y|yes|confirm)$/i.test(trimmedText)) {
+  // 5. Confirm Latest Single (e.g. "ya", "catat", "ok", "oke", "y", "yes", "confirm", "record")
+  if (/^(?:ya|catat|ok|oke|y|yes|confirm|record)$/i.test(trimmedText)) {
     return { actionType: 'CONFIRM', targetScope: 'LATEST' };
   }
 
-  // 6. Reject Latest Single (e.g. "batal", "abaikan", "gak", "ga", "gajadi", "cancel", "tolak")
-  if (/^(?:batal|abaikan|gak|ga|gajadi|cancel|tolak)$/i.test(trimmedText)) {
+  // 6. Reject Latest Single (e.g. "batal", "abaikan", "gak", "ga", "gajadi", "cancel", "tolak", "reject")
+  if (/^(?:batal|abaikan|gak|ga|gajadi|cancel|tolak|reject)$/i.test(trimmedText)) {
     return { actionType: 'REJECT', targetScope: 'LATEST' };
   }
 
   return null;
 }
-

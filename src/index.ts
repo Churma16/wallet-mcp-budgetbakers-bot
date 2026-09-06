@@ -28,6 +28,7 @@ import {
 import { validateAndSanitizeFinancialRecords } from './utils/recordValidator.js';
 import { detectFastPathAction, detectPendingConfirmationAction } from './utils/fastPathIntentDetector.js';
 import { CreateRecordInputPayload } from './types/walletTypes.js';
+import { setActiveLanguage, getDictionary } from './i18n/index.js';
 
 async function bootstrapApplication(): Promise<void> {
   console.log('====================================================');
@@ -35,6 +36,8 @@ async function bootstrapApplication(): Promise<void> {
   console.log('====================================================');
 
   const environmentConfig = loadEnvironmentConfiguration();
+  setActiveLanguage(environmentConfig.appLanguage);
+  applicationLogger.info(`Configured Response Language: ${environmentConfig.appLanguage.toUpperCase()}`);
 
   // Enforce file logger retention policy on startup
   purgeExpiredLogFiles(environmentConfig.logRetentionDays);
@@ -374,13 +377,14 @@ async function bootstrapApplication(): Promise<void> {
 
         if (fastPathAction === 'HELP_MENU') {
           applicationLogger.info('Fast-path matched: HELP_MENU (0 AI tokens consumed)');
+          const dictionary = getDictionary();
           const helpGuidanceMessage = [
-            '👋 Halo! Kirimkan pengeluaran Anda (misal: "Makan siang 25rb pakai Cash") atau foto struk belanja untuk dicatat ke Wallet.',
+            dictionary.help.welcomeGuidance,
             '',
-            '*Perintah Cepat (0 Token AI):*',
-            '• *Saldo* / *Cek Saldo*: Cek saldo semua rekening',
-            '• *Budget* / *Cek Budget*: Cek status limit anggaran',
-            '• *Menu* / *Bantuan*: Menampilkan petunjuk ini',
+            dictionary.help.quickCommandsTitle,
+            dictionary.help.commandBalance,
+            dictionary.help.commandBudget,
+            dictionary.help.commandMenu,
           ].join('\n');
 
           applicationLogger.fileDetail('chat', 'Dispatched Fast-path Help Guidance Reply', {
@@ -445,7 +449,7 @@ async function bootstrapApplication(): Promise<void> {
           await messagingGateway.sendMessage(
             event.channel,
             event.chatIdentifier,
-            `⚠️ Transaksi tidak dapat disimpan karena data tidak valid:\n${validationErrorMessage}`
+            getDictionary().errors.validationRejected(validationErrorMessage)
           );
           const processingDurationMs = Date.now() - processingStartTimestamp;
           applicationLogger.warn(
@@ -527,7 +531,7 @@ async function bootstrapApplication(): Promise<void> {
       }
 
       // Default: general reply or guidance
-      const replyMessage = extractedIntent.explanation || '👋 Halo! Kirimkan pengeluaran Anda (misal: "Makan siang 25rb pakai Cash") atau foto struk belanja untuk dicatat ke Wallet.';
+      const replyMessage = extractedIntent.explanation || getDictionary().help.welcomeGuidance;
 
       applicationLogger.fileDetail('chat', 'Dispatched General Guidance Reply', {
         channel: event.channel,

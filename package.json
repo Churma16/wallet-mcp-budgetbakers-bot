@@ -1,38 +1,39 @@
 {
-  "name": "wallet_mcp",
-  "version": "1.1.0",
-  "description": "Automated personal bookkeeping assistant via WhatsApp and Telegram for BudgetBakers Wallet via MCP",
-  "author": "churma16",
-  "license": "MIT",
-  "type": "module",
-  "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts",
-    "test:mcp": "tsx src/scripts/testWalletMcp.ts",
-    "test:ai": "tsx src/scripts/testAiProvider.ts",
-    "test:email-rules": "tsx src/scripts/testEmailGateRules.ts",
-    "test:email": "tsx src/scripts/testEmailImap.ts",
-    "test:email-gate-live": "tsx src/scripts/testFetchRealEmailsGate.ts",
-    "test:telegram": "tsx src/scripts/testTelegramBot.ts",
-    "test:format": "tsx src/scripts/testMessageFormat.ts",
-    "build": "tsc"
-  },
-  "dependencies": {
-    "@google/genai": "^2.21.0",
-    "@whiskeysockets/baileys": "^7.0.0-rc14",
-    "axios": "^1.20.0",
-    "dotenv": "^17.4.2",
-    "grammy": "^1.46.0",
-    "imapflow": "^1.7.8",
-    "mailparser": "^3.9.22",
-    "pino": "^10.3.1",
-    "qrcode-terminal": "^0.12.0"
-  },
-  "devDependencies": {
-    "@types/mailparser": "^3.4.6",
-    "@types/node": "^26.4.1",
-    "@types/qrcode-terminal": "^0.12.2",
-    "tsx": "^4.23.13",
-    "typescript": "^7.0.2"
-  }
+    "name": "wallet_mcp",
+    "version": "1.1.0",
+    "description": "Automated personal bookkeeping assistant via WhatsApp and Telegram for BudgetBakers Wallet via MCP",
+    "author": "churma16",
+    "license": "MIT",
+    "type": "module",
+    "scripts": {
+        "dev": "tsx watch src/index.ts",
+        "start": "tsx src/index.ts",
+        "test:mcp": "tsx src/scripts/testWalletMcp.ts",
+        "test:ai": "tsx src/scripts/testAiProvider.ts",
+        "test:email-rules": "tsx src/scripts/testEmailGateRules.ts",
+        "test:email": "tsx src/scripts/testEmailImap.ts",
+        "test:email-gate-live": "tsx src/scripts/testFetchRealEmailsGate.ts",
+        "test:telegram": "tsx src/scripts/testTelegramBot.ts",
+        "test:format": "tsx src/scripts/testMessageFormat.ts",
+        "test:i18n": "tsx src/scripts/testResponseDictionary.ts",
+        "build": "tsc"
+    },
+    "dependencies": {
+        "@google/genai": "^2.21.0",
+        "@whiskeysockets/baileys": "^7.0.0-rc14",
+        "axios": "^1.20.0",
+        "dotenv": "^17.4.2",
+        "grammy": "^1.46.0",
+        "imapflow": "^1.7.8",
+        "mailparser": "^3.9.22",
+        "pino": "^10.3.1",
+        "qrcode-terminal": "^0.12.0"
+    },
+    "devDependencies": {
+        "@types/mailparser": "^3.4.6",
+        "@types/node": "^26.4.1",
+        "@types/qrcode-terminal": "^0.12.2",
+        "tsx": "^4.23.13",
+        "typescript": "^7.0.2"
+    }
 }
