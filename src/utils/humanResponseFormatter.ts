@@ -4,9 +4,69 @@ import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload, Wallet
  * Generates human readable Indonesian time format, e.g. "15:05 WIB"
  */
 export function getHumanReadableTimestamp(date: Date = new Date()): string {
-  const formattedHours = String(date.getHours()).padStart(2, '0');
-  const formattedMinutes = String(date.getMinutes()).padStart(2, '0');
-  return `${formattedHours}:${formattedMinutes} WIB`;
+  const jakartaTimeZone = 'Asia/Jakarta';
+  const timeFormatter = new Intl.DateTimeFormat('id-ID', {
+    timeZone: jakartaTimeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const formattedTime = timeFormatter.format(date).replace('.', ':');
+  return `${formattedTime} WIB`;
+}
+
+/**
+ * Formats a transaction timestamp for Indonesian human display in WIB.
+ * If the transaction occurred today, shows time (e.g. "17:15 WIB").
+ * If the transaction occurred on a different date (e.g. past transaction),
+ * shows date and time (e.g. "3 Sep 2026, 17:15 WIB").
+ */
+export function formatTransactionDate(dateInput?: string | Date): string {
+  if (!dateInput) {
+    return getHumanReadableTimestamp();
+  }
+
+  const transactionDate = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+  if (isNaN(transactionDate.getTime())) {
+    return getHumanReadableTimestamp();
+  }
+
+  const jakartaTimeZone = 'Asia/Jakarta';
+
+  const timeFormatter = new Intl.DateTimeFormat('id-ID', {
+    timeZone: jakartaTimeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+
+  const dateFormatter = new Intl.DateTimeFormat('id-ID', {
+    timeZone: jakartaTimeZone,
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+
+  const dateComparisonFormatter = new Intl.DateTimeFormat('id-ID', {
+    timeZone: jakartaTimeZone,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  });
+
+  const now = new Date();
+  const transactionDateKey = dateComparisonFormatter.format(transactionDate);
+  const nowDateKey = dateComparisonFormatter.format(now);
+
+  const formattedTime = timeFormatter.format(transactionDate).replace('.', ':');
+  const timeString = `${formattedTime} WIB`;
+
+  if (transactionDateKey === nowDateKey) {
+    return timeString;
+  }
+
+  const formattedDate = dateFormatter.format(transactionDate);
+  return `${formattedDate}, ${timeString}`;
 }
 
 /**
@@ -31,19 +91,19 @@ export function formatCurrencyAmount(amount: number, currencyCode: string = 'IDR
 function formatSingleRecordSuccess(
   recordItem: CreateRecordInputPayload,
   accountName: string,
-  categoryName: string,
-  currentTimestamp: string
+  categoryName: string
 ): string {
   const isExpense = recordItem.amount < 0;
   const transactionTypeIcon = isExpense ? '💸' : '💰';
   const formattedAmount = formatCurrencyAmount(recordItem.amount);
   const transactionTitle = recordItem.note || recordItem.counterParty || (isExpense ? 'Pengeluaran' : 'Pemasukan');
+  const recordTimestampDisplay = formatTransactionDate(recordItem.recordDate);
 
   return [
     `✅ *${transactionTitle}* berhasil dicatat!`,
     '',
     `${transactionTypeIcon} ${formattedAmount}  •  ${accountName}`,
-    `🏷️ ${categoryName}  •  ${currentTimestamp}`,
+    `🏷️ ${categoryName}  •  ${recordTimestampDisplay}`,
   ].join('\n');
 }
 
@@ -53,10 +113,10 @@ function formatSingleRecordSuccess(
 function formatMultipleRecordsSuccess(
   recordList: CreateRecordInputPayload[],
   availableAccounts: WalletAccountItem[],
-  availableCategories: WalletCategoryItem[],
-  currentTimestamp: string
+  availableCategories: WalletCategoryItem[]
 ): string {
   const totalRecordsCount = recordList.length;
+  const currentTimestamp = getHumanReadableTimestamp();
   const headerMessage = `✅ *${totalRecordsCount} transaksi* berhasil dicatat! (${currentTimestamp})`;
 
   const recordEntries = recordList.map((recordItem, recordIndex) => {
@@ -66,10 +126,11 @@ function formatMultipleRecordsSuccess(
     const accountName = availableAccounts.find(account => account.id === recordItem.accountId)?.name || 'Akun';
     const categoryName = availableCategories.find(category => category.id === recordItem.categoryId)?.name || 'Umum';
     const transactionDescription = recordItem.note || recordItem.counterParty || (isExpense ? 'Pengeluaran' : 'Pemasukan');
+    const recordTimestampDisplay = formatTransactionDate(recordItem.recordDate);
 
     return [
       `${recordIndex + 1}. ${transactionTypeIcon} ${transactionDescription} — *${formattedAmount}* dari ${accountName}`,
-      `   🏷️ ${categoryName}`,
+      `   🏷️ ${categoryName}  •  ${recordTimestampDisplay}`,
     ].join('\n');
   });
 
@@ -88,16 +149,14 @@ export function formatRecordSuccessMessage(
   availableAccounts: WalletAccountItem[],
   availableCategories: WalletCategoryItem[]
 ): string {
-  const currentTimestamp = getHumanReadableTimestamp();
-
   if (recordList.length === 1) {
     const singleRecord = recordList[0];
     const accountName = availableAccounts.find(account => account.id === singleRecord.accountId)?.name || 'Akun';
     const categoryName = availableCategories.find(category => category.id === singleRecord.categoryId)?.name || 'Umum';
-    return formatSingleRecordSuccess(singleRecord, accountName, categoryName, currentTimestamp);
+    return formatSingleRecordSuccess(singleRecord, accountName, categoryName);
   }
 
-  return formatMultipleRecordsSuccess(recordList, availableAccounts, availableCategories, currentTimestamp);
+  return formatMultipleRecordsSuccess(recordList, availableAccounts, availableCategories);
 }
 
 /**
