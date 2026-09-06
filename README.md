@@ -1,108 +1,207 @@
 # WhatsApp AI Bookkeeper for BudgetBakers Wallet
 
-Automated personal bookkeeping via WhatsApp using Google Gemini 2.0 Flash (Free Tier) and BudgetBakers Wallet Model Context Protocol (MCP).
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Node.js](https://img.shields.io/badge/Node.js-%3E=18.0.0-339933?logo=node.js&logoColor=white)](https://nodejs.org/) [![Google Gemini](https://img.shields.io/badge/Google%20Gemini-2.0%20Flash-4285F4?logo=google&logoColor=white)](https://aistudio.google.com/) [![Baileys](https://img.shields.io/badge/WhatsApp-Baileys-25D366?logo=whatsapp&logoColor=white)](https://github.com/WhiskeySockets/Baileys) [![BudgetBakers MCP](https://img.shields.io/badge/BudgetBakers-Wallet%20MCP-FF6B6B)](https://web.budgetbakers.com/settings/mcp-server) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+An automated personal bookkeeping assistant via WhatsApp integrated directly with BudgetBakers Wallet through the official Model Context Protocol (MCP) Streamable HTTP endpoint. Powered by Google Gemini, the system converts natural language chats and physical receipt photos into structured wallet records, monitors bank/e-wallet notification emails in real time, and requests interactive confirmation before committing financial records.
 
 ---
 
-## Features
+## Architecture Flow
 
-- **Natural Language Recording:** Send messages like *"Makan siang di McD 45rb pakai BCA"* or *"Gaji masuk 7.5jt ke Mandiri"*.
-- **Receipt Photo OCR:** Take a photo of a shopping receipt or invoice; the AI extracts merchant, date, total amount, and categorizes it automatically.
-- **Real-Time Bank & E-Wallet Email Sync (Gmail IMAP IDLE):** Automatically captures transaction emails from **Mandiri, Bank Jago, GoPay, OVO, DANA, and ShopeePay** in real-time, filtered via a Two-Gate defense engine, and requests interactive confirmation via WhatsApp before recording.
-- **Budget & Balance Inquiries:** Ask *"Berapa sisa budget makan bulan ini?"* or *"Cek saldo BCA"*.
-- **100% Free Architecture:** Powered by Google Gemini 2.0 Flash (Free Tier) and official Wallet MCP Streamable HTTP endpoint.
-- **Security Whitelist:** Restricts interaction to your own verified WhatsApp phone number.
+```mermaid
+flowchart TD
+    subgraph WhatsApp_Channel ["WhatsApp Channel"]
+        User["User WhatsApp"]
+        Bot["Baileys WhatsApp Gateway"]
+        FastPath["Fast-Path Intent Detector (Zero Token)"]
+        PendingMgr["Pending Transaction Manager"]
+    end
+
+    subgraph AI_Engine ["AI Engine"]
+        GeminiNLU["Gemini NLU & Vision Parser"]
+        FallbackCascade["Model Fallback Cascade"]
+    end
+
+    subgraph Email_Sync ["Real-Time Email Sync"]
+        Gmail["Gmail IMAP Server (IDLE)"]
+        Listener["IMAP Listener Service"]
+        Gate1["Gate 1: Regex & Domain Filter (Zero Token)"]
+        Gate2["Gate 2: Gemini Financial Classifier"]
+    end
+
+    subgraph Wallet_Integration ["BudgetBakers Wallet"]
+        McpClient["Wallet MCP Client (JSON-RPC)"]
+        BBCloud["BudgetBakers Cloud"]
+    end
+
+    User -->|Message / Receipt Image| Bot
+    Bot --> FastPath
+    FastPath -->|Confirmation / Simple Commands| PendingMgr
+    FastPath -->|Financial NLP / Receipt OCR| GeminiNLU
+    GeminiNLU -.-> FallbackCascade
+    GeminiNLU -->|Validated Record| McpClient
+
+    Gmail -->|IMAP IDLE Push| Listener
+    Listener --> Gate1
+    Gate1 -->|Pass Validation| Gate2
+    Gate2 -->|Extracted Transaction| PendingMgr
+    PendingMgr -->|Send Interactive Ticket| Bot
+    PendingMgr -->|Confirmed Ticket| McpClient
+
+    McpClient --> BBCloud
+    BBCloud -->|Response & Balances| McpClient
+    McpClient --> Bot
+    Bot -->|Structured Summary| User
+```
+
+---
+
+## Key Features
+
+- **Natural Language Transaction Recording**: Parse casual Indonesian shorthand (e.g., *"Kopi kenangan 28rb bca"*, *"Makan siang padang 35rb tunai"*, or *"Gaji masuk 7.5jt ke Mandiri"*).
+- **Physical Receipt Photo OCR**: Send photos of physical paper receipts or invoices; Google Gemini extracts merchant, transaction timestamp, line items, total amount, and categorizes automatically.
+- **Real-Time Bank & E-Wallet Email Sync**: Automatically monitors transaction emails via Gmail IMAP IDLE for **Bank Mandiri (Livin), Bank Jago, GoPay, OVO, DANA, and ShopeePay**.
+- **Two-Gate Spam & Promo Defense Engine**:
+  - **Gate 1**: Header, sender domain, regex validation, security keyword blacklist (OTP, login alerts, promos), and in-memory deduplication (zero AI tokens spent).
+  - **Gate 2**: Gemini structured schema extraction for verified financial notifications.
+- **Interactive WhatsApp Confirmation Queue**: Bank email transactions generate numbered interactive tickets (`#1`, `#2`). Confirm individually (`Ya 1`, `Catat 1`), in bulk (`Ya semua`, `Catat semua`), or cancel (`Batal 1`, `Batal semua`).
+- **Budget & Balance Inquiries**: Check balances across accounts (*"Cek saldo rekening"*, *"Berapa sisa BCA?"*) or inspect budget limits (*"Status budget bulan ini"*).
+- **Zero-Token Fast-Path Processor**: Confirmation commands and simple keywords bypass LLM processing entirely for instant response times and token savings.
+- **Security Whitelist**: Strict phone number restriction ensures only authorized users can interact with the bot.
+
+---
+
+## Tech Stack & Libraries
+
+- **Language & Runtime**: TypeScript 5.x on Node.js (tested on LTS v18 and v20+ via `tsx`)
+- **AI / NLU Engine**: Google Gemini API via `@google/genai` (Gemini 2.0 Flash / 1.5 Flash fallback)
+- **WhatsApp Gateway**: `@whiskeysockets/baileys` (Multi-device WhatsApp Web socket API)
+- **MCP Client**: Custom JSON-RPC over HTTP client targeting BudgetBakers Wallet MCP Server
+- **Email Synchronization**: `imapflow` (IMAP IDLE push events) and `mailparser` (RFC 822 stream parsing)
+- **Logging**: `pino` with rotating daily file logs and clean console output
 
 ---
 
 ## Prerequisites
 
-1. **Node.js**: v18 LTS or v20+ installed.
-2. **Google Gemini API Key (Free):**
-   - Obtain your free API key at [https://aistudio.google.com](https://aistudio.google.com).
-3. **BudgetBakers Wallet MCP Token & Permissions:**
-   - Go to [https://web.budgetbakers.com/settings/mcp-server](https://web.budgetbakers.com/settings/mcp-server).
-   - Generate a **Personal Access Token**.
-   - Ensure the following permissions are checked:
-     - `records.create` and `records.read`
+1. **Node.js**: Version 18.0.0 or higher.
+2. **Google Gemini API Key**:
+   - Obtain a free API key from [Google AI Studio](https://aistudio.google.com).
+3. **BudgetBakers Wallet MCP Token**:
+   - Access [BudgetBakers MCP Server Settings](https://web.budgetbakers.com/settings/mcp-server).
+   - Generate a **Personal Access Token** with the following scopes enabled:
+     - `records.create`
+     - `records.read`
      - `accounts.read`
      - `categories.read`
      - `budgets.read`
+4. **Google App Password (Optional for Email Sync)**:
+   - If enabling real-time bank email monitoring:
+     1. Enable 2-Step Verification on your Google Account.
+     2. Navigate to Google Account > Security > App Passwords.
+     3. Create an app password (e.g., named "Wallet Bot") and keep the 16-character secret.
 
 ---
 
-## Setup & Configuration
+## Installation & Setup
 
-### 1. Configure Environment Variables
-Copy `.env.example` to `.env`:
+### 1. Clone and Install Dependencies
+
+```bash
+git clone https://github.com/username/wallet_mcp.git
+cd wallet_mcp
+npm install
+```
+
+### 2. Environment Configuration
+
+Copy the example environment file and populate your credentials:
+
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` and fill in your credentials:
-```env
-# Google Gemini API Key
-GEMINI_API_KEY=your_gemini_api_key_here
+Key environment variables:
 
-# BudgetBakers Wallet MCP
-WALLET_MCP_BASE_URL=https://mcp.wallet.budgetbakers.com
-WALLET_MCP_ACCESS_TOKEN=your_personal_access_token_here
+| Variable | Description | Example / Default |
+| :--- | :--- | :--- |
+| `AI_PROVIDER` | Active AI Provider (`gemini`, `openrouter`, `groq`, `ollama`, `openai`) | `gemini` |
+| `GEMINI_API_KEY` | Google Gemini API authentication key | `AIzaSy...` |
+| `GEMINI_MODEL` | Primary Gemini model identifier | `gemini-3.6-flash` |
+| `GEMINI_FALLBACK_MODELS` | Comma-separated cascade fallback models | `gemini-3.5-flash,gemini-3.5-flash-lite` |
+| `GEMINI_TIMEOUT_SECONDS` | Request timeout before triggering fallback | `20` |
+| `OPENROUTER_API_KEY` | OpenRouter API Key (if `AI_PROVIDER=openrouter`) | `sk-or-v1-...` |
+| `AI_MODEL` | Active model for OpenRouter / Groq / Ollama / OpenAI | `google/gemini-2.0-flash-exp:free` |
+| `AI_BASE_URL` | Custom endpoint for OpenAI-compatible providers | `http://localhost:11434/v1` |
+| `WALLET_MCP_BASE_URL` | BudgetBakers Wallet MCP endpoint | `https://mcp.wallet.budgetbakers.com` |
+| `WALLET_MCP_ACCESS_TOKEN` | BudgetBakers Personal Access Token | `pat_...` |
+| `ALLOWED_PHONE_NUMBER` | Authorized WhatsApp number (international format) | `6281234567890` |
+| `WHATSAPP_SESSION_PATH` | Local directory for multi-device credentials | `./auth_session` |
+| `LOG_RETENTION_DAYS` | Daily log rotation retention period | `7` |
+| `EMAIL_SYNC_ENABLED` | Toggle real-time bank email sync via IMAP | `true` or `false` |
+| `EMAIL_IMAP_HOST` | IMAP server address | `imap.gmail.com` |
+| `EMAIL_IMAP_PORT` | IMAP SSL port | `993` |
+| `EMAIL_IMAP_USER` | Gmail address receiving bank notifications | `user@gmail.com` |
+| `EMAIL_IMAP_PASSWORD` | 16-character Google App Password | `abcd efgh ijkl mnop` |
+| `EMAIL_LOOKBACK_MINUTES`| Lookback window on initial startup | `10` |
 
-# Your WhatsApp Phone Number (International format without '+' or spaces)
-# Example: 6281234567890
-ALLOWED_PHONE_NUMBER=6281234567890
+### 3. Verify Integrations & Connection Tests
 
-# Email Bank Synchronization (Optional - Gmail IMAP IDLE)
-EMAIL_SYNC_ENABLED=true
-EMAIL_IMAP_HOST=imap.gmail.com
-EMAIL_IMAP_PORT=993
-EMAIL_IMAP_USER=your_email@gmail.com
-EMAIL_IMAP_PASSWORD=your_16_char_google_app_password
-EMAIL_LOOKBACK_MINUTES=10
-```
+Run the built-in diagnostic scripts to confirm API connectivity before starting:
 
-### 2. Verify Connections & Rules
-Test your Wallet MCP connection and permissions:
 ```bash
+# Verify Wallet MCP credentials, scopes, accounts, and categories
 npm run test:mcp
-```
 
-Test Bank Email Rules & WhatsApp confirmation intent detection (Gate 1):
-```bash
+# Verify active AI Provider NLU and email transaction extraction
+npm run test:ai
+
+# Verify Gate 1 bank email rules and confirmation intent detection
 npm run test:email-rules
-```
 
-Verify Gmail IMAP connection:
-```bash
+# Verify Gmail IMAP connection & credentials (if email sync is enabled)
 npm run test:email
+
+# Test live email fetching and Gate 1 filtering against your inbox
+npm run test:email-gate-live
 ```
 
-### 3. Start the WhatsApp Bot
+### 4. Start the Application
+
+Start in development mode with auto-reload:
+```bash
+npm run dev
+```
+
+Or start for production:
 ```bash
 npm start
 ```
-1. A QR code will appear in your terminal.
-2. Open WhatsApp on your phone > Settings > **Linked Devices** > **Link a Device**.
-3. Scan the QR code.
-4. Once connected, your session will be saved in `./auth_session` so you won't need to scan again on restarts.
+
+**WhatsApp Pairing Steps:**
+1. A QR code will display in the terminal.
+2. Open WhatsApp on your phone: Settings > **Linked Devices** > **Link a Device**.
+3. Scan the terminal QR code.
+4. Credentials will be persisted inside `./auth_session`. Subsequent restarts will reconnect automatically without re-scanning.
 
 ---
 
-## Usage Examples
+## Usage Scenarios & Commands
 
 Send messages from your whitelisted WhatsApp number to the bot:
 
-| Intent | Example WhatsApp Message |
-| :--- | :--- |
-| **Expense** | *"Kopi kenangan 28rb bca"* |
-| **Expense with details** | *"Beli bensin pertamax 50rb cash, note: isi di spbu rest area"* |
-| **Income** | *"Terima transfer freelance 1.5jt ke Mandiri"* |
-| **Receipt Photo** | Send a photo of your receipt (optional caption: *"bayar pakai kartu kredit"* ) |
-| **Email Confirmation (Single)** | Reply *"Ya"* or *"Catat"* (records latest ticket) / *"Batal"* (cancels ticket) |
-| **Email Confirmation (Specific)** | Reply *"Ya 1"* or *"Catat #2"* / *"Batal 1"* |
-| **Email Confirmation (Bulk)** | Reply *"Ya semua"* or *"Catat semua"* / *"Batal semua"* |
-| **Check Balances** | *"Cek saldo rekening"* or *"Berapa saldo BCA?"* |
-| **Check Budgets** | *"Status budget bulan ini"* |
+| Scenario | WhatsApp Message Example | System Action |
+| :--- | :--- | :--- |
+| **Expense Recording** | *"Kopi kenangan 28rb bca"* | Resolves account `BCA`, categorizes as `Food & Beverage`, creates expense record. |
+| **Detailed Expense** | *"Beli bensin pertamax 50rb cash, note: rest area km 57"* | Creates expense under `Cash` with category `Transportation` and custom note. |
+| **Income Recording** | *"Gaji masuk 7.5jt ke Mandiri"* | Resolves account `Mandiri`, categorizes as `Salary`, creates income record. |
+| **Receipt OCR** | Send an image of a physical receipt | Extracts merchant name, line items, transaction date, and creates record. |
+| **Confirm Single Email** | *"Ya"* or *"Catat"* | Confirms and records the most recent bank email notification ticket. |
+| **Confirm Specific Ticket**| *"Ya 1"* or *"Catat #2"* | Confirms and records ticket `#1` or `#2` from the queue. |
+| **Bulk Confirmation** | *"Ya semua"* or *"Catat semua"* | Processes and records all pending tickets sequentially. |
+| **Cancel Ticket** | *"Batal 1"* or *"Batal semua"* | Dismisses transaction tickets from the pending queue. |
+| **Check Balances** | *"Cek saldo rekening"* or *"Berapa saldo BCA?"* | Queries Wallet MCP and lists current balances for specified or all accounts. |
+| **Check Budgets** | *"Status budget bulan ini"* | Queries Wallet MCP and summarizes spending limits vs remaining amounts. |
 
 ---
 
@@ -112,30 +211,53 @@ Send messages from your whitelisted WhatsApp number to the bot:
 wallet_mcp/
 ├── src/
 │   ├── config/
-│   │   ├── environmentConfig.ts    # Environment variables validation & loader
-│   │   └── bankEmailRules.ts       # Modular bank dictionary (Mandiri, Jago, GoPay, OVO, DANA, ShopeePay)
+│   │   ├── bankEmailRules.ts            # Rule definitions for Mandiri, Jago, GoPay, OVO, DANA, ShopeePay
+│   │   └── environmentConfig.ts         # Environment validation and typed configurations
 │   ├── types/
-│   │   └── walletTypes.ts          # TypeScript interfaces for Wallet MCP
+│   │   └── walletTypes.ts               # Wallet MCP interfaces (Account, Category, Record, Budget)
 │   ├── services/
-│   │   ├── walletMcpClient.ts      # BudgetBakers MCP Client (JSON-RPC over HTTP)
-│   │   ├── geminiAiService.ts      # Gemini 2.0 Flash NLU & Vision processing + Gate 2
-│   │   ├── whatsappBotService.ts   # Baileys WhatsApp Web socket gateway
-│   │   ├── emailListenerService.ts # Gmail IMAP IDLE real-time listener & persistent cache
-│   │   └── pendingTransactionManager.ts # WhatsApp confirmation queue manager (#1, #2)
+│   │   ├── emailListenerService.ts      # Gmail IMAP IDLE real-time subscriber and parser
+│   │   ├── geminiAiService.ts           # Gemini NLU, multi-modal OCR, and fallback cascades
+│   │   ├── pendingTransactionManager.ts # Interactive WhatsApp confirmation ticket queue
+│   │   ├── walletMcpClient.ts           # BudgetBakers Wallet MCP HTTP JSON-RPC client
+│   │   └── whatsappBotService.ts        # Baileys WhatsApp Web socket gateway & event handler
 │   ├── utils/
-│   │   ├── emailLogicGate.ts       # Gate 1 rule evaluator (sender, blacklist, currency, anti-dupe)
-│   │   ├── fastPathIntentDetector.ts # Fast-path zero-token classifier & confirmation parser
-│   │   ├── humanResponseFormatter.ts # Human-friendly WhatsApp Indonesian formatting
-│   │   ├── logger.ts               # File and console logger
-│   │   └── recordValidator.ts      # Data sanitizer & validator before Wallet MCP
+│   │   ├── emailLogicGate.ts            # Gate 1 rule evaluator (sender domain, blacklist, anti-dupe)
+│   │   ├── fastPathIntentDetector.ts    # Zero-token intent classifier and confirmation parser
+│   │   ├── humanResponseFormatter.ts    # Indonesian WhatsApp response templates and formatting
+│   │   ├── logger.ts                    # Pino logger instance with daily file rotation
+│   │   └── recordValidator.ts           # Account/category index resolver and payload sanitizer
 │   ├── scripts/
-│   │   ├── testWalletMcp.ts        # Standalone MCP verification test
-│   │   ├── testEmailGateRules.ts   # Automated test suite for Gate 1 & confirmation intent
-│   │   └── testEmailImap.ts        # Standalone Gmail IMAP connection test
-│   └── index.ts                    # Main application bootstrap & orchestrator
-├── .env.example                    # Blueprint for environment variables
-├── package.json                    # Dependencies & execution scripts
-├── tsconfig.json                   # TypeScript configuration
-└── README.md                       # Documentation & guide
+│   │   ├── testEmailGateRules.ts        # Unit test suite for Gate 1 filtering logic
+│   │   ├── testEmailImap.ts             # Diagnostic script for Gmail IMAP connectivity
+│   │   ├── testFetchRealEmailsGate.ts   # Live inbox diagnostic for Gate 1 rule evaluation
+│   │   ├── testFormatter.ts             # Validation script for human-friendly response strings
+│   │   ├── testGemini.ts                # Diagnostic script for Gemini NLU models
+│   │   └── testWalletMcp.ts             # Diagnostic script for BudgetBakers MCP endpoints
+│   └── index.ts                         # Application bootstrap and service orchestrator
+├── .env.example                         # Environment variable template
+├── package.json                         # Node dependencies and execution scripts
+├── tsconfig.json                        # TypeScript compiler configuration
+└── README.md                            # Project documentation
 ```
 
+---
+
+## Security & Privacy Considerations
+
+- **Whitelisted Access**: Incoming messages from unapproved numbers are rejected immediately before reaching the AI or MCP layers.
+- **Isolated Local Sessions**: WhatsApp connection tokens and keys are stored in the local `./auth_session` folder and excluded from git tracking.
+- **Two-Gate Email Protection**: Promotional campaigns, newsletter updates, and sensitive security alerts (such as OTP codes or device verification notifications) are dropped by Gate 1 regex patterns without transmitting content to cloud AI APIs.
+- **Zero Raw Emojis in System Logs**: System outputs and logs follow strict formatting tags (`[INFO]`, `[SUCCESS]`, `[WARN]`, `[ERROR]`) for clean and predictable terminal/file parsing.
+
+---
+
+## Author
+
+Personal project developed for automated BudgetBakers Wallet bookkeeping.
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
