@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.1.6](https://github.com/Churma16/wallet-mcp-budgetbakers-bot/compare/v0.1.5...v0.1.6) (2026-09-08)
+
+
+### Features
+
+* **whatsapp:** enhance connection resilience with exponential backoff, circuit breaker, and ban safeguards ([19f034c](https://github.com/Churma16/wallet-mcp-budgetbakers-bot/commit/19f034c177db285ef9c3836fdb80f6e35eb442f9)), closes [#22](https://github.com/Churma16/wallet-mcp-budgetbakers-bot/issues/22)
+
 ## [0.1.5](https://github.com/Churma16/wallet-mcp-budgetbakers-bot/compare/v0.1.4...v0.1.5) (2026-09-06)
 
 ## [0.1.4](https://github.com/Churma16/wallet-mcp-budgetbakers-bot/compare/v0.1.3...v0.1.4) (2026-09-06)
