@@ -1,6 +1,6 @@
-import { loadEnvironmentConfiguration } from '../config/environmentConfig.js';
-import { WalletMcpClientService } from '../services/walletMcpClient.js';
-import { applicationLogger } from '../utils/logger.js';
+import { loadEnvironmentConfiguration } from '../src/config/environmentConfig.js';
+import { WalletMcpClientService } from '../src/services/walletMcpClient.js';
+import { applicationLogger } from '../src/utils/logger.js';
 
 async function runWalletMcpVerification(): Promise<void> {
   applicationLogger.info('Starting BudgetBakers Wallet MCP Verification...');

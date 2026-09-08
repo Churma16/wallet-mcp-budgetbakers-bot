@@ -274,17 +274,19 @@ wallet-mcp-budgetbakers-bot/
 │   │   ├── humanResponseFormatter.ts    # Multi-language response templates and formatting
 │   │   ├── logger.ts                    # Pino logger instance with daily file rotation
 │   │   └── recordValidator.ts           # Account/category index resolver and payload sanitizer
-│   ├── scripts/
-│   │   ├── testAiProvider.ts            # Diagnostic script for active AI provider NLU
-│   │   ├── testEmailGateRules.ts        # Unit test suite for Gate 1 filtering logic
-│   │   ├── testEmailImap.ts             # Diagnostic script for Gmail IMAP connectivity
-│   │   ├── testFetchRealEmailsGate.ts   # Live inbox diagnostic for Gate 1 rule evaluation
-│   │   ├── testFormatter.ts             # Validation script for human-friendly response strings
-│   │   ├── testMessageFormat.ts         # Unit test for WhatsApp markup to Telegram HTML converter
-│   │   ├── testResponseDictionary.ts    # Verification script for i18n & multi-currency formatting
-│   │   ├── testTelegramBot.ts           # Diagnostic script for Telegram bot connectivity & dispatch
-│   │   └── testWalletMcp.ts             # Diagnostic script for BudgetBakers MCP endpoints
 │   └── index.ts                         # Application bootstrap and service orchestrator
+├── tests/                               # Diagnostic & verification test suites
+│   ├── aiProvider.test.ts               # Diagnostic script for active AI provider NLU
+│   ├── emailGateRules.test.ts           # Unit test suite for Gate 1 filtering logic
+│   ├── emailImap.test.ts                # Diagnostic script for Gmail IMAP connectivity
+│   ├── fetchRealEmailsGate.test.ts      # Live inbox diagnostic for Gate 1 rule evaluation
+│   ├── formatter.test.ts                # Validation script for human-friendly response strings
+│   ├── gemini.test.ts                   # Diagnostic script for Gemini AI service
+│   ├── messageFormat.test.ts            # Unit test for WhatsApp markup to Telegram HTML converter
+│   ├── responseDictionary.test.ts       # Verification script for i18n & multi-currency formatting
+│   ├── telegramBot.test.ts              # Diagnostic script for Telegram bot connectivity & dispatch
+│   ├── walletMcp.test.ts                # Diagnostic script for BudgetBakers MCP endpoints
+│   └── whatsAppSafeguards.test.ts       # Safeguards & session recovery tests for WhatsApp
 ├── .env.example                         # Environment variable template
 ├── package.json                         # Node dependencies and execution scripts
 ├── tsconfig.json                        # TypeScript compiler configuration
@@ -359,7 +361,7 @@ Since this project interfaces with diverse real-world messaging apps, bank email
 3. **Multi-Currency & Physical Receipt OCR**:
    - Test receipt photo recognition across various lighting conditions, wrinkled paper, and international currencies (`USD`, `EUR`, `SGD`, `MYR`, `JPY`, etc.).
 4. **Automated Unit & Regression Tests**:
-   - Help expand test suites in `src/scripts/` covering network timeouts, edge cases in shorthand parsing, and malformed JSON recovery.
+   - Help expand test suites in `tests/` covering network timeouts, edge cases in shorthand parsing, and malformed JSON recovery.
 5. **Multi-Device Messaging Scenarios**:
    - Verify connection stability across different operating systems (Windows, Linux, macOS, Docker) and multi-device WhatsApp/Telegram edge cases.
 

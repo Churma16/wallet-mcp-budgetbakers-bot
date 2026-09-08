@@ -1,6 +1,6 @@
-import { evaluateEmailThroughGateOne } from '../utils/emailLogicGate.js';
-import { parseCurrencyAmountStringToNumber } from '../utils/emailLogicGate.js';
-import { detectPendingConfirmationAction } from '../utils/fastPathIntentDetector.js';
+import { evaluateEmailThroughGateOne } from '../src/utils/emailLogicGate.js';
+import { parseCurrencyAmountStringToNumber } from '../src/utils/emailLogicGate.js';
+import { detectPendingConfirmationAction } from '../src/utils/fastPathIntentDetector.js';
 
 console.log('====================================================');
 console.log('[test] Running Email Logic Gate & Dictionary Test Suite');

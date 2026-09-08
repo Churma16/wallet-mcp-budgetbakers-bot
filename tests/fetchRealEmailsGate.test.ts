@@ -1,7 +1,7 @@
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
-import { loadEnvironmentConfiguration } from '../config/environmentConfig.js';
-import { evaluateEmailThroughGateOne, GateEvaluationResult } from '../utils/emailLogicGate.js';
+import { loadEnvironmentConfiguration } from '../src/config/environmentConfig.js';
+import { evaluateEmailThroughGateOne, GateEvaluationResult } from '../src/utils/emailLogicGate.js';
 
 async function testFetchRecentEmailsThroughGateOne(): Promise<void> {
   console.log('====================================================');
