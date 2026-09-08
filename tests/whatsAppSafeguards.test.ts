@@ -1,4 +1,4 @@
-import { WhatsappMessagingAdapter } from '../services/messaging/whatsappAdapter.js';
+import { WhatsappMessagingAdapter } from '../src/services/messaging/whatsappAdapter.js';
 import { DisconnectReason } from '@whiskeysockets/baileys';
 
 interface AssertionStatistics {

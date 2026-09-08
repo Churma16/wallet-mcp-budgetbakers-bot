@@ -152,7 +152,7 @@ Before submitting code, ensure that your changes pass all verification checks.
 
 ### Adding New Tests
 
-- When adding a new feature or utility, consider adding corresponding unit or diagnostic scenarios in `src/scripts/` (e.g., adding test cases to `src/scripts/testResponseDictionary.ts` when introducing new dictionary entries).
+- When adding a new feature or utility, consider adding corresponding unit or diagnostic scenarios in `tests/` (e.g., adding test cases to `tests/responseDictionary.test.ts` when introducing new dictionary entries).
 - Ensure all tests exit cleanly with status code `0`.
 
 ---

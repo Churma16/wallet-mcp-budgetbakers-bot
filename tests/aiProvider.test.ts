@@ -1,9 +1,9 @@
-import { loadEnvironmentConfiguration } from '../config/environmentConfig.js';
-import { WalletMcpClientService } from '../services/walletMcpClient.js';
-import { createFinancialAiProvider } from '../services/ai/index.js';
-import { applicationLogger } from '../utils/logger.js';
-import { WalletAccountItem, WalletCategoryItem } from '../types/walletTypes.js';
-import { GateEvaluationResult } from '../utils/emailLogicGate.js';
+import { loadEnvironmentConfiguration } from '../src/config/environmentConfig.js';
+import { WalletMcpClientService } from '../src/services/walletMcpClient.js';
+import { createFinancialAiProvider } from '../src/services/ai/index.js';
+import { applicationLogger } from '../src/utils/logger.js';
+import { WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
+import { GateEvaluationResult } from '../src/utils/emailLogicGate.js';
 
 async function runAiProviderVerification(): Promise<void> {
   applicationLogger.info('Starting Agnostic AI Provider Diagnostic Test...');

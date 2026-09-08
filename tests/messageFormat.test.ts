@@ -1,4 +1,4 @@
-import { convertWhatsAppMarkupToTelegramHtml } from '../services/messaging/messageFormatHelper.js';
+import { convertWhatsAppMarkupToTelegramHtml } from '../src/services/messaging/messageFormatHelper.js';
 
 function runFormatTests(): void {
   console.log('Testing WhatsApp to Telegram HTML conversion:');

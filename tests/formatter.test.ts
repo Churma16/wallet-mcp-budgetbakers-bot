@@ -4,8 +4,8 @@ import {
   formatBudgetSummaryMessage,
   formatErrorMessageForHuman,
   getHumanReadableTimestamp,
-} from '../utils/humanResponseFormatter.js';
-import { formatConciseErrorMessage } from '../utils/logger.js';
+} from '../src/utils/humanResponseFormatter.js';
+import { formatConciseErrorMessage } from '../src/utils/logger.js';
 
 console.log('=== TEST 1A: TODAY SINGLE RECORD ===');
 console.log(formatRecordSuccessMessage(

@@ -1,4 +1,4 @@
-import { loadEnvironmentConfiguration } from '../config/environmentConfig.js';
+import { loadEnvironmentConfiguration } from '../src/config/environmentConfig.js';
 import { ImapFlow } from 'imapflow';
 
 async function testGmailImapConnection(): Promise<void> {
