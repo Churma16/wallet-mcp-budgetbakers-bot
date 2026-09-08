@@ -61,6 +61,15 @@ Every issue created or updated in this repository MUST have at least one appropr
 #### Verification Invariant:
 - Before completing any issue creation or editing task, verify the issue has its labels populated via `gh issue view <id> --json labels`.
 
+### 4. Single-Purpose Assessment & Proactive Separation Recommendation
+Before creating any GitHub issue that stems from user feedback or bug reports:
+- **Analyze Scope**: Evaluate if the request addresses multiple distinct concerns (e.g. business logic/vision extraction vs. security/logging, or features touching completely unrelated components/files).
+- **Proactive Suggestion (Pre-Creation Gate)**: If distinct concerns are identified, do **NOT** immediately create a single monolithic issue. Instead:
+  1. Clearly outline the separate concerns and the benefits of splitting (e.g., independent tracking, isolated PRs/commits, cleaner labeling).
+  2. Propose candidate titles and label sets for each distinct issue.
+  3. Prompt the user for confirmation on whether to keep them unified or split into separate issues.
+- **Proceed Only After User Alignment**: Create the issue(s) according to the user's chosen structure.
+
 ## Standardized GitHub Pull Request Structure
 When creating or editing GitHub Pull Requests for this repository (`wallet_mcp`), always adhere to the 5-section specification established across merged repository PRs:
 

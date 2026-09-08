@@ -157,6 +157,7 @@ export class WalletMcpClientService {
         currency: resolvedCurrency || 'IDR',
         balance: resolvedBalance,
         accountType: item.accountType || item.type,
+        bankAccountNumber: item.bankAccountNumber || item.accountNumber || item.number || undefined,
       };
     });
 

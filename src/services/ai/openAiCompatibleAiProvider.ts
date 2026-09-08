@@ -9,8 +9,10 @@ import {
   TokenUsageStatistics,
 } from './financialAiProvider.js';
 import { extractAndParseJsonObject } from './jsonExtractionHelper.js';
+import { getApplicationTimezone } from '../../utils/humanResponseFormatter.js';
 import {
   buildCompactSystemInstruction,
+  buildReceiptSystemInstruction,
   buildEmailSystemInstruction,
   buildTextMessagePrompt,
   buildReceiptExtractionPrompt,
@@ -276,10 +278,12 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     availableCategoryList: WalletCategoryItem[]
   ): Promise<ExtractedFinancialIntent> {
     const currentDateIso = new Date().toISOString().split('T')[0];
-    const systemInstruction = buildCompactSystemInstruction(
+    const applicationTimezoneIdentifier = getApplicationTimezone();
+    const systemInstruction = buildReceiptSystemInstruction(
       availableAccountList,
       availableCategoryList,
-      currentDateIso
+      currentDateIso,
+      applicationTimezoneIdentifier
     );
 
     const currentTransactionTimestampIso = new Date().toISOString();
