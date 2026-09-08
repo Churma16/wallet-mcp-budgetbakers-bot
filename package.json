@@ -20,8 +20,11 @@
         "test:i18n": "tsx tests/responseDictionary.test.ts",
         "test:whatsapp-safeguards": "tsx tests/whatsAppSafeguards.test.ts",
         "test:whatsapp-hardening": "tsx tests/whatsAppSocketHardening.test.ts",
+        "test:telegram-safeguards": "tsx tests/telegramSafeguards.test.ts",
+        "test:gateway-resilience": "tsx tests/messagingGatewayResilience.test.ts",
         "build": "tsc"
     },
+
     "dependencies": {
         "@google/genai": "^2.21.0",
         "@whiskeysockets/baileys": "^7.0.0-rc14",

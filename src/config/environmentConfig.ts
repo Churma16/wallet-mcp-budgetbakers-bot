@@ -38,7 +38,10 @@ export interface ApplicationEnvironmentConfiguration {
   whatsappReconnectMaxBackoffSeconds: number;
   whatsappMessageQueueIntervalMs: number;
   whatsappTypingPresenceCooldownMs: number;
+  telegramMaxStartupAttempts: number;
+  telegramStartupRetryDelayMs: number;
 }
+
 
 interface ProviderConfigStrategy {
   getDefaultBaseUrl(): string;
@@ -164,6 +167,9 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     : 2500;
   const whatsappTypingPresenceCooldownMs = Number.isNaN(parsedTypingCooldown) ? 2500 : parsedTypingCooldown;
 
+  const telegramMaxStartupAttempts = parseInt(process.env.TELEGRAM_MAX_STARTUP_ATTEMPTS || '5', 10) || 5;
+  const telegramStartupRetryDelayMs = parseInt(process.env.TELEGRAM_STARTUP_RETRY_DELAY_MS || '2000', 10) || 2000;
+
   return {
     aiProvider,
     aiApiKey,
@@ -196,5 +202,8 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     whatsappReconnectMaxBackoffSeconds,
     whatsappMessageQueueIntervalMs,
     whatsappTypingPresenceCooldownMs,
+    telegramMaxStartupAttempts,
+    telegramStartupRetryDelayMs,
   };
 }
+

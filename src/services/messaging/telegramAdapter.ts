@@ -1,12 +1,19 @@
-import { Bot } from 'grammy';
+import { Bot, GrammyError, HttpError } from 'grammy';
 import axios from 'axios';
 import { applicationLogger } from '../../utils/logger.js';
 import {
+  AdapterConnectionState,
   MessagingAdapter,
   SupportedMessengerChannel,
   UserMessageCallback,
 } from './types.js';
 import { convertWhatsAppMarkupToTelegramHtml } from './messageFormatHelper.js';
+
+export interface TelegramSafeguardConfiguration {
+  maxStartupAttempts?: number;
+  startupRetryBaseDelayMs?: number;
+  startupRetryMaxDelayMs?: number;
+}
 
 export class TelegramMessagingAdapter implements MessagingAdapter {
   public readonly channelName: SupportedMessengerChannel = 'telegram';
@@ -14,13 +21,22 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
   private isRunning: boolean = false;
   private readonly normalizedAllowedUserId: string;
 
+  private readonly maxStartupAttempts: number;
+  private readonly startupRetryBaseDelayMs: number;
+  private readonly startupRetryMaxDelayMs: number;
+
   constructor(
     private readonly botToken: string,
     private readonly allowedUserId: string,
-    private readonly onUserMessageReceived: UserMessageCallback
+    private readonly onUserMessageReceived: UserMessageCallback,
+    safeguardConfiguration?: TelegramSafeguardConfiguration
   ) {
     this.normalizedAllowedUserId = this.allowedUserId.trim().replace(/^@/, '');
+    this.maxStartupAttempts = safeguardConfiguration?.maxStartupAttempts ?? 5;
+    this.startupRetryBaseDelayMs = safeguardConfiguration?.startupRetryBaseDelayMs ?? 2000;
+    this.startupRetryMaxDelayMs = safeguardConfiguration?.startupRetryMaxDelayMs ?? 15000;
   }
+
 
   public async startConnection(): Promise<void> {
     if (this.botInstance) {
@@ -138,7 +154,10 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
 
     // 4. Verify Bot Credentials & Start Long Polling
     try {
-      const botProfile = await this.botInstance.api.getMe();
+      const botProfile = await this.executeWithStartupRetry(
+        () => this.botInstance!.api.getMe(),
+        'Telegram api.getMe()'
+      );
       applicationLogger.success(
         `Telegram Bot connected successfully as @${botProfile.username} (${botProfile.first_name})`
       );
@@ -161,6 +180,121 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       throw startError;
     }
   }
+
+  public getMaxStartupAttempts(): number {
+    return this.maxStartupAttempts;
+  }
+
+  public getStartupRetryBaseDelayMs(): number {
+    return this.startupRetryBaseDelayMs;
+  }
+
+  public getStartupRetryMaxDelayMs(): number {
+    return this.startupRetryMaxDelayMs;
+  }
+
+  public calculateBackoffDelayMilliseconds(attemptIndex: number): number {
+    const exponentialDelay = this.startupRetryBaseDelayMs * Math.pow(2, attemptIndex);
+    const boundedDelay = Math.min(this.startupRetryMaxDelayMs, exponentialDelay);
+    const randomJitterMilliseconds = Math.floor(Math.random() * 1000) + 500;
+    return boundedDelay + randomJitterMilliseconds;
+  }
+
+  public isRetryableNetworkError(error: unknown): boolean {
+    if (!error) {
+      return false;
+    }
+
+    if (error instanceof GrammyError) {
+      // 401 Unauthorized or 404 Not Found indicates invalid token or non-existent bot
+      if (error.error_code === 401 || error.error_code === 404) {
+        return false;
+      }
+      // Rate limits (429) or Telegram internal errors (5xx) are transient and retryable
+      if (error.error_code === 429 || error.error_code >= 500) {
+        return true;
+      }
+      return false;
+    }
+
+    if (error instanceof HttpError) {
+      return true;
+    }
+
+    const errorCode = (error as { code?: string })?.code;
+    const retryableNetworkCodes = [
+      'ECONNRESET',
+      'ETIMEDOUT',
+      'EAI_AGAIN',
+      'ENOTFOUND',
+      'ECONNREFUSED',
+      'EHOSTUNREACH',
+      'EPIPE',
+    ];
+    if (errorCode && retryableNetworkCodes.includes(errorCode)) {
+      return true;
+    }
+
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const retryableSubstrings = [
+      'network request for',
+      'getaddrinfo',
+      'eai_again',
+      'econnreset',
+      'etimedout',
+      'enotfound',
+      'socket hang up',
+      'timeout',
+    ];
+    return retryableSubstrings.some(substring =>
+      errorMessage.toLowerCase().includes(substring)
+    );
+  }
+
+  public async executeWithStartupRetry<T>(
+    operation: () => Promise<T>,
+    operationDescription: string = 'Telegram Bot API initialization'
+  ): Promise<T> {
+    let lastEncounteredError: unknown;
+
+    for (let attemptIndex = 0; attemptIndex < this.maxStartupAttempts; attemptIndex++) {
+      try {
+        return await operation();
+      } catch (error: unknown) {
+        lastEncounteredError = error;
+        const isRetryable = this.isRetryableNetworkError(error);
+
+        if (!isRetryable) {
+          applicationLogger.error(
+            `Non-retryable error encountered during ${operationDescription}: ${error instanceof Error ? error.message : String(error)}`
+          );
+          throw error;
+        }
+
+        const isLastAttempt = attemptIndex === this.maxStartupAttempts - 1;
+        if (isLastAttempt) {
+          applicationLogger.error(
+            `All ${this.maxStartupAttempts} startup attempts exhausted for ${operationDescription}. Final error: ${error instanceof Error ? error.message : String(error)}`
+          );
+          break;
+        }
+
+        const delayMilliseconds = this.calculateBackoffDelayMilliseconds(attemptIndex);
+        applicationLogger.warn(
+          `[WARN] ${operationDescription} failed (attempt ${attemptIndex + 1}/${this.maxStartupAttempts}): ${error instanceof Error ? error.message : String(error)}. Retrying in ${(delayMilliseconds / 1000).toFixed(1)}s...`
+        );
+
+        await new Promise(resolve => setTimeout(resolve, delayMilliseconds));
+      }
+    }
+
+    throw lastEncounteredError;
+  }
+
+  public getConnectionState(): AdapterConnectionState {
+    return this.isRunning ? 'connected' : 'idle';
+  }
+
 
   public async sendTextMessage(targetChatIdentifier: string, messageText: string): Promise<void> {
     if (!this.botInstance) {
