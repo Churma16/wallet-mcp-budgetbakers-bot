@@ -43,15 +43,18 @@ async function runTestSuite(): Promise<void> {
     assertCondition('TG-1.2: Default startupRetryBaseDelayMs is 2000', defaultAdapter.getStartupRetryBaseDelayMs() === 2000);
     assertCondition('TG-1.3: Default startupRetryMaxDelayMs is 15000', defaultAdapter.getStartupRetryMaxDelayMs() === 15000);
     assertCondition('TG-1.4: Initial connection state is idle', defaultAdapter.getConnectionState() === 'idle');
+    assertCondition('TG-1.8: Default maxMediaDownloadBytes is 10 MB (10485760 bytes)', defaultAdapter.getMaxMediaDownloadBytes() === 10 * 1024 * 1024);
 
     const customAdapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback, {
       maxStartupAttempts: 8,
       startupRetryBaseDelayMs: 1000,
       startupRetryMaxDelayMs: 30000,
+      maxMediaDownloadBytes: 5 * 1024 * 1024,
     });
     assertCondition('TG-1.5: Custom maxStartupAttempts is respected', customAdapter.getMaxStartupAttempts() === 8);
     assertCondition('TG-1.6: Custom startupRetryBaseDelayMs is respected', customAdapter.getStartupRetryBaseDelayMs() === 1000);
     assertCondition('TG-1.7: Custom startupRetryMaxDelayMs is respected', customAdapter.getStartupRetryMaxDelayMs() === 30000);
+    assertCondition('TG-1.9: Custom maxMediaDownloadBytes is respected', customAdapter.getMaxMediaDownloadBytes() === 5 * 1024 * 1024);
   }
 
   // ----------------------------------------------------

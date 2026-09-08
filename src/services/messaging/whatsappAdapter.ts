@@ -22,6 +22,7 @@ export interface WhatsappSafeguardConfiguration {
   maxBackoffSeconds?: number;
   messageQueueIntervalMs?: number;
   typingPresenceCooldownMs?: number;
+  maxMediaDownloadBytes?: number;
 }
 
 export class WhatsappMessagingAdapter implements MessagingAdapter {
@@ -37,6 +38,7 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
   private readonly maxBackoffSeconds: number;
   private readonly messageQueueIntervalMs: number;
   private readonly typingPresenceCooldownMilliseconds: number;
+  private readonly maxMediaDownloadBytes: number;
   private readonly lastTypingPresenceTimestampMap: Map<string, number> = new Map<string, number>();
 
   private consecutiveFailureCount: number = 0;
@@ -63,6 +65,11 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
     this.maxBackoffSeconds = safeguardConfiguration?.maxBackoffSeconds ?? 300;
     this.messageQueueIntervalMs = safeguardConfiguration?.messageQueueIntervalMs ?? 1000;
     this.typingPresenceCooldownMilliseconds = safeguardConfiguration?.typingPresenceCooldownMs ?? 2500;
+    this.maxMediaDownloadBytes = safeguardConfiguration?.maxMediaDownloadBytes ?? (10 * 1024 * 1024);
+  }
+
+  public getMaxMediaDownloadBytes(): number {
+    return this.maxMediaDownloadBytes;
   }
 
   private recordIncomingMessageId(messageId: string): void {
@@ -445,6 +452,30 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
     }
 
     if (unwrappedMessageContent.imageMessage && this.socketInstance) {
+      const declaredFileLength = unwrappedMessageContent.imageMessage.fileLength
+        ? Number(unwrappedMessageContent.imageMessage.fileLength)
+        : 0;
+
+      if (declaredFileLength > this.maxMediaDownloadBytes) {
+        const declaredMb = (declaredFileLength / (1024 * 1024)).toFixed(1);
+        const maxAllowedMegabytes = Math.round(this.maxMediaDownloadBytes / (1024 * 1024));
+        applicationLogger.warn(
+          `[WARN] Incoming WhatsApp image media from ${senderIdentifier} exceeds size limit (${declaredMb} MB > ${maxAllowedMegabytes} MB). Download aborted.`
+        );
+        applicationLogger.fileDetail('warn', 'WhatsApp Oversized Media Rejected', {
+          remoteJid,
+          senderIdentifier,
+          declaredFileLength,
+          maxMediaDownloadBytes: this.maxMediaDownloadBytes,
+        });
+
+        await this.sendTextMessage(
+          remoteJid,
+          `⚠️ Ukuran foto melebihi batas maksimal (${maxAllowedMegabytes} MB). Silakan kirim foto dengan ukuran lebih kecil ya!`
+        );
+        return;
+      }
+
       try {
         const imageBuffer = (await downloadMediaMessage(
           rawMessage as WAMessage,
@@ -455,6 +486,26 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
             reuploadRequest: this.socketInstance.updateMediaMessage,
           }
         )) as Buffer;
+
+        if (imageBuffer && imageBuffer.length > this.maxMediaDownloadBytes) {
+          const actualMb = (imageBuffer.length / (1024 * 1024)).toFixed(1);
+          const maxAllowedMegabytes = Math.round(this.maxMediaDownloadBytes / (1024 * 1024));
+          applicationLogger.warn(
+            `[WARN] Downloaded WhatsApp image buffer from ${senderIdentifier} exceeds size limit (${actualMb} MB > ${maxAllowedMegabytes} MB). Media discarded.`
+          );
+          applicationLogger.fileDetail('warn', 'WhatsApp Oversized Downloaded Buffer Rejected', {
+            remoteJid,
+            senderIdentifier,
+            bufferLength: imageBuffer.length,
+            maxMediaDownloadBytes: this.maxMediaDownloadBytes,
+          });
+
+          await this.sendTextMessage(
+            remoteJid,
+            `⚠️ Ukuran foto melebihi batas maksimal (${maxAllowedMegabytes} MB). Silakan kirim foto dengan ukuran lebih kecil ya!`
+          );
+          return;
+        }
 
         const imageCaption = unwrappedMessageContent.imageMessage.caption || '';
         const imageMimeType = unwrappedMessageContent.imageMessage.mimetype || 'image/jpeg';
@@ -477,6 +528,11 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
           remoteJid,
           senderIdentifier,
         });
+
+        await this.sendTextMessage(
+          remoteJid,
+          '⚠️ Gagal mengunduh foto struk dari WhatsApp. Silakan coba kirim ulang ya!'
+        );
       }
     }
   }

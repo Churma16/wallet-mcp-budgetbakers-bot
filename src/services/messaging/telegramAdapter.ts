@@ -13,6 +13,7 @@ export interface TelegramSafeguardConfiguration {
   maxStartupAttempts?: number;
   startupRetryBaseDelayMs?: number;
   startupRetryMaxDelayMs?: number;
+  maxMediaDownloadBytes?: number;
 }
 
 export class TelegramMessagingAdapter implements MessagingAdapter {
@@ -24,6 +25,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
   private readonly maxStartupAttempts: number;
   private readonly startupRetryBaseDelayMs: number;
   private readonly startupRetryMaxDelayMs: number;
+  private readonly maxMediaDownloadBytes: number;
 
   constructor(
     private readonly botToken: string,
@@ -35,6 +37,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     this.maxStartupAttempts = safeguardConfiguration?.maxStartupAttempts ?? 5;
     this.startupRetryBaseDelayMs = safeguardConfiguration?.startupRetryBaseDelayMs ?? 2000;
     this.startupRetryMaxDelayMs = safeguardConfiguration?.startupRetryMaxDelayMs ?? 15000;
+    this.maxMediaDownloadBytes = safeguardConfiguration?.maxMediaDownloadBytes ?? (10 * 1024 * 1024);
   }
 
 
@@ -102,19 +105,72 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       try {
         // Pick the highest resolution photo variant (last in array)
         const highestResolutionPhoto = photoVariants[photoVariants.length - 1];
+
+        if (highestResolutionPhoto.file_size && highestResolutionPhoto.file_size > this.maxMediaDownloadBytes) {
+          const maxAllowedMegabytes = Math.round(this.maxMediaDownloadBytes / (1024 * 1024));
+          applicationLogger.warn(
+            `[WARN] Incoming Telegram photo size (${highestResolutionPhoto.file_size} bytes) exceeds limit of ${this.maxMediaDownloadBytes} bytes. Download aborted.`
+          );
+          applicationLogger.fileDetail('warn', 'Telegram Oversized Media Rejected', {
+            chatId,
+            senderIdentifier,
+            fileSize: highestResolutionPhoto.file_size,
+            maxMediaDownloadBytes: this.maxMediaDownloadBytes,
+          });
+
+          await this.sendTextMessage(
+            chatId,
+            `⚠️ Ukuran foto melebihi batas maksimal (${maxAllowedMegabytes} MB). Silakan kirim foto dengan ukuran lebih kecil ya!`
+          );
+          return;
+        }
+
         const fileMetadata = await ctx.api.getFile(highestResolutionPhoto.file_id);
 
         if (!fileMetadata.file_path) {
           throw new Error('Telegram file_path is unavailable');
         }
 
+        if (fileMetadata.file_size && fileMetadata.file_size > this.maxMediaDownloadBytes) {
+          const maxAllowedMegabytes = Math.round(this.maxMediaDownloadBytes / (1024 * 1024));
+          applicationLogger.warn(
+            `[WARN] Incoming Telegram photo metadata size (${fileMetadata.file_size} bytes) exceeds limit of ${this.maxMediaDownloadBytes} bytes. Download aborted.`
+          );
+          applicationLogger.fileDetail('warn', 'Telegram Oversized Media Rejected', {
+            chatId,
+            senderIdentifier,
+            fileSize: fileMetadata.file_size,
+            maxMediaDownloadBytes: this.maxMediaDownloadBytes,
+          });
+
+          await this.sendTextMessage(
+            chatId,
+            `⚠️ Ukuran foto melebihi batas maksimal (${maxAllowedMegabytes} MB). Silakan kirim foto dengan ukuran lebih kecil ya!`
+          );
+          return;
+        }
+
         const downloadFileUrl = `https://api.telegram.org/file/bot${this.botToken}/${fileMetadata.file_path}`;
         const fileDownloadResponse = await axios.get<ArrayBuffer>(downloadFileUrl, {
           responseType: 'arraybuffer',
           timeout: 30000,
+          maxContentLength: this.maxMediaDownloadBytes,
+          maxBodyLength: this.maxMediaDownloadBytes,
         });
 
         const imageBuffer = Buffer.from(fileDownloadResponse.data);
+
+        if (imageBuffer.length > this.maxMediaDownloadBytes) {
+          const maxAllowedMegabytes = Math.round(this.maxMediaDownloadBytes / (1024 * 1024));
+          applicationLogger.warn(
+            `[WARN] Downloaded Telegram photo buffer (${imageBuffer.length} bytes) exceeds limit of ${this.maxMediaDownloadBytes} bytes. Discarded.`
+          );
+          await this.sendTextMessage(
+            chatId,
+            `⚠️ Ukuran foto melebihi batas maksimal (${maxAllowedMegabytes} MB). Silakan kirim foto dengan ukuran lebih kecil ya!`
+          );
+          return;
+        }
 
         await this.onUserMessageReceived({
           channel: 'telegram',
@@ -126,6 +182,37 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
           imageMimeType: 'image/jpeg',
         });
       } catch (downloadError: unknown) {
+        const isPayloadSizeLimitExceeded =
+          (axios.isAxiosError(downloadError) &&
+            (downloadError.code === 'ERR_FR_MAX_BODY_LENGTH_EXCEEDED' ||
+              downloadError.message?.toLowerCase().includes('maxcontentlength') ||
+              downloadError.message?.toLowerCase().includes('maxbodylength'))) ||
+          ((downloadError as any)?.code === 'ERR_FR_MAX_BODY_LENGTH_EXCEEDED') ||
+          (downloadError instanceof Error &&
+            (downloadError.message.toLowerCase().includes('maxcontentlength') ||
+              downloadError.message.toLowerCase().includes('maxbodylength')));
+
+        if (isPayloadSizeLimitExceeded) {
+          const maxAllowedMegabytes = Math.round(this.maxMediaDownloadBytes / (1024 * 1024));
+          applicationLogger.warn(
+            `[WARN] Telegram photo download rejected because file size exceeded ${this.maxMediaDownloadBytes} bytes limit: ${downloadError instanceof Error ? downloadError.message : String(downloadError)}`
+          );
+          applicationLogger.fileDetail('warn', 'Telegram Media Download Limit Exceeded', {
+            error: downloadError instanceof Error
+              ? { name: downloadError.name, message: downloadError.message }
+              : String(downloadError),
+            chatId,
+            senderIdentifier,
+            maxMediaDownloadBytes: this.maxMediaDownloadBytes,
+          });
+
+          await this.sendTextMessage(
+            chatId,
+            `⚠️ Ukuran foto melebihi batas maksimal (${maxAllowedMegabytes} MB). Silakan kirim foto dengan ukuran lebih kecil ya!`
+          );
+          return;
+        }
+
         const rawErrorMessage = downloadError instanceof Error ? downloadError.message : String(downloadError);
         const sanitizedDownloadError = this.botToken
           ? rawErrorMessage.replaceAll(this.botToken, '[REDACTED_TELEGRAM_TOKEN]')
@@ -210,6 +297,10 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
 
   public getStartupRetryMaxDelayMs(): number {
     return this.startupRetryMaxDelayMs;
+  }
+
+  public getMaxMediaDownloadBytes(): number {
+    return this.maxMediaDownloadBytes;
   }
 
   public calculateBackoffDelayMilliseconds(attemptIndex: number): number {

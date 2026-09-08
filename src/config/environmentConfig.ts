@@ -40,6 +40,7 @@ export interface ApplicationEnvironmentConfiguration {
   whatsappTypingPresenceCooldownMs: number;
   telegramMaxStartupAttempts: number;
   telegramStartupRetryDelayMs: number;
+  maxMediaDownloadMb: number;
 }
 
 
@@ -170,6 +171,11 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
   const telegramMaxStartupAttempts = parseInt(process.env.TELEGRAM_MAX_STARTUP_ATTEMPTS || '5', 10) || 5;
   const telegramStartupRetryDelayMs = parseInt(process.env.TELEGRAM_STARTUP_RETRY_DELAY_MS || '2000', 10) || 2000;
 
+  const parsedMaxMediaDownloadMb = parseInt(process.env.MAX_MEDIA_DOWNLOAD_MB || '10', 10);
+  const maxMediaDownloadMb = Number.isNaN(parsedMaxMediaDownloadMb) || parsedMaxMediaDownloadMb <= 0
+    ? 10
+    : parsedMaxMediaDownloadMb;
+
   return {
     aiProvider,
     aiApiKey,
@@ -204,6 +210,7 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     whatsappTypingPresenceCooldownMs,
     telegramMaxStartupAttempts,
     telegramStartupRetryDelayMs,
+    maxMediaDownloadMb,
   };
 }
 
