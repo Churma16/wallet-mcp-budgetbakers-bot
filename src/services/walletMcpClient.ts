@@ -192,21 +192,61 @@ export class WalletMcpClientService {
 
   /**
    * Retrieve all budgets
+   * @param includeClosed If false (default), archived or closed budgets are filtered out
    */
-  public async fetchBudgets(): Promise<WalletBudgetItem[]> {
+  public async fetchBudgets(includeClosed: boolean = false): Promise<WalletBudgetItem[]> {
     const fetchedBudgetData = await this.callMcpTool<any>('get_budgets');
 
     const rawBudgetArray: any[] = Array.isArray(fetchedBudgetData)
       ? fetchedBudgetData
       : (fetchedBudgetData?.budgets || fetchedBudgetData?.items || []);
 
-    return rawBudgetArray.map(item => ({
-      id: item.id,
-      name: item.name,
-      spentAmount: item.spent || item.currentSpent,
-      limitAmount: item.limit || item.amount,
-      currency: item.currency,
-    }));
+    const targetBudgetArray = includeClosed
+      ? rawBudgetArray
+      : rawBudgetArray.filter(item => !item.closed);
+
+    return targetBudgetArray.map(item => {
+      const currentSpending = item.spending?.current;
+
+      const spentAmount = Number(
+        currentSpending?.spent ??
+        currentSpending?.totalExpenses ??
+        item.spent ??
+        item.currentSpent ??
+        0
+      );
+
+      const limitAmount = Number(
+        currentSpending?.effectiveLimit ??
+        item.limit ??
+        item.amount ??
+        0
+      );
+
+      const remainingAmount = currentSpending?.remaining !== undefined
+        ? Number(currentSpending.remaining)
+        : (limitAmount - spentAmount);
+
+      const isOverspent = Boolean(
+        (currentSpending?.overspent !== undefined && Number(currentSpending.overspent) > 0) ||
+        remainingAmount < 0
+      );
+
+      const resolvedCurrency = item.currencyCode || item.currency || 'IDR';
+
+      return {
+        id: item.id,
+        name: item.name,
+        spentAmount,
+        limitAmount,
+        remainingAmount,
+        currency: resolvedCurrency,
+        isClosed: Boolean(item.closed),
+        period: currentSpending?.period,
+        periodType: item.periodType,
+        isOverspent,
+      };
+    });
   }
 
   /**

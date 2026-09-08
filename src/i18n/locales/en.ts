@@ -1,4 +1,4 @@
-﻿import {
+import {
   ResponseDictionary,
   RecordMessageParams,
   MultipleRecordsItemParams,
@@ -65,6 +65,9 @@ export const englishDictionary: ResponseDictionary = {
     emptyState: 'No active budgets found.',
     budgetItem(name: string, spent: string, limit: string, remaining: string): string {
       return `• *${name}*: ${spent} / ${limit} _(${remaining} left)_`;
+    },
+    budgetOverspentItem(name: string, spent: string, limit: string, overspent: string): string {
+      return `• *${name}*: ${spent} / ${limit} ⚠️ _(${overspent} over)_`;
     },
   },
 

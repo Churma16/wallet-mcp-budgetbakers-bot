@@ -40,5 +40,11 @@ export interface WalletBudgetItem {
   name: string;
   spentAmount?: number;
   limitAmount?: number;
+  remainingAmount?: number;
   currency?: string;
+  isClosed?: boolean;
+  period?: string;
+  periodType?: string;
+  isOverspent?: boolean;
 }
+

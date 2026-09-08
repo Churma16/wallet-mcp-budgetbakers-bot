@@ -313,19 +313,31 @@ export function formatBudgetSummaryMessage(
   const dictionary = getDictionary(languageCode);
   const currentTimestamp = getHumanReadableTimestamp(new Date(), languageCode);
 
-  if (!budgetList || budgetList.length === 0) {
+  const activeBudgetList = (budgetList || []).filter(budgetItem => !budgetItem.isClosed);
+
+  if (activeBudgetList.length === 0) {
     return `${dictionary.budget.header(currentTimestamp)}\n\n${dictionary.budget.emptyState}`;
   }
 
-  const budgetLines = budgetList.map(budgetItem => {
-    const spentAmount = budgetItem.spentAmount || 0;
-    const limitAmount = budgetItem.limitAmount || 0;
-    const remainingAmount = limitAmount - spentAmount;
+  const budgetLines = activeBudgetList.map(budgetItem => {
+    const spentAmount = budgetItem.spentAmount ?? 0;
+    const limitAmount = budgetItem.limitAmount ?? 0;
+    const remainingAmount = budgetItem.remainingAmount !== undefined
+      ? budgetItem.remainingAmount
+      : (limitAmount - spentAmount);
     const budgetCurrency = budgetItem.currency || process.env.DEFAULT_CURRENCY || 'IDR';
     const formattedSpent = formatCurrencyAmount(spentAmount, budgetCurrency, languageCode);
     const formattedLimit = formatCurrencyAmount(limitAmount, budgetCurrency, languageCode);
-    const formattedRemaining = formatCurrencyAmount(Math.max(0, remainingAmount), budgetCurrency, languageCode);
 
+    const isOverspent = Boolean(budgetItem.isOverspent || remainingAmount < 0);
+
+    if (isOverspent) {
+      const overspentAmount = Math.abs(remainingAmount);
+      const formattedOverspent = formatCurrencyAmount(overspentAmount, budgetCurrency, languageCode);
+      return dictionary.budget.budgetOverspentItem(budgetItem.name, formattedSpent, formattedLimit, formattedOverspent);
+    }
+
+    const formattedRemaining = formatCurrencyAmount(Math.max(0, remainingAmount), budgetCurrency, languageCode);
     return dictionary.budget.budgetItem(budgetItem.name, formattedSpent, formattedLimit, formattedRemaining);
   });
 
