@@ -146,24 +146,64 @@ Refactoring efforts should improve maintainability, performance, and readability
 
 ## Testing & Quality Verification
 
-Before submitting code, ensure that your changes pass all verification checks.
+Before submitting code, ensure that your changes compile and pass all automated test suites.
 
-### Diagnostic & Test Scripts
+### Standard Test Command
 
-| Script | Purpose |
-| :--- | :--- |
-| `npm run test:i18n` | Verifies key parity between language dictionaries, language switching, currency formatting, and fast-path intent detection |
-| `npm run test:format` | Tests WhatsApp markdown conversion to Telegram HTML and HTML entity escaping |
-| `npm run test:email-rules` | Tests Gate 1 regex rules, bank email domain matching, blacklist filtering, and anti-duplicate logic |
-| `npm run test:ai` | Verifies active AI provider integration, system instructions, and JSON extraction |
-| `npm run test:mcp` | Tests connectivity, account listing, category querying, and budget fetching with the BudgetBakers MCP server |
-| `npm run test:telegram` | Validates Telegram bot token authorization and messaging dispatch |
-| `npm run build` | Compiles TypeScript source to verify type soundness and catch compilation errors |
+Run the unified offline test runner:
+```bash
+npm test
+# or with verbose sub-test output:
+npm test -- --verbose
+```
+This command executes all 14 hermetic offline test suites in sequence. It requires no live network calls, active credentials, or running MCP instances, making it completely deterministic and safe for local development and CI pipelines.
+
+### Test Suites Overview
+
+#### 1. Automated Offline Test Suites (Hermetic & Mocked)
+These test suites run automatically as part of `npm test` and require no `.env` credentials:
+
+| Script | Test Target | Description |
+| :--- | :--- | :--- |
+| `npm test` | All 14 Suites | Executes all hermetic test suites sequentially with execution summary |
+| `npm run test:format` | `tests/messageFormatHelper.test.ts` | WhatsApp markdown to Telegram HTML conversion & escaping |
+| `npm run test:formatter` | `tests/humanResponseFormatter.test.ts` | WhatsApp confirmation & balance response templates |
+| `npm run test:i18n` | `tests/responseDictionary.test.ts` | Multi-language dictionary key parity (Indonesian/English) |
+| `npm run test:budget` | `tests/budgetParsing.test.ts` | Budget metric parsing from spending.current & closed filter |
+| `npm run test:email-rules` | `tests/bankEmailRules.test.ts` | Bank email Gate 1 parsing rules & confirmation intent detector |
+| `npm run test:ai-fallback` | `tests/fallbackAiProvider.test.ts` | Cascading multi-provider failover (429/503) & error classification |
+| `npm run test:whatsapp-safeguards` | `tests/whatsappSafeguards.test.ts` | WhatsApp exponential backoff, circuit breaker & ban protections |
+| `npm run test:whatsapp-hardening` | `tests/whatsappSocketHardening.test.ts` | Baileys socket options & typing presence debouncing |
+| `npm run test:telegram-safeguards` | `tests/telegramSafeguards.test.ts` | Telegram rate limiting & unauthorized user whitelist gates |
+| `npm run test:media-limits` | `tests/mediaDownloadLimits.test.ts` | Inbound media download size limits & buffer exhaustion defense |
+| `npm run test:gateway-resilience` | `tests/messagingGatewayResilience.test.ts` | Multi-adapter gateway lifecycle, degraded mode & background reconnection |
+| `npm run test:redaction` | `tests/loggerRedaction.test.ts` | Credential redaction for tokens, passwords, and secrets |
+| `npm run test:sanitizer` | `tests/loggerSanitizer.test.ts` | Bank account number and PAN masking & circular reference safety |
+| `npm run test:receipt-ocr` | `tests/receiptOcrPrompt.test.ts` | Receipt vision OCR system instructions, timezone offset & QRIS rules |
+
+#### 2. Live Diagnostic Scripts (Require Active `.env` Credentials)
+These scripts connect to real third-party endpoints and are intended for manual diagnostics during local setup:
+
+| Script | Required `.env` Variables | Purpose |
+| :--- | :--- | :--- |
+| `npm run test:mcp:live` | `WALLET_MCP_ACCESS_TOKEN` | Tests connectivity and queries accounts/categories from BudgetBakers MCP |
+| `npm run test:ai:live` | `GEMINI_API_KEY` / `OPENAI_API_KEY` | Tests live LLM NLU extraction with real API queries |
+| `npm run test:gemini:live` | `GEMINI_API_KEY` | Tests live Google Gemini provider integration |
+| `npm run test:email:live` | `EMAIL_IMAP_USER`, `EMAIL_IMAP_PASSWORD` | Tests Gmail IMAP connection and INBOX capabilities |
+| `npm run test:email-gate-live` | `EMAIL_IMAP_USER`, `EMAIL_IMAP_PASSWORD` | Fetches real bank emails from INBOX and evaluates through Gate 1 |
+| `npm run test:telegram:live` | `TELEGRAM_BOT_TOKEN` | Validates Telegram bot token authorization and message dispatch |
+
+#### 3. Type Checking & Build Verification
+```bash
+npm run build
+```
+Compiles TypeScript source code (`tsc`) to verify strict type compliance across all components.
 
 ### Adding New Tests
 
-- When adding a new feature or utility, consider adding corresponding unit or diagnostic scenarios in `tests/` (e.g., adding test cases to `tests/responseDictionary.test.ts` when introducing new dictionary entries).
-- Ensure all tests exit cleanly with status code `0`.
+- When introducing a new feature, utility, or safeguard, add a corresponding test suite under `tests/` following the naming convention `<targetModule>.test.ts`.
+- If the test is hermetic and mocked, register it in `OFFLINE_TEST_SUITES` in `tests/runOfflineTests.ts` so it is automatically included in `npm test`.
+- Ensure all tests exit cleanly with status code `0` on success and code `1` on failure.
 
 ---
 
