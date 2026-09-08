@@ -6,6 +6,7 @@ export type SupportedAiProviderType = 'gemini' | 'openrouter' | 'groq' | 'ollama
 
 export interface ApplicationEnvironmentConfiguration {
   aiProvider: SupportedAiProviderType;
+  aiProviders: SupportedAiProviderType[];
   aiApiKey: string;
   aiBaseUrl: string;
   aiModel: string;
@@ -44,13 +45,13 @@ export interface ApplicationEnvironmentConfiguration {
 }
 
 
-interface ProviderConfigStrategy {
+export interface ProviderConfigStrategy {
   getDefaultBaseUrl(): string;
   getDefaultModel(fallbackModel: string): string;
   getDefaultApiKey(fallbackApiKey: string): string;
 }
 
-const PROVIDER_CONFIG_STRATEGIES: Record<SupportedAiProviderType, ProviderConfigStrategy> = {
+export const PROVIDER_CONFIG_STRATEGIES: Record<SupportedAiProviderType, ProviderConfigStrategy> = {
   openrouter: {
     getDefaultBaseUrl: () => 'https://openrouter.ai/api/v1',
     getDefaultModel: () => 'google/gemini-2.0-flash-exp:free',
@@ -84,10 +85,19 @@ const PROVIDER_CONFIG_STRATEGIES: Record<SupportedAiProviderType, ProviderConfig
 };
 
 export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfiguration {
-  const rawAiProvider = (process.env.AI_PROVIDER || 'gemini').toLowerCase().trim() as SupportedAiProviderType;
-  const aiProvider: SupportedAiProviderType = ['gemini', 'openrouter', 'groq', 'ollama', 'openai', 'custom'].includes(rawAiProvider)
-    ? rawAiProvider
-    : 'gemini';
+  const allowedProviderTypes: SupportedAiProviderType[] = ['gemini', 'openrouter', 'groq', 'ollama', 'openai', 'custom'];
+  const rawAiProviderEnv = (process.env.AI_PROVIDER || 'gemini').toLowerCase().trim();
+
+  const parsedProviders = rawAiProviderEnv
+    .split(',')
+    .map(providerItem => providerItem.trim().toLowerCase() as SupportedAiProviderType)
+    .filter((providerItem): providerItem is SupportedAiProviderType => allowedProviderTypes.includes(providerItem));
+
+  const aiProviders: SupportedAiProviderType[] = parsedProviders.length > 0
+    ? Array.from(new Set(parsedProviders))
+    : ['gemini'];
+
+  const aiProvider: SupportedAiProviderType = aiProviders[0];
 
   const geminiApiKey = process.env.GEMINI_API_KEY || '';
   const geminiModel = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
@@ -178,6 +188,7 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
 
   return {
     aiProvider,
+    aiProviders,
     aiApiKey,
     aiBaseUrl,
     aiModel,

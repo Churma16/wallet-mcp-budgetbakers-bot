@@ -1,19 +1,21 @@
-﻿import { ApplicationEnvironmentConfiguration } from '../../config/environmentConfig.js';
+import {
+  ApplicationEnvironmentConfiguration,
+  SupportedAiProviderType,
+  PROVIDER_CONFIG_STRATEGIES,
+} from '../../config/environmentConfig.js';
 import { applicationLogger } from '../../utils/logger.js';
 import { FinancialAiProvider } from './financialAiProvider.js';
 import { GeminiAiProvider } from './geminiAiProvider.js';
 import { OpenAiCompatibleAiProvider } from './openAiCompatibleAiProvider.js';
+import { FallbackAiProvider } from './fallbackAiProvider.js';
 
 /**
- * Factory that instantiates the active FinancialAiProvider based on environment configuration
+ * Instantiates a single FinancialAiProvider based on provider type and environment configuration
  */
-export function createFinancialAiProvider(
+export function createSingleFinancialAiProvider(
+  providerType: SupportedAiProviderType,
   environmentConfig: ApplicationEnvironmentConfiguration
 ): FinancialAiProvider {
-  const providerType = environmentConfig.aiProvider;
-
-  applicationLogger.info(`Initializing AI Provider: '${providerType.toUpperCase()}'...`);
-
   if (providerType === 'gemini') {
     if (!environmentConfig.geminiApiKey) {
       applicationLogger.error('GEMINI_API_KEY is not defined in environment variables.');
@@ -27,8 +29,18 @@ export function createFinancialAiProvider(
     );
   }
 
-  // OpenRouter, Groq, Ollama, OpenAI, or custom OpenAI-compatible provider
-  if (!environmentConfig.aiApiKey && providerType !== 'ollama') {
+  const strategy = PROVIDER_CONFIG_STRATEGIES[providerType] || PROVIDER_CONFIG_STRATEGIES.custom;
+  const baseUrl = environmentConfig.aiProvider === providerType
+    ? environmentConfig.aiBaseUrl
+    : (strategy.getDefaultBaseUrl() || environmentConfig.aiBaseUrl);
+  const apiKey = environmentConfig.aiProvider === providerType
+    ? environmentConfig.aiApiKey
+    : (strategy.getDefaultApiKey(environmentConfig.geminiApiKey) || environmentConfig.aiApiKey);
+  const primaryModelName = environmentConfig.aiProvider === providerType
+    ? environmentConfig.aiModel
+    : (strategy.getDefaultModel(environmentConfig.geminiModel) || environmentConfig.aiModel);
+
+  if (!apiKey && providerType !== 'ollama') {
     applicationLogger.warn(
       `API key for AI provider '${providerType}' is not set (AI_API_KEY / ${providerType.toUpperCase()}_API_KEY). Requests may fail.`
     );
@@ -36,10 +48,39 @@ export function createFinancialAiProvider(
 
   return new OpenAiCompatibleAiProvider({
     providerName: providerType,
-    baseUrl: environmentConfig.aiBaseUrl,
-    apiKey: environmentConfig.aiApiKey,
-    primaryModelName: environmentConfig.aiModel,
+    baseUrl,
+    apiKey,
+    primaryModelName,
     fallbackModelList: environmentConfig.aiFallbackModels,
     requestTimeoutMilliseconds: environmentConfig.aiRequestTimeoutMilliseconds,
   });
+}
+
+/**
+ * Factory that instantiates the active FinancialAiProvider based on environment configuration.
+ * When multiple providers are specified in AI_PROVIDER (comma-separated), a priority-based
+ * FallbackAiProvider is returned.
+ */
+export function createFinancialAiProvider(
+  environmentConfig: ApplicationEnvironmentConfiguration
+): FinancialAiProvider {
+  const providerList = environmentConfig.aiProviders && environmentConfig.aiProviders.length > 0
+    ? environmentConfig.aiProviders
+    : [environmentConfig.aiProvider || 'gemini'];
+
+  if (providerList.length === 1) {
+    const singleProviderType = providerList[0];
+    applicationLogger.info(`Initializing AI Provider: '${singleProviderType.toUpperCase()}'...`);
+    return createSingleFinancialAiProvider(singleProviderType, environmentConfig);
+  }
+
+  applicationLogger.info(
+    `Initializing Multi-Provider AI Fallback Chain (${providerList.map(item => item.toUpperCase()).join(' -> ')})...`
+  );
+
+  const instantiatedProviders = providerList.map(providerType =>
+    createSingleFinancialAiProvider(providerType, environmentConfig)
+  );
+
+  return new FallbackAiProvider(instantiatedProviders);
 }

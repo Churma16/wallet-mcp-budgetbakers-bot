@@ -10,6 +10,7 @@
         "start": "tsx src/index.ts",
         "test:mcp": "tsx tests/walletMcp.test.ts",
         "test:ai": "tsx tests/aiProvider.test.ts",
+        "test:ai-fallback": "tsx tests/fallbackAiProvider.test.ts",
         "test:gemini": "tsx tests/gemini.test.ts",
         "test:email-rules": "tsx tests/emailGateRules.test.ts",
         "test:email": "tsx tests/emailImap.test.ts",
