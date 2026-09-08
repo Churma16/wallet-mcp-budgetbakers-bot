@@ -49,7 +49,7 @@ async function generateReleaseNotes() {
   // 1. Extract version section from CHANGELOG.md if present
   if (fs.existsSync('CHANGELOG.md') && version) {
     const changelog = fs.readFileSync('CHANGELOG.md', 'utf8').replace(/\r\n/g, '\n');
-    const escapedVersion = version.replace(/\./g, '\\.');
+    const escapedVersion = version.replace(/[\\^$*+?.()|[\]{}]/g, '\\$&');
     const regex = new RegExp(`(?:^|\\n)##\\s*\\[?${escapedVersion}[\\]\\s][^\\n]*\\n([\\s\\S]*?)(?=\\n##\\s|$)`);
     const match = changelog.match(regex);
     if (match && match[1].trim()) {

@@ -213,11 +213,23 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
           return;
         }
 
-        applicationLogger.error(`Failed to download incoming Telegram photo: ${downloadError}`);
+        const rawErrorMessage = downloadError instanceof Error ? downloadError.message : String(downloadError);
+        const sanitizedDownloadError = this.botToken
+          ? rawErrorMessage.replaceAll(this.botToken, '[REDACTED_TELEGRAM_TOKEN]')
+          : rawErrorMessage;
+        applicationLogger.error(`Failed to download incoming Telegram photo: ${sanitizedDownloadError}`);
         applicationLogger.fileDetail('error', 'Telegram Media Download Failure', {
           error: downloadError instanceof Error
-            ? { name: downloadError.name, message: downloadError.message, stack: downloadError.stack }
-            : String(downloadError),
+            ? {
+                name: downloadError.name,
+                message: this.botToken
+                  ? downloadError.message.replaceAll(this.botToken, '[REDACTED_TELEGRAM_TOKEN]')
+                  : downloadError.message,
+                stack: downloadError.stack
+                  ? (this.botToken ? downloadError.stack.replaceAll(this.botToken, '[REDACTED_TELEGRAM_TOKEN]') : downloadError.stack)
+                  : undefined,
+              }
+            : sanitizedDownloadError,
           chatId,
           senderIdentifier,
         });
@@ -245,8 +257,10 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
         () => this.botInstance!.api.getMe(),
         'Telegram api.getMe()'
       );
+      const safeBotUsername = String(botProfile.username || 'unknown').replace(/[^\w]/g, '');
+      const safeBotFirstName = String(botProfile.first_name || 'Bot').replace(/[^\w\s]/g, '');
       applicationLogger.success(
-        `Telegram Bot connected successfully as @${botProfile.username} (${botProfile.first_name})`
+        `Telegram Bot connected successfully as @${safeBotUsername} (${safeBotFirstName})`
       );
 
       if (this.normalizedAllowedUserId) {
@@ -256,14 +270,19 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       }
 
       this.isRunning = true;
+      const onPollingStarted = (): void => {
+        applicationLogger.info('Telegram Bot polling loop is running and listening for messages.');
+      };
       this.botInstance.start({
-        onStart: () => {
-          applicationLogger.info('Telegram Bot polling loop is running and listening for messages.');
-        },
+        onStart: onPollingStarted,
       });
     } catch (startError: unknown) {
       this.isRunning = false;
-      applicationLogger.error(`Failed to connect to Telegram Bot API: ${startError}`);
+      const rawStartErrorMessage = startError instanceof Error ? startError.message : String(startError);
+      const sanitizedStartError = this.botToken
+        ? rawStartErrorMessage.replaceAll(this.botToken, '[REDACTED_TELEGRAM_TOKEN]')
+        : rawStartErrorMessage;
+      applicationLogger.error(`Failed to connect to Telegram Bot API: ${sanitizedStartError}`);
       throw startError;
     }
   }
