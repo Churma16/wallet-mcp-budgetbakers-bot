@@ -158,6 +158,7 @@ export class Application {
             maxReconnectAttempts: this.environmentConfig.whatsappMaxReconnectAttempts,
             maxBackoffSeconds: this.environmentConfig.whatsappReconnectMaxBackoffSeconds,
             messageQueueIntervalMs: this.environmentConfig.whatsappMessageQueueIntervalMs,
+            typingPresenceCooldownMs: this.environmentConfig.whatsappTypingPresenceCooldownMs,
           }
         );
         this.messagingGateway.registerAdapter(whatsappAdapter);

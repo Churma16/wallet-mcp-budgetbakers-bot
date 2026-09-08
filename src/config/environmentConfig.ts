@@ -37,6 +37,7 @@ export interface ApplicationEnvironmentConfiguration {
   whatsappMaxReconnectAttempts: number;
   whatsappReconnectMaxBackoffSeconds: number;
   whatsappMessageQueueIntervalMs: number;
+  whatsappTypingPresenceCooldownMs: number;
 }
 
 interface ProviderConfigStrategy {
@@ -158,6 +159,10 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
   const whatsappMaxReconnectAttempts = parseInt(process.env.WHATSAPP_MAX_RECONNECT_ATTEMPTS || '6', 10) || 6;
   const whatsappReconnectMaxBackoffSeconds = parseInt(process.env.WHATSAPP_RECONNECT_MAX_BACKOFF_SECONDS || '300', 10) || 300;
   const whatsappMessageQueueIntervalMs = parseInt(process.env.WHATSAPP_MESSAGE_QUEUE_INTERVAL_MS || '1000', 10) || 1000;
+  const parsedTypingCooldown = process.env.WHATSAPP_TYPING_PRESENCE_COOLDOWN_MS !== undefined
+    ? parseInt(process.env.WHATSAPP_TYPING_PRESENCE_COOLDOWN_MS, 10)
+    : 2500;
+  const whatsappTypingPresenceCooldownMs = Number.isNaN(parsedTypingCooldown) ? 2500 : parsedTypingCooldown;
 
   return {
     aiProvider,
@@ -190,5 +195,6 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     whatsappMaxReconnectAttempts,
     whatsappReconnectMaxBackoffSeconds,
     whatsappMessageQueueIntervalMs,
+    whatsappTypingPresenceCooldownMs,
   };
 }
