@@ -153,7 +153,12 @@ export class Application {
         const whatsappAdapter = new WhatsappMessagingAdapter(
           this.environmentConfig.whatsappSessionPath,
           this.environmentConfig.allowedPhoneNumber,
-          event => this.userMessageHandler.handleIncomingUserMessage(event)
+          event => this.userMessageHandler.handleIncomingUserMessage(event),
+          {
+            maxReconnectAttempts: this.environmentConfig.whatsappMaxReconnectAttempts,
+            maxBackoffSeconds: this.environmentConfig.whatsappReconnectMaxBackoffSeconds,
+            messageQueueIntervalMs: this.environmentConfig.whatsappMessageQueueIntervalMs,
+          }
         );
         this.messagingGateway.registerAdapter(whatsappAdapter);
       } else {

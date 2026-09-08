@@ -41,6 +41,24 @@ Every issue must include the following sections:
 To prevent Windows PowerShell string truncation and backtick escaping failures:
 - **NEVER** pass multiline issue content inline using `gh issue create --body "..."`.
 - **ALWAYS** write the complete markdown content to a temporary file (e.g. in the scratch directory) and pass it using `gh issue create --body-file <path>` or `gh issue edit <id> --body-file <path>`.
-- Assign standard GitHub labels appropriately (e.g. `--label "enhancement"` or `--label "bug"`).
+- **ALWAYS** include `--label "<comma-separated-labels>"` during issue creation (e.g. `gh issue create --title "..." --body-file <path> --label "enhancement,security"`). Never create an issue without labels.
+
+### 3. Mandatory Label / Tag Assignment Policy
+Every issue created or updated in this repository MUST have at least one appropriate label assigned. Follow this deterministic mapping:
+
+#### Primary Type Labels (Mapped from Title Prefix):
+- `feat(...)` / `feat:` -> `enhancement`
+- `fix(...)` / `fix:` -> `bug`
+- `refactor(...)` / `refactor:` -> `refactor` (and optionally `enhancement` if introducing significant structural capabilities)
+- `docs(...)` / `docs:` -> `documentation`
+- `perf(...)` / `perf:` -> `performance`
+
+#### Multi-Label & Domain Criteria:
+- **Security / Anti-Ban**: If the issue involves rate limiting, reconnection backoff, circuit breakers, whitelisting, credentials, or session protections, **ALWAYS** add `security` (e.g., `--label "enhancement,security"`).
+- **Architectural Refactoring**: If a new feature requires decoupling god files, restructuring handlers, or migrating core abstractions, add `refactor` (e.g., `--label "enhancement,refactor"`).
+- **Community Contribution**: If the issue actively requests community test cases, external bank samples, or provider benchmarks, add `help wanted`.
+
+#### Verification Invariant:
+- Before completing any issue creation or editing task, verify the issue has its labels populated via `gh issue view <id> --json labels`.
 
 

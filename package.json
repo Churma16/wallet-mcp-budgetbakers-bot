@@ -16,6 +16,7 @@
         "test:telegram": "tsx src/scripts/testTelegramBot.ts",
         "test:format": "tsx src/scripts/testMessageFormat.ts",
         "test:i18n": "tsx src/scripts/testResponseDictionary.ts",
+        "test:whatsapp-safeguards": "tsx src/scripts/testWhatsAppSafeguards.ts",
         "build": "tsc"
     },
     "dependencies": {
