@@ -363,16 +363,19 @@ wallet-mcp-budgetbakers-bot/
 │   ├── app.ts                           # Application container and lifecycle coordinator
 │   └── index.ts                         # Entrypoint bootstrap
 ├── tests/                               # Diagnostic & verification test suites
+│   ├── runOfflineTests.ts               # Unified offline test runner executing 14 hermetic test suites
 │   ├── aiProvider.test.ts               # Diagnostic script for active AI provider NLU
 │   ├── fallbackAiProvider.test.ts       # Unit tests for multi-provider fallback & error failover
 │   ├── bankEmailRules.test.ts           # Unit test suite for Gate 1 filtering logic
-│   ├── emailListenerService.test.ts                # Diagnostic script for Gmail IMAP connectivity
+│   ├── budgetParsing.test.ts            # Unit tests for budget metric parsing & closed filtering
+│   ├── emailListenerService.test.ts     # Diagnostic script for Gmail IMAP connectivity
 │   ├── fetchRealEmailsGate.test.ts      # Live inbox diagnostic for Gate 1 rule evaluation
-│   ├── humanResponseFormatter.test.ts                # Validation script for human-friendly response strings
-│   ├── geminiAiProvider.test.ts          # Diagnostic script for Gemini AI provider
-│   ├── loggerRedaction.test.ts          # Redaction test for PII and sensitive data in logs
+│   ├── humanResponseFormatter.test.ts   # Validation script for human-friendly response strings
+│   ├── geminiAiProvider.test.ts         # Diagnostic script for Gemini AI provider
+│   ├── loggerRedaction.test.ts          # Redaction test for secrets and tokens in logs
+│   ├── loggerSanitizer.test.ts          # Masking test for bank account numbers and PANs in logs
 │   ├── mediaDownloadLimits.test.ts      # Boundary tests for oversized media protection
-│   ├── messageFormatHelper.test.ts            # Unit test for WhatsApp markup to Telegram HTML converter
+│   ├── messageFormatHelper.test.ts      # Unit test for WhatsApp markup to Telegram HTML converter
 │   ├── messagingGatewayResilience.test.ts # Gateway failover, retry, and disconnect resilience
 │   ├── receiptOcrPrompt.test.ts         # Verification for receipt vision OCR prompt structure
 │   ├── responseDictionary.test.ts       # Verification script for i18n & multi-currency formatting
