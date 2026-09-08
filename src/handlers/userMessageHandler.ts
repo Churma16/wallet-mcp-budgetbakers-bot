@@ -1,7 +1,7 @@
 import { MessagingGatewayService, IncomingUserMessageEvent } from '../services/messaging/index.js';
-import { PendingTransactionManager } from '../services/pendingTransactionManager.js';
+import { PendingTransactionService } from '../services/pendingTransactionService.js';
 import { FinancialAiProvider, ExtractedFinancialIntent } from '../services/ai/index.js';
-import { WalletMcpClientService } from '../services/walletMcpClient.js';
+import { WalletMcpClientService } from '../services/walletMcpService.js';
 import { WalletCacheService } from '../services/walletCacheService.js';
 import { PendingActionHandler } from './pendingActionHandler.js';
 import { FastPathHandler } from './fastPathHandler.js';
@@ -20,7 +20,7 @@ import { applicationLogger, formatConciseErrorMessage } from '../utils/logger.js
 export class UserMessageHandler {
   constructor(
     private readonly messagingGateway: MessagingGatewayService,
-    private readonly pendingTransactionManager: PendingTransactionManager,
+    private readonly pendingTransactionManager: PendingTransactionService,
     private readonly pendingActionHandler: PendingActionHandler,
     private readonly fastPathHandler: FastPathHandler,
     private readonly financialAiProvider: FinancialAiProvider,

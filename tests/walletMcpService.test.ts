@@ -1,5 +1,5 @@
 import { loadEnvironmentConfiguration } from '../src/config/environmentConfig.js';
-import { WalletMcpClientService } from '../src/services/walletMcpClient.js';
+import { WalletMcpClientService } from '../src/services/walletMcpService.js';
 import { applicationLogger } from '../src/utils/logger.js';
 
 async function runWalletMcpVerification(): Promise<void> {

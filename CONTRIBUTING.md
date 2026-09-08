@@ -131,6 +131,16 @@ Refactoring efforts should improve maintainability, performance, and readability
 - **Environment Variables**:
   - Never hardcode configurable parameters, URLs, credentials, or keys.
   - Define new variables in `src/config/environmentConfig.ts` with validation and provide documentation in `.env.example`.
+- **File Naming Conventions**:
+  - Use `camelCase.ts` consistently across all production source files and test suites.
+  - Suffix roles clearly by responsibility layer:
+    - `*Service.ts`: Core business logic, cache management, and protocol orchestration (e.g. `walletMcpService.ts`, `walletCacheService.ts`, `pendingTransactionService.ts`).
+    - `*Handler.ts`: Inbound message, action, or command event routing (e.g. `userMessageHandler.ts`, `fastPathHandler.ts`).
+    - `*Adapter.ts`: Messaging transport drivers (e.g. `whatsappAdapter.ts`, `telegramAdapter.ts`).
+    - `*Evaluator.ts` / `*Detector.ts` / `*Validator.ts` / `*Formatter.ts` / `*Helper.ts`: Pure functional utilities and transformations.
+    - `*Rules.ts` / `*Config.ts`: Declarative configurations and domain rule specifications.
+  - Multi-word brand and protocol names in identifiers are formatted in standard lowercase camelCase (e.g., `whatsapp`, `gmail`, `imap`).
+  - Unit test files maintain 1-to-1 parity with their target source module: `<sourceModuleName>.test.ts` (e.g. `walletMcpService.test.ts`, `humanResponseFormatter.test.ts`, `geminiAiProvider.test.ts`).
 
 ---
 

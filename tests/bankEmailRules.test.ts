@@ -1,5 +1,5 @@
-import { evaluateEmailThroughGateOne } from '../src/utils/emailLogicGate.js';
-import { parseCurrencyAmountStringToNumber } from '../src/utils/emailLogicGate.js';
+import { evaluateEmailThroughGateOne } from '../src/utils/emailGateEvaluator.js';
+import { parseCurrencyAmountStringToNumber } from '../src/utils/emailGateEvaluator.js';
 import { detectPendingConfirmationAction } from '../src/utils/fastPathIntentDetector.js';
 
 console.log('====================================================');

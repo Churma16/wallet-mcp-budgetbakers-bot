@@ -1,5 +1,5 @@
 import { loadEnvironmentConfiguration, ApplicationEnvironmentConfiguration } from './config/environmentConfig.js';
-import { WalletMcpClientService } from './services/walletMcpClient.js';
+import { WalletMcpClientService } from './services/walletMcpService.js';
 import { WalletCacheService } from './services/walletCacheService.js';
 import { createFinancialAiProvider, FinancialAiProvider } from './services/ai/index.js';
 import {
@@ -8,7 +8,7 @@ import {
   TelegramMessagingAdapter,
 } from './services/messaging/index.js';
 import { EmailListenerService } from './services/emailListenerService.js';
-import { PendingTransactionManager } from './services/pendingTransactionManager.js';
+import { PendingTransactionService } from './services/pendingTransactionService.js';
 import {
   EmailTransactionHandler,
   PendingActionHandler,
@@ -23,7 +23,7 @@ export class Application {
   private readonly walletMcpClient: WalletMcpClientService;
   private readonly walletCacheService: WalletCacheService;
   private readonly financialAiProvider: FinancialAiProvider;
-  private readonly pendingTransactionManager: PendingTransactionManager;
+  private readonly pendingTransactionManager: PendingTransactionService;
   private readonly messagingGateway: MessagingGatewayService;
   private emailListenerService: EmailListenerService | null = null;
   private readonly emailTransactionHandler: EmailTransactionHandler;
@@ -43,7 +43,7 @@ export class Application {
 
     this.walletCacheService = new WalletCacheService(this.walletMcpClient);
     this.financialAiProvider = createFinancialAiProvider(this.environmentConfig);
-    this.pendingTransactionManager = new PendingTransactionManager();
+    this.pendingTransactionManager = new PendingTransactionService();
     this.messagingGateway = new MessagingGatewayService();
 
     this.emailTransactionHandler = new EmailTransactionHandler(

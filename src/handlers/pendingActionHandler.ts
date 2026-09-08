@@ -1,5 +1,5 @@
-import { PendingTransactionManager, PendingTransactionItem } from '../services/pendingTransactionManager.js';
-import { WalletMcpClientService } from '../services/walletMcpClient.js';
+import { PendingTransactionService, PendingTransactionItem } from '../services/pendingTransactionService.js';
+import { WalletMcpClientService } from '../services/walletMcpService.js';
 import { MessagingGatewayService, IncomingUserMessageEvent } from '../services/messaging/index.js';
 import { EmailListenerService } from '../services/emailListenerService.js';
 import { PendingConfirmationIntent } from '../utils/fastPathIntentDetector.js';
@@ -13,7 +13,7 @@ import { applicationLogger } from '../utils/logger.js';
 
 export class PendingActionHandler {
   constructor(
-    private readonly pendingTransactionManager: PendingTransactionManager,
+    private readonly pendingTransactionManager: PendingTransactionService,
     private readonly walletMcpClient: WalletMcpClientService,
     private readonly messagingGateway: MessagingGatewayService,
     private readonly emailListenerServiceGetter: () => EmailListenerService | null

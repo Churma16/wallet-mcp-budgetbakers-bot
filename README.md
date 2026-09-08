@@ -351,11 +351,11 @@ wallet-mcp-budgetbakers-bot/
 │   │   ├── telegramAdapter.ts           # grammY Telegram Bot adapter
 │   │   └── index.ts                     # Messaging barrel export
 │   ├── emailListenerService.ts          # Gmail IMAP IDLE real-time subscriber and parser
-│   ├── pendingTransactionManager.ts     # Interactive confirmation ticket queue
+│   ├── pendingTransactionService.ts     # Interactive confirmation ticket queue
 │   ├── walletCacheService.ts            # In-memory cache for accounts, categories, and currencies
-│   └── walletMcpClient.ts               # BudgetBakers Wallet MCP HTTP JSON-RPC client
+│   └── walletMcpService.ts               # BudgetBakers Wallet MCP HTTP JSON-RPC client
 │   ├── utils/
-│   │   ├── emailLogicGate.ts            # Gate 1 rule evaluator (sender domain, blacklist, anti-dupe)
+│   │   ├── emailGateEvaluator.ts            # Gate 1 rule evaluator (sender domain, blacklist, anti-dupe)
 │   │   ├── fastPathIntentDetector.ts    # Zero-token intent classifier and confirmation parser
 │   │   ├── humanResponseFormatter.ts    # Multi-language response templates and formatting
 │   │   ├── logger.ts                    # Pino logger instance with daily file rotation & redaction
@@ -365,22 +365,22 @@ wallet-mcp-budgetbakers-bot/
 ├── tests/                               # Diagnostic & verification test suites
 │   ├── aiProvider.test.ts               # Diagnostic script for active AI provider NLU
 │   ├── fallbackAiProvider.test.ts       # Unit tests for multi-provider fallback & error failover
-│   ├── emailGateRules.test.ts           # Unit test suite for Gate 1 filtering logic
-│   ├── emailImap.test.ts                # Diagnostic script for Gmail IMAP connectivity
+│   ├── bankEmailRules.test.ts           # Unit test suite for Gate 1 filtering logic
+│   ├── emailListenerService.test.ts                # Diagnostic script for Gmail IMAP connectivity
 │   ├── fetchRealEmailsGate.test.ts      # Live inbox diagnostic for Gate 1 rule evaluation
-│   ├── formatter.test.ts                # Validation script for human-friendly response strings
-│   ├── gemini.test.ts                   # Diagnostic script for Gemini AI service
+│   ├── humanResponseFormatter.test.ts                # Validation script for human-friendly response strings
+│   ├── geminiAiProvider.test.ts          # Diagnostic script for Gemini AI provider
 │   ├── loggerRedaction.test.ts          # Redaction test for PII and sensitive data in logs
 │   ├── mediaDownloadLimits.test.ts      # Boundary tests for oversized media protection
-│   ├── messageFormat.test.ts            # Unit test for WhatsApp markup to Telegram HTML converter
+│   ├── messageFormatHelper.test.ts            # Unit test for WhatsApp markup to Telegram HTML converter
 │   ├── messagingGatewayResilience.test.ts # Gateway failover, retry, and disconnect resilience
 │   ├── receiptOcrPrompt.test.ts         # Verification for receipt vision OCR prompt structure
 │   ├── responseDictionary.test.ts       # Verification script for i18n & multi-currency formatting
 │   ├── telegramBot.test.ts              # Diagnostic script for Telegram bot connectivity & dispatch
 │   ├── telegramSafeguards.test.ts       # Startup retry and network resilience for Telegram
-│   ├── walletMcp.test.ts                # Diagnostic script for BudgetBakers MCP endpoints
-│   ├── whatsAppSafeguards.test.ts       # Safeguards & session recovery tests for WhatsApp
-│   └── whatsAppSocketHardening.test.ts  # Socket reconnection & backoff tests for WhatsApp
+│   ├── walletMcpService.test.ts         # Diagnostic script for BudgetBakers MCP endpoints
+│   ├── whatsappSafeguards.test.ts       # Safeguards & session recovery tests for WhatsApp
+│   └── whatsappSocketHardening.test.ts  # Socket reconnection & backoff tests for WhatsApp
 ├── .env.example                         # Environment variable template
 ├── package.json                         # Node dependencies and execution scripts
 ├── tsconfig.json                        # TypeScript compiler configuration
