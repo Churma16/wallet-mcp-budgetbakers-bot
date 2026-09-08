@@ -61,4 +61,29 @@ Every issue created or updated in this repository MUST have at least one appropr
 #### Verification Invariant:
 - Before completing any issue creation or editing task, verify the issue has its labels populated via `gh issue view <id> --json labels`.
 
+## Standardized GitHub Pull Request Structure
+When creating or editing GitHub Pull Requests for this repository (`wallet_mcp`), always adhere to the 5-section specification established across merged repository PRs:
+
+### 1. Mandatory Structure
+Every PR description must include the following 5 sections:
+- `## Summary`: High-level overview of what the PR accomplishes, what core problem it solves, and its primary architectural impact.
+- `## Motivation & Context`: Concrete breakdown of why this change is necessary, citing previous limitations, edge cases, or vulnerability/bug behaviors.
+- `## Detailed Changes` (or `## Key Changes`): Grouped by logical component (e.g. `### 1. Component Name`), listing changed files and specific mechanisms (interfaces, functions, error handling, config).
+- `## Test Verification & Quality Assurance` (or `## Verification & Test Results`): Explicit evidence of verification:
+  - New unit/integration test suites (names, assertion counts, passing rate).
+  - TypeScript build check (`npm run build` / `tsc` clean compile).
+  - Regression test suites run and results.
+  - Confirmation that zero raw emojis exist in internal code or console output (using clean tags `[SUCCESS]`, `[ERROR]`, `[WARN]`, `[INFO]`).
+- `## Related Issues`: Explicit issue links using closing keywords (e.g. `- Closes #<id>` or `- Fixes #<id>`).
+
+### 2. Safe CLI Creation via `--body-file`
+To prevent Windows PowerShell string truncation and backtick escaping failures:
+- **NEVER** pass multiline PR descriptions inline using `gh pr create --body "..."`.
+- **ALWAYS** write the complete markdown content to a temporary file (e.g. in the scratch directory) and pass it using `gh pr create --body-file <path>` or `gh pr edit <id> --body-file <path>`.
+
+### 3. Title & Branch Parity
+- PR title must follow Conventional Commits format without JIRA ID prefix (e.g., `feat(messaging): ...`, `fix(security): ...`).
+- Branch names must follow standard kebab-cased format `<branch-type>/<short-kebab-description>` without JIRA prefixes.
+
+
 
