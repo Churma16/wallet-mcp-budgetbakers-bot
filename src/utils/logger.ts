@@ -46,51 +46,276 @@ export function redactSensitiveData(rawText: string): string {
 }
 
 /**
- * Sanitizes an argument object, error, or primitive to prevent credential leaks
+ * Checks whether a property key matches known sensitive financial identifiers
+ */
+export function isSensitivePropertyKey(propertyKeyName: string): boolean {
+  if (!propertyKeyName || typeof propertyKeyName !== 'string') {
+    return false;
+  }
+  const normalizedKeyName = propertyKeyName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const sensitiveKeyList = [
+    'bankaccountnumber',
+    'bankaccount',
+    'accountnumber',
+    'accountno',
+    'accno',
+    'customerpan',
+    'merchantpan',
+    'pan',
+    'sourceoffund',
+    'cardnumber',
+    'cardpan',
+  ];
+  return sensitiveKeyList.includes(normalizedKeyName);
+}
+
+/**
+ * Checks whether a property key represents non-sensitive metadata (e.g. amounts, timestamps, transaction IDs)
+ * that must be preserved without digit pattern masking.
+ */
+export function isExemptPropertyKey(propertyKeyName: string): boolean {
+  if (!propertyKeyName || typeof propertyKeyName !== 'string') {
+    return false;
+  }
+  const normalizedKeyName = propertyKeyName.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const exemptKeyList = [
+    'amount',
+    'balance',
+    'spentamount',
+    'limitamount',
+    'currentbalance',
+    'rawcurrentbalance',
+    'total',
+    'succeeded',
+    'failed',
+    'id',
+    'accountid',
+    'transactionid',
+    'recordid',
+    'categoryid',
+    'parentcategoryid',
+    'categoryname',
+    'name',
+    'timestamp',
+    'mtimems',
+    'executiondurationmilliseconds',
+    'duration',
+    'durationms',
+    'date',
+    'recorddate',
+    'time',
+    'currency',
+    'currencycode',
+  ];
+  return exemptKeyList.includes(normalizedKeyName);
+}
+
+/**
+ * Masks bank account numbers or PANs by preserving the first 4 and last 4 characters,
+ * masking the middle segment with '****' (e.g., 507431877335 -> 5074****7335).
+ */
+export function maskSensitiveValue(rawValue: unknown): string {
+  if (rawValue === null || rawValue === undefined) {
+    return '';
+  }
+  const rawStringValue = String(rawValue).trim();
+  if (!rawStringValue) {
+    return rawStringValue;
+  }
+
+  // Preserve if already masked or redacted
+  if (rawStringValue.includes('****') || rawStringValue.includes('[REDACTED')) {
+    return rawStringValue;
+  }
+
+  const numericDigitsOnly = rawStringValue.replace(/\D/g, '');
+
+  // If text contains words/labels alongside digits (e.g., "BCA 507431877335")
+  if (/[a-zA-Z]/.test(rawStringValue) && numericDigitsOnly.length >= 8) {
+    return maskAccountNumbersAndPansInString(rawStringValue);
+  }
+
+  if (numericDigitsOnly.length >= 8) {
+    const prefixSegment = numericDigitsOnly.slice(0, 4);
+    const suffixSegment = numericDigitsOnly.slice(-4);
+    return `${prefixSegment}****${suffixSegment}`;
+  }
+
+  if (numericDigitsOnly.length >= 5) {
+    const prefixSegment = numericDigitsOnly.slice(0, 2);
+    const suffixSegment = numericDigitsOnly.slice(-2);
+    return `${prefixSegment}****${suffixSegment}`;
+  }
+
+  return '****';
+}
+
+/**
+ * Scans strings for sensitive key-value pairs and continuous 10-19 digit sequences (account numbers / PANs)
+ * and obfuscates them while protecting WhatsApp JIDs, email addresses, and exempt values.
+ */
+export function maskAccountNumbersAndPansInString(rawText: string): string {
+  if (!rawText || typeof rawText !== 'string') {
+    return String(rawText || '');
+  }
+
+  // 1. Key-value style matching for sensitive keys in strings or embedded JSON
+  let processedText = rawText.replace(
+    /((?:["']?(?:bankAccountNumber|bank_account_number|accountNumber|account_number|customerPan|customer_pan|merchantPan|merchant_pan|pan|sourceOfFund|source_of_fund|cardNumber|card_number|cardPan|card_pan)["']?)\s*[:=]\s*["']?)([^"'\r\n,;}]+)(["']?)/gi,
+    (fullMatchedSubstring, prefixPattern, rawPropertyValue, suffixPattern) => {
+      if (rawPropertyValue.includes('****') || rawPropertyValue.includes('[REDACTED')) {
+        return fullMatchedSubstring;
+      }
+      return `${prefixPattern}${maskSensitiveValue(rawPropertyValue)}${suffixPattern}`;
+    }
+  );
+
+  // 2. Continuous digit sequences between 10 and 19 characters (standard account numbers and PANs)
+  // Negative lookahead (?![@][a-zA-Z0-9_.-]+) protects WhatsApp JIDs (e.g. 6281234567890@s.whatsapp.net) and emails
+  const continuousDigitSequenceRegex = /(?<!\d)(\d{4})\d{2,11}(\d{4})(?!\d)(?![@][a-zA-Z0-9_.-]+)/g;
+
+  processedText = processedText.replace(
+    continuousDigitSequenceRegex,
+    '$1****$2'
+  );
+
+  return processedText;
+}
+
+/**
+ * Recursively sanitizes payloads (objects, arrays, errors, primitives) before logging or writing to disk.
+ * Obfuscates bank account numbers and PANs while preserving non-sensitive data and handling circular references safely.
+ */
+export function sanitizeSensitiveLogPayload(
+  payload: unknown,
+  visitedObjectSet: WeakSet<object> = new WeakSet(),
+  currentPropertyKey?: string
+): unknown {
+  // 1. Handle Null / Undefined / Non-object primitives
+  if (payload === null || payload === undefined) {
+    return payload;
+  }
+
+  if (typeof payload === 'boolean') {
+    return payload;
+  }
+
+  if (typeof payload === 'number' || typeof payload === 'bigint') {
+    if (currentPropertyKey && isSensitivePropertyKey(currentPropertyKey)) {
+      return maskSensitiveValue(payload);
+    }
+    return payload;
+  }
+
+  if (typeof payload === 'string') {
+    // If the key is exempt (e.g. amount, transactionId, categoryId, accountId), do not mask digit patterns
+    if (currentPropertyKey && isExemptPropertyKey(currentPropertyKey)) {
+      return redactSensitiveData(payload);
+    }
+    // If the key is sensitive, mask the value
+    if (currentPropertyKey && isSensitivePropertyKey(currentPropertyKey)) {
+      return maskSensitiveValue(payload);
+    }
+    // For general strings (messages, notes, log lines), redact tokens and mask account numbers/PANs
+    return maskAccountNumbersAndPansInString(redactSensitiveData(payload));
+  }
+
+  if (typeof payload === 'function') {
+    return '[Function]';
+  }
+
+  // 2. Handle Object types (check circular references)
+  if (typeof payload === 'object') {
+    if (visitedObjectSet.has(payload)) {
+      return '[CIRCULAR]';
+    }
+    visitedObjectSet.add(payload);
+
+    // 2a. Handle Error instances
+    if (payload instanceof Error) {
+      const sanitizedErrorMessage = maskAccountNumbersAndPansInString(redactSensitiveData(payload.message));
+      const sanitizedErrorObject = new Error(sanitizedErrorMessage);
+      sanitizedErrorObject.name = payload.name;
+      if (payload.stack) {
+        sanitizedErrorObject.stack = maskAccountNumbersAndPansInString(redactSensitiveData(payload.stack));
+      }
+
+      // Copy and sanitize custom properties attached to Error
+      const customPropertyKeyList = Object.keys(payload);
+      for (const customPropertyKey of customPropertyKeyList) {
+        if (customPropertyKey !== 'name' && customPropertyKey !== 'message' && customPropertyKey !== 'stack') {
+          (sanitizedErrorObject as unknown as Record<string, unknown>)[customPropertyKey] = sanitizeSensitiveLogPayload(
+            (payload as unknown as Record<string, unknown>)[customPropertyKey],
+            visitedObjectSet,
+            customPropertyKey
+          );
+        }
+      }
+      return sanitizedErrorObject;
+    }
+
+    // 2b. Handle Date instances
+    if (payload instanceof Date) {
+      return payload;
+    }
+
+    // 2c. Handle RegExp instances
+    if (payload instanceof RegExp) {
+      return payload;
+    }
+
+    // 2d. Handle Array instances
+    if (Array.isArray(payload)) {
+      return payload.map(arrayElementItem =>
+        sanitizeSensitiveLogPayload(arrayElementItem, visitedObjectSet, currentPropertyKey)
+      );
+    }
+
+    // 2e. Handle Plain Objects
+    const sanitizedPlainObject: Record<string, unknown> = {};
+    for (const [propertyKey, propertyValue] of Object.entries(payload)) {
+      sanitizedPlainObject[propertyKey] = sanitizeSensitiveLogPayload(
+        propertyValue,
+        visitedObjectSet,
+        propertyKey
+      );
+    }
+    return sanitizedPlainObject;
+  }
+
+  return payload;
+}
+
+/**
+ * Sanitizes an argument object, error, or primitive to prevent credential leaks and financial PII exposure.
+ * Delegates to sanitizeSensitiveLogPayload.
  */
 export function sanitizeLogArgument(argumentItem: unknown): unknown {
-  if (typeof argumentItem === 'string') {
-    return redactSensitiveData(argumentItem);
-  }
-  if (argumentItem instanceof Error) {
-    const sanitizedError = new Error(redactSensitiveData(argumentItem.message));
-    sanitizedError.name = argumentItem.name;
-    if (argumentItem.stack) {
-      sanitizedError.stack = redactSensitiveData(argumentItem.stack);
-    }
-    return sanitizedError;
-  }
-  if (typeof argumentItem === 'object' && argumentItem !== null) {
-    try {
-      const serializedJson = JSON.stringify(argumentItem);
-      return JSON.parse(redactSensitiveData(serializedJson));
-    } catch {
-      return argumentItem;
-    }
-  }
-  return argumentItem;
+  return sanitizeSensitiveLogPayload(argumentItem);
 }
 
 /**
  * Helper to format objects, errors, and primitive values for file logging
  */
 function formatLogPayload(dataItem: unknown, indentationSpaces: string = '  '): string {
-  const sanitizedItem = sanitizeLogArgument(dataItem);
+  const sanitizedItem = sanitizeSensitiveLogPayload(dataItem);
   if (sanitizedItem instanceof Error) {
-    const redactedMessage = redactSensitiveData(sanitizedItem.message);
-    const redactedStack = sanitizedItem.stack ? redactSensitiveData(sanitizedItem.stack) : 'No stack trace';
+    const redactedMessage = maskAccountNumbersAndPansInString(redactSensitiveData(sanitizedItem.message));
+    const redactedStack = sanitizedItem.stack
+      ? maskAccountNumbersAndPansInString(redactSensitiveData(sanitizedItem.stack))
+      : 'No stack trace';
     return `\n${indentationSpaces}Error Name: ${sanitizedItem.name}\n${indentationSpaces}Error Message: ${redactedMessage}\n${indentationSpaces}Stack: ${redactedStack}`;
   }
   if (typeof sanitizedItem === 'object' && sanitizedItem !== null) {
     try {
-      const jsonString = JSON.stringify(sanitizedItem, null, 2);
-      const redactedJson = redactSensitiveData(jsonString);
-      return '\n' + redactedJson.split('\n').map(line => `${indentationSpaces}${line}`).join('\n');
+      const serializedJsonString = JSON.stringify(sanitizedItem, null, 2);
+      const redactedJsonString = maskAccountNumbersAndPansInString(redactSensitiveData(serializedJsonString));
+      return '\n' + redactedJsonString.split('\n').map(line => `${indentationSpaces}${line}`).join('\n');
     } catch {
-      return ` ${redactSensitiveData(String(sanitizedItem))}`;
+      return ` ${maskAccountNumbersAndPansInString(redactSensitiveData(String(sanitizedItem)))}`;
     }
   }
-  return ` ${redactSensitiveData(String(sanitizedItem))}`;
+  return ` ${maskAccountNumbersAndPansInString(redactSensitiveData(String(sanitizedItem)))}`;
 }
 
 /**
@@ -99,6 +324,7 @@ function formatLogPayload(dataItem: unknown, indentationSpaces: string = '  '): 
 function appendLogToFile(logLevelTag: string, message: string, optionalArguments: unknown[]): void {
   try {
     const isoTimestamp = new Date().toISOString();
+    const sanitizedMessage = maskAccountNumbersAndPansInString(redactSensitiveData(message));
     let formattedArguments = '';
 
     if (optionalArguments && optionalArguments.length > 0) {
@@ -107,7 +333,7 @@ function appendLogToFile(logLevelTag: string, message: string, optionalArguments
         .join('');
     }
 
-    const logEntry = `[${isoTimestamp}] [${logLevelTag.toUpperCase()}] ${message}${formattedArguments}\n`;
+    const logEntry = `[${isoTimestamp}] [${logLevelTag.toUpperCase()}] ${sanitizedMessage}${formattedArguments}\n`;
     fs.appendFileSync(getCurrentLogFilePath(), logEntry, 'utf-8');
   } catch (fileWriteError: unknown) {
     console.error(`[error] Failed to write to log file: ${fileWriteError}`);
@@ -230,50 +456,50 @@ export function formatConciseErrorMessage(rawError: unknown): string {
  */
 export const applicationLogger = {
   info: (message: string, ...optionalArguments: unknown[]): void => {
-    const sanitizedMessage = redactSensitiveData(message);
-    const sanitizedArguments = optionalArguments.map(sanitizeLogArgument);
+    const sanitizedMessage = maskAccountNumbersAndPansInString(redactSensitiveData(message));
+    const sanitizedArguments = optionalArguments.map(argumentItem => sanitizeSensitiveLogPayload(argumentItem));
     console.log(`${getFormattedTimestamp()} [info] ${sanitizedMessage}`, ...sanitizedArguments);
     appendLogToFile('info', sanitizedMessage, sanitizedArguments);
   },
   success: (message: string, ...optionalArguments: unknown[]): void => {
-    const sanitizedMessage = redactSensitiveData(message);
-    const sanitizedArguments = optionalArguments.map(sanitizeLogArgument);
+    const sanitizedMessage = maskAccountNumbersAndPansInString(redactSensitiveData(message));
+    const sanitizedArguments = optionalArguments.map(argumentItem => sanitizeSensitiveLogPayload(argumentItem));
     console.log(`${getFormattedTimestamp()} [success] ${sanitizedMessage}`, ...sanitizedArguments);
     appendLogToFile('success', sanitizedMessage, sanitizedArguments);
   },
   warn: (message: string, ...optionalArguments: unknown[]): void => {
-    const sanitizedMessage = redactSensitiveData(message);
-    const sanitizedArguments = optionalArguments.map(sanitizeLogArgument);
+    const sanitizedMessage = maskAccountNumbersAndPansInString(redactSensitiveData(message));
+    const sanitizedArguments = optionalArguments.map(argumentItem => sanitizeSensitiveLogPayload(argumentItem));
     console.warn(`${getFormattedTimestamp()} [warn] ${sanitizedMessage}`, ...sanitizedArguments);
     appendLogToFile('warn', sanitizedMessage, sanitizedArguments);
   },
   error: (message: string, ...optionalArguments: unknown[]): void => {
-    const sanitizedMessage = redactSensitiveData(message);
-    const sanitizedArguments = optionalArguments.map(sanitizeLogArgument);
+    const sanitizedMessage = maskAccountNumbersAndPansInString(redactSensitiveData(message));
+    const sanitizedArguments = optionalArguments.map(argumentItem => sanitizeSensitiveLogPayload(argumentItem));
     console.error(`${getFormattedTimestamp()} [error] ${sanitizedMessage}`, ...sanitizedArguments);
     appendLogToFile('error', sanitizedMessage, sanitizedArguments);
   },
   chat: (message: string, ...optionalArguments: unknown[]): void => {
-    const sanitizedMessage = redactSensitiveData(message);
-    const sanitizedArguments = optionalArguments.map(sanitizeLogArgument);
+    const sanitizedMessage = maskAccountNumbersAndPansInString(redactSensitiveData(message));
+    const sanitizedArguments = optionalArguments.map(argumentItem => sanitizeSensitiveLogPayload(argumentItem));
     console.log(`${getFormattedTimestamp()} [chat] ${sanitizedMessage}`, ...sanitizedArguments);
     appendLogToFile('chat', sanitizedMessage, sanitizedArguments);
   },
   ai: (message: string, ...optionalArguments: unknown[]): void => {
-    const sanitizedMessage = redactSensitiveData(message);
-    const sanitizedArguments = optionalArguments.map(sanitizeLogArgument);
+    const sanitizedMessage = maskAccountNumbersAndPansInString(redactSensitiveData(message));
+    const sanitizedArguments = optionalArguments.map(argumentItem => sanitizeSensitiveLogPayload(argumentItem));
     console.log(`${getFormattedTimestamp()} [ai] ${sanitizedMessage}`, ...sanitizedArguments);
     appendLogToFile('ai', sanitizedMessage, sanitizedArguments);
   },
   mcp: (message: string, ...optionalArguments: unknown[]): void => {
-    const sanitizedMessage = redactSensitiveData(message);
-    const sanitizedArguments = optionalArguments.map(sanitizeLogArgument);
+    const sanitizedMessage = maskAccountNumbersAndPansInString(redactSensitiveData(message));
+    const sanitizedArguments = optionalArguments.map(argumentItem => sanitizeSensitiveLogPayload(argumentItem));
     console.log(`${getFormattedTimestamp()} [mcp] ${sanitizedMessage}`, ...sanitizedArguments);
     appendLogToFile('mcp', sanitizedMessage, sanitizedArguments);
   },
   security: (message: string, ...optionalArguments: unknown[]): void => {
-    const sanitizedMessage = redactSensitiveData(message);
-    const sanitizedArguments = optionalArguments.map(sanitizeLogArgument);
+    const sanitizedMessage = maskAccountNumbersAndPansInString(redactSensitiveData(message));
+    const sanitizedArguments = optionalArguments.map(argumentItem => sanitizeSensitiveLogPayload(argumentItem));
     console.log(`${getFormattedTimestamp()} [security] ${sanitizedMessage}`, ...sanitizedArguments);
     appendLogToFile('security', sanitizedMessage, sanitizedArguments);
   },
@@ -282,8 +508,8 @@ export const applicationLogger = {
    * without cluttering the terminal output
    */
   fileDetail: (logLevelTag: string, summaryTitle: string, detailPayload?: unknown): void => {
-    const sanitizedSummary = redactSensitiveData(summaryTitle);
-    const sanitizedPayload = detailPayload !== undefined ? [sanitizeLogArgument(detailPayload)] : [];
+    const sanitizedSummary = maskAccountNumbersAndPansInString(redactSensitiveData(summaryTitle));
+    const sanitizedPayload = detailPayload !== undefined ? [sanitizeSensitiveLogPayload(detailPayload)] : [];
     appendLogToFile(logLevelTag, sanitizedSummary, sanitizedPayload);
   },
 };
