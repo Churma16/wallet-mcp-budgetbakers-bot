@@ -41,13 +41,24 @@ async function runTestSuite(): Promise<void> {
       maxReconnectAttempts: 6,
       maxBackoffSeconds: 300,
       messageQueueIntervalMs: 50, // Short interval for faster test execution
+      maxMediaDownloadBytes: 5 * 1024 * 1024,
     }
   );
 
   // ----------------------------------------------------
+  // TC-0: Configuration & Default Values
+  // ----------------------------------------------------
+  console.log('[TEST GROUP 0] Configuration & Default Values');
+  {
+    const defaultAdapter = new WhatsappMessagingAdapter(dummySessionDirectory, dummyPhoneNumber, dummyCallback);
+    assertCondition('TC-0.1: Default maxMediaDownloadBytes is 10 MB (10485760 bytes)', defaultAdapter.getMaxMediaDownloadBytes() === 10 * 1024 * 1024);
+    assertCondition('TC-0.2: Custom maxMediaDownloadBytes is respected', adapter.getMaxMediaDownloadBytes() === 5 * 1024 * 1024);
+  }
+
+  // ----------------------------------------------------
   // TC-1: Exponential Backoff & Jitter Bounds
   // ----------------------------------------------------
-  console.log('[TEST GROUP 1] Backoff & Delay Math');
+  console.log('\n[TEST GROUP 1] Backoff & Delay Math');
   {
     const delayAttempt0 = adapter.calculateBackoffDelayMilliseconds(0);
     const delayAttempt1 = adapter.calculateBackoffDelayMilliseconds(1);

@@ -159,6 +159,7 @@ export class Application {
             maxBackoffSeconds: this.environmentConfig.whatsappReconnectMaxBackoffSeconds,
             messageQueueIntervalMs: this.environmentConfig.whatsappMessageQueueIntervalMs,
             typingPresenceCooldownMs: this.environmentConfig.whatsappTypingPresenceCooldownMs,
+            maxMediaDownloadBytes: this.environmentConfig.maxMediaDownloadMb * 1024 * 1024,
           }
         );
         this.messagingGateway.registerAdapter(whatsappAdapter);
@@ -178,6 +179,7 @@ export class Application {
           {
             maxStartupAttempts: this.environmentConfig.telegramMaxStartupAttempts,
             startupRetryBaseDelayMs: this.environmentConfig.telegramStartupRetryDelayMs,
+            maxMediaDownloadBytes: this.environmentConfig.maxMediaDownloadMb * 1024 * 1024,
           }
         );
 
