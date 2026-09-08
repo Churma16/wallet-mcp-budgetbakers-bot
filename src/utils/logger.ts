@@ -26,21 +26,71 @@ function getCurrentLogFilePath(): string {
 }
 
 /**
+ * Redacts known sensitive patterns (tokens, passwords, authorization headers, keys) from log strings
+ */
+export function redactSensitiveData(rawText: string): string {
+  if (!rawText || typeof rawText !== 'string') {
+    return String(rawText || '');
+  }
+
+  return rawText
+    // Telegram Bot Token pattern: e.g. 123456789:ABCdefGHIjklMNOpqrsTUVwxyz123456789
+    .replace(/(?:bot)?(\d{8,10}:[A-Za-z0-9_-]{35})/gi, '[REDACTED_TELEGRAM_TOKEN]')
+    // Authorization: Bearer <token>
+    .replace(/(bearer\s+)[A-Za-z0-9_.-]+/gi, '$1[REDACTED_TOKEN]')
+    // Common credential key-value patterns: token=..., password=..., secret=..., access_token=...
+    .replace(
+      /((?:access_token|password|secret|token|api_key|apiKey|bot_token)\s*[:=]\s*["']?)([^"'\s,;]+)(["']?)/gi,
+      '$1[REDACTED]$3'
+    );
+}
+
+/**
+ * Sanitizes an argument object, error, or primitive to prevent credential leaks
+ */
+export function sanitizeLogArgument(argumentItem: unknown): unknown {
+  if (typeof argumentItem === 'string') {
+    return redactSensitiveData(argumentItem);
+  }
+  if (argumentItem instanceof Error) {
+    const sanitizedError = new Error(redactSensitiveData(argumentItem.message));
+    sanitizedError.name = argumentItem.name;
+    if (argumentItem.stack) {
+      sanitizedError.stack = redactSensitiveData(argumentItem.stack);
+    }
+    return sanitizedError;
+  }
+  if (typeof argumentItem === 'object' && argumentItem !== null) {
+    try {
+      const serializedJson = JSON.stringify(argumentItem);
+      return JSON.parse(redactSensitiveData(serializedJson));
+    } catch {
+      return argumentItem;
+    }
+  }
+  return argumentItem;
+}
+
+/**
  * Helper to format objects, errors, and primitive values for file logging
  */
 function formatLogPayload(dataItem: unknown, indentationSpaces: string = '  '): string {
-  if (dataItem instanceof Error) {
-    return `\n${indentationSpaces}Error Name: ${dataItem.name}\n${indentationSpaces}Error Message: ${dataItem.message}\n${indentationSpaces}Stack: ${dataItem.stack || 'No stack trace'}`;
+  const sanitizedItem = sanitizeLogArgument(dataItem);
+  if (sanitizedItem instanceof Error) {
+    const redactedMessage = redactSensitiveData(sanitizedItem.message);
+    const redactedStack = sanitizedItem.stack ? redactSensitiveData(sanitizedItem.stack) : 'No stack trace';
+    return `\n${indentationSpaces}Error Name: ${sanitizedItem.name}\n${indentationSpaces}Error Message: ${redactedMessage}\n${indentationSpaces}Stack: ${redactedStack}`;
   }
-  if (typeof dataItem === 'object' && dataItem !== null) {
+  if (typeof sanitizedItem === 'object' && sanitizedItem !== null) {
     try {
-      const jsonString = JSON.stringify(dataItem, null, 2);
-      return '\n' + jsonString.split('\n').map(line => `${indentationSpaces}${line}`).join('\n');
+      const jsonString = JSON.stringify(sanitizedItem, null, 2);
+      const redactedJson = redactSensitiveData(jsonString);
+      return '\n' + redactedJson.split('\n').map(line => `${indentationSpaces}${line}`).join('\n');
     } catch {
-      return ` ${String(dataItem)}`;
+      return ` ${redactSensitiveData(String(sanitizedItem))}`;
     }
   }
-  return ` ${String(dataItem)}`;
+  return ` ${redactSensitiveData(String(sanitizedItem))}`;
 }
 
 /**
@@ -180,42 +230,60 @@ export function formatConciseErrorMessage(rawError: unknown): string {
  */
 export const applicationLogger = {
   info: (message: string, ...optionalArguments: unknown[]): void => {
-    console.log(`${getFormattedTimestamp()} [info] ${message}`, ...optionalArguments);
-    appendLogToFile('info', message, optionalArguments);
+    const sanitizedMessage = redactSensitiveData(message);
+    const sanitizedArguments = optionalArguments.map(sanitizeLogArgument);
+    console.log(`${getFormattedTimestamp()} [info] ${sanitizedMessage}`, ...sanitizedArguments);
+    appendLogToFile('info', sanitizedMessage, sanitizedArguments);
   },
   success: (message: string, ...optionalArguments: unknown[]): void => {
-    console.log(`${getFormattedTimestamp()} [success] ${message}`, ...optionalArguments);
-    appendLogToFile('success', message, optionalArguments);
+    const sanitizedMessage = redactSensitiveData(message);
+    const sanitizedArguments = optionalArguments.map(sanitizeLogArgument);
+    console.log(`${getFormattedTimestamp()} [success] ${sanitizedMessage}`, ...sanitizedArguments);
+    appendLogToFile('success', sanitizedMessage, sanitizedArguments);
   },
   warn: (message: string, ...optionalArguments: unknown[]): void => {
-    console.warn(`${getFormattedTimestamp()} [warn] ${message}`, ...optionalArguments);
-    appendLogToFile('warn', message, optionalArguments);
+    const sanitizedMessage = redactSensitiveData(message);
+    const sanitizedArguments = optionalArguments.map(sanitizeLogArgument);
+    console.warn(`${getFormattedTimestamp()} [warn] ${sanitizedMessage}`, ...sanitizedArguments);
+    appendLogToFile('warn', sanitizedMessage, sanitizedArguments);
   },
   error: (message: string, ...optionalArguments: unknown[]): void => {
-    console.error(`${getFormattedTimestamp()} [error] ${message}`, ...optionalArguments);
-    appendLogToFile('error', message, optionalArguments);
+    const sanitizedMessage = redactSensitiveData(message);
+    const sanitizedArguments = optionalArguments.map(sanitizeLogArgument);
+    console.error(`${getFormattedTimestamp()} [error] ${sanitizedMessage}`, ...sanitizedArguments);
+    appendLogToFile('error', sanitizedMessage, sanitizedArguments);
   },
   chat: (message: string, ...optionalArguments: unknown[]): void => {
-    console.log(`${getFormattedTimestamp()} [chat] ${message}`, ...optionalArguments);
-    appendLogToFile('chat', message, optionalArguments);
+    const sanitizedMessage = redactSensitiveData(message);
+    const sanitizedArguments = optionalArguments.map(sanitizeLogArgument);
+    console.log(`${getFormattedTimestamp()} [chat] ${sanitizedMessage}`, ...sanitizedArguments);
+    appendLogToFile('chat', sanitizedMessage, sanitizedArguments);
   },
   ai: (message: string, ...optionalArguments: unknown[]): void => {
-    console.log(`${getFormattedTimestamp()} [ai] ${message}`, ...optionalArguments);
-    appendLogToFile('ai', message, optionalArguments);
+    const sanitizedMessage = redactSensitiveData(message);
+    const sanitizedArguments = optionalArguments.map(sanitizeLogArgument);
+    console.log(`${getFormattedTimestamp()} [ai] ${sanitizedMessage}`, ...sanitizedArguments);
+    appendLogToFile('ai', sanitizedMessage, sanitizedArguments);
   },
   mcp: (message: string, ...optionalArguments: unknown[]): void => {
-    console.log(`${getFormattedTimestamp()} [mcp] ${message}`, ...optionalArguments);
-    appendLogToFile('mcp', message, optionalArguments);
+    const sanitizedMessage = redactSensitiveData(message);
+    const sanitizedArguments = optionalArguments.map(sanitizeLogArgument);
+    console.log(`${getFormattedTimestamp()} [mcp] ${sanitizedMessage}`, ...sanitizedArguments);
+    appendLogToFile('mcp', sanitizedMessage, sanitizedArguments);
   },
   security: (message: string, ...optionalArguments: unknown[]): void => {
-    console.log(`${getFormattedTimestamp()} [security] ${message}`, ...optionalArguments);
-    appendLogToFile('security', message, optionalArguments);
+    const sanitizedMessage = redactSensitiveData(message);
+    const sanitizedArguments = optionalArguments.map(sanitizeLogArgument);
+    console.log(`${getFormattedTimestamp()} [security] ${sanitizedMessage}`, ...sanitizedArguments);
+    appendLogToFile('security', sanitizedMessage, sanitizedArguments);
   },
   /**
    * Writes detailed debug information (payloads, state objects) directly to the log file
    * without cluttering the terminal output
    */
   fileDetail: (logLevelTag: string, summaryTitle: string, detailPayload?: unknown): void => {
-    appendLogToFile(logLevelTag, summaryTitle, detailPayload !== undefined ? [detailPayload] : []);
+    const sanitizedSummary = redactSensitiveData(summaryTitle);
+    const sanitizedPayload = detailPayload !== undefined ? [sanitizeLogArgument(detailPayload)] : [];
+    appendLogToFile(logLevelTag, sanitizedSummary, sanitizedPayload);
   },
 };

@@ -22,6 +22,7 @@
         "test:whatsapp-hardening": "tsx tests/whatsAppSocketHardening.test.ts",
         "test:telegram-safeguards": "tsx tests/telegramSafeguards.test.ts",
         "test:gateway-resilience": "tsx tests/messagingGatewayResilience.test.ts",
+        "test:redaction": "tsx tests/loggerRedaction.test.ts",
         "build": "tsc"
     },
 
