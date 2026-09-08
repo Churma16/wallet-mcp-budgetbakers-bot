@@ -17,22 +17,48 @@ import {
   IncomingUserMessageEvent,
 } from './types.js';
 
+export interface WhatsappSafeguardConfiguration {
+  maxReconnectAttempts?: number;
+  maxBackoffSeconds?: number;
+  messageQueueIntervalMs?: number;
+}
+
 export class WhatsappMessagingAdapter implements MessagingAdapter {
   public readonly channelName: SupportedMessengerChannel = 'whatsapp';
   private socketInstance: WASocket | null = null;
-  private isReconnecting: boolean = false;
   private readonly recentOutgoingMessageIdSet: Set<string> = new Set<string>();
   private readonly maxTrackedOutgoingMessageIds: number = 500;
   private readonly recentIncomingMessageIdSet: Set<string> = new Set<string>();
   private readonly maxTrackedIncomingMessageIds: number = 500;
   private readonly normalizedAllowedPhoneNumber: string;
 
+  private readonly maxReconnectAttempts: number;
+  private readonly maxBackoffSeconds: number;
+  private readonly messageQueueIntervalMs: number;
+
+  private consecutiveFailureCount: number = 0;
+  private isCircuitBreakerTripped: boolean = false;
+  private isConnectingOrReconnecting: boolean = false;
+  private activeReconnectTimeout: NodeJS.Timeout | null = null;
+  private hasPurgedSessionOnLogout: boolean = false;
+
+  private readonly outboundMessageQueue: Array<{
+    task: () => Promise<void>;
+    resolve: () => void;
+    reject: (reason: unknown) => void;
+  }> = [];
+  private isProcessingMessageQueue: boolean = false;
+
   constructor(
     private readonly sessionDataDirectoryPath: string,
     private readonly allowedPhoneNumber: string,
-    private readonly onUserMessageReceived: UserMessageCallback
+    private readonly onUserMessageReceived: UserMessageCallback,
+    safeguardConfiguration?: WhatsappSafeguardConfiguration
   ) {
     this.normalizedAllowedPhoneNumber = this.allowedPhoneNumber.replace(/[^0-9]/g, '');
+    this.maxReconnectAttempts = safeguardConfiguration?.maxReconnectAttempts ?? 6;
+    this.maxBackoffSeconds = safeguardConfiguration?.maxBackoffSeconds ?? 300;
+    this.messageQueueIntervalMs = safeguardConfiguration?.messageQueueIntervalMs ?? 1000;
   }
 
   private recordIncomingMessageId(messageId: string): void {
@@ -55,93 +81,226 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
     this.recentOutgoingMessageIdSet.add(messageId);
   }
 
-  public async startConnection(): Promise<void> {
-    if (this.socketInstance) {
-      this.socketInstance.ev.removeAllListeners('creds.update');
-      this.socketInstance.ev.removeAllListeners('connection.update');
-      this.socketInstance.ev.removeAllListeners('messages.upsert');
-      this.socketInstance = null;
+  public getConsecutiveFailureCount(): number {
+    return this.consecutiveFailureCount;
+  }
+
+  public getCircuitBreakerStatus(): boolean {
+    return this.isCircuitBreakerTripped;
+  }
+
+  public getOutboundQueueLength(): number {
+    return this.outboundMessageQueue.length;
+  }
+
+  public calculateBackoffDelayMilliseconds(attemptIndex: number = this.consecutiveFailureCount): number {
+    const baseDelaySeconds = 5;
+    const exponentialSeconds = baseDelaySeconds * Math.pow(2, attemptIndex);
+    const boundedSeconds = Math.min(this.maxBackoffSeconds, exponentialSeconds);
+    const randomJitterMilliseconds = Math.floor(Math.random() * 2000) + 500;
+    return boundedSeconds * 1000 + randomJitterMilliseconds;
+  }
+
+  public resetSafeguardsState(): void {
+    this.consecutiveFailureCount = 0;
+    this.isCircuitBreakerTripped = false;
+    this.hasPurgedSessionOnLogout = false;
+    if (this.activeReconnectTimeout) {
+      clearTimeout(this.activeReconnectTimeout);
+      this.activeReconnectTimeout = null;
+    }
+  }
+
+  public handleConnectionClose(disconnectStatusCode: number | undefined, disconnectError: unknown): void {
+    if (this.activeReconnectTimeout) {
+      clearTimeout(this.activeReconnectTimeout);
+      this.activeReconnectTimeout = null;
     }
 
-    const { state: authState, saveCreds: saveCredentialsCallback } = await useMultiFileAuthState(
-      this.sessionDataDirectoryPath
+    // 1. Check: Connection Replaced (Status 440) -> Never auto-reconnect!
+    if (disconnectStatusCode === DisconnectReason.connectionReplaced) {
+      this.isCircuitBreakerTripped = true;
+      applicationLogger.error(
+        '[CRITICAL] WhatsApp session was replaced by another device or active client (Status 440). Auto-reconnect aborted to prevent ban.'
+      );
+      return;
+    }
+
+    // 2. Check: Device Logged Out (Status 401)
+    if (disconnectStatusCode === DisconnectReason.loggedOut) {
+      if (this.hasPurgedSessionOnLogout) {
+        this.consecutiveFailureCount++;
+        this.isCircuitBreakerTripped = true;
+        applicationLogger.error(
+          '[CRITICAL] Repeated loggedOut event detected after session purge. Possible account ban or invalid credentials. Halting auto-reconnect.'
+        );
+        return;
+      }
+
+      this.hasPurgedSessionOnLogout = true;
+      applicationLogger.info('WhatsApp device logged out or unlinked. Purging invalid session credentials...');
+      try {
+        if (fs.existsSync(this.sessionDataDirectoryPath)) {
+          fs.rmSync(this.sessionDataDirectoryPath, { recursive: true, force: true });
+          applicationLogger.success('WhatsApp session directory cleaned up successfully.');
+        }
+      } catch (sessionCleanupError: unknown) {
+        applicationLogger.error(`Failed to clean up WhatsApp session directory: ${sessionCleanupError}`);
+      }
+
+      applicationLogger.info('Scheduling single fresh QR code generation in 5 seconds...');
+      this.activeReconnectTimeout = setTimeout(() => {
+        this.activeReconnectTimeout = null;
+        this.startConnection(false).catch(reconnectError => {
+          applicationLogger.error(`Error during QR re-initialization: ${reconnectError}`);
+        });
+      }, 5000);
+      return;
+    }
+
+    // 3. Check: Restart Required (Status 515 - fast track)
+    if (disconnectStatusCode === DisconnectReason.restartRequired) {
+      applicationLogger.info('WhatsApp internal restart required (Status 515). Fast-tracking reconnection in 1s...');
+      this.activeReconnectTimeout = setTimeout(() => {
+        this.activeReconnectTimeout = null;
+        this.startConnection(false).catch(reconnectError => {
+          applicationLogger.error(`Error during fast-track restart: ${reconnectError}`);
+        });
+      }, 1000);
+      return;
+    }
+
+    // 4. Check: Bad Session (Status 500)
+    if (disconnectStatusCode === DisconnectReason.badSession) {
+      applicationLogger.warn('WhatsApp session corrupted (Status 500). Purging corrupted session credentials...');
+      try {
+        if (fs.existsSync(this.sessionDataDirectoryPath)) {
+          fs.rmSync(this.sessionDataDirectoryPath, { recursive: true, force: true });
+        }
+      } catch (cleanupError) {
+        applicationLogger.error(`Failed to clean corrupted session: ${cleanupError}`);
+      }
+    }
+
+    // 5. Standard failures (408, 428, 500, undefined, or unknown status code)
+    this.consecutiveFailureCount++;
+    applicationLogger.warn(
+      `WhatsApp connection closed (Status: ${disconnectStatusCode ?? 'unknown'}, Failure Count: ${this.consecutiveFailureCount}/${this.maxReconnectAttempts}): ${disconnectError}`
     );
 
-    const silentLogger = pino({ level: 'silent' });
+    if (this.consecutiveFailureCount >= this.maxReconnectAttempts) {
+      this.isCircuitBreakerTripped = true;
+      applicationLogger.error(
+        `[CIRCUIT_BREAKER] Maximum consecutive connection failures (${this.maxReconnectAttempts}) reached. Halting auto-reconnect to protect account from ban.`
+      );
+      return;
+    }
 
-    this.socketInstance = makeWASocket({
-      auth: authState,
-      logger: silentLogger,
-      printQRInTerminal: false,
-    });
+    const backoffDelayMilliseconds = this.calculateBackoffDelayMilliseconds(this.consecutiveFailureCount - 1);
+    const delaySeconds = Math.round(backoffDelayMilliseconds / 1000);
+    applicationLogger.info(
+      `Scheduling WhatsApp reconnection attempt ${this.consecutiveFailureCount} in ${delaySeconds}s (delay: ${backoffDelayMilliseconds}ms)...`
+    );
 
-    this.socketInstance.ev.on('creds.update', saveCredentialsCallback);
+    this.activeReconnectTimeout = setTimeout(() => {
+      this.activeReconnectTimeout = null;
+      this.startConnection(false).catch(reconnectError => {
+        applicationLogger.error(`Error during scheduled reconnection attempt: ${reconnectError}`);
+      });
+    }, backoffDelayMilliseconds);
+  }
 
-    this.socketInstance.ev.on('connection.update', async connectionUpdate => {
-      const { connection, lastDisconnect, qr } = connectionUpdate;
+  public async startConnection(isManualTrigger: boolean = true): Promise<void> {
+    if (isManualTrigger) {
+      this.consecutiveFailureCount = 0;
+      this.isCircuitBreakerTripped = false;
+    }
 
-      applicationLogger.fileDetail('whatsapp', 'Connection Lifecycle Update Event', {
-        connection,
-        isNewLogin: connectionUpdate.isNewLogin,
-        receivedQr: Boolean(qr),
-        lastDisconnectError: lastDisconnect?.error instanceof Error
-          ? {
-              name: lastDisconnect.error.name,
-              message: lastDisconnect.error.message,
-              stack: lastDisconnect.error.stack,
-              statusCode: (lastDisconnect.error as any)?.output?.statusCode,
-            }
-          : lastDisconnect?.error,
+    if (this.isCircuitBreakerTripped) {
+      applicationLogger.error(
+        `[CIRCUIT_BREAKER] WhatsApp reconnection paused due to ${this.consecutiveFailureCount} consecutive failures. Resolve issue or restart manually.`
+      );
+      return;
+    }
+
+    if (this.isConnectingOrReconnecting) {
+      applicationLogger.warn('WhatsApp connection initialization already in progress, skipping duplicate attempt.');
+      return;
+    }
+
+    this.isConnectingOrReconnecting = true;
+
+    if (this.activeReconnectTimeout) {
+      clearTimeout(this.activeReconnectTimeout);
+      this.activeReconnectTimeout = null;
+    }
+
+    try {
+      if (this.socketInstance) {
+        this.socketInstance.ev.removeAllListeners('creds.update');
+        this.socketInstance.ev.removeAllListeners('connection.update');
+        this.socketInstance.ev.removeAllListeners('messages.upsert');
+        this.socketInstance = null;
+      }
+
+      const { state: authState, saveCreds: saveCredentialsCallback } = await useMultiFileAuthState(
+        this.sessionDataDirectoryPath
+      );
+
+      const silentLogger = pino({ level: 'silent' });
+
+      this.socketInstance = makeWASocket({
+        auth: authState,
+        logger: silentLogger,
+        printQRInTerminal: false,
       });
 
-      if (qr) {
-        console.log('\n');
-        applicationLogger.info('WhatsApp Pairing QR Code Generated. Please scan with WhatsApp:');
-        qrcodeTerminal.generate(qr, { small: true });
-        console.log('[hint] Open WhatsApp -> Linked Devices -> Link a Device and scan the QR code above.\n');
-      }
+      this.socketInstance.ev.on('creds.update', saveCredentialsCallback);
 
-      if (connection === 'close') {
-        const disconnectStatusCode = (lastDisconnect?.error as any)?.output?.statusCode;
-        const isDeviceLoggedOut = disconnectStatusCode === DisconnectReason.loggedOut;
-        const shouldReconnect = !isDeviceLoggedOut;
+      this.socketInstance.ev.on('connection.update', async connectionUpdate => {
+        const { connection, lastDisconnect, qr } = connectionUpdate;
 
-        applicationLogger.warn(`WhatsApp connection closed due to: ${lastDisconnect?.error}, reconnecting: ${shouldReconnect}`);
+        applicationLogger.fileDetail('whatsapp', 'Connection Lifecycle Update Event', {
+          connection,
+          isNewLogin: connectionUpdate.isNewLogin,
+          receivedQr: Boolean(qr),
+          lastDisconnectError: lastDisconnect?.error instanceof Error
+            ? {
+                name: lastDisconnect.error.name,
+                message: lastDisconnect.error.message,
+                stack: lastDisconnect.error.stack,
+                statusCode: (lastDisconnect.error as any)?.output?.statusCode,
+              }
+            : lastDisconnect?.error,
+        });
 
-        if (isDeviceLoggedOut) {
-          applicationLogger.info('WhatsApp device logged out or unlinked. Purging invalid session credentials...');
-          try {
-            if (fs.existsSync(this.sessionDataDirectoryPath)) {
-              fs.rmSync(this.sessionDataDirectoryPath, { recursive: true, force: true });
-              applicationLogger.success('WhatsApp session directory cleaned up successfully.');
-            }
-          } catch (sessionCleanupError: unknown) {
-            applicationLogger.error(`Failed to clean up WhatsApp session directory: ${sessionCleanupError}`);
+        if (qr) {
+          console.log('\n');
+          applicationLogger.info('WhatsApp Pairing QR Code Generated. Please scan with WhatsApp:');
+          qrcodeTerminal.generate(qr, { small: true });
+          console.log('[hint] Open WhatsApp -> Linked Devices -> Link a Device and scan the QR code above.\n');
+        }
+
+        if (connection === 'close') {
+          const disconnectStatusCode = (lastDisconnect?.error as any)?.output?.statusCode;
+          this.handleConnectionClose(disconnectStatusCode, lastDisconnect?.error);
+        } else if (connection === 'open') {
+          this.consecutiveFailureCount = 0;
+          this.isCircuitBreakerTripped = false;
+          this.hasPurgedSessionOnLogout = false;
+          if (this.activeReconnectTimeout) {
+            clearTimeout(this.activeReconnectTimeout);
+            this.activeReconnectTimeout = null;
           }
 
-          applicationLogger.info('Re-initializing WhatsApp connection to generate a fresh QR code in 3 seconds...');
-          setTimeout(() => {
-            this.startConnection();
-          }, 3000);
-          return;
+          applicationLogger.success('WhatsApp connection successfully established and ready!');
+          if (this.allowedPhoneNumber) {
+            applicationLogger.security(`WhatsApp whitelist active. Only responding to: ${this.allowedPhoneNumber}`);
+          } else {
+            applicationLogger.warn('ALLOWED_PHONE_NUMBER is not set in .env. WhatsApp will respond to all private chats.');
+          }
         }
-
-        if (shouldReconnect && !this.isReconnecting) {
-          this.isReconnecting = true;
-          setTimeout(() => {
-            this.isReconnecting = false;
-            this.startConnection();
-          }, 5000);
-        }
-      } else if (connection === 'open') {
-        applicationLogger.success('WhatsApp connection successfully established and ready!');
-        if (this.allowedPhoneNumber) {
-          applicationLogger.security(`WhatsApp whitelist active. Only responding to: ${this.allowedPhoneNumber}`);
-        } else {
-          applicationLogger.warn('ALLOWED_PHONE_NUMBER is not set in .env. WhatsApp will respond to all private chats.');
-        }
-      }
-    });
+      });
 
     this.socketInstance.ev.on('messages.upsert', async messageUpsertEvent => {
       const incomingMessageList = messageUpsertEvent.messages;
@@ -226,6 +385,12 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
         await this.handleIncomingMessage(rawMessage, unwrappedMessageContent, remoteJid, senderRawIdentifier);
       }
     });
+    } catch (connectionInitializationError: unknown) {
+      applicationLogger.error(`Failed to initialize WhatsApp connection: ${connectionInitializationError}`);
+      throw connectionInitializationError;
+    } finally {
+      this.isConnectingOrReconnecting = false;
+    }
   }
 
   private extractUnwrappedMessageContent(rawMessage: proto.IWebMessageInfo): proto.IMessage | null | undefined {
@@ -299,38 +464,87 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
     }
   }
 
-  public async sendTextMessage(targetChatIdentifier: string, messageText: string): Promise<void> {
+  public enqueueOutboundMessage(task: () => Promise<void>): Promise<void> {
     if (!this.socketInstance) {
-      throw new Error('[error] WhatsApp socket is not connected');
+      return Promise.reject(new Error('[error] WhatsApp socket is not connected'));
     }
+
+    return new Promise<void>((resolve, reject) => {
+      this.outboundMessageQueue.push({ task, resolve, reject });
+      this.processOutboundMessageQueue().catch(queueProcessError => {
+        applicationLogger.error(`Error during outbound queue processing: ${queueProcessError}`);
+      });
+    });
+  }
+
+  private async processOutboundMessageQueue(): Promise<void> {
+    if (this.isProcessingMessageQueue) {
+      return;
+    }
+    this.isProcessingMessageQueue = true;
 
     try {
-      const dispatchedMessage = await this.socketInstance.sendMessage(targetChatIdentifier, {
-        text: messageText,
-      });
+      while (this.outboundMessageQueue.length > 0) {
+        const currentQueueItem = this.outboundMessageQueue.shift();
+        if (!currentQueueItem) {
+          continue;
+        }
 
-      const outgoingMessageId = dispatchedMessage?.key?.id;
-      if (outgoingMessageId) {
-        this.recordOutgoingMessageId(outgoingMessageId);
+        if (!this.socketInstance) {
+          currentQueueItem.reject(new Error('[error] WhatsApp socket is not connected'));
+          continue;
+        }
+
+        try {
+          await currentQueueItem.task();
+          currentQueueItem.resolve();
+        } catch (itemExecutionError: unknown) {
+          currentQueueItem.reject(itemExecutionError);
+        }
+
+        if (this.outboundMessageQueue.length > 0) {
+          await new Promise(timerResolve => setTimeout(timerResolve, this.messageQueueIntervalMs));
+        }
+      }
+    } finally {
+      this.isProcessingMessageQueue = false;
+    }
+  }
+
+  public async sendTextMessage(targetChatIdentifier: string, messageText: string): Promise<void> {
+    return this.enqueueOutboundMessage(async () => {
+      if (!this.socketInstance) {
+        throw new Error('[error] WhatsApp socket is not connected');
       }
 
-      applicationLogger.fileDetail('whatsapp', 'Dispatched WhatsApp Text Message', {
-        targetChatIdentifier,
-        messageId: outgoingMessageId,
-        messageLength: messageText.length,
-        messagePreview: messageText.substring(0, 120),
-      });
-    } catch (sendError: unknown) {
-      applicationLogger.error(`Failed to send WhatsApp message to ${targetChatIdentifier}: ${sendError}`);
-      applicationLogger.fileDetail('error', 'WhatsApp Message Dispatch Failure', {
-        targetChatIdentifier,
-        messageText,
-        error: sendError instanceof Error
-          ? { name: sendError.name, message: sendError.message, stack: sendError.stack }
-          : String(sendError),
-      });
-      throw sendError;
-    }
+      try {
+        const dispatchedMessage = await this.socketInstance.sendMessage(targetChatIdentifier, {
+          text: messageText,
+        });
+
+        const outgoingMessageId = dispatchedMessage?.key?.id;
+        if (outgoingMessageId) {
+          this.recordOutgoingMessageId(outgoingMessageId);
+        }
+
+        applicationLogger.fileDetail('whatsapp', 'Dispatched WhatsApp Text Message', {
+          targetChatIdentifier,
+          messageId: outgoingMessageId,
+          messageLength: messageText.length,
+          messagePreview: messageText.substring(0, 120),
+        });
+      } catch (sendError: unknown) {
+        applicationLogger.error(`Failed to send WhatsApp message to ${targetChatIdentifier}: ${sendError}`);
+        applicationLogger.fileDetail('error', 'WhatsApp Message Dispatch Failure', {
+          targetChatIdentifier,
+          messageText,
+          error: sendError instanceof Error
+            ? { name: sendError.name, message: sendError.message, stack: sendError.stack }
+            : String(sendError),
+        });
+        throw sendError;
+      }
+    });
   }
 
   public async sendTypingPresence(targetChatIdentifier: string): Promise<void> {
@@ -374,6 +588,22 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
   }
 
   public async stopConnection(): Promise<void> {
+    if (this.activeReconnectTimeout) {
+      clearTimeout(this.activeReconnectTimeout);
+      this.activeReconnectTimeout = null;
+    }
+
+    this.isConnectingOrReconnecting = false;
+
+    // Drain and reject all pending outbound messages in queue (EC-4)
+    while (this.outboundMessageQueue.length > 0) {
+      const pendingQueueItem = this.outboundMessageQueue.shift();
+      if (pendingQueueItem) {
+        pendingQueueItem.reject(new Error('[error] WhatsApp adapter was stopped, message dispatch cancelled.'));
+      }
+    }
+    this.isProcessingMessageQueue = false;
+
     if (this.socketInstance) {
       try {
         this.socketInstance.end(undefined);

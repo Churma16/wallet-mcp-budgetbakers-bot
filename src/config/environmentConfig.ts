@@ -34,6 +34,9 @@ export interface ApplicationEnvironmentConfiguration {
   appLanguage: 'id' | 'en';
   defaultCurrency: string;
   appTimezone: string;
+  whatsappMaxReconnectAttempts: number;
+  whatsappReconnectMaxBackoffSeconds: number;
+  whatsappMessageQueueIntervalMs: number;
 }
 
 interface ProviderConfigStrategy {
@@ -152,6 +155,10 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
   const defaultCurrency = (process.env.DEFAULT_CURRENCY || 'IDR').toUpperCase().trim();
   const appTimezone = process.env.APP_TIMEZONE || 'Asia/Jakarta';
 
+  const whatsappMaxReconnectAttempts = parseInt(process.env.WHATSAPP_MAX_RECONNECT_ATTEMPTS || '6', 10) || 6;
+  const whatsappReconnectMaxBackoffSeconds = parseInt(process.env.WHATSAPP_RECONNECT_MAX_BACKOFF_SECONDS || '300', 10) || 300;
+  const whatsappMessageQueueIntervalMs = parseInt(process.env.WHATSAPP_MESSAGE_QUEUE_INTERVAL_MS || '1000', 10) || 1000;
+
   return {
     aiProvider,
     aiApiKey,
@@ -180,5 +187,8 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     appLanguage,
     defaultCurrency,
     appTimezone,
+    whatsappMaxReconnectAttempts,
+    whatsappReconnectMaxBackoffSeconds,
+    whatsappMessageQueueIntervalMs,
   };
 }
