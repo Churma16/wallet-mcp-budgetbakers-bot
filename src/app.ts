@@ -174,8 +174,13 @@ export class Application {
         const telegramAdapter = new TelegramMessagingAdapter(
           this.environmentConfig.telegramBotToken,
           this.environmentConfig.telegramAllowedUserId,
-          event => this.userMessageHandler.handleIncomingUserMessage(event)
+          event => this.userMessageHandler.handleIncomingUserMessage(event),
+          {
+            maxStartupAttempts: this.environmentConfig.telegramMaxStartupAttempts,
+            startupRetryBaseDelayMs: this.environmentConfig.telegramStartupRetryDelayMs,
+          }
         );
+
         this.messagingGateway.registerAdapter(telegramAdapter);
       } else {
         applicationLogger.warn(

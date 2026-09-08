@@ -1,5 +1,7 @@
 export type SupportedMessengerChannel = 'whatsapp' | 'telegram';
 
+export type AdapterConnectionState = 'idle' | 'connected' | 'reconnecting' | 'failed';
+
 export interface IncomingUserMessageEvent {
   channel: SupportedMessengerChannel;
   senderIdentifier: string;
@@ -20,4 +22,6 @@ export interface MessagingAdapter {
   sendTypingPresence(targetChatIdentifier: string): Promise<void>;
   clearTypingPresence(targetChatIdentifier: string): Promise<void>;
   sendBroadcastNotification(messageText: string): Promise<void>;
+  getConnectionState?(): AdapterConnectionState;
 }
+
