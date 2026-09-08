@@ -39,6 +39,16 @@ async function runWalletMcpVerification(): Promise<void> {
     console.log('   Sample categories:', categoryList.slice(0, 5).map(c => c.name).join(', '));
 
     console.log('');
+    applicationLogger.info('4. Fetching budgets...');
+    const budgetList = await walletMcpClient.fetchBudgets();
+    applicationLogger.success(`Found ${budgetList.length} active budgets:`);
+    budgetList.forEach((budgetItem, budgetIndex) => {
+      console.log(
+        `   ${budgetIndex + 1}. [${budgetItem.name}] Spent: ${budgetItem.spentAmount ?? 0} / Limit: ${budgetItem.limitAmount ?? 0} (Remaining: ${budgetItem.remainingAmount ?? 0}) ${budgetItem.currency ?? ''} [Period: ${budgetItem.period ?? 'N/A'}]`
+      );
+    });
+
+    console.log('');
     applicationLogger.success('All Wallet MCP checks passed! Your token and permissions are ready.');
   } catch (error: unknown) {
     applicationLogger.error('Verification failed with error:');

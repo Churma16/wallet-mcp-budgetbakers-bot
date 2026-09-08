@@ -1,4 +1,4 @@
-﻿import {
+import {
   ResponseDictionary,
   RecordMessageParams,
   MultipleRecordsItemParams,
@@ -65,6 +65,9 @@ export const indonesianDictionary: ResponseDictionary = {
     emptyState: 'Belum ada anggaran aktif yang ditemukan.',
     budgetItem(name: string, spent: string, limit: string, remaining: string): string {
       return `• *${name}*: ${spent} / ${limit} _(sisa ${remaining})_`;
+    },
+    budgetOverspentItem(name: string, spent: string, limit: string, overspent: string): string {
+      return `• *${name}*: ${spent} / ${limit} ⚠️ _(lebih ${overspent})_`;
     },
   },
 

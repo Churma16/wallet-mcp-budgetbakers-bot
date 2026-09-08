@@ -1,4 +1,4 @@
-﻿export type SupportedLanguage = 'id' | 'en';
+export type SupportedLanguage = 'id' | 'en';
 
 export interface RecordMessageParams {
   transactionTitle: string;
@@ -95,6 +95,7 @@ export interface ResponseDictionary {
     header(currentTimestamp: string): string;
     emptyState: string;
     budgetItem(name: string, spent: string, limit: string, remaining: string): string;
+    budgetOverspentItem(name: string, spent: string, limit: string, overspent: string): string;
   };
 
   emailPending: {

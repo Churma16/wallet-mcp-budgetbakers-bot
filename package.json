@@ -18,6 +18,7 @@
         "test:format": "tsx tests/messageFormat.test.ts",
         "test:formatter": "tsx tests/formatter.test.ts",
         "test:i18n": "tsx tests/responseDictionary.test.ts",
+        "test:budget": "tsx tests/budgetParsing.test.ts",
         "test:whatsapp-safeguards": "tsx tests/whatsAppSafeguards.test.ts",
         "test:whatsapp-hardening": "tsx tests/whatsAppSocketHardening.test.ts",
         "test:telegram-safeguards": "tsx tests/telegramSafeguards.test.ts",

@@ -127,19 +127,60 @@ console.log('[PASS] Single and multiple record formatters produce accurate local
 // 4. Test Budget Summary
 console.log('\n[4] Testing Budget Summary Formatter...');
 const mockBudgets: WalletBudgetItem[] = [
-  { id: 'b-1', name: 'Bulanan', spentAmount: 1200000, limitAmount: 3000000, currency: 'IDR' },
+  {
+    id: 'b-1',
+    name: 'Jajan Semuanya',
+    spentAmount: 81400,
+    limitAmount: 700000,
+    remainingAmount: 618600,
+    currency: 'IDR',
+    isClosed: false,
+    period: '2026-W37',
+  },
+  {
+    id: 'b-2',
+    name: 'Belanja Bulanan',
+    spentAmount: 1100000,
+    limitAmount: 1000000,
+    remainingAmount: -100000,
+    isOverspent: true,
+    currency: 'IDR',
+    isClosed: false,
+  },
+  {
+    id: 'b-3',
+    name: 'Makan Lama (2023)',
+    spentAmount: 50000,
+    limitAmount: 500000,
+    currency: 'IDR',
+    isClosed: true,
+  },
 ];
 
 setActiveLanguage('id');
 const idBudgetOutput = formatBudgetSummaryMessage(mockBudgets);
 assert(idBudgetOutput.includes('Status Anggaran'), 'ID budget output contains "Status Anggaran"');
-assert(idBudgetOutput.includes('sisa'), 'ID budget output contains "sisa"');
+assert(idBudgetOutput.includes('Jajan Semuanya'), 'ID budget output contains active budget name');
+assert(idBudgetOutput.includes('Rp 81.400 / Rp 700.000'), 'ID budget output shows formatted spent and limit');
+assert(idBudgetOutput.includes('sisa Rp 618.600'), 'ID budget output shows correct remaining amount');
+assert(idBudgetOutput.includes('Belanja Bulanan'), 'ID budget output contains overspent budget');
+assert(idBudgetOutput.includes('lebih Rp 100.000'), 'ID budget output shows overspent warning and amount');
+assert(!idBudgetOutput.includes('Makan Lama (2023)'), 'ID budget output excludes closed budgets');
 
 setActiveLanguage('en');
 const enBudgetOutput = formatBudgetSummaryMessage(mockBudgets);
 assert(enBudgetOutput.includes('Budget Status'), 'EN budget output contains "Budget Status"');
 assert(enBudgetOutput.includes('left'), 'EN budget output contains "left"');
-console.log('[PASS] Budget status formatter produces localized output.');
+assert(enBudgetOutput.includes('over'), 'EN budget output contains "over"');
+assert(!enBudgetOutput.includes('Makan Lama (2023)'), 'EN budget output excludes closed budgets');
+
+// Test empty state when all budgets are closed
+const allClosedBudgets: WalletBudgetItem[] = [
+  { id: 'b-closed', name: 'Closed Budget', spentAmount: 0, limitAmount: 100000, isClosed: true },
+];
+const emptyClosedOutput = formatBudgetSummaryMessage(allClosedBudgets);
+assert(emptyClosedOutput.includes(englishDictionary.budget.emptyState), 'Empty state when all budgets are closed');
+console.log('[PASS] Budget status formatter produces localized output, excludes closed budgets, and formats overspent states.');
 
 // 5. Test Pending Email Transaction & Confirmation Messages
 console.log('\n[5] Testing Pending Email Transaction & Confirmation Messages...');
