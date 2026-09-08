@@ -314,6 +314,30 @@ wallet-mcp-budgetbakers-bot/
 
 ---
 
+## Release & Versioning
+
+This project follows [Semantic Versioning](https://semver.org/) and [Conventional Commits](https://www.conventionalcommits.org/):
+
+- **Commit Message Format**:
+  - `feat(...)`: Introduces a new feature (triggers minor version bump on stable release).
+  - `fix(...)`: Patches a bug (triggers patch version bump on stable release).
+  - `perf(...)`: Performance optimization.
+  - `refactor(...)`: Code refactoring without behavior changes.
+  - `docs(...)`: Documentation updates.
+  - `chore(...)`: Routine maintenance and dependency updates.
+  - `BREAKING CHANGE:` or `!`: Breaking API changes (triggers major version bump).
+
+- **Snapshot Pre-Releases (Automated)**:
+  - Every merge/push to `main` automatically triggers the **Snapshot Pre-Release** workflow.
+  - Generates preview builds tagged as `v<version>-snapshot.<sha>` marked as pre-releases on GitHub.
+  - Allows testing of bleeding-edge changes from `main` without creating premature stable semver tags.
+
+- **Stable Releases (Manual On-Demand)**:
+  - Stable releases are triggered on-demand via GitHub Actions `workflow_dispatch` (the **Run workflow** button under **Actions** > **Manual Release** on the `main` branch).
+  - Automatically scans all commits since the previous release tag, determines the appropriate semver bump, updates `CHANGELOG.md` and `package.json`, pushes the release tag, and publishes GitHub Release notes complete with contributor attributions and pull request links.
+
+---
+
 ## Author
  
  Developed by [churma16](https://github.com/churma16).

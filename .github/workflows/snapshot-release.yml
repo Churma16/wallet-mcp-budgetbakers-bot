@@ -1,0 +1,62 @@
+name: Snapshot Pre-Release
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'CHANGELOG.md'
+      - 'README.md'
+      - '.github/workflows/manual-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    if: "!startsWith(github.event.head_commit.message, 'chore(release):') && !startsWith(github.event.head_commit.message, 'chore(main): release')"
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Verify Build
+        run: npm run build
+
+      - name: Compute Snapshot Version and Tag
+        id: snapshot_meta
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          SNAPSHOT_TAG="v${VERSION}-snapshot.${SHORT_SHA}"
+          echo "SNAPSHOT_TAG=$SNAPSHOT_TAG" >> $GITHUB_ENV
+          echo "SNAPSHOT_VERSION=$VERSION" >> $GITHUB_ENV
+          echo "[INFO] Computed snapshot tag: $SNAPSHOT_TAG"
+
+      - name: Publish Snapshot Pre-Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.SNAPSHOT_TAG }}
+          name: "Snapshot ${{ env.SNAPSHOT_TAG }}"
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          generate_release_notes: true
+          body: |
+            ### Snapshot Preview Build
+
+            This is an automated snapshot pre-release built from commit `${{ github.sha }}` on `main`.
+            
+            Use this build to test bleeding-edge features and fixes before the next official stable release.
