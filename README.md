@@ -1,6 +1,6 @@
 # AI Bookkeeper for BudgetBakers Wallet (WhatsApp & Telegram)
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Node.js](https://img.shields.io/badge/Node.js-%3E=18.0.0-339933?logo=node.js&logoColor=white)](https://nodejs.org/) [![Google Gemini](https://img.shields.io/badge/Google%20Gemini-2.0%20Flash-4285F4?logo=google&logoColor=white)](https://aistudio.google.com/) [![Baileys](https://img.shields.io/badge/WhatsApp-Baileys-25D366?logo=whatsapp&logoColor=white)](https://github.com/WhiskeySockets/Baileys) [![Telegram](https://img.shields.io/badge/Telegram-grammY-26A5E4?logo=telegram&logoColor=white)](https://grammy.dev/) [![BudgetBakers MCP](https://img.shields.io/badge/BudgetBakers-Wallet%20MCP-FF6B6B)](https://web.budgetbakers.com/settings/mcp-server) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Node.js](https://img.shields.io/badge/Node.js-%3E=18.0.0-339933?logo=node.js&logoColor=white)](https://nodejs.org/) [![Google Gemini](https://img.shields.io/badge/Google%20Gemini-3.5%20Flash-4285F4?logo=google&logoColor=white)](https://aistudio.google.com/) [![Baileys](https://img.shields.io/badge/WhatsApp-Baileys-25D366?logo=whatsapp&logoColor=white)](https://github.com/WhiskeySockets/Baileys) [![Telegram](https://img.shields.io/badge/Telegram-grammY-26A5E4?logo=telegram&logoColor=white)](https://grammy.dev/) [![BudgetBakers MCP](https://img.shields.io/badge/BudgetBakers-Wallet%20MCP-FF6B6B)](https://web.budgetbakers.com/settings/mcp-server) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 An automated personal bookkeeping assistant via **WhatsApp** and **Telegram** integrated directly with BudgetBakers Wallet through the official Model Context Protocol (MCP) Streamable HTTP endpoint. Powered by an agnostic AI provider (Google Gemini, OpenRouter, Groq, Ollama, OpenAI — currently only tested for Gemini API), the system converts natural language chats and physical receipt photos into structured wallet records, monitors bank/e-wallet notification emails in real time, and requests interactive confirmation before committing financial records.
 
@@ -135,64 +135,130 @@ Copy the example environment file and populate your credentials:
 cp .env.example .env
 ```
 
-Key environment variables:
+The configuration is structured into **three setup stages**, guiding you from minimum required credentials to optional add-ons and advanced tuning:
 
+#### Stage 1: Minimum Required to Run the Bot (Core Prerequisites)
+Fill in these credentials to get the bot running immediately.
+
+**1A. BudgetBakers Wallet MCP Server:**
+| Variable | Description | Example / Default |
+| :--- | :--- | :--- |
+| `WALLET_MCP_BASE_URL` | BudgetBakers Wallet MCP HTTP endpoint | `https://mcp.wallet.budgetbakers.com` |
+| `WALLET_MCP_ACCESS_TOKEN` | BudgetBakers Personal Access Token with required scopes | `pat_...` |
+
+**1B. AI Provider Configuration:**
+| Variable | Description | Example / Default |
+| :--- | :--- | :--- |
+| `AI_PROVIDER` | Active AI provider (`gemini`, `openrouter`, `groq`, `ollama`, `openai`, `custom`) | `gemini` |
+| `GEMINI_API_KEY` | Google Gemini API key (from [Google AI Studio](https://aistudio.google.com)) | `AIzaSy...` |
+| `GEMINI_MODEL` | Primary Gemini model identifier | `gemini-3.5-flash-lite` |
+| `GEMINI_FALLBACK_MODELS` | Comma-separated cascade fallback models | `gemini-3.5-flash,gemini-3.6-flash` |
+| `GEMINI_TIMEOUT_SECONDS` | Request timeout before triggering fallback | `20` |
+| `OPENROUTER_API_KEY` | OpenRouter API Key (if `AI_PROVIDER=openrouter`) | `sk-or-v1-...` |
+| `GROQ_API_KEY` | Groq API Key (if `AI_PROVIDER=groq`) | `gsk_...` |
+| `OPENAI_API_KEY` | OpenAI API Key (if `AI_PROVIDER=openai`) | `sk-...` |
+| `AI_API_KEY` | Generic API key for custom OpenAI-compatible endpoint | `sk-...` |
+| `AI_BASE_URL` | Custom endpoint for OpenAI-compatible providers | `http://localhost:11434/v1` |
+| `AI_MODEL` | Active model for OpenRouter / Groq / Ollama / OpenAI | `google/gemini-2.0-flash-exp:free` |
+| `AI_FALLBACK_MODELS` | Comma-separated fallback models for alternative providers | `deepseek/deepseek-r1:free` |
+| `AI_TIMEOUT_SECONDS` | Request timeout in seconds for alternative AI providers | `25` |
+
+**1C. Messaging Channels (Choose at least one: WhatsApp or Telegram):**
 | Variable | Description | Example / Default |
 | :--- | :--- | :--- |
 | `ENABLED_MESSENGER_CHANNELS` | Active messaging channels (`whatsapp`, `telegram`, or `whatsapp,telegram`) | Auto-detect |
-| `ALLOWED_PHONE_NUMBER` | Authorized WhatsApp number (international format) | `6281234567890` |
-| `WHATSAPP_SESSION_PATH` | Local directory for multi-device credentials | `./auth_session` |
+| `ALLOWED_PHONE_NUMBER` | Authorized WhatsApp number in international format (whitelist) | `6281234567890` |
+| `WHATSAPP_SESSION_PATH` | Local directory for multi-device session credentials | `./auth_session` |
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot Token from @BotFather | `123456789:ABC...` |
-| `TELEGRAM_ALLOWED_USER_ID` | Telegram User ID whitelist | `123456789` |
-| `AI_PROVIDER` | Active AI Provider (`gemini`, `openrouter`, `groq`, `ollama`, `openai`) | `gemini` |
-| `GEMINI_API_KEY` | Google Gemini API authentication key | `AIzaSy...` |
-| `GEMINI_MODEL` | Primary Gemini model identifier | `gemini-3.6-flash` |
-| `GEMINI_FALLBACK_MODELS` | Comma-separated cascade fallback models | `gemini-3.5-flash,gemini-3.5-flash-lite` |
-| `GEMINI_TIMEOUT_SECONDS` | Request timeout before triggering fallback | `20` |
-| `OPENROUTER_API_KEY` | OpenRouter API Key (if `AI_PROVIDER=openrouter`) | `sk-or-v1-...` |
-| `AI_MODEL` | Active model for OpenRouter / Groq / Ollama / OpenAI | `google/gemini-2.0-flash-exp:free` |
-| `AI_BASE_URL` | Custom endpoint for OpenAI-compatible providers | `http://localhost:11434/v1` |
-| `WALLET_MCP_BASE_URL` | BudgetBakers Wallet MCP endpoint | `https://mcp.wallet.budgetbakers.com` |
-| `WALLET_MCP_ACCESS_TOKEN` | BudgetBakers Personal Access Token | `pat_...` |
-| `LOG_RETENTION_DAYS` | Daily log rotation retention period | `7` |
-| `EMAIL_SYNC_ENABLED` | Toggle real-time bank email sync via IMAP | `true` or `false` |
-| `EMAIL_IMAP_HOST` | IMAP server address | `imap.gmail.com` |
+| `TELEGRAM_ALLOWED_USER_ID` | Telegram User ID whitelist security | `123456789` |
+
+#### Stage 2: Optional Add-On Features (Real-Time Bank Sync)
+Configure if you want real-time financial tracking from email notifications.
+
+| Variable | Description | Example / Default |
+| :--- | :--- | :--- |
+| `EMAIL_SYNC_ENABLED` | Toggle real-time bank email sync via IMAP | `false` |
+| `EMAIL_IMAP_HOST` | IMAP server host address | `imap.gmail.com` |
 | `EMAIL_IMAP_PORT` | IMAP SSL port | `993` |
 | `EMAIL_IMAP_USER` | Gmail address receiving bank notifications | `user@gmail.com` |
 | `EMAIL_IMAP_PASSWORD` | 16-character Google App Password | `abcd efgh ijkl mnop` |
-| `EMAIL_LOOKBACK_MINUTES`| Lookback window on initial startup | `10` |
+| `EMAIL_LOOKBACK_MINUTES`| Lookback window on initial startup to prevent flooding | `10` |
+
+#### Stage 3: Advanced Tuning & System Safeguards
+All settings below have sensible built-in defaults. Change only if needed.
+
+| Variable | Description | Example / Default |
+| :--- | :--- | :--- |
 | `APP_LANGUAGE` | Bot response language (`id` for Indonesian, `en` for English) | `id` |
 | `DEFAULT_CURRENCY` | Fallback and summary currency code (e.g., `IDR`, `USD`, `EUR`, `SGD`) | `IDR` |
 | `APP_TIMEZONE` | IANA Timezone identifier for timestamps and receipts | `Asia/Jakarta` |
+| `WHATSAPP_MAX_RECONNECT_ATTEMPTS` | Maximum WhatsApp reconnection attempts before backoff | `6` |
+| `WHATSAPP_RECONNECT_MAX_BACKOFF_SECONDS` | Maximum backoff interval in seconds during reconnection | `300` |
+| `WHATSAPP_MESSAGE_QUEUE_INTERVAL_MS` | Outbound message queue throttle interval (anti-rate-limit) | `1000` |
+| `WHATSAPP_TYPING_PRESENCE_COOLDOWN_MS` | Simulated typing presence cooldown in milliseconds | `2500` |
+| `TELEGRAM_MAX_STARTUP_ATTEMPTS` | Maximum startup retry attempts for Telegram connection | `5` |
+| `TELEGRAM_STARTUP_RETRY_DELAY_MS` | Delay between Telegram startup connection retries in ms | `2000` |
+| `MAX_MEDIA_DOWNLOAD_MB` | Maximum media download size limit in MB (buffer protection) | `10` |
+| `LOG_RETENTION_DAYS` | Daily file logging retention period in days | `7` |
 
 ### 3. Verify Integrations & Connection Tests
 
-Run the built-in diagnostic scripts to confirm API connectivity before starting:
+Run built-in diagnostic scripts to confirm API connectivity and system health:
 
 ```bash
+# --- Core Connectivity & Diagnostic Tests ---
 # Verify Wallet MCP credentials, scopes, accounts, and categories
 npm run test:mcp
 
 # Verify active AI Provider NLU and email transaction extraction
 npm run test:ai
 
-# Verify Gate 1 bank email rules and confirmation intent detection
-npm run test:email-rules
-
-# Verify Gmail IMAP connection & credentials (if email sync is enabled)
-npm run test:email
-
-# Test live email fetching and Gate 1 filtering against your inbox
-npm run test:email-gate-live
+# Verify native Google Gemini AI service
+npm run test:gemini
 
 # Verify Telegram Bot API token & whitelisted user dispatch
 npm run test:telegram
 
-# Verify response dictionary & multi-language localization (i18n)
-npm run test:i18n
+# Verify Gmail IMAP connection & credentials (if email sync is enabled)
+npm run test:email
+
+# --- Channel Safeguards & Resilience Tests ---
+# Verify WhatsApp session recovery and message queue rate-limiting
+npm run test:whatsapp-safeguards
+
+# Verify WhatsApp socket reconnection and backoff hardening
+npm run test:whatsapp-hardening
+
+# Verify Telegram startup retry and connection resilience
+npm run test:telegram-safeguards
+
+# Verify multi-channel messaging gateway failover and dispatch resilience
+npm run test:gateway-resilience
+
+# --- Business Logic, Rules & Security Tests ---
+# Verify Gate 1 bank email regex patterns and confirmation intent detection
+npm run test:email-rules
+
+# Test live email fetching and Gate 1 filtering against your inbox
+npm run test:email-gate-live
+
+# Verify receipt vision OCR prompts and extraction schemas
+npm run test:receipt-ocr
+
+# Verify media download size limits and memory protection
+npm run test:media-limits
+
+# Verify sensitive data redaction in logger outputs
+npm run test:redaction
 
 # Verify message markup formatting and HTML escaping
 npm run test:format
+
+# Verify human-friendly response strings and currency formatting
+npm run test:formatter
+
+# Verify response dictionary & multi-language localization (i18n)
+npm run test:i18n
 ```
 
 ### 4. Start the Application
@@ -245,6 +311,12 @@ wallet-mcp-budgetbakers-bot/
 │   ├── config/
 │   │   ├── bankEmailRules.ts            # Rule definitions for Mandiri, Jago, GoPay, OVO, DANA, ShopeePay
 │   │   └── environmentConfig.ts         # Environment validation and typed configurations
+│   ├── handlers/                        # Modular event & message processing handlers
+│   │   ├── emailTransactionHandler.ts   # Bank email notification processing & ticket creation
+│   │   ├── fastPathHandler.ts           # Zero-token intent shortcuts and quick commands
+│   │   ├── pendingActionHandler.ts      # Confirmation ticket queue actions (confirm, cancel)
+│   │   ├── userMessageHandler.ts        # Financial NLU, receipt OCR, and query handling
+│   │   └── index.ts                     # Handlers barrel export
 │   ├── i18n/                            # Internationalization (i18n) and response dictionaries
 │   │   ├── locales/
 │   │   │   ├── en.ts                    # English dictionary & templates
@@ -256,25 +328,31 @@ wallet-mcp-budgetbakers-bot/
 │   ├── services/
 │   │   ├── ai/                          # Agnostic AI Provider implementations
 │   │   │   ├── aiPromptBuilder.ts       # Centralized system instruction & prompt builder
-│   │   │   ├── financialAiProvider.ts   # Common AI provider contract & factory
+│   │   │   ├── aiProviderFactory.ts     # Dynamic factory creating active AI provider instances
+│   │   │   ├── financialAiProvider.ts   # Common AI provider contract & interfaces
 │   │   │   ├── geminiAiProvider.ts      # Google Gemini native provider with model fallback
-│   │   │   └── openAiCompatibleAiProvider.ts # OpenAI / OpenRouter / Groq / Ollama provider
-│   │   ├── messaging/                   # Channel-agnostic messaging gateways
-│   │   │   ├── types.ts                 # Adapter interfaces and messaging event contracts
-│   │   │   ├── messagingGatewayService.ts # Gateway orchestrator managing active channels
-│   │   │   ├── messageFormatHelper.ts   # Formatting converter (WhatsApp markup to Telegram HTML)
-│   │   │   ├── whatsappAdapter.ts       # Baileys WhatsApp Web socket adapter
-│   │   │   └── telegramAdapter.ts       # grammY Telegram Bot adapter
-│   │   ├── emailListenerService.ts      # Gmail IMAP IDLE real-time subscriber and parser
-│   │   ├── pendingTransactionManager.ts # Interactive confirmation ticket queue
-│   │   └── walletMcpClient.ts           # BudgetBakers Wallet MCP HTTP JSON-RPC client
+│   │   │   ├── jsonExtractionHelper.ts  # Resilient markdown JSON extractor & sanitizer
+│   │   │   ├── openAiCompatibleAiProvider.ts # OpenAI / OpenRouter / Groq / Ollama provider
+│   │   │   └── index.ts                 # AI services barrel export
+│   ├── messaging/                      # Channel-agnostic messaging gateways
+│   │   ├── types.ts                 # Adapter interfaces and messaging event contracts
+│   │   ├── messagingGatewayService.ts # Gateway orchestrator managing active channels
+│   │   ├── messageFormatHelper.ts   # Formatting converter (WhatsApp markup to Telegram HTML)
+│   │   ├── whatsappAdapter.ts       # Baileys WhatsApp Web socket adapter
+│   │   ├── telegramAdapter.ts       # grammY Telegram Bot adapter
+│   │   └── index.ts                 # Messaging barrel export
+│   ├── emailListenerService.ts      # Gmail IMAP IDLE real-time subscriber and parser
+│   ├── pendingTransactionManager.ts # Interactive confirmation ticket queue
+│   ├── walletCacheService.ts        # In-memory cache for accounts, categories, and currencies
+│   └── walletMcpClient.ts           # BudgetBakers Wallet MCP HTTP JSON-RPC client
 │   ├── utils/
 │   │   ├── emailLogicGate.ts            # Gate 1 rule evaluator (sender domain, blacklist, anti-dupe)
 │   │   ├── fastPathIntentDetector.ts    # Zero-token intent classifier and confirmation parser
 │   │   ├── humanResponseFormatter.ts    # Multi-language response templates and formatting
-│   │   ├── logger.ts                    # Pino logger instance with daily file rotation
+│   │   ├── logger.ts                    # Pino logger instance with daily file rotation & redaction
 │   │   └── recordValidator.ts           # Account/category index resolver and payload sanitizer
-│   └── index.ts                         # Application bootstrap and service orchestrator
+│   ├── app.ts                           # Application container and lifecycle coordinator
+│   └── index.ts                         # Entrypoint bootstrap
 ├── tests/                               # Diagnostic & verification test suites
 │   ├── aiProvider.test.ts               # Diagnostic script for active AI provider NLU
 │   ├── emailGateRules.test.ts           # Unit test suite for Gate 1 filtering logic
@@ -282,11 +360,17 @@ wallet-mcp-budgetbakers-bot/
 │   ├── fetchRealEmailsGate.test.ts      # Live inbox diagnostic for Gate 1 rule evaluation
 │   ├── formatter.test.ts                # Validation script for human-friendly response strings
 │   ├── gemini.test.ts                   # Diagnostic script for Gemini AI service
+│   ├── loggerRedaction.test.ts          # Redaction test for PII and sensitive data in logs
+│   ├── mediaDownloadLimits.test.ts      # Boundary tests for oversized media protection
 │   ├── messageFormat.test.ts            # Unit test for WhatsApp markup to Telegram HTML converter
+│   ├── messagingGatewayResilience.test.ts # Gateway failover, retry, and disconnect resilience
+│   ├── receiptOcrPrompt.test.ts         # Verification for receipt vision OCR prompt structure
 │   ├── responseDictionary.test.ts       # Verification script for i18n & multi-currency formatting
 │   ├── telegramBot.test.ts              # Diagnostic script for Telegram bot connectivity & dispatch
+│   ├── telegramSafeguards.test.ts       # Startup retry and network resilience for Telegram
 │   ├── walletMcp.test.ts                # Diagnostic script for BudgetBakers MCP endpoints
-│   └── whatsAppSafeguards.test.ts       # Safeguards & session recovery tests for WhatsApp
+│   ├── whatsAppSafeguards.test.ts       # Safeguards & session recovery tests for WhatsApp
+│   └── whatsAppSocketHardening.test.ts  # Socket reconnection & backoff tests for WhatsApp
 ├── .env.example                         # Environment variable template
 ├── package.json                         # Node dependencies and execution scripts
 ├── tsconfig.json                        # TypeScript compiler configuration
