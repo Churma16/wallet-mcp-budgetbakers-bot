@@ -4,7 +4,7 @@ import {
   ExtractedEmailTransactionData,
 } from './financialAiProvider.js';
 import { WalletAccountItem, WalletCategoryItem } from '../../types/walletTypes.js';
-import { GateEvaluationResult } from '../../utils/emailLogicGate.js';
+import { GateEvaluationResult } from '../../utils/emailGateEvaluator.js';
 import { applicationLogger, formatConciseErrorMessage } from '../../utils/logger.js';
 
 /**

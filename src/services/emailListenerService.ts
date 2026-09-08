@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
-import { evaluateEmailThroughGateOne, GateEvaluationResult } from '../utils/emailLogicGate.js';
+import { evaluateEmailThroughGateOne, GateEvaluationResult } from '../utils/emailGateEvaluator.js';
 import { applicationLogger } from '../utils/logger.js';
 
 export interface EmailTransactionDetectedEvent {

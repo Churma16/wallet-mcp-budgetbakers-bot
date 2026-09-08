@@ -20,7 +20,7 @@ import {
 } from '../src/utils/humanResponseFormatter.js';
 import { detectFastPathAction, detectPendingConfirmationAction } from '../src/utils/fastPathIntentDetector.js';
 import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload, WalletBudgetItem } from '../src/types/walletTypes.js';
-import { PendingTransactionItem } from '../src/services/pendingTransactionManager.js';
+import { PendingTransactionItem } from '../src/services/pendingTransactionService.js';
 
 console.log('[TEST] Starting Response Dictionary & Multi-Language Formatting Tests...');
 

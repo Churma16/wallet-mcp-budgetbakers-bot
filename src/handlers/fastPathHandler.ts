@@ -1,5 +1,5 @@
 import { FastPathAction } from '../utils/fastPathIntentDetector.js';
-import { WalletMcpClientService } from '../services/walletMcpClient.js';
+import { WalletMcpClientService } from '../services/walletMcpService.js';
 import { WalletCacheService } from '../services/walletCacheService.js';
 import { MessagingGatewayService, IncomingUserMessageEvent } from '../services/messaging/index.js';
 import { formatBalanceSummaryMessage, formatBudgetSummaryMessage } from '../utils/humanResponseFormatter.js';

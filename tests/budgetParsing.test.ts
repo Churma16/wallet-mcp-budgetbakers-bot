@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { WalletMcpClientService } from '../src/services/walletMcpClient.js';
+import { WalletMcpClientService } from '../src/services/walletMcpService.js';
 import { formatBudgetSummaryMessage } from '../src/utils/humanResponseFormatter.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 

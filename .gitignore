@@ -20,3 +20,4 @@ data/
 # OS Files
 .DS_Store
 Thumbs.db
+/.idea

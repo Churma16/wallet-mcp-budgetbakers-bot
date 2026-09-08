@@ -1,10 +1,10 @@
 import { loadEnvironmentConfiguration } from '../src/config/environmentConfig.js';
-import { WalletMcpClientService } from '../src/services/walletMcpClient.js';
-import { GeminiAiService } from '../src/services/geminiAiService.js';
+import { WalletMcpClientService } from '../src/services/walletMcpService.js';
+import { GeminiAiProvider } from '../src/services/ai/geminiAiProvider.js';
 import { applicationLogger } from '../src/utils/logger.js';
 
 async function runGeminiAiVerification(): Promise<void> {
-  applicationLogger.info('Testing Gemini AI Service & Transaction Parsing...');
+  applicationLogger.info('Testing Gemini AI Provider & Transaction Parsing...');
 
   const environmentConfig = loadEnvironmentConfiguration();
   const walletMcpClient = new WalletMcpClientService(
@@ -15,7 +15,7 @@ async function runGeminiAiVerification(): Promise<void> {
   const accountList = await walletMcpClient.fetchAccounts(true);
   const categoryList = await walletMcpClient.fetchCategories(true);
 
-  const geminiAiService = new GeminiAiService(
+  const geminiAiProvider = new GeminiAiProvider(
     environmentConfig.geminiApiKey,
     environmentConfig.geminiModel,
     environmentConfig.geminiFallbackModels
@@ -25,7 +25,7 @@ async function runGeminiAiVerification(): Promise<void> {
   console.log('');
   applicationLogger.chat(`Simulated User Message: "${testUserMessage}"`);
 
-  const extractionResult = await geminiAiService.processTextMessage(
+  const extractionResult = await geminiAiProvider.processTextMessage(
     testUserMessage,
     accountList,
     categoryList

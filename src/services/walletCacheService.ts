@@ -1,5 +1,5 @@
 import { WalletAccountItem, WalletCategoryItem } from '../types/walletTypes.js';
-import { WalletMcpClientService } from './walletMcpClient.js';
+import { WalletMcpClientService } from './walletMcpService.js';
 import { applicationLogger } from '../utils/logger.js';
 
 export class WalletCacheService {

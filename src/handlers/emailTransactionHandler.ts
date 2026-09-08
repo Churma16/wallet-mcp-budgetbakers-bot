@@ -1,7 +1,7 @@
 import { EmailTransactionDetectedEvent } from '../services/emailListenerService.js';
 import { FinancialAiProvider } from '../services/ai/index.js';
 import { WalletCacheService } from '../services/walletCacheService.js';
-import { PendingTransactionManager } from '../services/pendingTransactionManager.js';
+import { PendingTransactionService } from '../services/pendingTransactionService.js';
 import { MessagingGatewayService } from '../services/messaging/index.js';
 import { formatPendingEmailTransactionNotification } from '../utils/humanResponseFormatter.js';
 import { applicationLogger } from '../utils/logger.js';
@@ -10,7 +10,7 @@ export class EmailTransactionHandler {
   constructor(
     private readonly financialAiProvider: FinancialAiProvider,
     private readonly walletCacheService: WalletCacheService,
-    private readonly pendingTransactionManager: PendingTransactionManager,
+    private readonly pendingTransactionManager: PendingTransactionService,
     private readonly messagingGateway: MessagingGatewayService,
     private readonly defaultCurrency: string = 'IDR'
   ) {}

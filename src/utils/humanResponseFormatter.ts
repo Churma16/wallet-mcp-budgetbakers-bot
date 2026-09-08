@@ -1,5 +1,5 @@
 import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload, WalletBudgetItem } from '../types/walletTypes.js';
-import { PendingTransactionItem } from '../services/pendingTransactionManager.js';
+import { PendingTransactionItem } from '../services/pendingTransactionService.js';
 import { getDictionary, SupportedLanguage } from '../i18n/index.js';
 
 const ZERO_DECIMAL_CURRENCY_SET = new Set([

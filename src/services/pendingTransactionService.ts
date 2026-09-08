@@ -20,7 +20,7 @@ export interface PendingTransactionItem {
   expiresAt: Date;
 }
 
-export class PendingTransactionManager {
+export class PendingTransactionService {
   private nextTicketSequentialId: number = 1;
   private readonly pendingTransactionMap: Map<number, PendingTransactionItem> = new Map();
   private readonly defaultTimeToLiveMilliseconds: number = 24 * 60 * 60 * 1000; // 24 hours

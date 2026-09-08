@@ -1,5 +1,5 @@
 ﻿import { WalletAccountItem, WalletCategoryItem } from '../../types/walletTypes.js';
-import { GateEvaluationResult } from '../../utils/emailLogicGate.js';
+import { GateEvaluationResult } from '../../utils/emailGateEvaluator.js';
 
 export interface TokenUsageStatistics {
   promptTokens: number;
