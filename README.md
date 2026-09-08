@@ -70,6 +70,7 @@ flowchart TD
 
 - **Natural Language Transaction Recording**: Parse casual shorthand in Indonesian or English (e.g., *"Kopi kenangan 28rb bca"*, *"Lunch sandwich $7.50 cash"*, *"Gaji masuk 7.5jt ke Mandiri"*).
 - **Physical Receipt Photo OCR**: Send photos of physical paper receipts or invoices; AI vision extracts merchant, transaction timestamp, line items, total amount, and categorizes automatically.
+- **Priority-Based Multi-Provider AI Fallback**: Configure ordered fallback chains across AI providers (e.g., `AI_PROVIDER=gemini,openrouter`). Automatically fails over from primary models (Gemini) to secondary providers (OpenRouter free models, Groq) during rate limits (HTTP 429) or service outages (HTTP 503) with zero message drops.
 - **Account-Aware Multi-Currency & Precision Formatting**: Automatically inspects account currencies configured in BudgetBakers Wallet (e.g. USD, EUR, IDR, SGD, GBP) and formats amounts accordingly with proper decimal precision (e.g., `$5.75` vs `Rp 45.000`).
 - **Multi-Language Support (i18n)**: Fully localized human responses and interactive ticket confirmations in **Bahasa Indonesia** (`id`) and **English** (`en`), configurable via `APP_LANGUAGE`.
 - **Configurable Timezone**: Formats transaction receipts and contextual timestamps matching your IANA timezone (e.g., `Asia/Jakarta`, `America/New_York`, `Europe/London`).
@@ -149,19 +150,23 @@ Fill in these credentials to get the bot running immediately.
 **1B. AI Provider Configuration:**
 | Variable | Description | Example / Default |
 | :--- | :--- | :--- |
-| `AI_PROVIDER` | Active AI provider (`gemini`, `openrouter`, `groq`, `ollama`, `openai`, `custom`) | `gemini` |
+| `AI_PROVIDER` | Active AI provider or comma-separated priority order (`gemini`, `openrouter`, `groq`, `ollama`, `openai`, `custom`, or e.g. `gemini,openrouter`) | `gemini` |
 | `GEMINI_API_KEY` | Google Gemini API key (from [Google AI Studio](https://aistudio.google.com)) | `AIzaSy...` |
 | `GEMINI_MODEL` | Primary Gemini model identifier | `gemini-3.5-flash-lite` |
 | `GEMINI_FALLBACK_MODELS` | Comma-separated cascade fallback models | `gemini-3.5-flash,gemini-3.6-flash` |
 | `GEMINI_TIMEOUT_SECONDS` | Request timeout before triggering fallback | `20` |
-| `OPENROUTER_API_KEY` | OpenRouter API Key (if `AI_PROVIDER=openrouter`) | `sk-or-v1-...` |
-| `GROQ_API_KEY` | Groq API Key (if `AI_PROVIDER=groq`) | `gsk_...` |
-| `OPENAI_API_KEY` | OpenAI API Key (if `AI_PROVIDER=openai`) | `sk-...` |
+| `OPENROUTER_API_KEY` | OpenRouter API Key (required if `openrouter` is in `AI_PROVIDER`) | `sk-or-v1-...` |
+| `GROQ_API_KEY` | Groq API Key (required if `groq` is in `AI_PROVIDER`) | `gsk_...` |
+| `OPENAI_API_KEY` | OpenAI API Key (required if `openai` is in `AI_PROVIDER`) | `sk-...` |
 | `AI_API_KEY` | Generic API key for custom OpenAI-compatible endpoint | `sk-...` |
-| `AI_BASE_URL` | Custom endpoint for OpenAI-compatible providers | `http://localhost:11434/v1` |
-| `AI_MODEL` | Active model for OpenRouter / Groq / Ollama / OpenAI | `google/gemini-2.0-flash-exp:free` |
-| `AI_FALLBACK_MODELS` | Comma-separated fallback models for alternative providers | `deepseek/deepseek-r1:free` |
+| `AI_BASE_URL` | Custom endpoint for OpenAI-compatible providers | `https://openrouter.ai/api/v1` |
+| `AI_MODEL` | Active model for OpenRouter / Groq / Ollama / OpenAI | `meta-llama/llama-3.3-70b-instruct:free` |
+| `AI_FALLBACK_MODELS` | Comma-separated fallback models for alternative providers | `google/gemini-2.0-flash-exp:free` |
 | `AI_TIMEOUT_SECONDS` | Request timeout in seconds for alternative AI providers | `25` |
+
+> [!TIP]
+> **Recommended Multi-Provider Fallback Setup**:
+> Set `AI_PROVIDER=gemini,openrouter` with your `GEMINI_API_KEY` and `OPENROUTER_API_KEY`. The bot will utilize Gemini's high-speed native multimodal engine, and automatically fail over to OpenRouter free models (e.g. `meta-llama/llama-3.3-70b-instruct:free`) if Gemini hits rate limits (`429`) or server overload (`503`).
 
 **1C. Messaging Channels (Choose at least one: WhatsApp or Telegram):**
 | Variable | Description | Example / Default |
@@ -212,6 +217,9 @@ npm run test:mcp
 
 # Verify active AI Provider NLU and email transaction extraction
 npm run test:ai
+
+# Verify priority-based multi-provider AI fallback and cascade failover
+npm run test:ai-fallback
 
 # Verify native Google Gemini AI service
 npm run test:gemini
@@ -329,22 +337,23 @@ wallet-mcp-budgetbakers-bot/
 │   │   ├── ai/                          # Agnostic AI Provider implementations
 │   │   │   ├── aiPromptBuilder.ts       # Centralized system instruction & prompt builder
 │   │   │   ├── aiProviderFactory.ts     # Dynamic factory creating active AI provider instances
+│   │   │   ├── fallbackAiProvider.ts    # Priority-based cascade failover provider
 │   │   │   ├── financialAiProvider.ts   # Common AI provider contract & interfaces
 │   │   │   ├── geminiAiProvider.ts      # Google Gemini native provider with model fallback
 │   │   │   ├── jsonExtractionHelper.ts  # Resilient markdown JSON extractor & sanitizer
 │   │   │   ├── openAiCompatibleAiProvider.ts # OpenAI / OpenRouter / Groq / Ollama provider
 │   │   │   └── index.ts                 # AI services barrel export
-│   ├── messaging/                      # Channel-agnostic messaging gateways
-│   │   ├── types.ts                 # Adapter interfaces and messaging event contracts
-│   │   ├── messagingGatewayService.ts # Gateway orchestrator managing active channels
-│   │   ├── messageFormatHelper.ts   # Formatting converter (WhatsApp markup to Telegram HTML)
-│   │   ├── whatsappAdapter.ts       # Baileys WhatsApp Web socket adapter
-│   │   ├── telegramAdapter.ts       # grammY Telegram Bot adapter
-│   │   └── index.ts                 # Messaging barrel export
-│   ├── emailListenerService.ts      # Gmail IMAP IDLE real-time subscriber and parser
-│   ├── pendingTransactionManager.ts # Interactive confirmation ticket queue
-│   ├── walletCacheService.ts        # In-memory cache for accounts, categories, and currencies
-│   └── walletMcpClient.ts           # BudgetBakers Wallet MCP HTTP JSON-RPC client
+│   ├── messaging/                       # Channel-agnostic messaging gateways
+│   │   ├── types.ts                     # Adapter interfaces and messaging event contracts
+│   │   ├── messagingGatewayService.ts   # Gateway orchestrator managing active channels
+│   │   ├── messageFormatHelper.ts       # Formatting converter (WhatsApp markup to Telegram HTML)
+│   │   ├── whatsappAdapter.ts           # Baileys WhatsApp Web socket adapter
+│   │   ├── telegramAdapter.ts           # grammY Telegram Bot adapter
+│   │   └── index.ts                     # Messaging barrel export
+│   ├── emailListenerService.ts          # Gmail IMAP IDLE real-time subscriber and parser
+│   ├── pendingTransactionManager.ts     # Interactive confirmation ticket queue
+│   ├── walletCacheService.ts            # In-memory cache for accounts, categories, and currencies
+│   └── walletMcpClient.ts               # BudgetBakers Wallet MCP HTTP JSON-RPC client
 │   ├── utils/
 │   │   ├── emailLogicGate.ts            # Gate 1 rule evaluator (sender domain, blacklist, anti-dupe)
 │   │   ├── fastPathIntentDetector.ts    # Zero-token intent classifier and confirmation parser
@@ -355,6 +364,7 @@ wallet-mcp-budgetbakers-bot/
 │   └── index.ts                         # Entrypoint bootstrap
 ├── tests/                               # Diagnostic & verification test suites
 │   ├── aiProvider.test.ts               # Diagnostic script for active AI provider NLU
+│   ├── fallbackAiProvider.test.ts       # Unit tests for multi-provider fallback & error failover
 │   ├── emailGateRules.test.ts           # Unit test suite for Gate 1 filtering logic
 │   ├── emailImap.test.ts                # Diagnostic script for Gmail IMAP connectivity
 │   ├── fetchRealEmailsGate.test.ts      # Live inbox diagnostic for Gate 1 rule evaluation
