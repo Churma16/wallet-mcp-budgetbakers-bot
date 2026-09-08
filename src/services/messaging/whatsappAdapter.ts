@@ -21,6 +21,7 @@ export interface WhatsappSafeguardConfiguration {
   maxReconnectAttempts?: number;
   maxBackoffSeconds?: number;
   messageQueueIntervalMs?: number;
+  typingPresenceCooldownMs?: number;
 }
 
 export class WhatsappMessagingAdapter implements MessagingAdapter {
@@ -35,6 +36,8 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
   private readonly maxReconnectAttempts: number;
   private readonly maxBackoffSeconds: number;
   private readonly messageQueueIntervalMs: number;
+  private readonly typingPresenceCooldownMilliseconds: number;
+  private readonly lastTypingPresenceTimestampMap: Map<string, number> = new Map<string, number>();
 
   private consecutiveFailureCount: number = 0;
   private isCircuitBreakerTripped: boolean = false;
@@ -59,6 +62,7 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
     this.maxReconnectAttempts = safeguardConfiguration?.maxReconnectAttempts ?? 6;
     this.maxBackoffSeconds = safeguardConfiguration?.maxBackoffSeconds ?? 300;
     this.messageQueueIntervalMs = safeguardConfiguration?.messageQueueIntervalMs ?? 1000;
+    this.typingPresenceCooldownMilliseconds = safeguardConfiguration?.typingPresenceCooldownMs ?? 2500;
   }
 
   private recordIncomingMessageId(messageId: string): void {
@@ -91,6 +95,14 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
 
   public getOutboundQueueLength(): number {
     return this.outboundMessageQueue.length;
+  }
+
+  public getLastTypingPresenceTimestamp(targetChatIdentifier: string): number | undefined {
+    return this.lastTypingPresenceTimestampMap.get(targetChatIdentifier);
+  }
+
+  public getTypingPresenceCooldownMilliseconds(): number {
+    return this.typingPresenceCooldownMilliseconds;
   }
 
   public calculateBackoffDelayMilliseconds(attemptIndex: number = this.consecutiveFailureCount): number {
@@ -253,6 +265,11 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
         auth: authState,
         logger: silentLogger,
         printQRInTerminal: false,
+        generateHighQualityLinkPreview: false,
+        syncFullHistory: false,
+        shouldSyncHistoryMessage: () => false,
+        markOnlineOnConnect: false,
+        getMessage: async () => undefined,
       });
 
       this.socketInstance.ev.on('creds.update', saveCredentialsCallback);
@@ -552,8 +569,23 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
       return;
     }
 
+    if (!targetChatIdentifier || targetChatIdentifier.trim().length === 0) {
+      return;
+    }
+
+    const currentTimestamp = Date.now();
+    const lastDispatchedTimestamp = this.lastTypingPresenceTimestampMap.get(targetChatIdentifier) || 0;
+
+    if (
+      this.typingPresenceCooldownMilliseconds > 0 &&
+      currentTimestamp - lastDispatchedTimestamp < this.typingPresenceCooldownMilliseconds
+    ) {
+      return;
+    }
+
     try {
       await this.socketInstance.sendPresenceUpdate('composing', targetChatIdentifier);
+      this.lastTypingPresenceTimestampMap.set(targetChatIdentifier, Date.now());
     } catch (presenceError: unknown) {
       applicationLogger.fileDetail('warn', 'Failed to send WhatsApp typing presence update', {
         targetChatIdentifier,
@@ -567,6 +599,10 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
       return;
     }
 
+    if (!targetChatIdentifier || targetChatIdentifier.trim().length === 0) {
+      return;
+    }
+
     try {
       await this.socketInstance.sendPresenceUpdate('paused', targetChatIdentifier);
     } catch (presenceError: unknown) {
@@ -574,6 +610,8 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
         targetChatIdentifier,
         error: presenceError instanceof Error ? presenceError.message : String(presenceError),
       });
+    } finally {
+      this.lastTypingPresenceTimestampMap.delete(targetChatIdentifier);
     }
   }
 
@@ -594,6 +632,7 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
     }
 
     this.isConnectingOrReconnecting = false;
+    this.lastTypingPresenceTimestampMap.clear();
 
     // Drain and reject all pending outbound messages in queue (EC-4)
     while (this.outboundMessageQueue.length > 0) {
