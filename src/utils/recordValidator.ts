@@ -1,4 +1,6 @@
 import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload } from '../types/walletTypes.js';
+import { getApplicationTimezone } from './humanResponseFormatter.js';
+import { getTimezoneOffsetDetails } from '../services/ai/aiPromptBuilder.js';
 
 export interface FinancialRecordValidationResult {
   isValid: boolean;
@@ -102,6 +104,25 @@ export function validateAndSanitizeFinancialRecords(
       }
     }
 
+    // Strategy E: Bank account number match (exact or digit-only matching for account numbers with >= 4 digits)
+    if (!resolvedAccountId && rawAccountIdStr.length >= 4) {
+      const numericDigitsOnly = rawAccountIdStr.replace(/\D/g, '');
+      if (numericDigitsOnly.length >= 4) {
+        const bankAccountMatch = availableAccountList.find(account => {
+          if (!account.bankAccountNumber) {
+            return false;
+          }
+          const cleanAccountDigits = account.bankAccountNumber.replace(/\D/g, '');
+          return cleanAccountDigits === numericDigitsOnly ||
+            cleanAccountDigits.endsWith(numericDigitsOnly) ||
+            numericDigitsOnly.endsWith(cleanAccountDigits);
+        });
+        if (bankAccountMatch) {
+          resolvedAccountId = bankAccountMatch.id;
+        }
+      }
+    }
+
     // Fallback: Default to first account or error if no accounts
     if (!resolvedAccountId) {
       if (availableAccountList.length > 0) {
@@ -157,6 +178,17 @@ export function validateAndSanitizeFinancialRecords(
 
     // 4. Record Date Validation
     let resolvedRecordDate = currentRecord.recordDate;
+    if (typeof resolvedRecordDate === 'string') {
+      const trimmedDateString = resolvedRecordDate.trim();
+      // If date string has no timezone offset or Z indicator (e.g. 2026-09-08T11:54:00)
+      if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(trimmedDateString)) {
+        const normalizedIsoDate = trimmedDateString.replace(' ', 'T');
+        const applicationTimezone = getApplicationTimezone();
+        const timezoneOffsetDetails = getTimezoneOffsetDetails(applicationTimezone);
+        resolvedRecordDate = `${normalizedIsoDate}${timezoneOffsetDetails.formattedOffset}`;
+      }
+    }
+
     const parsedDateTimestamp = Date.parse(resolvedRecordDate);
     if (isNaN(parsedDateTimestamp)) {
       resolvedRecordDate = new Date().toISOString();

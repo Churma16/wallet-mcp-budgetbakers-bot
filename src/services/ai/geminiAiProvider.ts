@@ -11,8 +11,10 @@ import {
 import { extractAndParseJsonObject } from './jsonExtractionHelper.js';
 import { getActiveLanguage } from '../../i18n/index.js';
 
+import { getApplicationTimezone } from '../../utils/humanResponseFormatter.js';
 import {
   buildCompactSystemInstruction,
+  buildReceiptSystemInstruction,
   buildEmailSystemInstruction,
   buildTextMessagePrompt,
   buildReceiptExtractionPrompt,
@@ -292,7 +294,14 @@ export class GeminiAiProvider implements FinancialAiProvider {
     availableAccountList: WalletAccountItem[],
     availableCategoryList: WalletCategoryItem[]
   ): Promise<ExtractedFinancialIntent> {
-    const systemInstructionContent = this.getSystemInstruction(availableAccountList, availableCategoryList);
+    const currentDateIso = new Date().toISOString().split('T')[0];
+    const applicationTimezoneIdentifier = getApplicationTimezone();
+    const systemInstructionContent = buildReceiptSystemInstruction(
+      availableAccountList,
+      availableCategoryList,
+      currentDateIso,
+      applicationTimezoneIdentifier
+    );
     const currentTransactionTimestampIso = new Date().toISOString();
     const promptText = buildReceiptExtractionPrompt(optionalCaption, currentTransactionTimestampIso);
 

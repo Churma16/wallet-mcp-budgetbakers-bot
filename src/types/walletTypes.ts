@@ -4,6 +4,7 @@ export interface WalletAccountItem {
   currency?: string;
   balance?: number;
   accountType?: string;
+  bankAccountNumber?: string;
 }
 
 export interface WalletCategoryItem {
