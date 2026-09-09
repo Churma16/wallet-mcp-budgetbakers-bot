@@ -58,11 +58,12 @@ Please take a few moments to review this guide before submitting your pull reque
 
 To prevent duplicate effort and make sure maintainers know who is working on what, please claim an issue before you start coding:
 
-1. **Discover a task** by browsing open issues filtered by the beginner-friendly and volunteer-wanted labels:
-   - [`good first issue`](https://github.com/Churma16/wallet-mcp-budgetbakers-bot/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22): Small, well-scoped tasks ideal for first-time contributors.
-   - [`help wanted`](https://github.com/Churma16/wallet-mcp-budgetbakers-bot/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22): Tasks the maintainers explicitly want community help with.
+1. **Discover a task**: You are welcome to take on **any open, unassigned issue** across the repository!
+   - For first-time contributors, we recommend starting with [`good first issue`](https://github.com/Churma16/wallet-mcp-budgetbakers-bot/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) (small, well-scoped tasks).
+   - Check [`help wanted`](https://github.com/Churma16/wallet-mcp-budgetbakers-bot/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) for areas where community assistance is actively requested.
+   - Experienced contributors are free to claim any other open `bug`, `enhancement`, or `refactor` issue, or propose a new capability via an issue or [GitHub Discussions](https://github.com/Churma16/wallet-mcp-budgetbakers-bot/discussions).
 2. **Read the issue** carefully and make sure you understand the requested scope and acceptance criteria.
-3. **Comment on the issue** to express interest and request assignment before writing any code.
+3. **Comment on the issue** to express interest, briefly outline your intended approach (especially for larger features or refactoring), and request assignment before writing code.
 4. **Wait for assignment** by a maintainer. Once assigned, create your feature branch following the [Branching Strategy](#branching-strategy) and begin implementation.
 
 > [!IMPORTANT]
