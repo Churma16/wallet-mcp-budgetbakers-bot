@@ -4,6 +4,29 @@
 
 An automated personal bookkeeping assistant via **WhatsApp** and **Telegram** integrated directly with BudgetBakers Wallet through the official Model Context Protocol (MCP) Streamable HTTP endpoint. Powered by an agnostic AI provider (Google Gemini, OpenRouter, Groq, Ollama, OpenAI — currently only tested for Gemini API), the system converts natural language chats and physical receipt photos into structured wallet records, monitors bank/e-wallet notification emails in real time, and requests interactive confirmation before committing financial records.
 
+<details>
+<summary><b>Table of Contents</b></summary>
+
+- [Architecture Flow](#architecture-flow)
+- [Key Features](#key-features)
+- [Tech Stack & Libraries](#tech-stack--libraries)
+- [Prerequisites](#prerequisites)
+- [Generating a BudgetBakers Wallet MCP Token](#generating-a-budgetbakers-wallet-mcp-token)
+- [Installation & Setup](#installation--setup)
+  - [3-Minute Quickstart](#3-minute-quickstart)
+  - [1. Clone and Install Dependencies](#1-clone-and-install-dependencies)
+  - [2. Environment Configuration (Stage 1 to 3)](#2-environment-configuration)
+  - [3. Verify Integrations & Connection Tests](#3-verify-integrations--connection-tests)
+- [Usage Scenarios & Commands](#usage-scenarios--commands)
+- [Project Structure](#project-structure)
+- [Security & Privacy Considerations](#security--privacy-considerations)
+- [Disclaimer, Legal Notice & Risk Warning](#disclaimer-legal-notice--risk-warning)
+- [Release & Versioning](#release--versioning)
+- [Contributing](#contributing)
+- [License](#license)
+
+</details>
+
 ---
 
 ## Architecture Flow
@@ -105,8 +128,7 @@ flowchart TD
    - Google Gemini: Obtain a free key from [Google AI Studio](https://aistudio.google.com) (*currently only tested with Gemini API*).
    - Or OpenRouter / Groq / OpenAI / Ollama.
 3. **BudgetBakers Wallet MCP Token**:
-   - Access [BudgetBakers MCP Server Settings](https://web.budgetbakers.com/settings/mcp-server).
-   - Generate a **Personal Access Token** with required scopes (`records.create`, `records.read`, `accounts.read`, `categories.read`, `budgets.read`).
+   - Generate a **Personal Access Token** with required scopes (`records.create`, `records.read`, `accounts.read`, `categories.read`, `budgets.read`) by following the [step-by-step instructions below](#generating-a-budgetbakers-wallet-mcp-token).
 4. **Messaging Credentials (At least one required)**:
    - **WhatsApp**: Your phone number for `ALLOWED_PHONE_NUMBER`.
    - **Telegram**: A bot token from [@BotFather](https://t.me/BotFather) (`TELEGRAM_BOT_TOKEN`) and your Telegram user ID from [@userinfobot](https://t.me/userinfobot) (`TELEGRAM_ALLOWED_USER_ID`).
@@ -118,7 +140,80 @@ flowchart TD
 
 ---
 
+## Generating a BudgetBakers Wallet MCP Token
+
+Your `WALLET_MCP_ACCESS_TOKEN` is a **Personal Access Token** issued by BudgetBakers for their official Wallet MCP server. To generate one:
+
+1. **Log in** to your Wallet account at [BudgetBakers Web App](https://web.budgetbakers.com).
+2. Open **Settings** (gear icon) from the sidebar.
+3. Click **MCP Server** in the left-hand settings menu.
+4. Under the **Personal Access Tokens** section, click **Create Access Token** (or **Generate New Token**).
+5. Give the token a recognizable name (e.g., `Wallet Bot`).
+6. Select the **required scopes**:
+   - `records.create`
+   - `records.read`
+   - `accounts.read`
+   - `categories.read`
+   - `budgets.read`
+7. Click **Create / Generate** and **copy the token immediately** — it is displayed only once and starts with the prefix `pat_...`.
+
+Then paste it into `WALLET_MCP_ACCESS_TOKEN` in your `.env` file:
+
+```bash
+WALLET_MCP_ACCESS_TOKEN=pat_your_generated_token_here
+```
+
+> [!IMPORTANT]
+> Treat your Personal Access Token like a password. Never commit it to version control or share it — it grants direct API access to your Wallet records. If it is ever leaked, revoke it immediately from the same **Settings > MCP Server** page and generate a replacement.
+
+Direct link: [BudgetBakers MCP Server Settings](https://web.budgetbakers.com/settings/mcp-server).
+
+---
+
 ## Installation & Setup
+
+> [!TIP]
+> **Just want it running in 3 minutes?** Follow the [3-Minute Quickstart](#3-minute-quickstart) below. Everything else in this section is optional tuning for power users.
+
+### 3-Minute Quickstart
+
+The fastest path from zero to a working bot requires exactly **4 environment variables**:
+
+1. **Clone and install** the project:
+   ```bash
+   git clone https://github.com/Churma16/wallet-mcp-budgetbakers-bot.git
+   cd wallet-mcp-budgetbakers-bot
+   npm install
+   ```
+2. **Copy the environment template** and set the 4 mandatory variables below:
+   ```bash
+   cp .env.example .env
+   ```
+
+   | Variable | What to put | Where to get it |
+   | :--- | :--- | :--- |
+   | `WALLET_MCP_BASE_URL` | BudgetBakers Wallet MCP endpoint | Use the default `https://mcp.wallet.budgetbakers.com` |
+   | `WALLET_MCP_ACCESS_TOKEN` | Your Wallet MCP Personal Access Token (`pat_...`) | See [step-by-step instructions](#generating-a-budgetbakers-wallet-mcp-token) |
+   | `GEMINI_API_KEY` | Your Google Gemini API key | Free key at [Google AI Studio](https://aistudio.google.com) |
+   | `ALLOWED_PHONE_NUMBER` | Your own WhatsApp number (international format, no `+`) | e.g. `6281234567890` |
+
+   > [!NOTE]
+   > Using **Telegram** instead of WhatsApp? Replace `ALLOWED_PHONE_NUMBER` with `TELEGRAM_BOT_TOKEN` (from [@BotFather](https://t.me/BotFather)) and `TELEGRAM_ALLOWED_USER_ID` (from [@userinfobot](https://t.me/userinfobot)).
+
+   > [!IMPORTANT]
+   > **Non-Indonesian / International Users**: The bot defaults to Indonesian (`id`), `IDR`, and `Asia/Jakarta`. If you are outside Indonesia, make sure to set the three localization variables in **Stage 1D** (`APP_LANGUAGE=en`, `DEFAULT_CURRENCY`, `APP_TIMEZONE`) to match your language, currency, and local timezone.
+
+3. **Run the bot**:
+   ```bash
+   npm start
+   ```
+
+   - **WhatsApp**: scan the QR code shown in the terminal via WhatsApp > **Settings** > **Linked Devices** > **Link a Device**.
+   - **Telegram**: send `/start` to your bot from your whitelisted account.
+
+Your bot is now live. Continue below only when you want to enable extra channels, AI fallbacks, or email sync.
+
+---
 
 ### 1. Clone and Install Dependencies
 
@@ -177,6 +272,16 @@ Fill in these credentials to get the bot running immediately.
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot Token from @BotFather | `123456789:ABC...` |
 | `TELEGRAM_ALLOWED_USER_ID` | Telegram User ID whitelist security | `123456789` |
 
+**1D. Localization & Regional Preferences (Recommended for International Users):**
+| Variable | Description | Example / Default |
+| :--- | :--- | :--- |
+| `APP_LANGUAGE` | Bot response language (`id` for Indonesian, `en` for English) | `id` |
+| `DEFAULT_CURRENCY` | Fallback and summary currency code (e.g., `IDR`, `USD`, `EUR`, `SGD`) | `IDR` |
+| `APP_TIMEZONE` | IANA Timezone identifier for timestamps and receipts | `Asia/Jakarta` |
+
+> [!IMPORTANT]
+> The bot ships with Indonesian defaults (`id`, `IDR`, `Asia/Jakarta`). If you live outside Indonesia, set `APP_LANGUAGE=en`, adjust `DEFAULT_CURRENCY`, and pick your [IANA timezone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) (e.g. `America/New_York`, `Europe/London`, `Asia/Singapore`) to avoid receiving responses in Indonesian with unexpected timezone offsets.
+
 #### Stage 2: Optional Add-On Features (Real-Time Bank Sync)
 Configure if you want real-time financial tracking from email notifications.
 
@@ -189,14 +294,11 @@ Configure if you want real-time financial tracking from email notifications.
 | `EMAIL_IMAP_PASSWORD` | 16-character Google App Password | `abcd efgh ijkl mnop` |
 | `EMAIL_LOOKBACK_MINUTES`| Lookback window on initial startup to prevent flooding | `10` |
 
-#### Stage 3: Advanced Tuning & System Safeguards
-All settings below have sensible built-in defaults. Change only if needed.
+#### Stage 3: Advanced System Safeguards & Anti-Ban Tuning
+All settings below have sensible built-in defaults. Change only if needed. This stage is dedicated exclusively to system safeguards, throttling, and anti-ban configuration.
 
 | Variable | Description | Example / Default |
 | :--- | :--- | :--- |
-| `APP_LANGUAGE` | Bot response language (`id` for Indonesian, `en` for English) | `id` |
-| `DEFAULT_CURRENCY` | Fallback and summary currency code (e.g., `IDR`, `USD`, `EUR`, `SGD`) | `IDR` |
-| `APP_TIMEZONE` | IANA Timezone identifier for timestamps and receipts | `Asia/Jakarta` |
 | `WHATSAPP_MAX_RECONNECT_ATTEMPTS` | Maximum WhatsApp reconnection attempts before backoff | `6` |
 | `WHATSAPP_RECONNECT_MAX_BACKOFF_SECONDS` | Maximum backoff interval in seconds during reconnection | `300` |
 | `WHATSAPP_MESSAGE_QUEUE_INTERVAL_MS` | Outbound message queue throttle interval (anti-rate-limit) | `1000` |
