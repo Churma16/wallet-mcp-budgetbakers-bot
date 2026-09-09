@@ -9,11 +9,13 @@ Please take a few moments to review this guide before submitting your pull reque
 ## Table of Contents
 
 - [Getting Started](#getting-started)
+  - [Finding an Issue & Claiming Workflow](#finding-an-issue--claiming-workflow)
 - [Branching Strategy](#branching-strategy)
 - [Development Guidelines](#development-guidelines)
   - [Developing New Features](#1-developing-new-features)
   - [Code Refactoring](#2-code-refactoring)
   - [Coding Standards & Best Practices](#3-coding-standards--best-practices)
+  - [AI-Assisted Contributions (AI Agents Welcome)](#4-ai-assisted-contributions-ai-agents-welcome)
 - [Testing & Quality Verification](#testing--quality-verification)
 - [Commit Message Conventions](#commit-message-conventions)
 - [Pull Request Process](#pull-request-process)
@@ -51,6 +53,21 @@ Please take a few moments to review this guide before submitting your pull reque
    ```bash
    npm run build
    ```
+
+### Finding an Issue & Claiming Workflow
+
+To prevent duplicate effort and make sure maintainers know who is working on what, please claim an issue before you start coding:
+
+1. **Discover a task**: You are welcome to take on **any open, unassigned issue** across the repository!
+   - For first-time contributors, we recommend starting with [`good first issue`](https://github.com/Churma16/wallet-mcp-budgetbakers-bot/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) (small, well-scoped tasks).
+   - Check [`help wanted`](https://github.com/Churma16/wallet-mcp-budgetbakers-bot/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) for areas where community assistance is actively requested.
+   - Experienced contributors are free to claim any other open `bug`, `enhancement`, or `refactor` issue, or propose a new capability via an issue or [GitHub Discussions](https://github.com/Churma16/wallet-mcp-budgetbakers-bot/discussions).
+2. **Read the issue** carefully and make sure you understand the requested scope and acceptance criteria.
+3. **Comment on the issue** to express interest, briefly outline your intended approach (especially for larger features or refactoring), and request assignment before writing code.
+4. **Wait for assignment** by a maintainer. Once assigned, create your feature branch following the [Branching Strategy](#branching-strategy) and begin implementation.
+
+> [!IMPORTANT]
+> Please do not start coding or open a pull request for an issue that has not been assigned to you. Working on unassigned issues risks duplicate effort and conflicting pull requests.
 
 ---
 
@@ -141,6 +158,20 @@ Refactoring efforts should improve maintainability, performance, and readability
     - `*Rules.ts` / `*Config.ts`: Declarative configurations and domain rule specifications.
   - Multi-word brand and protocol names in identifiers are formatted in standard lowercase camelCase (e.g., `whatsapp`, `gmail`, `imap`).
   - Unit test files maintain 1-to-1 parity with their target source module: `<sourceModuleName>.test.ts` (e.g. `walletMcpService.test.ts`, `humanResponseFormatter.test.ts`, `geminiAiProvider.test.ts`).
+
+### 4. AI-Assisted Contributions (AI Agents Welcome)
+
+This repository welcomes contributions produced with the help of modern AI coding assistants and agents (e.g., Cursor, Claude Code, GitHub Copilot, Gemini CLI, Antigravity, Aider). AI-generated code is held to the exact same review bar as human-written code. If you use an AI agent, honor these guardrails:
+
+- **Human Code Ownership**: You are responsible for the code you submit. Read, understand, and be able to explain every part of the diff. Never blindly accept generated output.
+- **No Hallucinated Dependencies**: Only use libraries already present in `package.json`, or add new ones intentionally with clear justification. Never reference packages, APIs, or configuration options that do not actually exist in this repository or its dependencies.
+- **Mandatory Local Verification**: Before submitting a pull request, both of the following must pass cleanly:
+  ```bash
+  npm run build
+  npm test
+  ```
+  The build must compile without errors and all 14 offline hermetic test suites must pass.
+- **Rule Adherence**: Ensure generated code follows repository conventions, including the [Strict Emoji Boundaries](#3-coding-standards--best-practices) (no raw emojis in code, console logs, or documentation), descriptive naming, camelCase file names, strict TypeScript types, and the i18n requirements described earlier in this guide.
 
 ---
 
@@ -239,10 +270,15 @@ This repository follows the [Conventional Commits](https://www.conventionalcommi
 
 ## Pull Request Process
 
-1. **Keep Pull Requests Focused**: Limit a single PR to one feature, fix, or cohesive refactoring task.
-2. **Verify Locally**: Ensure `npm run build` and all relevant `npm run test:*` scripts pass before pushing.
-3. **Describe Changes**: Provide a clear PR description detailing:
-   - **Summary**: High-level overview of changes.
-   - **Motivation**: Problem being solved or capability being introduced.
-   - **Verification**: List of test scripts executed and local verification results.
-4. **Code Review**: Address feedback promptly. Once approved, commits will be squashed or merged into `main`.
+Pull requests must target `main`, keep a focused scope, and pass the mandatory CI checks (`npm run build` plus all 14 offline hermetic test suites). The repository ships an automated pull request template at `.github/pull_request_template.md` that pre-fills the required structure below whenever a new PR is opened on GitHub.
+
+1. **Keep Pull Requests Focused**: Limit a single PR to one feature, fix, or cohesive refactoring task. If an issue spans multiple distinct concerns, propose splitting it into separate, reviewable PRs.
+2. **Work on Assigned Issues Only**: Implement only issues assigned to you. See [Finding an Issue & Claiming Workflow](#finding-an-issue--claiming-workflow).
+3. **Verify Locally**: Ensure `npm run build` and `npm test` (all 14 offline hermetic suites) pass before pushing, along with any additional `npm run test:*` scripts relevant to the areas you changed.
+4. **Use the Mandatory 5-Section PR Description**: Every PR description must contain the following sections (mirroring `.github/pull_request_template.md`):
+   - **`## Summary`**: High-level overview of what the PR accomplishes and the core problem it solves.
+   - **`## Motivation & Context`**: Why the change is necessary, citing previous limitations, edge cases, or the bug being addressed.
+   - **`## Detailed Changes`**: Changes grouped by logical component, listing the files touched and the specific mechanisms involved (interfaces, functions, error handling, configuration).
+   - **`## Test Verification & Quality Assurance`**: Explicit verification evidence - the test suites executed and their results, the TypeScript build check, and confirmation that zero raw emojis exist in internal code or console output.
+   - **`## Related Issues`**: Links to related issues using closing keywords (e.g., `Closes #123`, `Fixes #456`).
+5. **Code Review**: Address reviewer feedback promptly. Once approved, commits will be squashed or merged into `main`.

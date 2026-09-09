@@ -22,6 +22,7 @@ An automated personal bookkeeping assistant via **WhatsApp** and **Telegram** in
 - [Security & Privacy Considerations](#security--privacy-considerations)
 - [Disclaimer, Legal Notice & Risk Warning](#disclaimer-legal-notice--risk-warning)
 - [Release & Versioning](#release--versioning)
+- [Community, Support & Feedback](#community-support--feedback)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -547,6 +548,18 @@ This project follows [Semantic Versioning](https://semver.org/) and [Conventiona
 ## Author
  
  Developed by [churma16](https://github.com/churma16).
+
+---
+
+## Community, Support & Feedback
+
+We want getting help and giving feedback to be as approachable as possible.
+
+- **Questions, Setup Help & Ideas**: For casual Q&A, troubleshooting your setup, or brainstorming new capabilities, join the conversation on [GitHub Discussions](https://github.com/Churma16/wallet-mcp-budgetbakers-bot/discussions). It is the best place for questions that do not yet have a clear action item.
+- **Bug Reports & Feature Requests**: Submit these directly as GitHub Issues. There is no need to follow a formal RFC template or write perfect English - free-form descriptions are welcome in any format and in either English or Indonesian. Maintainers will review, clarify, and structure them into formal specifications when needed.
+
+> [!NOTE]
+> The detailed technical sections seen in many issues are a maintainer planning aid, not a reporting requirement. Rough bug reports, screenshots, logs, and half-formed feature ideas are all valuable and appreciated.
 
 ---
 
