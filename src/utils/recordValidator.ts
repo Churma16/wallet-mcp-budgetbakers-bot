@@ -47,7 +47,7 @@ export function validateAndSanitizeFinancialRecords(
 
     // 1. Amount Validation
     const parsedAmount = Number(currentRecord.amount);
-    if (!Number.isFinite(parsedAmount) || isNaN(parsedAmount)) {
+    if (!Number.isFinite(parsedAmount) || Number.isNaN(parsedAmount)) {
       validationErrors.push(`${recordLabel}: Nominal tidak valid (${currentRecord.amount}).`);
       continue;
     }
@@ -76,7 +76,7 @@ export function validateAndSanitizeFinancialRecords(
 
     // Strategy B: 1-based index number (e.g. 1, 2, "1", "2")
     if (!resolvedAccountId && /^\d+$/.test(rawAccountIdStr)) {
-      const accountIndex = parseInt(rawAccountIdStr, 10) - 1;
+      const accountIndex = Number.parseInt(rawAccountIdStr, 10) - 1;
       if (accountIndex >= 0 && accountIndex < availableAccountList.length) {
         resolvedAccountId = availableAccountList[accountIndex].id;
       }
@@ -146,7 +146,7 @@ export function validateAndSanitizeFinancialRecords(
 
       // Strategy B: 1-based index number (e.g. 1, 24, "1", "24")
       if (!resolvedCategoryId && /^\d+$/.test(rawCategoryIdStr)) {
-        const categoryIndex = parseInt(rawCategoryIdStr, 10) - 1;
+        const categoryIndex = Number.parseInt(rawCategoryIdStr, 10) - 1;
         if (categoryIndex >= 0 && categoryIndex < availableCategoryList.length) {
           resolvedCategoryId = availableCategoryList[categoryIndex].id;
         }
@@ -190,7 +190,7 @@ export function validateAndSanitizeFinancialRecords(
     }
 
     const parsedDateTimestamp = Date.parse(resolvedRecordDate);
-    if (isNaN(parsedDateTimestamp)) {
+    if (Number.isNaN(parsedDateTimestamp)) {
       resolvedRecordDate = new Date().toISOString();
     } else {
       resolvedRecordDate = new Date(parsedDateTimestamp).toISOString();

@@ -33,7 +33,7 @@ export function getTimezoneOffsetDetails(
       const offsetHoursString = offsetRegexMatch[2].padStart(2, '0');
       const offsetMinutesString = (offsetRegexMatch[3] || '00').padStart(2, '0');
       const numericOffsetHours = (offsetSign === '-' ? -1 : 1) * (
-        parseInt(offsetHoursString, 10) + parseInt(offsetMinutesString, 10) / 60
+        Number.parseInt(offsetHoursString, 10) + Number.parseInt(offsetMinutesString, 10) / 60
       );
 
       return {

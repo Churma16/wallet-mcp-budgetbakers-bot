@@ -71,8 +71,8 @@ export function detectPendingConfirmationAction(userMessageText: string): Pendin
   // 3. Confirm Specific Ticket (e.g. "ya 1", "catat #2", "yes 3", "record 1")
   const confirmSpecificMatch = trimmedText.match(/^(?:ya|catat|ok|oke|y|yes|confirm|record)\s+#?(\d+)$/i);
   if (confirmSpecificMatch && confirmSpecificMatch[1]) {
-    const ticketNumber = parseInt(confirmSpecificMatch[1], 10);
-    if (!isNaN(ticketNumber) && ticketNumber > 0) {
+    const ticketNumber = Number.parseInt(confirmSpecificMatch[1], 10);
+    if (!Number.isNaN(ticketNumber) && ticketNumber > 0) {
       return { actionType: 'CONFIRM', targetScope: ticketNumber };
     }
   }
@@ -80,8 +80,8 @@ export function detectPendingConfirmationAction(userMessageText: string): Pendin
   // 4. Reject Specific Ticket (e.g. "batal 1", "cancel 2", "reject 3")
   const rejectSpecificMatch = trimmedText.match(/^(?:batal|abaikan|gak|ga|gajadi|cancel|tolak|reject)\s+#?(\d+)$/i);
   if (rejectSpecificMatch && rejectSpecificMatch[1]) {
-    const ticketNumber = parseInt(rejectSpecificMatch[1], 10);
-    if (!isNaN(ticketNumber) && ticketNumber > 0) {
+    const ticketNumber = Number.parseInt(rejectSpecificMatch[1], 10);
+    if (!Number.isNaN(ticketNumber) && ticketNumber > 0) {
       return { actionType: 'REJECT', targetScope: ticketNumber };
     }
   }
