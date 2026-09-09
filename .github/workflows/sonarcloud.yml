@@ -54,6 +54,18 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: npm run test:coverage
+
       - name: Analyze with SonarQube Cloud
         uses: SonarSource/sonarqube-scan-action@v8
         env:
@@ -62,4 +74,5 @@ jobs:
           args: >
             -Dsonar.projectKey=Churma16_wallet-mcp-budgetbakers-bot
             -Dsonar.organization=churma16
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
           projectBaseDir: .

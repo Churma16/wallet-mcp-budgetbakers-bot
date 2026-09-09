@@ -2,6 +2,10 @@
 node_modules/
 dist/
 
+# Coverage artifacts
+coverage/
+.c8_output/
+
 # Environment variables
 .env
 
