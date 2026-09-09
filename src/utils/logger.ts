@@ -396,9 +396,22 @@ export function formatConciseErrorMessage(rawError: unknown): string {
   const trimmedMessage = rawErrorMessage.trim();
 
   // 1. Try parsing direct JSON or embedded JSON error object
-  const jsonCandidateMatch = trimmedMessage.startsWith('{') && trimmedMessage.endsWith('}')
-    ? trimmedMessage
-    : trimmedMessage.match(/\{[\s\S]*"error"[\s\S]*\}/)?.[0];
+  let jsonCandidateMatch: string | null = null;
+  if (trimmedMessage.startsWith('{') && trimmedMessage.endsWith('}')) {
+    jsonCandidateMatch = trimmedMessage;
+  } else {
+    const firstBraceIndex = trimmedMessage.indexOf('{');
+    const lastBraceIndex = trimmedMessage.lastIndexOf('}');
+    const embeddedErrorPropertyIndex = trimmedMessage.indexOf('"error"');
+    if (
+      firstBraceIndex !== -1 &&
+      lastBraceIndex > firstBraceIndex &&
+      embeddedErrorPropertyIndex > firstBraceIndex &&
+      embeddedErrorPropertyIndex < lastBraceIndex
+    ) {
+      jsonCandidateMatch = trimmedMessage.slice(firstBraceIndex, lastBraceIndex + 1);
+    }
+  }
 
   if (jsonCandidateMatch) {
     try {

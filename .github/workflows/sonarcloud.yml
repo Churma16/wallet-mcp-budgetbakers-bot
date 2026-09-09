@@ -77,5 +77,8 @@ jobs:
           args: >
             -Dsonar.projectKey=Churma16_wallet-mcp-budgetbakers-bot
             -Dsonar.organization=churma16
+            -Dsonar.sources=src
+            -Dsonar.tests=tests
+            -Dsonar.coverage.exclusions=tests/**
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
           projectBaseDir: .

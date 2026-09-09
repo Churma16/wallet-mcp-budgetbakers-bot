@@ -30,6 +30,17 @@ export interface OpenAiCompatibleProviderConfiguration {
   requestTimeoutMilliseconds?: number;
 }
 
+/**
+ * Removes trailing slash characters from a base URL using a linear string scan.
+ */
+function trimTrailingSlashes(inputUrl: string): string {
+  let endIndex = inputUrl.length;
+  while (endIndex > 0 && inputUrl[endIndex - 1] === '/') {
+    endIndex--;
+  }
+  return inputUrl.slice(0, endIndex);
+}
+
 interface ChatCompletionResponsePayload {
   choices?: Array<{
     message?: {
@@ -73,7 +84,7 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     }
 
     this.httpClient = axios.create({
-      baseURL: configuration.baseUrl.replace(/\/+$/, ''),
+      baseURL: trimTrailingSlashes(configuration.baseUrl),
       headers: authorizationHeaders,
       timeout: this.requestTimeoutMilliseconds,
     });
