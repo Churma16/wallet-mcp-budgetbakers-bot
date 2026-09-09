@@ -78,6 +78,40 @@ assertCondition('Bank Jago matched bank is "jago"', jagoSample.matchedBankRule?.
 assertCondition('Bank Jago amount is 150000', jagoSample.candidateAmount === 150000);
 assertCondition('Bank Jago ref is "JAGO112233"', jagoSample.referenceNumber === 'JAGO112233');
 
+// Test B2: Bank Jago English Merchant Payment
+const jagoPaymentSample = evaluateEmailThroughGateOne(
+  'You have made a payment to Kantin Euis',
+  'noreply@jago.com',
+  `Thank you for trusting Jago! You have made a payment, and here are the details:
+   From 507431877335
+   To Kantin Euis 9360000801144353984
+   Amount Rp 10.000
+   Transaction Date 08 September 2026, 11:54 WIB
+   Transaction Status Successful
+   Acquirer Name Bank Mandiri`,
+  now,
+  startupCutoff,
+  processedReferences
+);
+assertCondition('Bank Jago English payment email passed Gate 1', jagoPaymentSample.passed);
+assertCondition('Bank Jago English payment matched bank is "jago"', jagoPaymentSample.matchedBankRule?.bankKey === 'jago');
+assertCondition('Bank Jago English payment amount is 10000', jagoPaymentSample.candidateAmount === 10000);
+
+// Test B3: Bank Jago English Debit Card Transaction
+const jagoDebitCardSample = evaluateEmailThroughGateOne(
+  'You have made a transaction using your debit card',
+  'noreply@jago.com',
+  `Assalamu'alaikum John Doe,
+   You have recently made a transaction of Rp38.889 using your Jago debit card.
+   You can view the transaction history in your Pocket Details inside the Jago app.`,
+  now,
+  startupCutoff,
+  processedReferences
+);
+assertCondition('Bank Jago English debit card email passed Gate 1', jagoDebitCardSample.passed);
+assertCondition('Bank Jago English debit card matched bank is "jago"', jagoDebitCardSample.matchedBankRule?.bankKey === 'jago');
+assertCondition('Bank Jago English debit card amount is 38889', jagoDebitCardSample.candidateAmount === 38889);
+
 // Test C: GoPay / Gojek
 const gopaySample = evaluateEmailThroughGateOne(
   'Bukti Pembayaran Pesanan GoFood kamu',
@@ -202,6 +236,28 @@ const duplicateEmail = evaluateEmailThroughGateOne(
   processedReferences
 );
 assertCondition('Duplicate reference ID rejected', !duplicateEmail.passed && duplicateEmail.reason === 'DUPLICATE_TRANSACTION_REFERENCE_NUMBER');
+
+// Case 6: Bank Jago Debit Card Being Processed Email (Must be rejected)
+const jagoProcessEmail = evaluateEmailThroughGateOne(
+  'Your new Jago debit card is being process',
+  'noreply@jago.com',
+  'Your card request has been received and is being processed.',
+  now,
+  startupCutoff,
+  processedReferences
+);
+assertCondition('Jago debit card being processed email rejected by Gate 1', !jagoProcessEmail.passed && jagoProcessEmail.reason === 'SUBJECT_BLACKLIST_KEYWORD_MATCH');
+
+// Case 7: Bank Jago Marketing / Fresh New Look Email (Must be rejected)
+const jagoMarketingEmail = evaluateEmailThroughGateOne(
+  'Your Jago Syariah Card is getting a fresh new look!',
+  'noreply@jago.com',
+  'We have updated the design of our cards.',
+  now,
+  startupCutoff,
+  processedReferences
+);
+assertCondition('Jago card marketing email rejected by Gate 1', !jagoMarketingEmail.passed && jagoMarketingEmail.reason === 'SUBJECT_BLACKLIST_KEYWORD_MATCH');
 
 // ------------------------------------------------------------
 // 4. WhatsApp Pending Confirmation Intent Tests

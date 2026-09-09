@@ -76,6 +76,9 @@ export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
       'kantong',
       'pembayaran',
       'transfer',
+      'payment',
+      'transaction',
+      'debit card',
     ],
     blacklistKeywords: [
       'otp',
@@ -85,12 +88,17 @@ export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
       'promo',
       'bunga kantong',
       'newsletter',
+      'being process',
+      'is being process',
+      'fresh new look',
+      'getting a fresh new look',
     ],
     bodyRequiredPatterns: [
-      /(?:uang keluar|uang masuk|berhasil|kantong|nominal)/i,
+      /(?:uang keluar|uang masuk|berhasil|kantong|nominal|successful|amount|transaction of|debit card|pocket|payment)/i,
     ],
     amountPriorityPatterns: [
-      /(?:Jumlah|Total|Nominal)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
+      /(?:Jumlah|Total|Nominal|Amount)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
+      /(?:transaction of)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
       /(?:Rp|IDR)\s*([\d.,]+)/i,
     ],
     referencePatterns: [
