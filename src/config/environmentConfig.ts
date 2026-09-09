@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { applicationLogger } from '../utils/logger.js';
 
 dotenv.config();
 
@@ -84,6 +85,47 @@ export const PROVIDER_CONFIG_STRATEGIES: Record<SupportedAiProviderType, Provide
   },
 };
 
+export function normalizePhoneNumber(
+  rawNumber: string,
+  defaultCurrency?: string,
+  appTimezone?: string
+): string {
+  const trimmedRawNumber = (rawNumber || '').replace(/@s\.whatsapp\.net/gi, '').trim();
+  if (!trimmedRawNumber) {
+    return '';
+  }
+
+  const sanitizedDigits = trimmedRawNumber.replace(/[^0-9]/g, '');
+
+  if (sanitizedDigits.startsWith('0')) {
+    const isIndonesianRegionalContext =
+      (defaultCurrency || '').toUpperCase() === 'IDR' || appTimezone === 'Asia/Jakarta';
+
+    if (sanitizedDigits.startsWith('08') && isIndonesianRegionalContext) {
+      const internationalIndonesianDigits = `62${sanitizedDigits.slice(1)}`;
+      applicationLogger.info(
+        `Auto-converted domestic Indonesian prefix '08...' to international E.164 '${internationalIndonesianDigits}'`
+      );
+      return enforceE164LengthLimit(internationalIndonesianDigits, trimmedRawNumber);
+    }
+
+    throw new Error(
+      `Invalid ALLOWED_PHONE_NUMBER: '${trimmedRawNumber}'. Phone numbers cannot start with '0' as WhatsApp requires full international E.164 format with country code (e.g. 14155552671 for US, 447911123456 for UK, 6281234567890 for ID).`
+    );
+  }
+
+  return enforceE164LengthLimit(sanitizedDigits, trimmedRawNumber);
+}
+
+function enforceE164LengthLimit(digitsOnlyNumber: string, originalRawNumber: string): string {
+  if (digitsOnlyNumber.length < 7 || digitsOnlyNumber.length > 15) {
+    throw new Error(
+      `Invalid ALLOWED_PHONE_NUMBER: '${originalRawNumber}'. The sanitized number '${digitsOnlyNumber}' must be between 7 and 15 digits to comply with the ITU-T E.164 standard.`
+    );
+  }
+  return digitsOnlyNumber;
+}
+
 export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfiguration {
   const allowedProviderTypes: SupportedAiProviderType[] = ['gemini', 'openrouter', 'groq', 'ollama', 'openai', 'custom'];
   const rawAiProviderEnv = (process.env.AI_PROVIDER || 'gemini').toLowerCase().trim();
@@ -129,10 +171,6 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
 
   const walletMcpBaseUrl = process.env.WALLET_MCP_BASE_URL || 'https://mcp.wallet.budgetbakers.com';
   const walletMcpAccessToken = process.env.WALLET_MCP_ACCESS_TOKEN || '';
-  const rawAllowedPhoneNumber = (process.env.ALLOWED_PHONE_NUMBER || process.env.OWNER_PHONE_NUMBER || '')
-    .replace('@s.whatsapp.net', '')
-    .trim();
-  const allowedPhoneNumber = rawAllowedPhoneNumber.replace(/[^0-9]/g, '');
   const whatsappSessionPath = process.env.WHATSAPP_SESSION_PATH || './auth_session';
   const logRetentionDays = parseInt(process.env.LOG_RETENTION_DAYS || '7', 10) || 7;
   const emailSyncEnabled = process.env.EMAIL_SYNC_ENABLED === 'true';
@@ -144,6 +182,15 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
 
   const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN || '';
   const telegramAllowedUserId = (process.env.TELEGRAM_ALLOWED_USER_ID || '').trim();
+
+  const rawLanguage = (process.env.APP_LANGUAGE || process.env.BOT_LANGUAGE || 'id').toLowerCase().trim();
+  const appLanguage: 'id' | 'en' = rawLanguage === 'en' ? 'en' : 'id';
+  const defaultCurrency = (process.env.DEFAULT_CURRENCY || 'IDR').toUpperCase().trim();
+  const appTimezone = process.env.APP_TIMEZONE || 'Asia/Jakarta';
+
+  const rawAllowedPhoneNumber = (process.env.ALLOWED_PHONE_NUMBER || process.env.OWNER_PHONE_NUMBER || '')
+    .trim();
+  const allowedPhoneNumber = normalizePhoneNumber(rawAllowedPhoneNumber, defaultCurrency, appTimezone);
 
   // Resolve enabled messenger channels
   let enabledMessengerChannels: ('whatsapp' | 'telegram')[] = [];
@@ -164,11 +211,6 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
       enabledMessengerChannels.push('whatsapp');
     }
   }
-
-  const rawLanguage = (process.env.APP_LANGUAGE || process.env.BOT_LANGUAGE || 'id').toLowerCase().trim();
-  const appLanguage: 'id' | 'en' = rawLanguage === 'en' ? 'en' : 'id';
-  const defaultCurrency = (process.env.DEFAULT_CURRENCY || 'IDR').toUpperCase().trim();
-  const appTimezone = process.env.APP_TIMEZONE || 'Asia/Jakarta';
 
   const whatsappMaxReconnectAttempts = parseInt(process.env.WHATSAPP_MAX_RECONNECT_ATTEMPTS || '6', 10) || 6;
   const whatsappReconnectMaxBackoffSeconds = parseInt(process.env.WHATSAPP_RECONNECT_MAX_BACKOFF_SECONDS || '300', 10) || 300;

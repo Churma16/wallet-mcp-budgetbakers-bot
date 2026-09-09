@@ -20,6 +20,7 @@
         "test:whatsapp-hardening": "tsx tests/whatsappSocketHardening.test.ts",
         "test:telegram-safeguards": "tsx tests/telegramSafeguards.test.ts",
         "test:media-limits": "tsx tests/mediaDownloadLimits.test.ts",
+        "test:phone": "tsx tests/phoneNumberNormalization.test.ts",
         "test:gateway-resilience": "tsx tests/messagingGatewayResilience.test.ts",
         "test:redaction": "tsx tests/loggerRedaction.test.ts",
         "test:sanitizer": "tsx tests/loggerSanitizer.test.ts",
