@@ -513,3 +513,43 @@ export const applicationLogger = {
     appendLogToFile(logLevelTag, sanitizedSummary, sanitizedPayload);
   },
 };
+
+let consoleInterceptorsInstalled = false;
+
+/**
+ * Installs idempotent console interceptors that redirect verbose Signal Protocol
+ * (libsignal) logs away from the terminal and into the daily log file.
+ *
+ * libsignal hardcodes calls directly to Node's global console object
+ * (console.info / console.warn), bypassing the Pino logger passed into
+ * makeWASocket. This wrapper selectively suppresses those specific sessions and
+ * persists them via applicationLogger.fileDetail for auditing, while transparently
+ * passing through every other console.info / console.warn invocation.
+ */
+export function installConsoleInterceptors(): void {
+  if (consoleInterceptorsInstalled) {
+    return;
+  }
+  consoleInterceptorsInstalled = true;
+
+  const originalConsoleInfo = console.info.bind(console);
+  const originalConsoleWarn = console.warn.bind(console);
+
+  console.info = (...args: unknown[]): void => {
+    const firstArgument = typeof args[0] === 'string' ? args[0] : '';
+    if (firstArgument.includes('Closing session:')) {
+      applicationLogger.fileDetail('whatsapp', 'Signal Protocol: Closing session', args[1]);
+      return;
+    }
+    originalConsoleInfo(...args);
+  };
+
+  console.warn = (...args: unknown[]): void => {
+    const firstArgument = typeof args[0] === 'string' ? args[0] : '';
+    if (firstArgument.includes('Closing open session in favor of incoming prekey bundle')) {
+      applicationLogger.fileDetail('whatsapp', 'Signal Protocol: Closing open session in favor of incoming prekey bundle');
+      return;
+    }
+    originalConsoleWarn(...args);
+  };
+}

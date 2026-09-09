@@ -15,7 +15,7 @@ import {
   FastPathHandler,
   UserMessageHandler,
 } from './handlers/index.js';
-import { applicationLogger, purgeExpiredLogFiles } from './utils/logger.js';
+import { applicationLogger, installConsoleInterceptors, purgeExpiredLogFiles } from './utils/logger.js';
 import { setActiveLanguage } from './i18n/index.js';
 
 export class Application {
@@ -131,6 +131,8 @@ export class Application {
    * Bootstraps the application, caches data, registers adapters, and starts listeners
    */
   public async start(): Promise<void> {
+    installConsoleInterceptors();
+
     console.log('====================================================');
     applicationLogger.info('Starting AI Bookkeeper for Wallet');
     console.log('====================================================');
