@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { randomInt } from 'node:crypto';
 import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason,
@@ -116,7 +117,7 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
     const baseDelaySeconds = 5;
     const exponentialSeconds = baseDelaySeconds * Math.pow(2, attemptIndex);
     const boundedSeconds = Math.min(this.maxBackoffSeconds, exponentialSeconds);
-    const randomJitterMilliseconds = Math.floor(Math.random() * 2000) + 500;
+    const randomJitterMilliseconds = randomInt(500, 2500);
     return boundedSeconds * 1000 + randomJitterMilliseconds;
   }
 
