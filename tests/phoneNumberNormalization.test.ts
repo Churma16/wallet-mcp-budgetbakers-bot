@@ -1,4 +1,7 @@
-import { normalizePhoneNumber } from '../src/config/environmentConfig.js';
+import {
+  normalizePhoneNumber,
+  loadEnvironmentConfiguration,
+} from '../src/config/environmentConfig.js';
 
 interface AssertionStatistics {
   totalCount: number;
@@ -198,6 +201,78 @@ async function runTestSuite(): Promise<void> {
       'comply with the ITU-T E.164 standard',
       () => normalizePhoneNumber('123456', 'USD', 'America/New_York')
     );
+  }
+
+  // ----------------------------------------------------
+  // TEST GROUP 8: Environment Configuration Numeric Parsing & Fallbacks
+  // ----------------------------------------------------
+  console.log('\n[TEST GROUP 8] Environment Configuration Numeric Parsing & Fallbacks');
+  {
+    const originalEnv = { ...process.env };
+    try {
+      // Test custom numeric env variables
+      process.env.GEMINI_TIMEOUT_SECONDS = '35';
+      process.env.AI_TIMEOUT_SECONDS = '45';
+      process.env.LOG_RETENTION_DAYS = '14';
+      process.env.EMAIL_IMAP_PORT = '995';
+      process.env.EMAIL_LOOKBACK_MINUTES = '15';
+      process.env.WHATSAPP_MAX_RECONNECT_ATTEMPTS = '8';
+      process.env.WHATSAPP_RECONNECT_MAX_BACKOFF_SECONDS = '600';
+      process.env.WHATSAPP_MESSAGE_QUEUE_INTERVAL_MS = '2000';
+      process.env.WHATSAPP_TYPING_PRESENCE_COOLDOWN_MS = '3000';
+      process.env.TELEGRAM_MAX_STARTUP_ATTEMPTS = '7';
+      process.env.TELEGRAM_STARTUP_RETRY_DELAY_MS = '2500';
+      process.env.MAX_MEDIA_DOWNLOAD_MB = '25';
+      process.env.ALLOWED_PHONE_NUMBER = '628123456789';
+
+      const configWithCustomNumerics = loadEnvironmentConfiguration();
+      assertCondition(
+        'TG-8.1: Custom numeric env variables parsed with Number.parseInt',
+        configWithCustomNumerics.geminiRequestTimeoutMilliseconds === 35000 &&
+          configWithCustomNumerics.aiRequestTimeoutMilliseconds === 45000 &&
+          configWithCustomNumerics.logRetentionDays === 14 &&
+          configWithCustomNumerics.emailImapPort === 995 &&
+          configWithCustomNumerics.emailLookbackMinutes === 15 &&
+          configWithCustomNumerics.whatsappMaxReconnectAttempts === 8 &&
+          configWithCustomNumerics.whatsappReconnectMaxBackoffSeconds === 600 &&
+          configWithCustomNumerics.whatsappMessageQueueIntervalMs === 2000 &&
+          configWithCustomNumerics.whatsappTypingPresenceCooldownMs === 3000 &&
+          configWithCustomNumerics.telegramMaxStartupAttempts === 7 &&
+          configWithCustomNumerics.telegramStartupRetryDelayMs === 2500 &&
+          configWithCustomNumerics.maxMediaDownloadMb === 25
+      );
+
+      // Test invalid numeric values fallback cleanly via Number.isNaN / || fallback
+      process.env.WHATSAPP_TYPING_PRESENCE_COOLDOWN_MS = 'invalid-number';
+      process.env.MAX_MEDIA_DOWNLOAD_MB = 'invalid-mb';
+      process.env.GEMINI_TIMEOUT_SECONDS = 'invalid';
+      process.env.LOG_RETENTION_DAYS = 'invalid';
+      process.env.EMAIL_IMAP_PORT = 'invalid';
+      process.env.EMAIL_LOOKBACK_MINUTES = 'invalid';
+      process.env.WHATSAPP_MAX_RECONNECT_ATTEMPTS = 'invalid';
+      process.env.WHATSAPP_RECONNECT_MAX_BACKOFF_SECONDS = 'invalid';
+      process.env.WHATSAPP_MESSAGE_QUEUE_INTERVAL_MS = 'invalid';
+      process.env.TELEGRAM_MAX_STARTUP_ATTEMPTS = 'invalid';
+      process.env.TELEGRAM_STARTUP_RETRY_DELAY_MS = 'invalid';
+
+      const configWithFallbackNumerics = loadEnvironmentConfiguration();
+      assertCondition(
+        'TG-8.2: Invalid numeric env variables fall back safely',
+        configWithFallbackNumerics.whatsappTypingPresenceCooldownMs === 2500 &&
+          configWithFallbackNumerics.maxMediaDownloadMb === 10 &&
+          configWithFallbackNumerics.geminiRequestTimeoutMilliseconds === 20000 &&
+          configWithFallbackNumerics.logRetentionDays === 7 &&
+          configWithFallbackNumerics.emailImapPort === 993 &&
+          configWithFallbackNumerics.emailLookbackMinutes === 10 &&
+          configWithFallbackNumerics.whatsappMaxReconnectAttempts === 6 &&
+          configWithFallbackNumerics.whatsappReconnectMaxBackoffSeconds === 300 &&
+          configWithFallbackNumerics.whatsappMessageQueueIntervalMs === 1000 &&
+          configWithFallbackNumerics.telegramMaxStartupAttempts === 5 &&
+          configWithFallbackNumerics.telegramStartupRetryDelayMs === 2000
+      );
+    } finally {
+      process.env = originalEnv;
+    }
   }
 
   // ----------------------------------------------------

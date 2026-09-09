@@ -261,7 +261,7 @@ export class WalletMcpClientService {
     }
 
     const parsedDate = new Date(recordDateString);
-    if (isNaN(parsedDate.getTime())) {
+    if (Number.isNaN(parsedDate.getTime())) {
       return currentTimestamp.toISOString();
     }
 

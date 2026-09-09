@@ -3,6 +3,7 @@ import {
   formatBalanceSummaryMessage,
   formatBudgetSummaryMessage,
   formatErrorMessageForHuman,
+  formatTransactionDate,
   getHumanReadableTimestamp,
 } from '../src/utils/humanResponseFormatter.js';
 import { formatConciseErrorMessage } from '../src/utils/logger.js';
@@ -61,3 +62,12 @@ console.log('Concise:', formatConciseErrorMessage(sampleQuotaError));
 console.log('\n=== TEST 8: CONCISE ERROR - 503 UNAVAILABLE ===');
 const sampleUnavailableError = `{"error":{"code":503,"message":"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.","status":"UNAVAILABLE"}}`;
 console.log('Concise:', formatConciseErrorMessage(sampleUnavailableError));
+
+console.log('\n=== TEST 9: FORMAT TRANSACTION DATE INVALID DATES ===');
+const invalidStringFormatted = formatTransactionDate('not-a-valid-date');
+console.log('Invalid string date formatted:', invalidStringFormatted);
+const invalidDateObjectFormatted = formatTransactionDate(new Date('invalid'));
+console.log('Invalid Date object formatted:', invalidDateObjectFormatted);
+const emptyDateFormatted = formatTransactionDate(undefined);
+console.log('Empty date formatted:', emptyDateFormatted);
+

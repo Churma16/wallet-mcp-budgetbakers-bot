@@ -85,7 +85,7 @@ export function formatTransactionDate(dateInput?: string | Date, languageCode?: 
   }
 
   const transactionDate = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
-  if (isNaN(transactionDate.getTime())) {
+  if (Number.isNaN(transactionDate.getTime())) {
     return getHumanReadableTimestamp(new Date(), languageCode);
   }
 

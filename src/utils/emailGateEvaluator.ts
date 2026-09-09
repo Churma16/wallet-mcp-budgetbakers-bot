@@ -29,29 +29,29 @@ export function parseCurrencyAmountStringToNumber(rawAmountText: string): number
   if (/,\d{2}$/.test(cleanedText)) {
     const withoutThousandDots = cleanedText.replace(/\./g, '');
     const standardizedDecimal = withoutThousandDots.replace(',', '.');
-    return parseFloat(standardizedDecimal) || 0;
+    return Number.parseFloat(standardizedDecimal) || 0;
   }
 
   // Case 2: US standard with cents at end, e.g. "45,000.00"
   if (/\.\d{2}$/.test(cleanedText) && cleanedText.includes(',')) {
     const withoutThousandCommas = cleanedText.replace(/,/g, '');
-    return parseFloat(withoutThousandCommas) || 0;
+    return Number.parseFloat(withoutThousandCommas) || 0;
   }
 
   // Case 3: Indonesian standard without cents, e.g. "45.000" or "1.500.000"
   if (cleanedText.includes('.')) {
     const digitsOnly = cleanedText.replace(/\./g, '');
-    return parseFloat(digitsOnly) || 0;
+    return Number.parseFloat(digitsOnly) || 0;
   }
 
   // Case 4: US standard without cents, e.g. "45,000"
   if (cleanedText.includes(',')) {
     const digitsOnly = cleanedText.replace(/,/g, '');
-    return parseFloat(digitsOnly) || 0;
+    return Number.parseFloat(digitsOnly) || 0;
   }
 
   // Case 5: Plain digits, e.g. "45000"
-  return parseFloat(cleanedText) || 0;
+  return Number.parseFloat(cleanedText) || 0;
 }
 
 /**

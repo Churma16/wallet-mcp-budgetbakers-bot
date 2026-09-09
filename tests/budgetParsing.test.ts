@@ -174,4 +174,20 @@ assert.ok(formattedEnSummary.includes('left'), 'Includes left keyword');
 assert.ok(formattedEnSummary.includes('over'), 'Includes over keyword');
 console.log('[PASS] Formatted message produces correct values and overspent alerts.');
 
+// 7. Test normalizeRecordDate in WalletMcpClientService
+console.log('\n[7] Testing normalizeRecordDate invalid and edge-case timestamps...');
+const mcpClientForDateTests = createMockClient([]);
+const normalizeRecordDateFn = (mcpClientForDateTests as unknown as { normalizeRecordDate(d?: string): string }).normalizeRecordDate.bind(mcpClientForDateTests);
+
+const invalidDateNormalized = normalizeRecordDateFn('invalid-date-string');
+assert.ok(typeof invalidDateNormalized === 'string' && !Number.isNaN(Date.parse(invalidDateNormalized)), 'Invalid date string falls back to valid ISO timestamp');
+
+const emptyDateNormalized = normalizeRecordDateFn(undefined);
+assert.ok(typeof emptyDateNormalized === 'string' && !Number.isNaN(Date.parse(emptyDateNormalized)), 'Empty date falls back to valid ISO timestamp');
+
+const midnightUtcDate = '2026-09-09T00:00:00.000Z';
+const midnightNormalized = normalizeRecordDateFn(midnightUtcDate);
+assert.ok(typeof midnightNormalized === 'string' && !Number.isNaN(Date.parse(midnightNormalized)), 'Midnight UTC date timestamp normalized');
+console.log('[PASS] normalizeRecordDate handles invalid, empty, and midnight dates safely.');
+
 console.log('\n[SUCCESS] ALL BUDGET PARSING TESTS PASSED!');
