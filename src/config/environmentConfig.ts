@@ -88,18 +88,23 @@ export const PROVIDER_CONFIG_STRATEGIES: Record<SupportedAiProviderType, Provide
 export function normalizePhoneNumber(
   rawNumber: string,
   defaultCurrency?: string,
-  appTimezone?: string
+  appTimezone?: string,
+  appLanguage?: string
 ): string {
-  const trimmedRawNumber = (rawNumber || '').replace(/@s\.whatsapp\.net/gi, '').trim();
+  const trimmedRawNumber = (rawNumber || '').split('@')[0].trim();
   if (!trimmedRawNumber) {
     return '';
   }
 
-  const sanitizedDigits = trimmedRawNumber.replace(/[^0-9]/g, '');
+  const sanitizedDigits = trimmedRawNumber
+    .replace(/\(0(\d*)\)/g, '$1')
+    .replace(/[^0-9]/g, '');
 
   if (sanitizedDigits.startsWith('0')) {
     const isIndonesianRegionalContext =
-      (defaultCurrency || '').toUpperCase() === 'IDR' || appTimezone === 'Asia/Jakarta';
+      (defaultCurrency || '').toUpperCase() === 'IDR' ||
+      /^Asia\/(Jakarta|Makassar|Jayapura|Pontianak)$/i.test(appTimezone || '') ||
+      (appLanguage || '').toLowerCase() === 'id';
 
     if (sanitizedDigits.startsWith('08') && isIndonesianRegionalContext) {
       const internationalIndonesianDigits = `62${sanitizedDigits.slice(1)}`;
@@ -190,7 +195,12 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
 
   const rawAllowedPhoneNumber = (process.env.ALLOWED_PHONE_NUMBER || process.env.OWNER_PHONE_NUMBER || '')
     .trim();
-  const allowedPhoneNumber = normalizePhoneNumber(rawAllowedPhoneNumber, defaultCurrency, appTimezone);
+  const allowedPhoneNumber = normalizePhoneNumber(
+    rawAllowedPhoneNumber,
+    defaultCurrency,
+    appTimezone,
+    appLanguage
+  );
 
   // Resolve enabled messenger channels
   let enabledMessengerChannels: ('whatsapp' | 'telegram')[] = [];

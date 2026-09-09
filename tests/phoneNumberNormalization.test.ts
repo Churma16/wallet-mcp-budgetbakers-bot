@@ -28,11 +28,12 @@ function assertNormalization(
   rawNumber: string,
   expectedDigits: string,
   defaultCurrency?: string,
-  appTimezone?: string
+  appTimezone?: string,
+  appLanguage?: string
 ): void {
   let actualResult = '';
   try {
-    actualResult = normalizePhoneNumber(rawNumber, defaultCurrency, appTimezone);
+    actualResult = normalizePhoneNumber(rawNumber, defaultCurrency, appTimezone, appLanguage);
     assertCondition(
       testCaseIdentifier,
       actualResult === expectedDigits,
@@ -85,6 +86,9 @@ async function runTestSuite(): Promise<void> {
     assertNormalization('TG-1.3: Singapore number with leading + and spaces is stripped to E.164', '+65 9123 4567', '6591234567');
     assertNormalization('TG-1.4: Indonesian number with +, spaces, and dashes is stripped to E.164', '+62 812-3456-7890', '6281234567890');
     assertNormalization('TG-1.5: Parentheses and dots are stripped alongside other formatting', '(+1) 415.555.2671', '14155552671');
+    assertNormalization('TG-1.6: Parenthesized UK trunk zero (+44 (0)...) is removed', '+44 (0) 7911 123456', '447911123456');
+    assertNormalization('TG-1.7: Parenthesized Australian trunk zero (+61 (0)...) is removed', '+61 (0) 412 345 678', '61412345678');
+    assertNormalization('TG-1.8: Parenthesized Indonesian trunk zero (+62 (0812)...) is removed', '+62 (0812) 3456-7890', '6281234567890');
   }
 
   // ----------------------------------------------------
@@ -97,6 +101,7 @@ async function runTestSuite(): Promise<void> {
     assertNormalization('TG-2.3: Singapore digits are returned unchanged', '6591234567', '6591234567');
     assertNormalization('TG-2.4: Indonesian digits are returned unchanged', '6281234567890', '6281234567890');
     assertNormalization('TG-2.5: WhatsApp JID suffix is stripped before sanitization', '6281234567890@s.whatsapp.net', '6281234567890');
+    assertNormalization('TG-2.6: Arbitrary domain suffix (@c.us) is stripped before sanitization', '6281234567890@c.us', '6281234567890');
   }
 
   // ----------------------------------------------------
@@ -107,6 +112,10 @@ async function runTestSuite(): Promise<void> {
     assertNormalization('TG-3.1: IDR currency triggers 08 to 628 conversion', '0812-3456-7890', '6281234567890', 'IDR');
     assertNormalization('TG-3.2: Asia/Jakarta timezone triggers 08 to 628 conversion', '081234567890', '6281234567890', 'USD', 'Asia/Jakarta');
     assertNormalization('TG-3.3: Both IDR and Jakarta context converts formatted 08 input', '08 12 3456 7890', '6281234567890', 'IDR', 'Asia/Jakarta');
+    assertNormalization('TG-3.4: Asia/Makassar timezone (WITA) triggers 08 to 628 conversion', '081234567890', '6281234567890', 'USD', 'Asia/Makassar');
+    assertNormalization('TG-3.5: Asia/Jayapura timezone (WIT) triggers 08 to 628 conversion', '081234567890', '6281234567890', 'USD', 'Asia/Jayapura');
+    assertNormalization('TG-3.6: Asia/Pontianak timezone (WIB) triggers 08 to 628 conversion', '081234567890', '6281234567890', 'USD', 'Asia/Pontianak');
+    assertNormalization('TG-3.7: Indonesian response language triggers 08 to 628 conversion', '081234567890', '6281234567890', 'USD', 'America/New_York', 'id');
   }
 
   // ----------------------------------------------------
@@ -138,6 +147,11 @@ async function runTestSuite(): Promise<void> {
       'TG-4.5: Leading 0 without any regional context is rejected',
       'cannot start with',
       () => normalizePhoneNumber('081234567890')
+    );
+    assertThrowsCondition(
+      'TG-4.6: English response language does NOT enable Indonesian conversion',
+      'cannot start with',
+      () => normalizePhoneNumber('081234567890', 'USD', 'America/New_York', 'en')
     );
   }
 

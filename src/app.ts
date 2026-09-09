@@ -1,8 +1,4 @@
-import {
-  loadEnvironmentConfiguration,
-  normalizePhoneNumber,
-  ApplicationEnvironmentConfiguration,
-} from './config/environmentConfig.js';
+import { loadEnvironmentConfiguration, ApplicationEnvironmentConfiguration } from './config/environmentConfig.js';
 import { WalletMcpClientService } from './services/walletMcpService.js';
 import { WalletCacheService } from './services/walletCacheService.js';
 import { createFinancialAiProvider, FinancialAiProvider } from './services/ai/index.js';
@@ -114,26 +110,6 @@ export class Application {
       this.environmentConfig.enabledMessengerChannels.includes('telegram') &&
       Boolean(this.environmentConfig.telegramBotToken);
 
-    let hasInvalidPhoneNumberFormat = false;
-    if (isWhatsAppConfigured) {
-      try {
-        normalizePhoneNumber(
-          this.environmentConfig.allowedPhoneNumber,
-          this.environmentConfig.defaultCurrency,
-          this.environmentConfig.appTimezone
-        );
-      } catch (phoneValidationError) {
-        hasInvalidPhoneNumberFormat = true;
-        const errorMessage = phoneValidationError instanceof Error
-          ? phoneValidationError.message
-          : String(phoneValidationError);
-        applicationLogger.error(errorMessage);
-        console.log(
-          '[hint] Provide ALLOWED_PHONE_NUMBER in full international E.164 format without the leading country-code sign: e.g. 14155552671 for US, 447911123456 for UK, 6281234567890 for ID. It must not start with the domestic trunk prefix 0.'
-        );
-      }
-    }
-
     if (!isWhatsAppConfigured && !isTelegramConfigured) {
       applicationLogger.error(
         'No messaging channels are properly configured! Configure either WhatsApp (ALLOWED_PHONE_NUMBER) or Telegram (TELEGRAM_BOT_TOKEN) in .env.'
@@ -143,8 +119,7 @@ export class Application {
     if (
       !isAiConfigured ||
       !this.environmentConfig.walletMcpAccessToken ||
-      (!isWhatsAppConfigured && !isTelegramConfigured) ||
-      hasInvalidPhoneNumberFormat
+      (!isWhatsAppConfigured && !isTelegramConfigured)
     ) {
       applicationLogger.warn('Please configure all required environment variables in your .env file before running the bot.');
       applicationLogger.info('You can test the Wallet MCP connection independently with: npm run test:mcp\n');

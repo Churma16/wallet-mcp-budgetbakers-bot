@@ -258,6 +258,6 @@ async function runTestSuite(): Promise<void> {
 }
 
 runTestSuite().catch(suiteError => {
-  console.error('[ERROR] Unexpected test suite failure:', suiteError);
+  console.error(`[ERROR] Unexpected test suite failure: ${suiteError}`);
   process.exit(1);
 });
