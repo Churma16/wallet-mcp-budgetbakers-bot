@@ -1,5 +1,6 @@
 import { Bot, GrammyError, HttpError } from 'grammy';
 import axios from 'axios';
+import { randomInt } from 'node:crypto';
 import { applicationLogger } from '../../utils/logger.js';
 import {
   AdapterConnectionState,
@@ -306,7 +307,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
   public calculateBackoffDelayMilliseconds(attemptIndex: number): number {
     const exponentialDelay = this.startupRetryBaseDelayMs * Math.pow(2, attemptIndex);
     const boundedDelay = Math.min(this.startupRetryMaxDelayMs, exponentialDelay);
-    const randomJitterMilliseconds = Math.floor(Math.random() * 1000) + 500;
+    const randomJitterMilliseconds = randomInt(500, 1500);
     return boundedDelay + randomJitterMilliseconds;
   }
 

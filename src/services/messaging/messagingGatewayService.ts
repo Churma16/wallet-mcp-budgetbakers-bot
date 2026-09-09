@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import { applicationLogger } from '../../utils/logger.js';
 import {
   AdapterConnectionState,
@@ -86,7 +87,7 @@ export class MessagingGatewayService {
     const maximumJitter = Math.min(2000, this.backgroundReconnectBaseDelayMs);
     const minimumJitter = Math.min(500, Math.floor(this.backgroundReconnectBaseDelayMs / 4));
     const jitterRange = Math.max(1, maximumJitter - minimumJitter);
-    const randomJitterMilliseconds = Math.floor(Math.random() * jitterRange) + minimumJitter;
+    const randomJitterMilliseconds = randomInt(minimumJitter, minimumJitter + jitterRange);
     return boundedDelay + randomJitterMilliseconds;
   }
 
