@@ -702,7 +702,7 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
 
     if (this.socketInstance) {
       try {
-        this.socketInstance.end(undefined);
+        await this.socketInstance.end(undefined);
       } catch (error: unknown) {
         applicationLogger.warn(`Error closing WhatsApp socket: ${error}`);
       }

@@ -43,7 +43,7 @@ export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
       /(?:debet|kredit|nominal|transaksi|qris|pembayaran)/i,
     ],
     amountPriorityPatterns: [
-      /(?:Total\s*(?:Debet|Pembayaran|Transaksi)|Jumlah\s*(?:Debet|Transaksi)|Nominal)[:\s]*(?:Rp|IDR)?\s*([\d.,]+)/i,
+      /(?:Total\s*(?:Debet|Pembayaran|Transaksi)|Jumlah\s*(?:Debet|Transaksi)|Nominal)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
       /(?:Rp|IDR)\s*([\d.,]+)/i,
     ],
     referencePatterns: [
@@ -90,7 +90,7 @@ export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
       /(?:uang keluar|uang masuk|berhasil|kantong|nominal)/i,
     ],
     amountPriorityPatterns: [
-      /(?:Jumlah|Total|Nominal)[:\s]*(?:Rp|IDR)?\s*([\d.,]+)/i,
+      /(?:Jumlah|Total|Nominal)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
       /(?:Rp|IDR)\s*([\d.,]+)/i,
     ],
     referencePatterns: [
@@ -136,7 +136,7 @@ export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
       /(?:total pembayaran|total tarif|total|gopay|biaya)/i,
     ],
     amountPriorityPatterns: [
-      /(?:Total\s*(?:Pembayaran|Tarif|Biaya|Transaksi)|Jumlah\s*Total)[:\s]*(?:Rp|IDR)?\s*([\d.,]+)/i,
+      /(?:Total\s*(?:Pembayaran|Tarif|Biaya|Transaksi)|Jumlah\s*Total)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
       /(?:Rp|IDR)\s*([\d.,]+)/i,
     ],
     referencePatterns: [
@@ -178,7 +178,7 @@ export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
       /(?:total pembayaran|total|berhasil|ovo cash)/i,
     ],
     amountPriorityPatterns: [
-      /(?:Total\s*Pembayaran|Total\s*Transaksi|Nominal)[:\s]*(?:Rp|IDR)?\s*([\d.,]+)/i,
+      /(?:Total\s*Pembayaran|Total\s*Transaksi|Nominal)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
       /(?:Rp|IDR)\s*([\d.,]+)/i,
     ],
     referencePatterns: [
@@ -218,7 +218,7 @@ export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
       /(?:total pembayaran|total|saldo dana|berhasil)/i,
     ],
     amountPriorityPatterns: [
-      /(?:Total\s*(?:Pembayaran|Bayar)|Jumlah)[:\s]*(?:Rp|IDR)?\s*([\d.,]+)/i,
+      /(?:Total\s*(?:Pembayaran|Bayar)|Jumlah)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
       /(?:Rp|IDR)\s*([\d.,]+)/i,
     ],
     referencePatterns: [
@@ -262,7 +262,7 @@ export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
       /(?:total pembayaran|shopeepay|total pesanan|rincian)/i,
     ],
     amountPriorityPatterns: [
-      /(?:Total\s*(?:Pembayaran|Pesanan|Belanja)|Jumlah)[:\s]*(?:Rp|IDR)?\s*([\d.,]+)/i,
+      /(?:Total\s*(?:Pembayaran|Pesanan|Belanja)|Jumlah)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
       /(?:Rp|IDR)\s*([\d.,]+)/i,
     ],
     referencePatterns: [
