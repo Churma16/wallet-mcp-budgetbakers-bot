@@ -169,6 +169,52 @@ async function runReceiptOcrPromptTestSuite(): Promise<void> {
     `Raw date '2026-09-08T11:54:00' with Asia/Jakarta (+07:00) normalized to '${normalizedIso}' (expected 2026-09-08T04:54:00.000Z)`
   );
 
+  // Test 6: Record Validator 1-based category index & invalid date fallback
+  applicationLogger.info('\nTEST 6: Category Resolution by 1-based Index & Invalid Date Fallback');
+  const validationWithCategoryIndex = validateAndSanitizeFinancialRecords(
+    [
+      {
+        accountId: '1',
+        categoryId: '1',
+        amount: -15000,
+        recordDate: 'not-a-valid-date',
+        note: 'Beli nasi',
+      },
+    ],
+    mockAccounts,
+    mockCategories
+  );
+
+  assertCondition(validationWithCategoryIndex.isValid, 'Validation succeeds for 1-based index and invalid date');
+  assertCondition(
+    validationWithCategoryIndex.sanitizedRecords[0].accountId === 'acc-jago-expense',
+    'Account 1-based index 1 resolved to acc-jago-expense'
+  );
+  assertCondition(
+    validationWithCategoryIndex.sanitizedRecords[0].categoryId === 'cat-food',
+    'Category 1-based index 1 resolved to cat-food'
+  );
+  assertCondition(
+    !Number.isNaN(Date.parse(validationWithCategoryIndex.sanitizedRecords[0].recordDate)),
+    'Invalid recordDate safely falls back to current ISO date'
+  );
+
+  // Test 7: Record Validator NaN Amount Validation
+  applicationLogger.info('\nTEST 7: Record Validator Rejects NaN Amount');
+  const validationWithNanAmount = validateAndSanitizeFinancialRecords(
+    [
+      {
+        accountId: 'acc-jago-expense',
+        amount: Number.NaN,
+        note: 'Invalid nominal',
+      },
+    ],
+    mockAccounts,
+    mockCategories
+  );
+
+  assertCondition(!validationWithNanAmount.isValid, 'Validation fails when amount is NaN');
+
   console.log('\n======================================================');
   applicationLogger.success('ALL RECEIPT OCR & TIMEZONE TESTS PASSED SUCCESSFULLY!');
   console.log('======================================================\n');

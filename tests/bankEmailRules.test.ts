@@ -28,6 +28,10 @@ assertCondition('Parse ID format with cents "45.000,00"', parseCurrencyAmountStr
 assertCondition('Parse large amount "1.500.000"', parseCurrencyAmountStringToNumber('1.500.000') === 1500000);
 assertCondition('Parse prefix "Rp 120.500"', parseCurrencyAmountStringToNumber('Rp 120.500') === 120500);
 assertCondition('Parse US format "25,000.00"', parseCurrencyAmountStringToNumber('25,000.00') === 25000);
+assertCondition('Parse US format without cents "45,000"', parseCurrencyAmountStringToNumber('45,000') === 45000);
+assertCondition('Parse plain digits "45000"', parseCurrencyAmountStringToNumber('45000') === 45000);
+assertCondition('Parse empty or invalid amount fallback to 0', parseCurrencyAmountStringToNumber('') === 0);
+assertCondition('Parse non-numeric text returns 0', parseCurrencyAmountStringToNumber('invalid') === 0);
 
 // Setup mock test environment
 const now = new Date();
