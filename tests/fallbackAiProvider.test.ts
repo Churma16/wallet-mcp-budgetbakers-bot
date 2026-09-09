@@ -12,6 +12,8 @@ import {
   createFinancialAiProvider,
   createSingleFinancialAiProvider,
 } from '../src/services/ai/aiProviderFactory.js';
+import { OpenAiCompatibleAiProvider } from '../src/services/ai/openAiCompatibleAiProvider.js';
+import { extractAndParseJsonObject } from '../src/services/ai/jsonExtractionHelper.js';
 import { ApplicationEnvironmentConfiguration } from '../src/config/environmentConfig.js';
 import { WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 
@@ -233,6 +235,39 @@ async function runFallbackAiProviderTestSuite(): Promise<void> {
   assert.ok(!(singleProvider instanceof FallbackAiProvider));
   assert.equal(singleProvider.providerName, 'gemini');
   console.log('[SUCCESS] Test 8 Passed: Single provider maintains 100% backward compatibility.');
+
+  // Test 9: JSON response extraction from markdown code fences
+  console.log('Test 9: extractAndParseJsonObject markdown code fence handling');
+  const fencedJsonWithLabel = '```json\n{"nominal": 50000, "merchant": "Kopi"}\n```';
+  const parsedFencedJson = extractAndParseJsonObject<{ nominal: number; merchant: string }>(fencedJsonWithLabel);
+  assert.equal(parsedFencedJson.nominal, 50000);
+  assert.equal(parsedFencedJson.merchant, 'Kopi');
+
+  const fencedJsonWithoutLabel = '```\n{"nominal": 25000}\n```';
+  const parsedPlainFencedJson = extractAndParseJsonObject<{ nominal: number }>(fencedJsonWithoutLabel);
+  assert.equal(parsedPlainFencedJson.nominal, 25000);
+
+  const rawJsonResponse = '{"nominal": 10000}';
+  const parsedRawJson = extractAndParseJsonObject<{ nominal: number }>(rawJsonResponse);
+  assert.equal(parsedRawJson.nominal, 10000);
+
+  const unclosedFenceResponse = '```json\n{"nominal": 75000}';
+  const parsedUnclosedFenceJson = extractAndParseJsonObject<{ nominal: number }>(unclosedFenceResponse);
+  assert.equal(parsedUnclosedFenceJson.nominal, 75000);
+  console.log('[SUCCESS] Test 9 Passed: Markdown fenced and raw JSON responses parsed deterministically.');
+
+  // Test 10: OpenAI-compatible provider base URL trailing slash normalization
+  console.log('Test 10: OpenAiCompatibleAiProvider base URL trailing slash trimming');
+  const openAiCompatibleProvider = new OpenAiCompatibleAiProvider({
+    baseUrl: 'http://localhost:11434/v1///',
+    apiKey: 'test-key',
+    primaryModelName: 'test-model',
+  });
+  const normalizedBaseUrl = (openAiCompatibleProvider as unknown as {
+    httpClient: { defaults: { baseURL: string } };
+  }).httpClient.defaults.baseURL;
+  assert.equal(normalizedBaseUrl, 'http://localhost:11434/v1');
+  console.log('[SUCCESS] Test 10 Passed: Trailing slashes normalized without regex backtracking.');
 
   console.log('\nAll FallbackAiProvider unit tests passed successfully!');
 }

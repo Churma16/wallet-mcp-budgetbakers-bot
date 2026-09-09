@@ -5,6 +5,7 @@ import {
   maskAccountNumbersAndPansInString,
   sanitizeSensitiveLogPayload,
   sanitizeLogArgument,
+  formatConciseErrorMessage,
   applicationLogger,
 } from '../src/utils/logger.js';
 
@@ -387,6 +388,37 @@ function runLoggerSanitizerTests(): void {
   } else {
     assertCondition('Log file exists on disk', false, `Log file not found at ${todayLogFilePath}`);
   }
+
+  // =========================================================================
+  // 10. formatConciseErrorMessage Embedded JSON & Heuristic Fallback
+  // =========================================================================
+  console.log('\n--- 10. Testing formatConciseErrorMessage Embedded JSON Scanning ---');
+
+  const embeddedJsonErrorText = 'Request failed with status 503: {"error":{"code":503,"message":"Model busy","status":"UNAVAILABLE"}}';
+  assertCondition(
+    'Embedded JSON error object is extracted and summarized as 503 UNAVAILABLE',
+    formatConciseErrorMessage(embeddedJsonErrorText) ===
+      'Model high demand / Temporarily unavailable (503 UNAVAILABLE)'
+  );
+
+  const embeddedJsonRateLimitText = 'Upstream returned {"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"Quota reached"}}';
+  assertCondition(
+    'Embedded JSON 429 quota error summarized as rate limit',
+    formatConciseErrorMessage(embeddedJsonRateLimitText) ===
+      'Rate limit / Quota exceeded (429 RESOURCE_EXHAUSTED)'
+  );
+
+  assertCondition(
+    'Non-JSON message falls through to substring heuristics (504)',
+    formatConciseErrorMessage(new Error('Upstream gateway 504 deadline exceeded')) ===
+      'Gateway timeout (504)'
+  );
+
+  assertCondition(
+    'Embedded JSON without error property falls back to heuristics',
+    formatConciseErrorMessage('Unexpected body {"status":"OK"} with 404 payload') ===
+      'Model not found (404)'
+  );
 
   // =========================================================================
   // Final Result
