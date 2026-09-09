@@ -257,7 +257,7 @@ async function runTestSuite(): Promise<void> {
   }
 }
 
-runTestSuite().catch(suiteError => {
-  console.error(`[ERROR] Unexpected test suite failure: ${suiteError}`);
+runTestSuite().catch(() => {
+  console.error('[ERROR] Unexpected test suite failure. Rerun with the --verbose offline runner to inspect the failing output.');
   process.exit(1);
 });
