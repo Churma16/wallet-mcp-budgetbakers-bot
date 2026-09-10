@@ -23,8 +23,18 @@ export function extractSenderDomain(emailSenderAddress: string): string | undefi
     return undefined;
   }
 
-  const angleAddressMatch = rawSender.match(/^.*<\s*([^<>]+)\s*>\s*$/);
-  const addressCandidate = (angleAddressMatch?.[1] ?? rawSender).trim().toLowerCase();
+  const hasAngleBracket = rawSender.includes('<') || rawSender.includes('>');
+  let addressCandidate = rawSender;
+
+  if (hasAngleBracket) {
+    const angleAddressMatch = rawSender.match(/^[^<>]*<\s*([^<>]+)\s*>\s*$/);
+    if (!angleAddressMatch?.[1]) {
+      return undefined;
+    }
+    addressCandidate = angleAddressMatch[1];
+  }
+
+  addressCandidate = addressCandidate.trim().toLowerCase();
 
   // Reject ambiguous address lists or whitespace-delimited display-name fallbacks.
   if (
