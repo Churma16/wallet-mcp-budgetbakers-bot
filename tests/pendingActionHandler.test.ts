@@ -36,7 +36,10 @@ class MockWalletMcpClient {
   private readonly failuresByCallNumber = new Map<number, Error>();
 
   setDefinitiveFailureOnCall(callNumber: number, errorMessage: string = 'MCP dispatch failed'): void {
-    this.failuresByCallNumber.set(callNumber, new Error(errorMessage));
+    this.failuresByCallNumber.set(
+      callNumber,
+      new WalletMcpRequestError(errorMessage, 'DEFINITIVE_FAILURE')
+    );
   }
 
   setUnknownFailureOnCall(callNumber: number, errorMessage: string = 'MCP response lost'): void {
@@ -44,6 +47,10 @@ class MockWalletMcpClient {
       callNumber,
       new WalletMcpRequestError(errorMessage, 'UNKNOWN')
     );
+  }
+
+  setGenericFailureOnCall(callNumber: number, errorMessage: string = 'Unclassified response processing failure'): void {
+    this.failuresByCallNumber.set(callNumber, new Error(errorMessage));
   }
 
   clearFailures(): void {
@@ -152,6 +159,24 @@ async function expectWalletMcpRequestError(
   throw new Error('[FAIL] Expected WalletMcpRequestError but operation succeeded');
 }
 
+function createWalletClientWithToolResult(toolResult: unknown): WalletMcpClientService {
+  const client = new WalletMcpClientService('https://example.invalid', 'test-token');
+  (client as any).httpClient.post = async () => ({
+    data: {
+      result: {
+        structuredContent: toolResult,
+      },
+    },
+  });
+  return client;
+}
+
+const sampleRecord: CreateRecordInputPayload = {
+  accountId: 'acc-1',
+  amount: -1000,
+  recordDate: '2026-09-10',
+};
+
 async function main(): Promise<void> {
   await runCase('Suite 1: single confirmation succeeds and removes the ticket', async () => {
     const pendingService = new PendingTransactionService();
@@ -197,6 +222,11 @@ async function main(): Promise<void> {
     assertCondition('Failed ticket #2 returned to PENDING', pendingService.getPendingTransactionState(2) === 'PENDING');
     assertCondition('Failed ticket #4 returned to PENDING', pendingService.getPendingTransactionState(4) === 'PENDING');
     assertCondition('Only two retryable tickets remain', pendingService.getAllPendingTransactions().length === 2);
+
+    const retryMessage = messaging.messages[0].content;
+    assertCondition('Bulk retry guidance targets ticket #2 explicitly', retryMessage.includes('"ya #2"'));
+    assertCondition('Bulk retry guidance targets ticket #4 explicitly', retryMessage.includes('"ya #4"'));
+    assertCondition('Bulk retry guidance does not suggest ambiguous bare ya', !retryMessage.includes('Ketik "ya"'));
   });
 
   await runCase('Suite 3: transfer resumes from the failed leg without duplicating the committed leg', async () => {
@@ -364,7 +394,7 @@ async function main(): Promise<void> {
     });
 
     await expectWalletMcpRequestError(
-      () => client.createRecords([{ accountId: 'acc-1', amount: -1000, recordDate: '2026-09-10' }]),
+      () => client.createRecords([sampleRecord]),
       'DEFINITIVE_FAILURE'
     );
   });
@@ -380,7 +410,7 @@ async function main(): Promise<void> {
     };
 
     const error = await expectWalletMcpRequestError(
-      () => client.createRecords([{ accountId: 'acc-1', amount: -1000, recordDate: '2026-09-10' }]),
+      () => client.createRecords([sampleRecord]),
       'UNKNOWN'
     );
     assertCondition('UNKNOWN helper recognizes real client transport error', isWalletMcpDispatchOutcomeUnknown(error));
@@ -397,7 +427,7 @@ async function main(): Promise<void> {
     };
 
     await expectWalletMcpRequestError(
-      () => definitiveClient.createRecords([{ accountId: 'acc-1', amount: -1000, recordDate: '2026-09-10' }]),
+      () => definitiveClient.createRecords([sampleRecord]),
       'DEFINITIVE_FAILURE'
     );
 
@@ -411,9 +441,70 @@ async function main(): Promise<void> {
     };
 
     await expectWalletMcpRequestError(
-      () => ambiguousClient.createRecords([{ accountId: 'acc-1', amount: -1000, recordDate: '2026-09-10' }]),
+      () => ambiguousClient.createRecords([sampleRecord]),
       'UNKNOWN'
     );
+  });
+
+  await runCase('Suite 12: create_records requires positive and internally consistent success evidence', async () => {
+    const nullClient = createWalletClientWithToolResult(null);
+    await expectWalletMcpRequestError(() => nullClient.createRecords([sampleRecord]), 'UNKNOWN');
+
+    const emptyObjectClient = createWalletClientWithToolResult({});
+    await expectWalletMcpRequestError(() => emptyObjectClient.createRecords([sampleRecord]), 'UNKNOWN');
+
+    const plainTextClient = new WalletMcpClientService('https://example.invalid', 'test-token');
+    (plainTextClient as any).httpClient.post = async () => ({
+      data: {
+        result: {
+          content: [{ type: 'text', text: 'created' }],
+        },
+      },
+    });
+    await expectWalletMcpRequestError(() => plainTextClient.createRecords([sampleRecord]), 'UNKNOWN');
+
+    const mismatchedSummaryClient = createWalletClientWithToolResult({
+      summary: { total: 1, succeeded: 0, failed: 0 },
+    });
+    await expectWalletMcpRequestError(() => mismatchedSummaryClient.createRecords([sampleRecord]), 'UNKNOWN');
+
+    const inconsistentEvidenceClient = createWalletClientWithToolResult({
+      summary: { total: 1, succeeded: 1, failed: 0 },
+      results: [],
+    });
+    await expectWalletMcpRequestError(() => inconsistentEvidenceClient.createRecords([sampleRecord]), 'UNKNOWN');
+
+    const summaryOnlySuccessClient = createWalletClientWithToolResult({
+      summary: { total: 1, succeeded: 1, failed: 0 },
+    });
+    const summaryOnlyResult = await summaryOnlySuccessClient.createRecords([sampleRecord]);
+    assertCondition('Complete success summary is accepted as positive evidence', summaryOnlyResult.summary?.succeeded === 1);
+
+    const resultsOnlySuccessClient = createWalletClientWithToolResult({
+      results: [{ id: 'record-1', success: true }],
+    });
+    const resultsOnlyResult = await resultsOnlySuccessClient.createRecords([sampleRecord]);
+    assertCondition('Complete per-record results are accepted as positive evidence', resultsOnlyResult.results?.[0]?.success === true);
+  });
+
+  await runCase('Suite 13: generic unclassified handler errors become UNKNOWN instead of retryable', async () => {
+    const pendingService = new PendingTransactionService();
+    const walletMcp = new MockWalletMcpClient();
+    const messaging = new MockMessagingGateway();
+    const handler = createHandler(pendingService, walletMcp, messaging);
+
+    addExpense(pendingService);
+    walletMcp.setGenericFailureOnCall(1, 'generic post-dispatch parser failure');
+
+    await handler.handlePendingAction(createMockEvent(), confirmTicketOne, Date.now());
+
+    assertCondition('Generic error keeps ticket for reconciliation', pendingService.getPendingTransaction(1) !== undefined);
+    assertCondition('Generic error is fail-safe classified UNKNOWN', pendingService.getPendingTransactionState(1) === 'UNKNOWN');
+    assertCondition('Generic error is not presented as safely retryable', !messaging.messages[0].content.includes('aman untuk dicoba lagi'));
+    assertCondition('User receives no-auto-retry guidance', messaging.messages[0].content.includes('tidak akan dikirim ulang otomatis'));
+
+    await handler.handlePendingAction(createMockEvent('msg-generic-retry'), confirmTicketOne, Date.now());
+    assertCondition('Generic UNKNOWN ticket is not redispatched', walletMcp.calls.length === 1);
   });
 
   console.log('\n====================================================');
