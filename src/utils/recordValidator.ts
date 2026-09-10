@@ -2,14 +2,38 @@ import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload } from 
 import { getApplicationTimezone } from './humanResponseFormatter.js';
 import { getTimezoneOffsetDetails } from '../services/ai/aiPromptBuilder.js';
 
+export type AccountResolutionIssueReason = 'UNRESOLVED' | 'AMBIGUOUS';
+
+export interface AccountResolutionCandidate {
+  id: string;
+  name: string;
+  bankAccountNumber?: string;
+}
+
+export interface AccountResolutionIssue {
+  recordIndex: number;
+  accountHint: string;
+  reason: AccountResolutionIssueReason;
+  candidates: AccountResolutionCandidate[];
+}
+
 export interface FinancialRecordValidationResult {
   isValid: boolean;
   sanitizedRecords: CreateRecordInputPayload[];
   validationErrors: string[];
+  accountResolutionIssues: AccountResolutionIssue[];
 }
 
 const MAXIMUM_RECORDS_PER_BATCH = 20;
 const MAXIMUM_SINGLE_TRANSACTION_AMOUNT = 100_000_000_000; // 100 billion IDR upper limit for sanity
+
+function toAccountResolutionCandidate(account: WalletAccountItem): AccountResolutionCandidate {
+  return {
+    id: account.id,
+    name: account.name,
+    bankAccountNumber: account.bankAccountNumber,
+  };
+}
 
 /**
  * Validates and sanitizes financial records extracted by AI before dispatching to Wallet MCP.
@@ -22,12 +46,14 @@ export function validateAndSanitizeFinancialRecords(
 ): FinancialRecordValidationResult {
   const validationErrors: string[] = [];
   const sanitizedRecords: CreateRecordInputPayload[] = [];
+  const accountResolutionIssues: AccountResolutionIssue[] = [];
 
   if (!Array.isArray(incomingRecords) || incomingRecords.length === 0) {
     return {
       isValid: false,
       sanitizedRecords: [],
       validationErrors: ['Tidak ada data transaksi yang dapat divalidasi.'],
+      accountResolutionIssues: [],
     };
   }
 
@@ -38,6 +64,7 @@ export function validateAndSanitizeFinancialRecords(
       validationErrors: [
         `Jumlah transaksi (${incomingRecords.length}) melebihi batas wajar (${MAXIMUM_RECORDS_PER_BATCH} entri per pesan).`,
       ],
+      accountResolutionIssues: [],
     };
   }
 
@@ -64,7 +91,7 @@ export function validateAndSanitizeFinancialRecords(
       continue;
     }
 
-    // 2. Account ID Resolution & Validation (supports UUID, 1-based index number, exact name, or partial name)
+    // 2. Account ID Resolution & Validation (supports UUID, 1-based index number, exact name, unique partial name, or bank account number)
     let resolvedAccountId: string | undefined = undefined;
     const rawAccountIdStr = String(currentRecord.accountId ?? '').trim();
 
@@ -92,23 +119,33 @@ export function validateAndSanitizeFinancialRecords(
       }
     }
 
-    // Strategy D: Substring / partial name match
+    // Strategy D: Substring / partial name match, only when exactly one account matches
     if (!resolvedAccountId && rawAccountIdStr.length > 1) {
-      const partialAccountMatch = availableAccountList.find(
+      const normalizedAccountHint = rawAccountIdStr.toLowerCase();
+      const partialAccountMatches = availableAccountList.filter(
         account =>
-          account.name.toLowerCase().includes(rawAccountIdStr.toLowerCase()) ||
-          rawAccountIdStr.toLowerCase().includes(account.name.toLowerCase())
+          account.name.toLowerCase().includes(normalizedAccountHint) ||
+          normalizedAccountHint.includes(account.name.toLowerCase())
       );
-      if (partialAccountMatch) {
-        resolvedAccountId = partialAccountMatch.id;
+
+      if (partialAccountMatches.length === 1) {
+        resolvedAccountId = partialAccountMatches[0].id;
+      } else if (partialAccountMatches.length > 1) {
+        accountResolutionIssues.push({
+          recordIndex,
+          accountHint: rawAccountIdStr,
+          reason: 'AMBIGUOUS',
+          candidates: partialAccountMatches.map(toAccountResolutionCandidate),
+        });
+        continue;
       }
     }
 
-    // Strategy E: Bank account number match (exact or digit-only matching for account numbers with >= 4 digits)
+    // Strategy E: Bank account number match, only when exactly one account matches
     if (!resolvedAccountId && rawAccountIdStr.length >= 4) {
       const numericDigitsOnly = rawAccountIdStr.replace(/\D/g, '');
       if (numericDigitsOnly.length >= 4) {
-        const bankAccountMatch = availableAccountList.find(account => {
+        const bankAccountMatches = availableAccountList.filter(account => {
           if (!account.bankAccountNumber) {
             return false;
           }
@@ -117,20 +154,30 @@ export function validateAndSanitizeFinancialRecords(
             cleanAccountDigits.endsWith(numericDigitsOnly) ||
             numericDigitsOnly.endsWith(cleanAccountDigits);
         });
-        if (bankAccountMatch) {
-          resolvedAccountId = bankAccountMatch.id;
+
+        if (bankAccountMatches.length === 1) {
+          resolvedAccountId = bankAccountMatches[0].id;
+        } else if (bankAccountMatches.length > 1) {
+          accountResolutionIssues.push({
+            recordIndex,
+            accountHint: rawAccountIdStr,
+            reason: 'AMBIGUOUS',
+            candidates: bankAccountMatches.map(toAccountResolutionCandidate),
+          });
+          continue;
         }
       }
     }
 
-    // Fallback: Default to first account or error if no accounts
+    // Fail closed when account resolution is not deterministic.
     if (!resolvedAccountId) {
-      if (availableAccountList.length > 0) {
-        resolvedAccountId = availableAccountList[0].id;
-      } else {
-        validationErrors.push(`${recordLabel}: ID Akun tidak ditemukan dan belum ada akun terdaftar di Wallet.`);
-        continue;
-      }
+      accountResolutionIssues.push({
+        recordIndex,
+        accountHint: rawAccountIdStr,
+        reason: 'UNRESOLVED',
+        candidates: [],
+      });
+      continue;
     }
 
     // 3. Category ID Validation (supports UUID, 1-based index number, exact name, or partial name)
@@ -216,8 +263,12 @@ export function validateAndSanitizeFinancialRecords(
   }
 
   return {
-    isValid: sanitizedRecords.length > 0 && validationErrors.length === 0,
+    isValid:
+      sanitizedRecords.length > 0 &&
+      validationErrors.length === 0 &&
+      accountResolutionIssues.length === 0,
     sanitizedRecords,
     validationErrors,
+    accountResolutionIssues,
   };
 }
