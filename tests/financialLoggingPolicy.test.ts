@@ -2,6 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import { applicationLogger } from '../src/utils/logger.js';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
+import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
+import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
+import { WalletMcpRequestError } from '../src/services/walletMcpService.js';
 import {
   installFinancialLoggingPolicy,
   isCredentialPropertyKey,
@@ -195,6 +198,69 @@ async function runFinancialLoggingPolicyTests(): Promise<void> {
     assertCondition('handler default log omits arbitrary merchant text', !handlerLogBlock.includes('Merchant Rahasia'));
     assertCondition('handler default log omits raw AI explanation', !handlerLogBlock.includes(rawAiExplanation));
     assertCondition('handler default log retains AI decision metadata', handlerLogBlock.includes('Decision: GENERAL_REPLY'));
+
+    const downstreamStartMarker = `FIN_DOWNSTREAM_START_${Math.random().toString(36).slice(2, 8)}`;
+    const downstreamEndMarker = `FIN_DOWNSTREAM_END_${Math.random().toString(36).slice(2, 8)}`;
+    const leakedAmount = '776655';
+    const leakedMerchant = 'Merchant Failure Rahasia';
+    const pendingService = new PendingTransactionService();
+    pendingService.addPendingTransaction({
+      sourceType: 'WHATSAPP',
+      bankDisplayName: 'Test Bank',
+      accountNameHint: 'Cash',
+      counterParty: leakedMerchant,
+      amount: Number(leakedAmount),
+      currency: 'IDR',
+      transactionType: 'EXPENSE',
+      matchedAccountId: 'acc-test',
+      matchedCategoryId: 'cat-test',
+      note: `Lunch at ${leakedMerchant}`,
+      recordDate: '2026-09-10',
+    });
+
+    const failingWalletClient = {
+      createRecords: async () => {
+        throw new WalletMcpRequestError(
+          `validation failed for amount ${leakedAmount} at ${leakedMerchant}`,
+          'DEFINITIVE_FAILURE'
+        );
+      },
+    };
+    const pendingMessagingGateway = {
+      sendMessage: async () => undefined,
+    };
+    const pendingHandler = new PendingActionHandler(
+      pendingService,
+      failingWalletClient as any,
+      pendingMessagingGateway as any,
+      () => null
+    );
+
+    applicationLogger.info(downstreamStartMarker);
+    await pendingHandler.handlePendingAction(
+      {
+        channel: 'whatsapp',
+        senderIdentifier: 'sender-test',
+        chatIdentifier: 'chat-test',
+        messageType: 'text',
+        textPayload: 'ya',
+      },
+      { actionType: 'CONFIRM', targetScope: 1 },
+      Date.now()
+    );
+    applicationLogger.info(downstreamEndMarker);
+
+    const downstreamLogBlock = readLogBlock(downstreamStartMarker, downstreamEndMarker);
+    assertCondition('default failure log omits downstream echoed amount', !downstreamLogBlock.includes(leakedAmount));
+    assertCondition('default failure log omits downstream echoed merchant', !downstreamLogBlock.includes(leakedMerchant));
+    assertCondition(
+      'default failure log retains error type metadata',
+      downstreamLogBlock.includes('WalletMcpRequestError')
+    );
+    assertCondition(
+      'default failure log retains dispatch outcome metadata',
+      downstreamLogBlock.includes('outcome=DEFINITIVE_FAILURE')
+    );
   } finally {
     if (originalDebugFlag === undefined) {
       delete process.env.DEBUG_FINANCIAL_PAYLOADS;
