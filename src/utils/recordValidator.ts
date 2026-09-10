@@ -2,14 +2,112 @@ import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload } from 
 import { getApplicationTimezone } from './humanResponseFormatter.js';
 import { getTimezoneOffsetDetails } from '../services/ai/aiPromptBuilder.js';
 
+export type AccountResolutionIssueReason = 'UNRESOLVED' | 'AMBIGUOUS';
+
+export interface AccountResolutionCandidate {
+  id: string;
+  name: string;
+  bankAccountNumber?: string;
+}
+
+export interface AccountResolutionIssue {
+  recordIndex: number;
+  accountHint: string;
+  reason: AccountResolutionIssueReason;
+  candidates: AccountResolutionCandidate[];
+}
+
 export interface FinancialRecordValidationResult {
   isValid: boolean;
   sanitizedRecords: CreateRecordInputPayload[];
   validationErrors: string[];
+  accountResolutionIssues: AccountResolutionIssue[];
 }
 
 const MAXIMUM_RECORDS_PER_BATCH = 20;
 const MAXIMUM_SINGLE_TRANSACTION_AMOUNT = 100_000_000_000; // 100 billion IDR upper limit for sanity
+
+function toAccountResolutionCandidate(account: WalletAccountItem): AccountResolutionCandidate {
+  return {
+    id: account.id,
+    name: account.name,
+    bankAccountNumber: account.bankAccountNumber,
+  };
+}
+
+function findBankAccountMatches(
+  rawAccountHint: string,
+  availableAccountList: WalletAccountItem[]
+): WalletAccountItem[] {
+  const numericDigitsOnly = rawAccountHint.replace(/\D/g, '');
+  if (numericDigitsOnly.length < 4) {
+    return [];
+  }
+
+  return availableAccountList.filter(account => {
+    if (!account.bankAccountNumber) {
+      return false;
+    }
+
+    const cleanAccountDigits = account.bankAccountNumber.replace(/\D/g, '');
+    return cleanAccountDigits === numericDigitsOnly ||
+      cleanAccountDigits.endsWith(numericDigitsOnly) ||
+      numericDigitsOnly.endsWith(cleanAccountDigits);
+  });
+}
+
+function uniqueAccountsById(accounts: WalletAccountItem[]): WalletAccountItem[] {
+  const uniqueAccounts = new Map<string, WalletAccountItem>();
+  for (const account of accounts) {
+    uniqueAccounts.set(account.id, account);
+  }
+  return Array.from(uniqueAccounts.values());
+}
+
+function findAccountResolutionCandidates(
+  rawAccountHint: string,
+  availableAccountList: WalletAccountItem[]
+): WalletAccountItem[] {
+  // An exact Wallet ID is canonical and does not need heuristic interpretation.
+  const exactIdMatches = availableAccountList.filter(account => account.id === rawAccountHint);
+  if (exactIdMatches.length > 0) {
+    return uniqueAccountsById(exactIdMatches);
+  }
+
+  const resolutionCandidates: WalletAccountItem[] = [];
+
+  // Numeric hints may represent the 1-based account index shown to the AI/user.
+  if (/^\d+$/.test(rawAccountHint)) {
+    const accountIndex = Number.parseInt(rawAccountHint, 10) - 1;
+    if (accountIndex >= 0 && accountIndex < availableAccountList.length) {
+      resolutionCandidates.push(availableAccountList[accountIndex]);
+    }
+  }
+
+  // Prefer exact-name interpretation over partial-name interpretation, but compare
+  // that name interpretation with other applicable strategies before resolving.
+  const normalizedAccountHint = rawAccountHint.toLowerCase();
+  const exactNameMatches = availableAccountList.filter(
+    account => account.name.toLowerCase() === normalizedAccountHint
+  );
+
+  if (exactNameMatches.length > 0) {
+    resolutionCandidates.push(...exactNameMatches);
+  } else if (rawAccountHint.length > 1) {
+    resolutionCandidates.push(
+      ...availableAccountList.filter(account =>
+        account.name.toLowerCase().includes(normalizedAccountHint) ||
+        normalizedAccountHint.includes(account.name.toLowerCase())
+      )
+    );
+  }
+
+  // Bank-account interpretation is evaluated alongside index/name interpretations.
+  // Distinct accounts from different strategies must fail closed as ambiguous.
+  resolutionCandidates.push(...findBankAccountMatches(rawAccountHint, availableAccountList));
+
+  return uniqueAccountsById(resolutionCandidates);
+}
 
 /**
  * Validates and sanitizes financial records extracted by AI before dispatching to Wallet MCP.
@@ -22,12 +120,14 @@ export function validateAndSanitizeFinancialRecords(
 ): FinancialRecordValidationResult {
   const validationErrors: string[] = [];
   const sanitizedRecords: CreateRecordInputPayload[] = [];
+  const accountResolutionIssues: AccountResolutionIssue[] = [];
 
   if (!Array.isArray(incomingRecords) || incomingRecords.length === 0) {
     return {
       isValid: false,
       sanitizedRecords: [],
       validationErrors: ['Tidak ada data transaksi yang dapat divalidasi.'],
+      accountResolutionIssues: [],
     };
   }
 
@@ -38,6 +138,7 @@ export function validateAndSanitizeFinancialRecords(
       validationErrors: [
         `Jumlah transaksi (${incomingRecords.length}) melebihi batas wajar (${MAXIMUM_RECORDS_PER_BATCH} entri per pesan).`,
       ],
+      accountResolutionIssues: [],
     };
   }
 
@@ -64,74 +165,25 @@ export function validateAndSanitizeFinancialRecords(
       continue;
     }
 
-    // 2. Account ID Resolution & Validation (supports UUID, 1-based index number, exact name, or partial name)
-    let resolvedAccountId: string | undefined = undefined;
+    // 2. Account ID Resolution & Validation. All applicable heuristic strategies
+    // are compared before committing so conflicting interpretations fail closed.
     const rawAccountIdStr = String(currentRecord.accountId ?? '').trim();
+    const accountResolutionCandidates = findAccountResolutionCandidates(
+      rawAccountIdStr,
+      availableAccountList
+    );
 
-    // Strategy A: Exact UUID match
-    const exactAccountMatch = availableAccountList.find(account => account.id === rawAccountIdStr);
-    if (exactAccountMatch) {
-      resolvedAccountId = exactAccountMatch.id;
+    if (accountResolutionCandidates.length !== 1) {
+      accountResolutionIssues.push({
+        recordIndex,
+        accountHint: rawAccountIdStr,
+        reason: accountResolutionCandidates.length > 1 ? 'AMBIGUOUS' : 'UNRESOLVED',
+        candidates: accountResolutionCandidates.map(toAccountResolutionCandidate),
+      });
+      continue;
     }
 
-    // Strategy B: 1-based index number (e.g. 1, 2, "1", "2")
-    if (!resolvedAccountId && /^\d+$/.test(rawAccountIdStr)) {
-      const accountIndex = Number.parseInt(rawAccountIdStr, 10) - 1;
-      if (accountIndex >= 0 && accountIndex < availableAccountList.length) {
-        resolvedAccountId = availableAccountList[accountIndex].id;
-      }
-    }
-
-    // Strategy C: Exact name match (case-insensitive)
-    if (!resolvedAccountId) {
-      const nameAccountMatch = availableAccountList.find(
-        account => account.name.toLowerCase() === rawAccountIdStr.toLowerCase()
-      );
-      if (nameAccountMatch) {
-        resolvedAccountId = nameAccountMatch.id;
-      }
-    }
-
-    // Strategy D: Substring / partial name match
-    if (!resolvedAccountId && rawAccountIdStr.length > 1) {
-      const partialAccountMatch = availableAccountList.find(
-        account =>
-          account.name.toLowerCase().includes(rawAccountIdStr.toLowerCase()) ||
-          rawAccountIdStr.toLowerCase().includes(account.name.toLowerCase())
-      );
-      if (partialAccountMatch) {
-        resolvedAccountId = partialAccountMatch.id;
-      }
-    }
-
-    // Strategy E: Bank account number match (exact or digit-only matching for account numbers with >= 4 digits)
-    if (!resolvedAccountId && rawAccountIdStr.length >= 4) {
-      const numericDigitsOnly = rawAccountIdStr.replace(/\D/g, '');
-      if (numericDigitsOnly.length >= 4) {
-        const bankAccountMatch = availableAccountList.find(account => {
-          if (!account.bankAccountNumber) {
-            return false;
-          }
-          const cleanAccountDigits = account.bankAccountNumber.replace(/\D/g, '');
-          return cleanAccountDigits === numericDigitsOnly ||
-            cleanAccountDigits.endsWith(numericDigitsOnly) ||
-            numericDigitsOnly.endsWith(cleanAccountDigits);
-        });
-        if (bankAccountMatch) {
-          resolvedAccountId = bankAccountMatch.id;
-        }
-      }
-    }
-
-    // Fallback: Default to first account or error if no accounts
-    if (!resolvedAccountId) {
-      if (availableAccountList.length > 0) {
-        resolvedAccountId = availableAccountList[0].id;
-      } else {
-        validationErrors.push(`${recordLabel}: ID Akun tidak ditemukan dan belum ada akun terdaftar di Wallet.`);
-        continue;
-      }
-    }
+    const resolvedAccountId = accountResolutionCandidates[0].id;
 
     // 3. Category ID Validation (supports UUID, 1-based index number, exact name, or partial name)
     let resolvedCategoryId: string | undefined = undefined;
@@ -216,8 +268,12 @@ export function validateAndSanitizeFinancialRecords(
   }
 
   return {
-    isValid: sanitizedRecords.length > 0 && validationErrors.length === 0,
+    isValid:
+      sanitizedRecords.length > 0 &&
+      validationErrors.length === 0 &&
+      accountResolutionIssues.length === 0,
     sanitizedRecords,
     validationErrors,
+    accountResolutionIssues,
   };
 }
