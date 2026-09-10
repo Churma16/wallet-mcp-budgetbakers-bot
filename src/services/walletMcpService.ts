@@ -8,6 +8,26 @@ import {
 } from '../types/walletTypes.js';
 import { applicationLogger } from '../utils/logger.js';
 
+export type WalletMcpDispatchOutcome = 'DEFINITIVE_FAILURE' | 'UNKNOWN';
+
+export class WalletMcpRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly dispatchOutcome: WalletMcpDispatchOutcome
+  ) {
+    super(message);
+    this.name = 'WalletMcpRequestError';
+  }
+}
+
+export function isWalletMcpDispatchOutcomeUnknown(error: unknown): boolean {
+  return error instanceof WalletMcpRequestError && error.dispatchOutcome === 'UNKNOWN';
+}
+
+export function isWalletMcpDefinitiveFailure(error: unknown): boolean {
+  return error instanceof WalletMcpRequestError && error.dispatchOutcome === 'DEFINITIVE_FAILURE';
+}
+
 export class WalletMcpClientService {
   private readonly httpClient: AxiosInstance;
   private cachedAccountList: WalletAccountItem[] = [];
@@ -28,7 +48,9 @@ export class WalletMcpClientService {
   }
 
   /**
-   * Send a generic JSON-RPC 2.0 request to the Wallet MCP Server
+   * Send a generic JSON-RPC 2.0 request to the Wallet MCP Server.
+   * Transport failures where the server may already have received/committed the request
+   * are marked UNKNOWN so callers do not blindly retry writes.
    */
   private async executeJsonRpcRequest<TResult>(methodName: string, requestParameters: Record<string, unknown> = {}): Promise<TResult> {
     const jsonRpcPayload = {
@@ -52,7 +74,10 @@ export class WalletMcpClientService {
           error: responseBody.error,
           payloadSent: jsonRpcPayload,
         });
-        throw new Error(`[error] MCP JSON-RPC Error: ${responseBody.error.message || JSON.stringify(responseBody.error)}`);
+        throw new WalletMcpRequestError(
+          `[error] MCP JSON-RPC Error: ${responseBody.error.message || JSON.stringify(responseBody.error)}`,
+          'DEFINITIVE_FAILURE'
+        );
       }
 
       applicationLogger.fileDetail('mcp', `Received Wallet MCP Response [${methodName}]`, {
@@ -67,18 +92,37 @@ export class WalletMcpClientService {
         payloadSent: jsonRpcPayload,
       });
 
-      if (axios.isAxiosError(error) && error.response) {
-        const errorDataString = typeof error.response.data === 'object' 
-          ? JSON.stringify(error.response.data) 
-          : String(error.response.data);
-        throw new Error(`[error] Wallet MCP HTTP ${error.response.status}: ${errorDataString}`);
+      if (error instanceof WalletMcpRequestError) {
+        throw error;
       }
+
+      if (axios.isAxiosError(error)) {
+        if (error.response) {
+          const errorDataString = typeof error.response.data === 'object'
+            ? JSON.stringify(error.response.data)
+            : String(error.response.data);
+          const statusCode = error.response.status;
+          const dispatchOutcome: WalletMcpDispatchOutcome =
+            statusCode === 408 || statusCode >= 500 ? 'UNKNOWN' : 'DEFINITIVE_FAILURE';
+
+          throw new WalletMcpRequestError(
+            `[error] Wallet MCP HTTP ${statusCode}: ${errorDataString}`,
+            dispatchOutcome
+          );
+        }
+
+        throw new WalletMcpRequestError(
+          `[error] Wallet MCP transport failure: ${error.message}`,
+          'UNKNOWN'
+        );
+      }
+
       throw error;
     }
   }
 
   /**
-   * Helper to execute a tool call via tools/call and unpack text content
+   * Helper to execute a tool call via tools/call and unpack text content.
    */
   public async callMcpTool<TToolOutput>(toolName: string, toolArguments: Record<string, unknown> = {}): Promise<TToolOutput> {
     const toolCallResult = await this.executeJsonRpcRequest<{
@@ -92,7 +136,10 @@ export class WalletMcpClientService {
 
     if (toolCallResult.isError) {
       const errorMessage = toolCallResult.content?.map(contentItem => contentItem.text).join('\n') || 'Unknown tool error';
-      throw new Error(`[error] MCP Tool '${toolName}' failed: ${errorMessage}`);
+      throw new WalletMcpRequestError(
+        `[error] MCP Tool '${toolName}' failed: ${errorMessage}`,
+        'DEFINITIVE_FAILURE'
+      );
     }
 
     if (toolCallResult.structuredContent !== undefined) {
@@ -112,14 +159,14 @@ export class WalletMcpClientService {
   }
 
   /**
-   * Verify client profile and connection to Wallet MCP
+   * Verify client profile and connection to Wallet MCP.
    */
   public async verifyClientProfile(): Promise<unknown> {
     return await this.callMcpTool('get_client_profile');
   }
 
   /**
-   * Retrieve all bank accounts and wallets
+   * Retrieve all bank accounts and wallets.
    */
   public async fetchAccounts(forceRefresh: boolean = false): Promise<WalletAccountItem[]> {
     const isCacheExpired = Date.now() - this.cacheLastUpdatedTimestamp > this.cacheDurationMilliseconds;
@@ -129,8 +176,7 @@ export class WalletMcpClientService {
     }
 
     const fetchedAccountData = await this.callMcpTool<any>('get_accounts');
-    
-    // Normalize response if it is wrapped in an array or records property
+
     const rawAccountArray: any[] = Array.isArray(fetchedAccountData)
       ? fetchedAccountData
       : (fetchedAccountData?.accounts || fetchedAccountData?.items || []);
@@ -166,7 +212,7 @@ export class WalletMcpClientService {
   }
 
   /**
-   * Retrieve all expense and income categories
+   * Retrieve all expense and income categories.
    */
   public async fetchCategories(forceRefresh: boolean = false): Promise<WalletCategoryItem[]> {
     const isCacheExpired = Date.now() - this.cacheLastUpdatedTimestamp > this.cacheDurationMilliseconds;
@@ -191,7 +237,7 @@ export class WalletMcpClientService {
   }
 
   /**
-   * Retrieve all budgets
+   * Retrieve all budgets.
    * @param includeClosed If false (default), archived or closed budgets are filtered out
    */
   public async fetchBudgets(includeClosed: boolean = false): Promise<WalletBudgetItem[]> {
@@ -265,7 +311,6 @@ export class WalletMcpClientService {
       return currentTimestamp.toISOString();
     }
 
-    // Check if the timestamp has midnight UTC (00:00:00.000Z)
     const isMidnightUtc =
       parsedDate.getUTCHours() === 0 &&
       parsedDate.getUTCMinutes() === 0 &&
@@ -282,7 +327,9 @@ export class WalletMcpClientService {
   }
 
   /**
-   * Create one or more transaction records in Wallet
+   * Create one or more transaction records in Wallet.
+   * A write is successful only when the MCP response contains positive, internally consistent
+   * evidence that every submitted record was committed. Unverifiable responses are UNKNOWN.
    */
   public async createRecords(recordsPayload: CreateRecordInputPayload[]): Promise<WalletCreateRecordsResponse> {
     const sanitizedRecordPayloadList = recordsPayload.map(recordItem => {
@@ -310,8 +357,137 @@ export class WalletMcpClientService {
       sanitizedRecords: sanitizedRecordPayloadList,
     });
 
-    return await this.callMcpTool<WalletCreateRecordsResponse>('create_records', {
-      records: sanitizedRecordPayloadList,
-    });
+    let createRecordsResult: unknown;
+    try {
+      createRecordsResult = await this.callMcpTool<unknown>('create_records', {
+        records: sanitizedRecordPayloadList,
+      });
+    } catch (error) {
+      if (error instanceof WalletMcpRequestError) {
+        throw error;
+      }
+
+      throw new WalletMcpRequestError(
+        `[error] MCP Tool 'create_records' returned an unclassified result-processing failure`,
+        'UNKNOWN'
+      );
+    }
+
+    return this.validateCreateRecordsResponse(createRecordsResult, sanitizedRecordPayloadList.length);
+  }
+
+  private validateCreateRecordsResponse(
+    createRecordsResult: unknown,
+    expectedRecordCount: number
+  ): WalletCreateRecordsResponse {
+    if (!createRecordsResult || typeof createRecordsResult !== 'object' || Array.isArray(createRecordsResult)) {
+      throw new WalletMcpRequestError(
+        `[error] MCP Tool 'create_records' returned an unverifiable response`,
+        'UNKNOWN'
+      );
+    }
+
+    const typedResult = createRecordsResult as WalletCreateRecordsResponse;
+    const summary = typedResult.summary;
+    const results = typedResult.results;
+    const hasSummary = summary !== undefined;
+    const hasResults = Array.isArray(results);
+
+    if (!hasSummary && !hasResults) {
+      throw new WalletMcpRequestError(
+        `[error] MCP Tool 'create_records' returned no recognized success evidence`,
+        'UNKNOWN'
+      );
+    }
+
+    if (hasSummary) {
+      const summaryNumbers = [summary?.total, summary?.succeeded, summary?.failed];
+      const summaryIsValid = summaryNumbers.every(
+        value => typeof value === 'number' && Number.isInteger(value) && value >= 0
+      );
+
+      if (
+        !summaryIsValid ||
+        summary?.total !== expectedRecordCount ||
+        (summary?.succeeded ?? 0) + (summary?.failed ?? 0) !== summary?.total
+      ) {
+        throw new WalletMcpRequestError(
+          `[error] MCP Tool 'create_records' returned an invalid or mismatched summary`,
+          'UNKNOWN'
+        );
+      }
+    }
+
+    let resultSuccessCount = 0;
+    let resultFailureCount = 0;
+
+    if (hasResults) {
+      if (results.length !== expectedRecordCount) {
+        throw new WalletMcpRequestError(
+          `[error] MCP Tool 'create_records' returned an unexpected number of per-record results`,
+          'UNKNOWN'
+        );
+      }
+
+      const invalidResultShape = results.some(result => !result || typeof result.success !== 'boolean');
+      if (invalidResultShape) {
+        throw new WalletMcpRequestError(
+          `[error] MCP Tool 'create_records' returned invalid per-record results`,
+          'UNKNOWN'
+        );
+      }
+
+      resultSuccessCount = results.filter(result => result.success === true).length;
+      resultFailureCount = results.length - resultSuccessCount;
+    }
+
+    if (
+      hasSummary &&
+      hasResults &&
+      (
+        summary?.succeeded !== resultSuccessCount ||
+        summary?.failed !== resultFailureCount
+      )
+    ) {
+      throw new WalletMcpRequestError(
+        `[error] MCP Tool 'create_records' returned inconsistent summary and per-record results`,
+        'UNKNOWN'
+      );
+    }
+
+    const definitiveFailureCount = hasSummary
+      ? summary?.failed ?? 0
+      : resultFailureCount;
+
+    if (definitiveFailureCount > 0) {
+      const firstFailureDetail = hasResults
+        ? results.find(result => result.success === false)?.error
+        : undefined;
+      throw new WalletMcpRequestError(
+        `[error] MCP Tool 'create_records' rejected ${definitiveFailureCount} record(s)` +
+          (firstFailureDetail ? `: ${firstFailureDetail}` : ''),
+        'DEFINITIVE_FAILURE'
+      );
+    }
+
+    const summaryConfirmsFullSuccess = Boolean(
+      hasSummary &&
+      summary?.succeeded === expectedRecordCount &&
+      summary?.failed === 0
+    );
+    const resultsConfirmFullSuccess = Boolean(
+      hasResults &&
+      resultSuccessCount === expectedRecordCount &&
+      resultFailureCount === 0
+    );
+
+    if (!summaryConfirmsFullSuccess && !resultsConfirmFullSuccess) {
+      throw new WalletMcpRequestError(
+        `[error] MCP Tool 'create_records' did not provide positive evidence for all ${expectedRecordCount} submitted record(s)`,
+        'UNKNOWN'
+      );
+    }
+
+    return typedResult;
   }
 }
