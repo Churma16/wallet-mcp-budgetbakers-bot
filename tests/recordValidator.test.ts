@@ -1,5 +1,6 @@
 import assert from 'node:assert';
 import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
+import { indonesianDictionary, englishDictionary } from '../src/i18n/index.js';
 import { CreateRecordInputPayload, WalletAccountItem } from '../src/types/walletTypes.js';
 
 console.log('[TEST] Starting Record Validator Account Resolution Tests...');
@@ -149,6 +150,32 @@ function validate(accountId: string, accountList: WalletAccountItem[] = accounts
     result.accountResolutionIssues[0].candidates.map(candidate => candidate.id),
     ['acc-bca-personal', 'acc-bca-business']
   );
+}
+
+{
+  const unresolvedId = indonesianDictionary.errors.accountResolutionUnresolved(1, 'Tidak Ada');
+  assert(unresolvedId.includes('Transaksi #1'));
+  assert(unresolvedId.includes('Tidak Ada'));
+
+  const ambiguousId = indonesianDictionary.errors.accountResolutionAmbiguous(2, 'BCA', ['BCA Personal', 'BCA Business']);
+  assert(ambiguousId.includes('Kandidat: BCA Personal, BCA Business'));
+  const ambiguousIdWithoutCandidates = indonesianDictionary.errors.accountResolutionAmbiguous(3, '', []);
+  assert(ambiguousIdWithoutCandidates.includes('(kosong)'));
+  assert(ambiguousIdWithoutCandidates.includes('tidak dapat dipilih secara aman'));
+  assert(indonesianDictionary.errors.accountResolutionFallback.includes('tidak dapat ditentukan secara aman'));
+}
+
+{
+  const unresolvedEn = englishDictionary.errors.accountResolutionUnresolved(1, 'Missing');
+  assert(unresolvedEn.includes('Transaction #1'));
+  assert(unresolvedEn.includes('Missing'));
+
+  const ambiguousEn = englishDictionary.errors.accountResolutionAmbiguous(2, 'BCA', ['BCA Personal', 'BCA Business']);
+  assert(ambiguousEn.includes('Candidates: BCA Personal, BCA Business'));
+  const ambiguousEnWithoutCandidates = englishDictionary.errors.accountResolutionAmbiguous(3, '', []);
+  assert(ambiguousEnWithoutCandidates.includes('(empty)'));
+  assert(ambiguousEnWithoutCandidates.includes('cannot be selected safely'));
+  assert(englishDictionary.errors.accountResolutionFallback.includes('could not be determined safely'));
 }
 
 console.log('[PASS] Record validator account resolution tests passed.');
