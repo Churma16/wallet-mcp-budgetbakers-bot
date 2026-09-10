@@ -24,6 +24,10 @@ export function isWalletMcpDispatchOutcomeUnknown(error: unknown): boolean {
   return error instanceof WalletMcpRequestError && error.dispatchOutcome === 'UNKNOWN';
 }
 
+export function isWalletMcpDefinitiveFailure(error: unknown): boolean {
+  return error instanceof WalletMcpRequestError && error.dispatchOutcome === 'DEFINITIVE_FAILURE';
+}
+
 export class WalletMcpClientService {
   private readonly httpClient: AxiosInstance;
   private cachedAccountList: WalletAccountItem[] = [];
@@ -324,8 +328,8 @@ export class WalletMcpClientService {
 
   /**
    * Create one or more transaction records in Wallet.
-   * The response is validated because Wallet MCP batch operations can report per-item failures
-   * without failing the JSON-RPC request itself.
+   * A write is successful only when the MCP response contains positive, internally consistent
+   * evidence that every submitted record was committed. Unverifiable responses are UNKNOWN.
    */
   public async createRecords(recordsPayload: CreateRecordInputPayload[]): Promise<WalletCreateRecordsResponse> {
     const sanitizedRecordPayloadList = recordsPayload.map(recordItem => {
@@ -353,22 +357,115 @@ export class WalletMcpClientService {
       sanitizedRecords: sanitizedRecordPayloadList,
     });
 
-    const createRecordsResult = await this.callMcpTool<WalletCreateRecordsResponse>('create_records', {
-      records: sanitizedRecordPayloadList,
-    });
+    let createRecordsResult: unknown;
+    try {
+      createRecordsResult = await this.callMcpTool<unknown>('create_records', {
+        records: sanitizedRecordPayloadList,
+      });
+    } catch (error) {
+      if (error instanceof WalletMcpRequestError) {
+        throw error;
+      }
 
-    const failedResults = createRecordsResult.results?.filter(result => result.success === false) ?? [];
-    const failedCount = Math.max(createRecordsResult.summary?.failed ?? 0, failedResults.length);
-
-    if (failedCount > 0) {
-      const firstFailureDetail = failedResults[0]?.error;
       throw new WalletMcpRequestError(
-        `[error] MCP Tool 'create_records' rejected ${failedCount} record(s)` +
-          (firstFailureDetail ? `: ${firstFailureDetail}` : ''),
-        'DEFINITIVE_FAILURE'
+        `[error] MCP Tool 'create_records' returned an unclassified result-processing failure`,
+        'UNKNOWN'
       );
     }
 
-    return createRecordsResult;
+    return this.validateCreateRecordsResponse(createRecordsResult, sanitizedRecordPayloadList.length);
+  }
+
+  private validateCreateRecordsResponse(
+    createRecordsResult: unknown,
+    expectedRecordCount: number
+  ): WalletCreateRecordsResponse {
+    if (!createRecordsResult || typeof createRecordsResult !== 'object' || Array.isArray(createRecordsResult)) {
+      throw new WalletMcpRequestError(
+        `[error] MCP Tool 'create_records' returned an unverifiable response`,
+        'UNKNOWN'
+      );
+    }
+
+    const typedResult = createRecordsResult as WalletCreateRecordsResponse;
+    const summary = typedResult.summary;
+    const results = typedResult.results;
+
+    const summaryIsPresent = summary !== undefined;
+    const resultsArePresent = Array.isArray(results);
+
+    if (summaryIsPresent) {
+      const summaryIsValid =
+        typeof summary?.total === 'number' &&
+        typeof summary?.succeeded === 'number' &&
+        typeof summary?.failed === 'number';
+
+      if (!summaryIsValid) {
+        throw new WalletMcpRequestError(
+          `[error] MCP Tool 'create_records' returned an invalid summary`,
+          'UNKNOWN'
+        );
+      }
+
+      if ((summary?.failed ?? 0) > 0) {
+        throw new WalletMcpRequestError(
+          `[error] MCP Tool 'create_records' rejected ${summary?.failed} record(s)`,
+          'DEFINITIVE_FAILURE'
+        );
+      }
+    }
+
+    if (resultsArePresent) {
+      const invalidResultShape = results.some(result => !result || typeof result.success !== 'boolean');
+      if (invalidResultShape) {
+        throw new WalletMcpRequestError(
+          `[error] MCP Tool 'create_records' returned invalid per-record results`,
+          'UNKNOWN'
+        );
+      }
+
+      const failedResults = results.filter(result => result.success === false);
+      if (failedResults.length > 0) {
+        const firstFailureDetail = failedResults[0]?.error;
+        throw new WalletMcpRequestError(
+          `[error] MCP Tool 'create_records' rejected ${failedResults.length} record(s)` +
+            (firstFailureDetail ? `: ${firstFailureDetail}` : ''),
+          'DEFINITIVE_FAILURE'
+        );
+      }
+    }
+
+    const summaryConfirmsFullSuccess = Boolean(
+      summaryIsPresent &&
+      summary?.total === expectedRecordCount &&
+      summary?.succeeded === expectedRecordCount &&
+      summary?.failed === 0
+    );
+
+    const resultsConfirmFullSuccess = Boolean(
+      resultsArePresent &&
+      results?.length === expectedRecordCount &&
+      results.every(result => result.success === true)
+    );
+
+    if (!summaryConfirmsFullSuccess && !resultsConfirmFullSuccess) {
+      throw new WalletMcpRequestError(
+        `[error] MCP Tool 'create_records' did not provide positive evidence for all ${expectedRecordCount} submitted record(s)`,
+        'UNKNOWN'
+      );
+    }
+
+    if (
+      summaryIsPresent &&
+      resultsArePresent &&
+      (!summaryConfirmsFullSuccess || !resultsConfirmFullSuccess)
+    ) {
+      throw new WalletMcpRequestError(
+        `[error] MCP Tool 'create_records' returned inconsistent success evidence`,
+        'UNKNOWN'
+      );
+    }
+
+    return typedResult;
   }
 }
