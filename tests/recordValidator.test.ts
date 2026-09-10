@@ -1,0 +1,93 @@
+import assert from 'node:assert';
+import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
+import { CreateRecordInputPayload, WalletAccountItem } from '../src/types/walletTypes.js';
+
+console.log('[TEST] Starting Record Validator Account Resolution Tests...');
+
+const accounts: WalletAccountItem[] = [
+  { id: 'acc-bca-personal', name: 'BCA Personal', bankAccountNumber: '1234567890' },
+  { id: 'acc-bca-business', name: 'BCA Business', bankAccountNumber: '9876567890' },
+  { id: 'acc-cash', name: 'Cash' },
+];
+
+function createRecord(accountId: string): CreateRecordInputPayload {
+  return {
+    accountId,
+    amount: -50_000,
+    recordDate: '2026-09-10T12:00:00Z',
+  };
+}
+
+function validate(accountId: string) {
+  return validateAndSanitizeFinancialRecords([createRecord(accountId)], accounts, []);
+}
+
+{
+  const result = validate('missing-account');
+  assert.equal(result.isValid, false);
+  assert.equal(result.sanitizedRecords.length, 0);
+  assert.deepEqual(result.accountResolutionIssues, [
+    {
+      recordIndex: 0,
+      accountHint: 'missing-account',
+      reason: 'UNRESOLVED',
+      candidates: [],
+    },
+  ]);
+}
+
+{
+  const result = validate('BCA');
+  assert.equal(result.isValid, false);
+  assert.equal(result.sanitizedRecords.length, 0);
+  assert.equal(result.accountResolutionIssues.length, 1);
+  assert.equal(result.accountResolutionIssues[0].reason, 'AMBIGUOUS');
+  assert.deepEqual(
+    result.accountResolutionIssues[0].candidates.map(candidate => candidate.id),
+    ['acc-bca-personal', 'acc-bca-business']
+  );
+}
+
+{
+  const result = validate('acc-bca-personal');
+  assert.equal(result.isValid, true);
+  assert.equal(result.sanitizedRecords[0].accountId, 'acc-bca-personal');
+  assert.equal(result.accountResolutionIssues.length, 0);
+}
+
+{
+  const result = validate('bca personal');
+  assert.equal(result.isValid, true);
+  assert.equal(result.sanitizedRecords[0].accountId, 'acc-bca-personal');
+}
+
+{
+  const result = validate('3');
+  assert.equal(result.isValid, true);
+  assert.equal(result.sanitizedRecords[0].accountId, 'acc-cash');
+}
+
+{
+  const result = validate('Personal');
+  assert.equal(result.isValid, true);
+  assert.equal(result.sanitizedRecords[0].accountId, 'acc-bca-personal');
+}
+
+{
+  const result = validate('4567890');
+  assert.equal(result.isValid, true);
+  assert.equal(result.sanitizedRecords[0].accountId, 'acc-bca-personal');
+}
+
+{
+  const result = validate('67890');
+  assert.equal(result.isValid, false);
+  assert.equal(result.sanitizedRecords.length, 0);
+  assert.equal(result.accountResolutionIssues[0].reason, 'AMBIGUOUS');
+  assert.deepEqual(
+    result.accountResolutionIssues[0].candidates.map(candidate => candidate.id),
+    ['acc-bca-personal', 'acc-bca-business']
+  );
+}
+
+console.log('[PASS] Record validator account resolution tests passed.');
