@@ -206,5 +206,16 @@ export const indonesianDictionary: ResponseDictionary = {
     validationRejected(errorMessage: string): string {
       return `⚠️ Transaksi tidak dapat disimpan karena data tidak valid:\n${errorMessage}`;
     },
+    accountResolutionUnresolved(recordNumber: number, accountHint: string): string {
+      const displayHint = accountHint || '(kosong)';
+      return `Transaksi #${recordNumber}: Akun "${displayHint}" tidak dapat ditemukan secara pasti.`;
+    },
+    accountResolutionAmbiguous(recordNumber: number, accountHint: string, candidateNames: string[]): string {
+      const displayHint = accountHint || '(kosong)';
+      return candidateNames.length > 0
+        ? `Transaksi #${recordNumber}: Akun "${displayHint}" ambigu. Kandidat: ${candidateNames.join(', ')}.`
+        : `Transaksi #${recordNumber}: Akun "${displayHint}" ambigu dan tidak dapat dipilih secara aman.`;
+    },
+    accountResolutionFallback: 'Akun transaksi tidak dapat ditentukan secara aman.',
   },
 };
