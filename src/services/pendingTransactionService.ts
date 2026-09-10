@@ -135,4 +135,14 @@ export class PendingTransactionService {
       }
     }
   }
+
+  /**
+   * Restores (re-adds) previously resolved transactions back into the pending queue.
+   * Used for error recovery when MCP dispatch fails.
+   */
+  public restorePendingTransactions(items: PendingTransactionItem[]): void {
+    for (const item of items) {
+      this.pendingTransactionMap.set(item.ticketId, item);
+    }
+  }
 }

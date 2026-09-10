@@ -45,17 +45,17 @@ export class PendingActionHandler {
   ): Promise<boolean> {
     let itemsToRecord: PendingTransactionItem[] = [];
 
+    // PHASE 1: Retrieve items WITHOUT deleting them yet (deferred deletion pattern)
     if (confirmationIntent.targetScope === 'ALL') {
-      itemsToRecord = this.pendingTransactionManager.resolveAllPendingTransactions();
+      itemsToRecord = this.pendingTransactionManager.getAllPendingTransactions();
     } else if (typeof confirmationIntent.targetScope === 'number') {
-      const singleItem = this.pendingTransactionManager.resolvePendingTransaction(confirmationIntent.targetScope);
+      const singleItem = this.pendingTransactionManager.getPendingTransaction(confirmationIntent.targetScope);
       if (singleItem) {
         itemsToRecord.push(singleItem);
       }
     } else {
       const latestItem = this.pendingTransactionManager.getLatestPendingTransaction();
       if (latestItem) {
-        this.pendingTransactionManager.resolvePendingTransaction(latestItem.ticketId);
         itemsToRecord.push(latestItem);
       }
     }
@@ -64,7 +64,7 @@ export class PendingActionHandler {
       await this.messagingGateway.sendMessage(
         event.channel,
         event.chatIdentifier,
-        '⚠️ Tiket transaksi pending tersebut tidak ditemukan atau sudah kadaluarsa.'
+        '[WARN] Tiket transaksi pending tersebut tidak ditemukan atau sudah kadaluarsa.'
       );
       return true;
     }
@@ -111,20 +111,45 @@ export class PendingActionHandler {
       }
     }
 
+    // PHASE 2: Attempt MCP dispatch with error recovery
     applicationLogger.mcp(`Recording ${recordsToCreate.length} confirmed transaction(s) to Wallet MCP...`);
-    await this.walletMcpClient.createRecords(recordsToCreate);
+    try {
+      await this.walletMcpClient.createRecords(recordsToCreate);
 
-    const replyMessage = itemsToRecord.length === 1
-      ? formatPendingConfirmationSuccess(itemsToRecord[0])
-      : formatBulkPendingConfirmationSuccess(itemsToRecord);
+      // PHASE 3: Only delete items if MCP dispatch succeeded
+      for (const item of itemsToRecord) {
+        this.pendingTransactionManager.resolvePendingTransaction(item.ticketId);
+      }
 
-    await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
-    const processingDurationMs = Date.now() - processingStartTimestamp;
-    applicationLogger.success(
-      `[${event.channel.toUpperCase()}] Confirmed & recorded ${recordsToCreate.length} pending transaction(s) to Wallet (${processingDurationMs}ms).`
-    );
+      const replyMessage = itemsToRecord.length === 1
+        ? formatPendingConfirmationSuccess(itemsToRecord[0])
+        : formatBulkPendingConfirmationSuccess(itemsToRecord);
 
-    return true;
+      await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
+      const processingDurationMs = Date.now() - processingStartTimestamp;
+      applicationLogger.success(
+        `[${event.channel.toUpperCase()}] Confirmed & recorded ${recordsToCreate.length} pending transaction(s) to Wallet (${processingDurationMs}ms).`
+      );
+
+      return true;
+    } catch (error) {
+      // ERROR RECOVERY: Items remain in pending queue, user receives failure notification with retry instructions
+      applicationLogger.error(
+        `[${event.channel.toUpperCase()}] Failed to record ${recordsToCreate.length} pending transaction(s) to Wallet MCP: ${error instanceof Error ? error.message : String(error)}`
+      );
+
+      let errorMessage = '[ERROR] Gagal merekam transaksi ke Wallet. ';
+      
+      if (itemsToRecord.length === 1) {
+        errorMessage += `Tiket #${itemsToRecord[0].ticketId} tetap tersimpan di antrian. Ketik "ya" untuk mencoba lagi atau "tidak" untuk membatalkan.`;
+      } else {
+        errorMessage += `${itemsToRecord.length} transaksi tetap tersimpan di antrian. Ketik "ya" untuk mencoba lagi atau "tidak" untuk membatalkan.`;
+      }
+
+      await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, errorMessage);
+
+      return true;
+    }
   }
 
   private async handleRejectAction(
