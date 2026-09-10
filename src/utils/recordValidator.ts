@@ -35,6 +35,35 @@ function toAccountResolutionCandidate(account: WalletAccountItem): AccountResolu
   };
 }
 
+function findBankAccountMatches(
+  rawAccountHint: string,
+  availableAccountList: WalletAccountItem[]
+): WalletAccountItem[] {
+  const numericDigitsOnly = rawAccountHint.replace(/\D/g, '');
+  if (numericDigitsOnly.length < 4) {
+    return [];
+  }
+
+  return availableAccountList.filter(account => {
+    if (!account.bankAccountNumber) {
+      return false;
+    }
+
+    const cleanAccountDigits = account.bankAccountNumber.replace(/\D/g, '');
+    return cleanAccountDigits === numericDigitsOnly ||
+      cleanAccountDigits.endsWith(numericDigitsOnly) ||
+      numericDigitsOnly.endsWith(cleanAccountDigits);
+  });
+}
+
+function uniqueAccountCandidates(accounts: WalletAccountItem[]): AccountResolutionCandidate[] {
+  const uniqueAccounts = new Map<string, WalletAccountItem>();
+  for (const account of accounts) {
+    uniqueAccounts.set(account.id, account);
+  }
+  return Array.from(uniqueAccounts.values()).map(toAccountResolutionCandidate);
+}
+
 /**
  * Validates and sanitizes financial records extracted by AI before dispatching to Wallet MCP.
  * Prevents hallucinatory account IDs, zero/infinite amounts, out-of-range values, and corrupt dates.
@@ -94,6 +123,7 @@ export function validateAndSanitizeFinancialRecords(
     // 2. Account ID Resolution & Validation (supports UUID, 1-based index number, exact name, unique partial name, or bank account number)
     let resolvedAccountId: string | undefined = undefined;
     const rawAccountIdStr = String(currentRecord.accountId ?? '').trim();
+    const bankAccountMatches = findBankAccountMatches(rawAccountIdStr, availableAccountList);
 
     // Strategy A: Exact UUID match
     const exactAccountMatch = availableAccountList.find(account => account.id === rawAccountIdStr);
@@ -101,21 +131,61 @@ export function validateAndSanitizeFinancialRecords(
       resolvedAccountId = exactAccountMatch.id;
     }
 
-    // Strategy B: 1-based index number (e.g. 1, 2, "1", "2")
+    // Strategy B: Numeric hints can be either 1-based indexes or bank account numbers.
+    // Resolve only when both interpretations agree or only one interpretation is valid.
     if (!resolvedAccountId && /^\d+$/.test(rawAccountIdStr)) {
       const accountIndex = Number.parseInt(rawAccountIdStr, 10) - 1;
-      if (accountIndex >= 0 && accountIndex < availableAccountList.length) {
-        resolvedAccountId = availableAccountList[accountIndex].id;
+      const indexedAccount = accountIndex >= 0 && accountIndex < availableAccountList.length
+        ? availableAccountList[accountIndex]
+        : undefined;
+
+      if (bankAccountMatches.length > 1) {
+        accountResolutionIssues.push({
+          recordIndex,
+          accountHint: rawAccountIdStr,
+          reason: 'AMBIGUOUS',
+          candidates: uniqueAccountCandidates([
+            ...(indexedAccount ? [indexedAccount] : []),
+            ...bankAccountMatches,
+          ]),
+        });
+        continue;
+      }
+
+      if (bankAccountMatches.length === 1) {
+        const bankMatchedAccount = bankAccountMatches[0];
+        if (indexedAccount && indexedAccount.id !== bankMatchedAccount.id) {
+          accountResolutionIssues.push({
+            recordIndex,
+            accountHint: rawAccountIdStr,
+            reason: 'AMBIGUOUS',
+            candidates: uniqueAccountCandidates([indexedAccount, bankMatchedAccount]),
+          });
+          continue;
+        }
+        resolvedAccountId = bankMatchedAccount.id;
+      } else if (indexedAccount) {
+        resolvedAccountId = indexedAccount.id;
       }
     }
 
-    // Strategy C: Exact name match (case-insensitive)
+    // Strategy C: Exact name match (case-insensitive), only when exactly one account matches
     if (!resolvedAccountId) {
-      const nameAccountMatch = availableAccountList.find(
-        account => account.name.toLowerCase() === rawAccountIdStr.toLowerCase()
+      const normalizedAccountHint = rawAccountIdStr.toLowerCase();
+      const exactNameMatches = availableAccountList.filter(
+        account => account.name.toLowerCase() === normalizedAccountHint
       );
-      if (nameAccountMatch) {
-        resolvedAccountId = nameAccountMatch.id;
+
+      if (exactNameMatches.length === 1) {
+        resolvedAccountId = exactNameMatches[0].id;
+      } else if (exactNameMatches.length > 1) {
+        accountResolutionIssues.push({
+          recordIndex,
+          accountHint: rawAccountIdStr,
+          reason: 'AMBIGUOUS',
+          candidates: exactNameMatches.map(toAccountResolutionCandidate),
+        });
+        continue;
       }
     }
 
@@ -141,32 +211,17 @@ export function validateAndSanitizeFinancialRecords(
       }
     }
 
-    // Strategy E: Bank account number match, only when exactly one account matches
-    if (!resolvedAccountId && rawAccountIdStr.length >= 4) {
-      const numericDigitsOnly = rawAccountIdStr.replace(/\D/g, '');
-      if (numericDigitsOnly.length >= 4) {
-        const bankAccountMatches = availableAccountList.filter(account => {
-          if (!account.bankAccountNumber) {
-            return false;
-          }
-          const cleanAccountDigits = account.bankAccountNumber.replace(/\D/g, '');
-          return cleanAccountDigits === numericDigitsOnly ||
-            cleanAccountDigits.endsWith(numericDigitsOnly) ||
-            numericDigitsOnly.endsWith(cleanAccountDigits);
-        });
-
-        if (bankAccountMatches.length === 1) {
-          resolvedAccountId = bankAccountMatches[0].id;
-        } else if (bankAccountMatches.length > 1) {
-          accountResolutionIssues.push({
-            recordIndex,
-            accountHint: rawAccountIdStr,
-            reason: 'AMBIGUOUS',
-            candidates: bankAccountMatches.map(toAccountResolutionCandidate),
-          });
-          continue;
-        }
-      }
+    // Strategy E: Bank account number match for non-numeric or otherwise unresolved hints.
+    if (!resolvedAccountId && bankAccountMatches.length === 1) {
+      resolvedAccountId = bankAccountMatches[0].id;
+    } else if (!resolvedAccountId && bankAccountMatches.length > 1) {
+      accountResolutionIssues.push({
+        recordIndex,
+        accountHint: rawAccountIdStr,
+        reason: 'AMBIGUOUS',
+        candidates: bankAccountMatches.map(toAccountResolutionCandidate),
+      });
+      continue;
     }
 
     // Fail closed when account resolution is not deterministic.
