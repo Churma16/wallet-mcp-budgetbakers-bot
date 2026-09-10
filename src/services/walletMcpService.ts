@@ -8,6 +8,22 @@ import {
 } from '../types/walletTypes.js';
 import { applicationLogger } from '../utils/logger.js';
 
+export type WalletMcpDispatchOutcome = 'DEFINITIVE_FAILURE' | 'UNKNOWN';
+
+export class WalletMcpRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly dispatchOutcome: WalletMcpDispatchOutcome
+  ) {
+    super(message);
+    this.name = 'WalletMcpRequestError';
+  }
+}
+
+export function isWalletMcpDispatchOutcomeUnknown(error: unknown): boolean {
+  return error instanceof WalletMcpRequestError && error.dispatchOutcome === 'UNKNOWN';
+}
+
 export class WalletMcpClientService {
   private readonly httpClient: AxiosInstance;
   private cachedAccountList: WalletAccountItem[] = [];
@@ -28,7 +44,9 @@ export class WalletMcpClientService {
   }
 
   /**
-   * Send a generic JSON-RPC 2.0 request to the Wallet MCP Server
+   * Send a generic JSON-RPC 2.0 request to the Wallet MCP Server.
+   * Transport failures where the server may already have received/committed the request
+   * are marked UNKNOWN so callers do not blindly retry writes.
    */
   private async executeJsonRpcRequest<TResult>(methodName: string, requestParameters: Record<string, unknown> = {}): Promise<TResult> {
     const jsonRpcPayload = {
@@ -52,7 +70,10 @@ export class WalletMcpClientService {
           error: responseBody.error,
           payloadSent: jsonRpcPayload,
         });
-        throw new Error(`[error] MCP JSON-RPC Error: ${responseBody.error.message || JSON.stringify(responseBody.error)}`);
+        throw new WalletMcpRequestError(
+          `[error] MCP JSON-RPC Error: ${responseBody.error.message || JSON.stringify(responseBody.error)}`,
+          'DEFINITIVE_FAILURE'
+        );
       }
 
       applicationLogger.fileDetail('mcp', `Received Wallet MCP Response [${methodName}]`, {
@@ -67,18 +88,37 @@ export class WalletMcpClientService {
         payloadSent: jsonRpcPayload,
       });
 
-      if (axios.isAxiosError(error) && error.response) {
-        const errorDataString = typeof error.response.data === 'object' 
-          ? JSON.stringify(error.response.data) 
-          : String(error.response.data);
-        throw new Error(`[error] Wallet MCP HTTP ${error.response.status}: ${errorDataString}`);
+      if (error instanceof WalletMcpRequestError) {
+        throw error;
       }
+
+      if (axios.isAxiosError(error)) {
+        if (error.response) {
+          const errorDataString = typeof error.response.data === 'object'
+            ? JSON.stringify(error.response.data)
+            : String(error.response.data);
+          const statusCode = error.response.status;
+          const dispatchOutcome: WalletMcpDispatchOutcome =
+            statusCode === 408 || statusCode >= 500 ? 'UNKNOWN' : 'DEFINITIVE_FAILURE';
+
+          throw new WalletMcpRequestError(
+            `[error] Wallet MCP HTTP ${statusCode}: ${errorDataString}`,
+            dispatchOutcome
+          );
+        }
+
+        throw new WalletMcpRequestError(
+          `[error] Wallet MCP transport failure: ${error.message}`,
+          'UNKNOWN'
+        );
+      }
+
       throw error;
     }
   }
 
   /**
-   * Helper to execute a tool call via tools/call and unpack text content
+   * Helper to execute a tool call via tools/call and unpack text content.
    */
   public async callMcpTool<TToolOutput>(toolName: string, toolArguments: Record<string, unknown> = {}): Promise<TToolOutput> {
     const toolCallResult = await this.executeJsonRpcRequest<{
@@ -92,7 +132,10 @@ export class WalletMcpClientService {
 
     if (toolCallResult.isError) {
       const errorMessage = toolCallResult.content?.map(contentItem => contentItem.text).join('\n') || 'Unknown tool error';
-      throw new Error(`[error] MCP Tool '${toolName}' failed: ${errorMessage}`);
+      throw new WalletMcpRequestError(
+        `[error] MCP Tool '${toolName}' failed: ${errorMessage}`,
+        'DEFINITIVE_FAILURE'
+      );
     }
 
     if (toolCallResult.structuredContent !== undefined) {
@@ -112,14 +155,14 @@ export class WalletMcpClientService {
   }
 
   /**
-   * Verify client profile and connection to Wallet MCP
+   * Verify client profile and connection to Wallet MCP.
    */
   public async verifyClientProfile(): Promise<unknown> {
     return await this.callMcpTool('get_client_profile');
   }
 
   /**
-   * Retrieve all bank accounts and wallets
+   * Retrieve all bank accounts and wallets.
    */
   public async fetchAccounts(forceRefresh: boolean = false): Promise<WalletAccountItem[]> {
     const isCacheExpired = Date.now() - this.cacheLastUpdatedTimestamp > this.cacheDurationMilliseconds;
@@ -129,8 +172,7 @@ export class WalletMcpClientService {
     }
 
     const fetchedAccountData = await this.callMcpTool<any>('get_accounts');
-    
-    // Normalize response if it is wrapped in an array or records property
+
     const rawAccountArray: any[] = Array.isArray(fetchedAccountData)
       ? fetchedAccountData
       : (fetchedAccountData?.accounts || fetchedAccountData?.items || []);
@@ -166,7 +208,7 @@ export class WalletMcpClientService {
   }
 
   /**
-   * Retrieve all expense and income categories
+   * Retrieve all expense and income categories.
    */
   public async fetchCategories(forceRefresh: boolean = false): Promise<WalletCategoryItem[]> {
     const isCacheExpired = Date.now() - this.cacheLastUpdatedTimestamp > this.cacheDurationMilliseconds;
@@ -191,7 +233,7 @@ export class WalletMcpClientService {
   }
 
   /**
-   * Retrieve all budgets
+   * Retrieve all budgets.
    * @param includeClosed If false (default), archived or closed budgets are filtered out
    */
   public async fetchBudgets(includeClosed: boolean = false): Promise<WalletBudgetItem[]> {
@@ -265,7 +307,6 @@ export class WalletMcpClientService {
       return currentTimestamp.toISOString();
     }
 
-    // Check if the timestamp has midnight UTC (00:00:00.000Z)
     const isMidnightUtc =
       parsedDate.getUTCHours() === 0 &&
       parsedDate.getUTCMinutes() === 0 &&
@@ -282,7 +323,9 @@ export class WalletMcpClientService {
   }
 
   /**
-   * Create one or more transaction records in Wallet
+   * Create one or more transaction records in Wallet.
+   * The response is validated because Wallet MCP batch operations can report per-item failures
+   * without failing the JSON-RPC request itself.
    */
   public async createRecords(recordsPayload: CreateRecordInputPayload[]): Promise<WalletCreateRecordsResponse> {
     const sanitizedRecordPayloadList = recordsPayload.map(recordItem => {
@@ -310,8 +353,22 @@ export class WalletMcpClientService {
       sanitizedRecords: sanitizedRecordPayloadList,
     });
 
-    return await this.callMcpTool<WalletCreateRecordsResponse>('create_records', {
+    const createRecordsResult = await this.callMcpTool<WalletCreateRecordsResponse>('create_records', {
       records: sanitizedRecordPayloadList,
     });
+
+    const failedResults = createRecordsResult.results?.filter(result => result.success === false) ?? [];
+    const failedCount = Math.max(createRecordsResult.summary?.failed ?? 0, failedResults.length);
+
+    if (failedCount > 0) {
+      const firstFailureDetail = failedResults[0]?.error;
+      throw new WalletMcpRequestError(
+        `[error] MCP Tool 'create_records' rejected ${failedCount} record(s)` +
+          (firstFailureDetail ? `: ${firstFailureDetail}` : ''),
+        'DEFINITIVE_FAILURE'
+      );
+    }
+
+    return createRecordsResult;
   }
 }
