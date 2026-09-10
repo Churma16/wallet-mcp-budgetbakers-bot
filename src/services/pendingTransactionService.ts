@@ -1,3 +1,6 @@
+import type { SupportedMessengerChannel } from './messaging/types.js';
+import type { CreateRecordInputPayload } from '../types/walletTypes.js';
+
 export interface PendingTransactionItem {
   ticketId: number;
   sourceType: 'EMAIL' | 'WHATSAPP';
@@ -20,11 +23,38 @@ export interface PendingTransactionItem {
   expiresAt: Date;
 }
 
+export interface PendingAccountSelectionCandidate {
+  id: string;
+  name: string;
+  currency?: string;
+  bankAccountNumber?: string;
+}
+
+export interface PendingAccountSelectionDraft {
+  ticketId: number;
+  sourceType: 'USER';
+  channel: SupportedMessengerChannel;
+  senderIdentifier: string;
+  chatIdentifier: string;
+  records: CreateRecordInputPayload[];
+  pendingRecordIndex: number;
+  accountHint: string;
+  candidateAccounts: PendingAccountSelectionCandidate[];
+  createdAt: Date;
+  expiresAt: Date;
+}
+
 export type PendingTransactionDispatchState = 'PENDING' | 'PROCESSING' | 'UNKNOWN';
+
+type AccountSelectionDraftUpdate = Partial<Pick<
+  PendingAccountSelectionDraft,
+  'records' | 'pendingRecordIndex' | 'accountHint' | 'candidateAccounts'
+>>;
 
 export class PendingTransactionService {
   private nextTicketSequentialId: number = 1;
   private readonly pendingTransactionMap: Map<number, PendingTransactionItem> = new Map();
+  private readonly pendingAccountSelectionDraftMap: Map<number, PendingAccountSelectionDraft> = new Map();
   private readonly dispatchStateMap: Map<number, PendingTransactionDispatchState> = new Map();
   private readonly completedRecordIndexesMap: Map<number, Set<number>> = new Map();
   private readonly defaultTimeToLiveMilliseconds: number = 24 * 60 * 60 * 1000; // 24 hours
@@ -55,6 +85,31 @@ export class PendingTransactionService {
   }
 
   /**
+   * Registers a user-originated transaction batch that is waiting for an account choice.
+   */
+  public addPendingAccountSelectionDraft(
+    itemData: Omit<PendingAccountSelectionDraft, 'ticketId' | 'createdAt' | 'expiresAt'>
+  ): PendingAccountSelectionDraft {
+    this.purgeExpiredTransactions();
+
+    const ticketId = this.nextTicketSequentialId++;
+    const createdAt = new Date();
+    const expiresAt = new Date(createdAt.getTime() + this.defaultTimeToLiveMilliseconds);
+    const pendingDraft: PendingAccountSelectionDraft = {
+      ...itemData,
+      records: itemData.records.map(record => ({ ...record })),
+      candidateAccounts: itemData.candidateAccounts.map(candidate => ({ ...candidate })),
+      ticketId,
+      createdAt,
+      expiresAt,
+    };
+
+    this.pendingAccountSelectionDraftMap.set(ticketId, pendingDraft);
+    this.dispatchStateMap.set(ticketId, 'PENDING');
+    return pendingDraft;
+  }
+
+  /**
    * Retrieves a pending transaction by its ticket ID.
    * This includes PROCESSING and UNKNOWN tickets for inspection/status reporting.
    */
@@ -63,12 +118,22 @@ export class PendingTransactionService {
     return this.pendingTransactionMap.get(ticketId);
   }
 
+  public getPendingAccountSelectionDraft(ticketId: number): PendingAccountSelectionDraft | undefined {
+    this.purgeExpiredTransactions();
+    return this.pendingAccountSelectionDraftMap.get(ticketId);
+  }
+
   /**
    * Retrieves all currently active pending transactions regardless of dispatch state.
    */
   public getAllPendingTransactions(): PendingTransactionItem[] {
     this.purgeExpiredTransactions();
     return Array.from(this.pendingTransactionMap.values());
+  }
+
+  public getAllPendingAccountSelectionDrafts(): PendingAccountSelectionDraft[] {
+    this.purgeExpiredTransactions();
+    return Array.from(this.pendingAccountSelectionDraftMap.values());
   }
 
   /**
@@ -81,6 +146,28 @@ export class PendingTransactionService {
       return undefined;
     }
     return items[items.length - 1];
+  }
+
+  public getLatestPendingAccountSelectionDraft(
+    channel: SupportedMessengerChannel,
+    chatIdentifier: string,
+    senderIdentifier: string
+  ): PendingAccountSelectionDraft | undefined {
+    this.purgeExpiredTransactions();
+    const drafts = Array.from(this.pendingAccountSelectionDraftMap.values());
+
+    for (let index = drafts.length - 1; index >= 0; index--) {
+      const draft = drafts[index];
+      if (
+        draft.channel === channel &&
+        draft.chatIdentifier === chatIdentifier &&
+        draft.senderIdentifier === senderIdentifier
+      ) {
+        return draft;
+      }
+    }
+
+    return undefined;
   }
 
   /**
@@ -96,6 +183,17 @@ export class PendingTransactionService {
 
     this.dispatchStateMap.set(ticketId, 'PROCESSING');
     return item;
+  }
+
+  public claimPendingAccountSelectionDraft(ticketId: number): PendingAccountSelectionDraft | undefined {
+    this.purgeExpiredTransactions();
+    const draft = this.pendingAccountSelectionDraftMap.get(ticketId);
+    if (!draft || this.dispatchStateMap.get(ticketId) !== 'PENDING') {
+      return undefined;
+    }
+
+    this.dispatchStateMap.set(ticketId, 'PROCESSING');
+    return draft;
   }
 
   /**
@@ -145,6 +243,39 @@ export class PendingTransactionService {
     }
   }
 
+  public releaseProcessingAccountSelectionDraft(ticketId: number): void {
+    if (
+      this.pendingAccountSelectionDraftMap.has(ticketId) &&
+      this.dispatchStateMap.get(ticketId) === 'PROCESSING'
+    ) {
+      this.dispatchStateMap.set(ticketId, 'PENDING');
+    }
+  }
+
+  public updatePendingAccountSelectionDraft(
+    ticketId: number,
+    update: AccountSelectionDraftUpdate
+  ): PendingAccountSelectionDraft | undefined {
+    const draft = this.pendingAccountSelectionDraftMap.get(ticketId);
+    if (!draft) {
+      return undefined;
+    }
+
+    const updatedDraft: PendingAccountSelectionDraft = {
+      ...draft,
+      ...update,
+      records: update.records
+        ? update.records.map(record => ({ ...record }))
+        : draft.records,
+      candidateAccounts: update.candidateAccounts
+        ? update.candidateAccounts.map(candidate => ({ ...candidate }))
+        : draft.candidateAccounts,
+    };
+
+    this.pendingAccountSelectionDraftMap.set(ticketId, updatedDraft);
+    return updatedDraft;
+  }
+
   /**
    * Marks a ticket UNKNOWN when the server-side commit outcome cannot be determined safely.
    * UNKNOWN tickets are intentionally not claimable for automatic retry.
@@ -155,8 +286,27 @@ export class PendingTransactionService {
     }
   }
 
+  public markPendingAccountSelectionDraftUnknown(ticketId: number): void {
+    if (this.pendingAccountSelectionDraftMap.has(ticketId)) {
+      this.dispatchStateMap.set(ticketId, 'UNKNOWN');
+    }
+  }
+
   public getPendingTransactionState(ticketId: number): PendingTransactionDispatchState | undefined {
     this.purgeExpiredTransactions();
+    if (!this.pendingTransactionMap.has(ticketId)) {
+      return undefined;
+    }
+    return this.dispatchStateMap.get(ticketId);
+  }
+
+  public getPendingAccountSelectionDraftState(
+    ticketId: number
+  ): PendingTransactionDispatchState | undefined {
+    this.purgeExpiredTransactions();
+    if (!this.pendingAccountSelectionDraftMap.has(ticketId)) {
+      return undefined;
+    }
     return this.dispatchStateMap.get(ticketId);
   }
 
@@ -188,6 +338,23 @@ export class PendingTransactionService {
     return this.pendingTransactionMap.size > 0;
   }
 
+  public hasPendingAccountSelectionDrafts(
+    channel?: SupportedMessengerChannel,
+    chatIdentifier?: string,
+    senderIdentifier?: string
+  ): boolean {
+    this.purgeExpiredTransactions();
+    if (!channel || !chatIdentifier || !senderIdentifier) {
+      return this.pendingAccountSelectionDraftMap.size > 0;
+    }
+
+    return Array.from(this.pendingAccountSelectionDraftMap.values()).some(draft =>
+      draft.channel === channel &&
+      draft.chatIdentifier === chatIdentifier &&
+      draft.senderIdentifier === senderIdentifier
+    );
+  }
+
   /**
    * Resolves (confirms and removes) a pending transaction by its ticket ID.
    */
@@ -199,14 +366,24 @@ export class PendingTransactionService {
     return item;
   }
 
+  public resolvePendingAccountSelectionDraft(
+    ticketId: number
+  ): PendingAccountSelectionDraft | undefined {
+    const draft = this.pendingAccountSelectionDraftMap.get(ticketId);
+    if (draft) {
+      this.removeTicketMetadata(ticketId);
+    }
+    return draft;
+  }
+
   /**
    * Resolves (confirms and removes) all currently pending transactions.
    */
   public resolveAllPendingTransactions(): PendingTransactionItem[] {
     const items = Array.from(this.pendingTransactionMap.values());
-    this.pendingTransactionMap.clear();
-    this.dispatchStateMap.clear();
-    this.completedRecordIndexesMap.clear();
+    for (const ticketId of this.pendingTransactionMap.keys()) {
+      this.removeTicketMetadata(ticketId);
+    }
     return items;
   }
 
@@ -221,6 +398,18 @@ export class PendingTransactionService {
 
     this.removeTicketMetadata(ticketId);
     return item;
+  }
+
+  public rejectPendingAccountSelectionDraft(
+    ticketId: number
+  ): PendingAccountSelectionDraft | undefined {
+    const draft = this.pendingAccountSelectionDraftMap.get(ticketId);
+    if (!draft || this.dispatchStateMap.get(ticketId) === 'PROCESSING') {
+      return undefined;
+    }
+
+    this.removeTicketMetadata(ticketId);
+    return draft;
   }
 
   /**
@@ -253,10 +442,20 @@ export class PendingTransactionService {
         this.removeTicketMetadata(ticketId);
       }
     }
+
+    for (const [ticketId, draft] of this.pendingAccountSelectionDraftMap.entries()) {
+      if (
+        draft.expiresAt.getTime() < currentTime &&
+        this.dispatchStateMap.get(ticketId) === 'PENDING'
+      ) {
+        this.removeTicketMetadata(ticketId);
+      }
+    }
   }
 
   private removeTicketMetadata(ticketId: number): void {
     this.pendingTransactionMap.delete(ticketId);
+    this.pendingAccountSelectionDraftMap.delete(ticketId);
     this.dispatchStateMap.delete(ticketId);
     this.completedRecordIndexesMap.delete(ticketId);
   }
