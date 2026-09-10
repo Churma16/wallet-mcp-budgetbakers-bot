@@ -259,6 +259,84 @@ const jagoMarketingEmail = evaluateEmailThroughGateOne(
 );
 assertCondition('Jago card marketing email rejected by Gate 1', !jagoMarketingEmail.passed && jagoMarketingEmail.reason === 'SUBJECT_BLACKLIST_KEYWORD_MATCH');
 
+// Case 8: Allowed domain as attacker-controlled parent substring (Issue #24)
+const maliciousSuffixSender = evaluateEmailThroughGateOne(
+  'Notifikasi Transaksi Livin by Mandiri: Debit Rekening',
+  'alert@bankmandiri.co.id.attacker-domain.com',
+  'Total Debet: Rp 50.000',
+  now,
+  startupCutoff,
+  new Set<string>()
+);
+assertCondition(
+  'Spoofed parent domain containing allowed bank domain is rejected',
+  !maliciousSuffixSender.passed && maliciousSuffixSender.reason === 'UNMATCHED_SENDER_DOMAIN'
+);
+
+// Case 9: Allowed domain only in local part (Issue #24)
+const localPartSpoofSender = evaluateEmailThroughGateOne(
+  'Notifikasi Transaksi Livin by Mandiri: Debit Rekening',
+  'bankmandiri.co.id@attacker-domain.com',
+  'Total Debet: Rp 50.000',
+  now,
+  startupCutoff,
+  new Set<string>()
+);
+assertCondition(
+  'Allowed bank domain appearing only in local part is rejected',
+  !localPartSpoofSender.passed && localPartSpoofSender.reason === 'UNMATCHED_SENDER_DOMAIN'
+);
+
+// Case 10: Display name contains allowlisted domain but address does not (Issue #24)
+const displayNameSpoofSender = evaluateEmailThroughGateOne(
+  'Notifikasi Transaksi Livin by Mandiri: Debit Rekening',
+  'bankmandiri.co.id Security <alert@attacker-domain.com>',
+  'Total Debet: Rp 50.000',
+  now,
+  startupCutoff,
+  new Set<string>()
+);
+assertCondition(
+  'Allowed bank domain appearing only in display name is rejected',
+  !displayNameSpoofSender.passed && displayNameSpoofSender.reason === 'UNMATCHED_SENDER_DOMAIN'
+);
+
+// Case 11: Legitimate display-name wrapped sender is accepted (Issue #24)
+const displayNameLegitimateSender = evaluateEmailThroughGateOne(
+  'Notifikasi Transaksi Livin by Mandiri: Debit Rekening',
+  'Livin by Mandiri <noreply@bankmandiri.co.id>',
+  'Total Debet: Rp 50.000',
+  now,
+  startupCutoff,
+  new Set<string>()
+);
+assertCondition('Legitimate display-name wrapped bank sender is accepted', displayNameLegitimateSender.passed);
+
+// Case 12: Legitimate subdomain is explicitly accepted by suffix boundary policy (Issue #24)
+const legitimateSubdomainSender = evaluateEmailThroughGateOne(
+  'Notifikasi Transaksi Livin by Mandiri: Debit Rekening',
+  'alert@notify.bankmandiri.co.id',
+  'Total Debet: Rp 50.000',
+  now,
+  startupCutoff,
+  new Set<string>()
+);
+assertCondition('Legitimate subdomain of configured bank domain is accepted', legitimateSubdomainSender.passed);
+
+// Case 13: Malformed sender values fail closed (Issue #24)
+const malformedSender = evaluateEmailThroughGateOne(
+  'Notifikasi Transaksi Livin by Mandiri: Debit Rekening',
+  'noreply@@bankmandiri.co.id',
+  'Total Debet: Rp 50.000',
+  now,
+  startupCutoff,
+  new Set<string>()
+);
+assertCondition(
+  'Malformed sender address is rejected',
+  !malformedSender.passed && malformedSender.reason === 'UNMATCHED_SENDER_DOMAIN'
+);
+
 // ------------------------------------------------------------
 // 4. WhatsApp Pending Confirmation Intent Tests
 // ------------------------------------------------------------
