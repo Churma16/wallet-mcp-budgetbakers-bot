@@ -3,6 +3,7 @@ import { PendingTransactionService } from '../services/pendingTransactionService
 import { FinancialAiProvider, ExtractedFinancialIntent } from '../services/ai/index.js';
 import { WalletMcpClientService } from '../services/walletMcpService.js';
 import { WalletCacheService } from '../services/walletCacheService.js';
+import { AccountClarificationHandler } from './accountClarificationHandler.js';
 import { PendingActionHandler } from './pendingActionHandler.js';
 import { FastPathHandler } from './fastPathHandler.js';
 import { detectFastPathAction, detectPendingConfirmationAction } from '../utils/fastPathIntentDetector.js';
@@ -34,6 +35,8 @@ function formatAccountResolutionIssueMessage(issue: AccountResolutionIssue): str
 }
 
 export class UserMessageHandler {
+  private readonly accountClarificationHandler: AccountClarificationHandler;
+
   constructor(
     private readonly messagingGateway: MessagingGatewayService,
     private readonly pendingTransactionManager: PendingTransactionService,
@@ -42,7 +45,14 @@ export class UserMessageHandler {
     private readonly financialAiProvider: FinancialAiProvider,
     private readonly walletCacheService: WalletCacheService,
     private readonly walletMcpClient: WalletMcpClientService
-  ) {}
+  ) {
+    this.accountClarificationHandler = new AccountClarificationHandler(
+      pendingTransactionManager,
+      walletMcpClient,
+      walletCacheService,
+      messagingGateway
+    );
+  }
 
   /**
    * Primary entry point for all incoming user messages (WhatsApp & Telegram)
@@ -67,7 +77,19 @@ export class UserMessageHandler {
     await this.messagingGateway.sendTypingPresence(event.channel, event.chatIdentifier);
 
     try {
-      // 0. Pending confirmation handler (checks if user is confirming or canceling a pending ticket)
+      // 0. Account-clarification drafts consume free-form account replies before other routing.
+      if (event.messageType === 'text' && event.textPayload) {
+        const handled = await this.accountClarificationHandler.handlePendingAccountSelectionReply(
+          event,
+          event.textPayload,
+          processingStartTimestamp
+        );
+        if (handled) {
+          return;
+        }
+      }
+
+      // 1. Pending confirmation handler (checks if user is confirming or canceling a pending ticket)
       if (event.messageType === 'text' && event.textPayload && this.pendingTransactionManager.hasPendingTransactions()) {
         const confirmationIntent = detectPendingConfirmationAction(event.textPayload);
         if (confirmationIntent) {
@@ -82,7 +104,7 @@ export class UserMessageHandler {
         }
       }
 
-      // 1. Fast-path intent classifier: Skip AI entirely for simple balance/budget/help queries (0 tokens used)
+      // 2. Fast-path intent classifier: Skip AI entirely for simple balance/budget/help queries (0 tokens used)
       if (event.messageType === 'text' && event.textPayload) {
         const fastPathAction = detectFastPathAction(event.textPayload);
         if (fastPathAction) {
@@ -97,7 +119,7 @@ export class UserMessageHandler {
         }
       }
 
-      // 2. AI Intent Extraction (Gemini / Ollama / Vision)
+      // 3. AI Intent Extraction (Gemini / Ollama / Vision)
       const cachedAccounts = this.walletCacheService.getAccounts();
       const cachedCategories = this.walletCacheService.getCategories();
 
@@ -128,13 +150,29 @@ export class UserMessageHandler {
         records: extractedIntent.records,
       });
 
-      // 3. Route actions based on AI analysis
+      // 4. Route actions based on AI analysis
       if (extractedIntent.action === 'CREATE_RECORD' && extractedIntent.records && extractedIntent.records.length > 0) {
         const validationResult = validateAndSanitizeFinancialRecords(
           extractedIntent.records,
           cachedAccounts,
           cachedCategories
         );
+
+        if (
+          validationResult.validationErrors.length === 0 &&
+          validationResult.accountResolutionIssues.length > 0
+        ) {
+          const drafted = await this.accountClarificationHandler.createPendingAccountSelectionDraft(
+            event,
+            extractedIntent.records,
+            validationResult.accountResolutionIssues,
+            cachedAccounts,
+            cachedCategories
+          );
+          if (drafted) {
+            return;
+          }
+        }
 
         if (!validationResult.isValid || validationResult.sanitizedRecords.length === 0) {
           const accountResolutionMessages = validationResult.accountResolutionIssues.map(
