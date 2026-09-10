@@ -19,7 +19,12 @@ export class EmailTransactionHandler {
    * Processes a bank notification email detected by the IMAP listener service
    */
   public async handleEmailTransactionDetected(detectedEvent: EmailTransactionDetectedEvent): Promise<void> {
-    applicationLogger.info(`Processing detected email transaction: "${detectedEvent.emailSubject}"`);
+    applicationLogger.info('Processing detected email transaction candidate.');
+    applicationLogger.fileDetail('email', 'Detected Email Transaction Candidate', {
+      emailSubject: detectedEvent.emailSubject,
+      emailSender: detectedEvent.emailSender,
+      gateResult: detectedEvent.gateResult,
+    });
 
     const cachedAccounts = this.walletCacheService.getAccounts();
     const cachedCategories = this.walletCacheService.getCategories();
@@ -35,7 +40,10 @@ export class EmailTransactionHandler {
     );
 
     if (!parsedData.isTransaction) {
-      applicationLogger.info(`[Gate 2 Filtered Out] ${parsedData.explanation}`);
+      applicationLogger.info('[Gate 2 Filtered Out] AI classified candidate as non-transaction.');
+      applicationLogger.fileDetail('ai', 'Gate 2 Filtered Email Candidate', {
+        explanation: parsedData.explanation,
+      });
       return;
     }
 
