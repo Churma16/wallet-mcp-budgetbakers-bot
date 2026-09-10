@@ -15,7 +15,7 @@ import {
   getHumanReadableTimestamp,
 } from '../utils/humanResponseFormatter.js';
 import { getDictionary } from '../i18n/index.js';
-import { applicationLogger, formatConciseErrorMessage } from '../utils/logger.js';
+import { applicationLogger } from '../utils/logger.js';
 
 export class UserMessageHandler {
   constructor(
@@ -34,7 +34,7 @@ export class UserMessageHandler {
   public async handleIncomingUserMessage(event: IncomingUserMessageEvent): Promise<void> {
     const processingStartTimestamp = Date.now();
     applicationLogger.chat(
-      `[${event.channel.toUpperCase()}] Message received from ${event.senderIdentifier} (${event.messageType}): "${event.textPayload || '[Image]'}"`
+      `[${event.channel.toUpperCase()}] ${event.messageType} message received.`
     );
 
     applicationLogger.fileDetail('chat', 'Incoming User Message Event', {
@@ -105,7 +105,7 @@ export class UserMessageHandler {
         );
       }
 
-      applicationLogger.ai(`Decision: ${extractedIntent.action} | ${extractedIntent.explanation || ''}`);
+      applicationLogger.ai(`Decision: ${extractedIntent.action}`);
       applicationLogger.fileDetail('ai', 'Parsed Financial Intent Result', {
         action: extractedIntent.action,
         explanation: extractedIntent.explanation,
@@ -122,7 +122,9 @@ export class UserMessageHandler {
 
         if (!validationResult.isValid || validationResult.sanitizedRecords.length === 0) {
           const validationErrorMessage = validationResult.validationErrors.join('\n');
-          applicationLogger.warn(`Financial record validation rejected:\n${validationErrorMessage}`);
+          applicationLogger.warn(
+            `Financial record validation rejected (${validationResult.validationErrors.length} validation error(s)).`
+          );
 
           applicationLogger.fileDetail('error', 'Financial Record Validation Failure', {
             originalRecords: extractedIntent.records,
@@ -136,7 +138,7 @@ export class UserMessageHandler {
           );
           const processingDurationMs = Date.now() - processingStartTimestamp;
           applicationLogger.warn(
-            `[${event.channel.toUpperCase()}] Validation rejected: ${validationErrorMessage} (${processingDurationMs}ms).`
+            `[${event.channel.toUpperCase()}] Validation rejected with ${validationResult.validationErrors.length} error(s) (${processingDurationMs}ms).`
           );
           return;
         }
@@ -231,8 +233,8 @@ export class UserMessageHandler {
         `[${event.channel.toUpperCase()}] Sent guidance / general reply (${processingDurationMs}ms).`
       );
     } catch (processingError: unknown) {
-      const conciseErrorMessage = formatConciseErrorMessage(processingError);
-      applicationLogger.error(`Error while processing user message: ${conciseErrorMessage}`);
+      const errorName = processingError instanceof Error ? processingError.name : 'UnknownError';
+      applicationLogger.error(`Error while processing user message (${errorName}).`);
 
       applicationLogger.fileDetail('error', 'User Message Processing Error Details', {
         error: processingError instanceof Error
