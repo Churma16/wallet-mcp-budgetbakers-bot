@@ -326,7 +326,12 @@ export class EmailListenerService {
             this.inFlightMessageIdSet.delete(rawMessageId);
           }
         } catch (individualMessageError) {
-          applicationLogger.error(`Failed to process email UID ${messageUid}: ${individualMessageError}`);
+          const errorName = individualMessageError instanceof Error ? individualMessageError.name : 'UnknownError';
+          applicationLogger.error(`Failed to process email UID ${messageUid} (${errorName}).`);
+          applicationLogger.fileDetail('error', 'Email Transaction Processing Failure', {
+            messageUid,
+            error: individualMessageError,
+          });
         }
       }
     } catch (scanError) {
