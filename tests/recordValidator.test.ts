@@ -80,6 +80,36 @@ function validate(accountId: string, accountList: WalletAccountItem[] = accounts
 }
 
 {
+  const partialNameBankCollisionAccounts: WalletAccountItem[] = [
+    { id: 'acc-name-bca', name: 'BCA' },
+    { id: 'acc-bank-1234', name: 'Savings', bankAccountNumber: '99881234' },
+  ];
+  const result = validate('BCA 1234', partialNameBankCollisionAccounts);
+  assert.equal(result.isValid, false);
+  assert.equal(result.sanitizedRecords.length, 0);
+  assert.equal(result.accountResolutionIssues[0].reason, 'AMBIGUOUS');
+  assert.deepEqual(
+    result.accountResolutionIssues[0].candidates.map(candidate => candidate.id),
+    ['acc-name-bca', 'acc-bank-1234']
+  );
+}
+
+{
+  const numericNameCollisionAccounts: WalletAccountItem[] = [
+    { id: 'acc-index-one', name: 'Primary' },
+    { id: 'acc-named-one', name: '1' },
+  ];
+  const result = validate('1', numericNameCollisionAccounts);
+  assert.equal(result.isValid, false);
+  assert.equal(result.sanitizedRecords.length, 0);
+  assert.equal(result.accountResolutionIssues[0].reason, 'AMBIGUOUS');
+  assert.deepEqual(
+    result.accountResolutionIssues[0].candidates.map(candidate => candidate.id),
+    ['acc-index-one', 'acc-named-one']
+  );
+}
+
+{
   const result = validate('acc-bca-personal');
   assert.equal(result.isValid, true);
   assert.equal(result.sanitizedRecords[0].accountId, 'acc-bca-personal');
