@@ -11,6 +11,80 @@ export interface GateEvaluationResult {
 }
 
 /**
+ * Extracts and normalizes the actual domain from an email sender value.
+ *
+ * Supports the plain addresses produced by mailparser and a conservative
+ * `Display Name <address@example.com>` fallback without trusting text in the
+ * display name or local part. Malformed or ambiguous sender values are rejected.
+ */
+export function extractSenderDomain(emailSenderAddress: string): string | undefined {
+  const rawSender = emailSenderAddress.trim();
+  if (!rawSender) {
+    return undefined;
+  }
+
+  const angleAddressMatch = rawSender.match(/^.*<\s*([^<>]+)\s*>\s*$/);
+  const addressCandidate = (angleAddressMatch?.[1] ?? rawSender).trim().toLowerCase();
+
+  // Reject ambiguous address lists or whitespace-delimited display-name fallbacks.
+  if (
+    !addressCandidate ||
+    /[\s,;]/.test(addressCandidate) ||
+    addressCandidate.startsWith('@') ||
+    addressCandidate.endsWith('@')
+  ) {
+    return undefined;
+  }
+
+  const firstAtIndex = addressCandidate.indexOf('@');
+  const lastAtIndex = addressCandidate.lastIndexOf('@');
+  if (firstAtIndex <= 0 || firstAtIndex !== lastAtIndex) {
+    return undefined;
+  }
+
+  const senderDomain = addressCandidate.slice(lastAtIndex + 1).replace(/\.$/, '');
+  if (!senderDomain || senderDomain.length > 253 || !senderDomain.includes('.')) {
+    return undefined;
+  }
+
+  const domainLabels = senderDomain.split('.');
+  const isValidDomain = domainLabels.every(
+    label =>
+      label.length > 0 &&
+      label.length <= 63 &&
+      /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)
+  );
+
+  return isValidDomain ? senderDomain : undefined;
+}
+
+/**
+ * Normalizes a configured allowlist domain to a clean base domain.
+ */
+export function normalizeAllowedSenderDomain(allowedDomain: string): string {
+  return allowedDomain.trim().toLowerCase().replace(/^@/, '').replace(/\.$/, '');
+}
+
+/**
+ * Returns true only for an exact configured domain or one of its real
+ * subdomains. Arbitrary substring occurrences never satisfy the allowlist.
+ */
+export function doesSenderDomainMatchAllowedDomain(
+  senderDomain: string,
+  allowedDomain: string
+): boolean {
+  const normalizedAllowedDomain = normalizeAllowedSenderDomain(allowedDomain);
+  if (!normalizedAllowedDomain) {
+    return false;
+  }
+
+  return (
+    senderDomain === normalizedAllowedDomain ||
+    senderDomain.endsWith(`.${normalizedAllowedDomain}`)
+  );
+}
+
+/**
  * Normalizes and parses Indonesian currency strings into numeric values.
  * Handles formats like: "45.000", "45.000,00", "1.500.000", "25,000.00"
  */
@@ -67,7 +141,7 @@ export function evaluateEmailThroughGateOne(
   processedReferenceNumberSet: Set<string>
 ): GateEvaluationResult {
   const normalizedSubject = emailSubject.toLowerCase().trim();
-  const normalizedSender = emailSenderAddress.toLowerCase().trim();
+  const senderDomain = extractSenderDomain(emailSenderAddress);
   const rawCombinedContent = `${emailSubject}\n${emailBodyText}`;
   const normalizedCombinedContent = rawCombinedContent.toLowerCase();
 
@@ -80,12 +154,15 @@ export function evaluateEmailThroughGateOne(
     };
   }
 
-  // 2. Check Sender Domain Match against rules dictionary
-  const matchedRule = BANK_EMAIL_RULES.find(ruleDefinition =>
-    ruleDefinition.senderDomains.some(allowedDomain =>
-      normalizedSender.includes(allowedDomain.toLowerCase())
-    )
-  );
+  // 2. Check the parsed sender domain against the rules dictionary.
+  // Exact domains and legitimate subdomains are allowed; substrings are not.
+  const matchedRule = senderDomain
+    ? BANK_EMAIL_RULES.find(ruleDefinition =>
+        ruleDefinition.senderDomains.some(allowedDomain =>
+          doesSenderDomainMatchAllowedDomain(senderDomain, allowedDomain)
+        )
+      )
+    : undefined;
 
   if (!matchedRule) {
     return {
