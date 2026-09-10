@@ -6,7 +6,10 @@ import { WalletCacheService } from '../services/walletCacheService.js';
 import { PendingActionHandler } from './pendingActionHandler.js';
 import { FastPathHandler } from './fastPathHandler.js';
 import { detectFastPathAction, detectPendingConfirmationAction } from '../utils/fastPathIntentDetector.js';
-import { validateAndSanitizeFinancialRecords } from '../utils/recordValidator.js';
+import {
+  AccountResolutionIssue,
+  validateAndSanitizeFinancialRecords,
+} from '../utils/recordValidator.js';
 import {
   formatRecordSuccessMessage,
   formatBalanceSummaryMessage,
@@ -16,6 +19,20 @@ import {
 } from '../utils/humanResponseFormatter.js';
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger, formatConciseErrorMessage } from '../utils/logger.js';
+
+function formatAccountResolutionIssueMessage(issue: AccountResolutionIssue): string {
+  const recordLabel = `Transaksi #${issue.recordIndex + 1}`;
+  const accountHint = issue.accountHint || '(kosong)';
+
+  if (issue.reason === 'AMBIGUOUS') {
+    const candidateNames = issue.candidates.map(candidate => candidate.name).join(', ');
+    return candidateNames
+      ? `${recordLabel}: Akun "${accountHint}" ambigu. Kandidat: ${candidateNames}.`
+      : `${recordLabel}: Akun "${accountHint}" ambigu dan tidak dapat dipilih secara aman.`;
+  }
+
+  return `${recordLabel}: Akun "${accountHint}" tidak dapat ditemukan secara pasti.`;
+}
 
 export class UserMessageHandler {
   constructor(
@@ -121,12 +138,20 @@ export class UserMessageHandler {
         );
 
         if (!validationResult.isValid || validationResult.sanitizedRecords.length === 0) {
-          const validationErrorMessage = validationResult.validationErrors.join('\n');
+          const accountResolutionMessages = validationResult.accountResolutionIssues.map(
+            formatAccountResolutionIssueMessage
+          );
+          const validationErrorMessage = [
+            ...validationResult.validationErrors,
+            ...accountResolutionMessages,
+          ].join('\n') || 'Akun transaksi tidak dapat ditentukan secara aman.';
+
           applicationLogger.warn(`Financial record validation rejected:\n${validationErrorMessage}`);
 
           applicationLogger.fileDetail('error', 'Financial Record Validation Failure', {
             originalRecords: extractedIntent.records,
             validationErrors: validationResult.validationErrors,
+            accountResolutionIssues: validationResult.accountResolutionIssues,
           });
 
           await this.messagingGateway.sendMessage(
