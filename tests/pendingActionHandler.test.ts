@@ -1,5 +1,11 @@
 import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
-import { PendingTransactionService, PendingTransactionItem } from '../src/services/pendingTransactionService.js';
+import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
+import {
+  WalletMcpClientService,
+  WalletMcpRequestError,
+  isWalletMcpDispatchOutcomeUnknown,
+} from '../src/services/walletMcpService.js';
+import { CreateRecordInputPayload, WalletCreateRecordsResponse } from '../src/types/walletTypes.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
 import { PendingConfirmationIntent } from '../src/utils/fastPathIntentDetector.js';
 
@@ -7,602 +13,415 @@ console.log('====================================================');
 console.log('[test] Pending Transaction Data Integrity & MCP Failure Recovery (Issue #72)');
 console.log('====================================================\n');
 
-let passedTestsCount = 0;
-let totalTestsCount = 0;
+let passedCaseCount = 0;
+let assertionCount = 0;
 
 function assertCondition(testName: string, condition: boolean, extraDetail?: string): void {
-  totalTestsCount++;
-  if (condition) {
-    console.log(`[PASS] ${testName}`);
-    passedTestsCount++;
-  } else {
-    console.error(`[FAIL] ${testName}${extraDetail ? ` -> ${extraDetail}` : ''}`);
+  assertionCount++;
+  if (!condition) {
+    throw new Error(`[FAIL] ${testName}${extraDetail ? ` -> ${extraDetail}` : ''}`);
   }
+  console.log(`[PASS] ${testName}`);
 }
 
-// Mock implementations
+async function runCase(testName: string, testFunction: () => Promise<void> | void): Promise<void> {
+  console.log(`\n--- ${testName} ---`);
+  await testFunction();
+  passedCaseCount++;
+}
+
 class MockWalletMcpClient {
-  private shouldFail = false;
-  private errorMessage = '';
-  private callCount = 0;
-  private failOnCallNumbers: number[] = []; // e.g. [2, 4] = fail on 2nd and 4th calls
+  public readonly calls: CreateRecordInputPayload[][] = [];
+  public delayMs = 0;
+  private readonly failuresByCallNumber = new Map<number, Error>();
 
-  setFailure(shouldFail: boolean, errorMessage: string = 'MCP dispatch failed'): void {
-    this.shouldFail = shouldFail;
-    this.errorMessage = errorMessage;
-    this.callCount = 0;
-    this.failOnCallNumbers = [];
+  setDefinitiveFailureOnCall(callNumber: number, errorMessage: string = 'MCP dispatch failed'): void {
+    this.failuresByCallNumber.set(callNumber, new Error(errorMessage));
   }
 
-  setFailureOnCalls(callNumbers: number[], errorMessage: string = 'MCP dispatch failed'): void {
-    this.callCount = 0;
-    this.failOnCallNumbers = callNumbers;
-    this.errorMessage = errorMessage;
+  setUnknownFailureOnCall(callNumber: number, errorMessage: string = 'MCP response lost'): void {
+    this.failuresByCallNumber.set(
+      callNumber,
+      new WalletMcpRequestError(errorMessage, 'UNKNOWN')
+    );
   }
 
-  async createRecords(): Promise<void> {
-    this.callCount++;
-    
-    if (this.shouldFail) {
-      throw new Error(this.errorMessage);
+  clearFailures(): void {
+    this.failuresByCallNumber.clear();
+  }
+
+  async createRecords(records: CreateRecordInputPayload[]): Promise<WalletCreateRecordsResponse> {
+    this.calls.push(records.map(record => ({ ...record })));
+    const callNumber = this.calls.length;
+
+    if (this.delayMs > 0) {
+      await new Promise(resolve => setTimeout(resolve, this.delayMs));
     }
 
-    if (this.failOnCallNumbers.includes(this.callCount)) {
-      throw new Error(this.errorMessage);
+    const configuredFailure = this.failuresByCallNumber.get(callNumber);
+    if (configuredFailure) {
+      throw configuredFailure;
     }
+
+    return {
+      summary: { total: records.length, succeeded: records.length, failed: 0 },
+      results: records.map((_record, index) => ({ id: `record-${callNumber}-${index}`, success: true })),
+    };
   }
 }
 
 class MockMessagingGateway {
-  public messages: Array<{ channel: string; chatId: string; content: string }> = [];
+  public readonly messages: Array<{ channel: string; chatId: string; content: string }> = [];
 
   async sendMessage(channel: string, chatId: string, content: string): Promise<void> {
     this.messages.push({ channel, chatId, content });
   }
 }
 
-// Helper to create sample pending item
-function createSamplePendingItem(overrides?: Partial<PendingTransactionItem>): PendingTransactionItem {
-  return {
-    ticketId: 1,
-    sourceType: 'WHATSAPP',
-    bankDisplayName: 'BCA',
-    accountNameHint: 'Savings Account',
-    counterParty: 'John Doe',
-    amount: 500000,
-    transactionType: 'EXPENSE',
-    matchedAccountId: 'acc-123',
-    matchedCategoryId: 'cat-001',
-    note: 'Lunch with client',
-    recordDate: '2026-09-10',
-    createdAt: new Date(),
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-    ...overrides,
-  };
-}
-
-// Helper to create mock event
-function createMockEvent(): IncomingUserMessageEvent {
+function createMockEvent(messageId: string = 'msg-1'): IncomingUserMessageEvent {
   return {
     channel: 'whatsapp',
     chatIdentifier: '+1234567890',
     userId: 'user123',
     messageContent: 'ya',
     timestamp: new Date(),
-    messageId: 'msg123',
+    messageId,
   };
 }
 
-// ============================================================
-// TEST SUITE 1: Happy Path - Single Transaction
-// ============================================================
-console.log('\n--- TEST SUITE 1: Happy Path - Single Transaction Confirmation ---');
-
-{
-  const pendingService = new PendingTransactionService();
-  const walletMcp = new MockWalletMcpClient();
-  const messaging = new MockMessagingGateway();
-
-  const handler = new PendingActionHandler(
-    pendingService,
-    walletMcp as any,
-    messaging as any,
-    () => null
-  );
-
-  // Add a pending transaction
+function addExpense(
+  pendingService: PendingTransactionService,
+  overrides: Partial<Parameters<PendingTransactionService['addPendingTransaction']>[0]> = {}
+): void {
   pendingService.addPendingTransaction({
     sourceType: 'WHATSAPP',
     bankDisplayName: 'BCA',
     accountNameHint: 'Savings Account',
-    counterParty: 'John Doe',
-    amount: 500000,
+    counterParty: 'Merchant',
+    amount: 125000,
     transactionType: 'EXPENSE',
-    matchedAccountId: 'acc-123',
-    matchedCategoryId: 'cat-001',
-    note: 'Lunch with client',
-    recordDate: '2026-09-10',
-  });
-
-  const confirmIntent: PendingConfirmationIntent = {
-    actionType: 'CONFIRM',
-    targetScope: 1,
-  };
-
-  (async () => {
-    await handler.handlePendingAction(createMockEvent(), confirmIntent, Date.now());
-
-    assertCondition(
-      'Single transaction confirmed and removed from queue',
-      !pendingService.hasPendingTransactions()
-    );
-    assertCondition(
-      'User received success notification',
-      messaging.messages.length === 1 && messaging.messages[0].content.includes('berhasil')
-    );
-  })();
-}
-
-// ============================================================
-// TEST SUITE 2: Happy Path - Bulk Transactions
-// ============================================================
-console.log('\n--- TEST SUITE 2: Happy Path - Bulk Transaction Confirmation ---');
-
-{
-  const pendingService = new PendingTransactionService();
-  const walletMcp = new MockWalletMcpClient();
-  const messaging = new MockMessagingGateway();
-
-  const handler = new PendingActionHandler(
-    pendingService,
-    walletMcp as any,
-    messaging as any,
-    () => null
-  );
-
-  // Add multiple pending transactions
-  pendingService.addPendingTransaction({
-    sourceType: 'WHATSAPP',
-    bankDisplayName: 'BCA',
-    accountNameHint: 'Savings Account',
-    counterParty: 'John Doe',
-    amount: 500000,
-    transactionType: 'EXPENSE',
-    matchedAccountId: 'acc-123',
-    matchedCategoryId: 'cat-001',
+    matchedAccountId: 'acc-source',
+    matchedCategoryId: 'cat-food',
     note: 'Lunch',
     recordDate: '2026-09-10',
+    ...overrides,
   });
-
-  pendingService.addPendingTransaction({
-    sourceType: 'EMAIL',
-    bankDisplayName: 'Mandiri',
-    accountNameHint: 'Checking',
-    counterParty: 'Amazon',
-    amount: -300000,
-    transactionType: 'INCOME',
-    matchedAccountId: 'acc-124',
-    note: 'Refund',
-    recordDate: '2026-09-10',
-  });
-
-  assertCondition('Setup: 2 transactions added to queue', pendingService.getAllPendingTransactions().length === 2);
-
-  const confirmIntent: PendingConfirmationIntent = {
-    actionType: 'CONFIRM',
-    targetScope: 'ALL',
-  };
-
-  (async () => {
-    await handler.handlePendingAction(createMockEvent(), confirmIntent, Date.now());
-
-    assertCondition(
-      'All transactions confirmed and removed from queue',
-      !pendingService.hasPendingTransactions()
-    );
-    assertCondition(
-      'User received bulk success notification',
-      messaging.messages.length === 1
-    );
-  })();
 }
 
-// ============================================================
-// TEST SUITE 3: CRITICAL - MCP Failure Recovery (Single)
-// ============================================================
-console.log('\n--- TEST SUITE 3: CRITICAL - MCP Failure Recovery (Single Transaction) ---');
-
-{
-  const pendingService = new PendingTransactionService();
-  const walletMcp = new MockWalletMcpClient();
-  const messaging = new MockMessagingGateway();
-
-  const handler = new PendingActionHandler(
+function createHandler(
+  pendingService: PendingTransactionService,
+  walletMcp: MockWalletMcpClient,
+  messaging: MockMessagingGateway,
+  emailListenerGetter: () => any = () => null
+): PendingActionHandler {
+  return new PendingActionHandler(
     pendingService,
     walletMcp as any,
     messaging as any,
-    () => null
+    emailListenerGetter
   );
-
-  // Add a pending transaction
-  pendingService.addPendingTransaction({
-    sourceType: 'WHATSAPP',
-    bankDisplayName: 'BCA',
-    accountNameHint: 'Savings Account',
-    counterParty: 'John Doe',
-    amount: 500000,
-    transactionType: 'EXPENSE',
-    matchedAccountId: 'acc-123',
-    matchedCategoryId: 'cat-001',
-    note: 'Lunch with client',
-    recordDate: '2026-09-10',
-  });
-
-  walletMcp.setFailure(true, 'Network timeout: MCP server unreachable');
-
-  const confirmIntent: PendingConfirmationIntent = {
-    actionType: 'CONFIRM',
-    targetScope: 1,
-  };
-
-  (async () => {
-    await handler.handlePendingAction(createMockEvent(), confirmIntent, Date.now());
-
-    // CRITICAL ASSERTION: Transaction must remain in queue after failure
-    assertCondition(
-      '[CRITICAL] Pending transaction remains in queue after MCP failure',
-      pendingService.getPendingTransaction(1) !== undefined
-    );
-    assertCondition(
-      '[CRITICAL] User received error notification with retry instructions',
-      messaging.messages.length === 1 && 
-      messaging.messages[0].content.includes('[ERROR]') &&
-      messaging.messages[0].content.includes('mencoba lagi')
-    );
-  })();
 }
 
-// ============================================================
-// TEST SUITE 4: Edge Case - Transfer Transactions
-// ============================================================
-console.log('\n--- TEST SUITE 4: Edge Case - Transfer Transactions ---');
+const confirmTicketOne: PendingConfirmationIntent = {
+  actionType: 'CONFIRM',
+  targetScope: 1,
+};
 
-{
-  const pendingService = new PendingTransactionService();
-  const walletMcp = new MockWalletMcpClient();
-  const messaging = new MockMessagingGateway();
+const confirmAll: PendingConfirmationIntent = {
+  actionType: 'CONFIRM',
+  targetScope: 'ALL',
+};
 
-  const handler = new PendingActionHandler(
-    pendingService,
-    walletMcp as any,
-    messaging as any,
-    () => null
-  );
-
-  // Add a transfer transaction (creates 2 records)
-  pendingService.addPendingTransaction({
-    sourceType: 'WHATSAPP',
-    bankDisplayName: 'BCA',
-    accountNameHint: 'Checking',
-    counterParty: 'Jane Doe',
-    amount: 1000000,
-    transactionType: 'TRANSFER',
-    matchedAccountId: 'acc-source',
-    matchedDestinationAccountId: 'acc-dest',
-    note: 'Transfer to Jane',
-    recordDate: '2026-09-10',
-  });
-
-  const confirmIntent: PendingConfirmationIntent = {
-    actionType: 'CONFIRM',
-    targetScope: 1,
-  };
-
-  walletMcp.setFailure(true, 'MCP server unavailable');
-
-  (async () => {
-    await handler.handlePendingAction(createMockEvent(), confirmIntent, Date.now());
-
+async function expectWalletMcpRequestError(
+  operation: () => Promise<unknown>,
+  expectedOutcome: 'DEFINITIVE_FAILURE' | 'UNKNOWN'
+): Promise<WalletMcpRequestError> {
+  try {
+    await operation();
+  } catch (error) {
+    assertCondition('Error is classified as WalletMcpRequestError', error instanceof WalletMcpRequestError);
+    const typedError = error as WalletMcpRequestError;
     assertCondition(
-      'Transfer transaction remains in queue after MCP failure',
-      pendingService.getPendingTransaction(1) !== undefined
+      `Dispatch outcome is ${expectedOutcome}`,
+      typedError.dispatchOutcome === expectedOutcome,
+      `actual=${typedError.dispatchOutcome}`
     );
-    assertCondition(
-      'User notified of transfer failure',
-      messaging.messages.length === 1
-    );
-  })();
-}
-
-// ============================================================
-// TEST SUITE 5: Edge Case - Email Listener Integration
-// ============================================================
-console.log('\n--- TEST SUITE 5: Edge Case - Email Listener Integration ---');
-
-{
-  const pendingService = new PendingTransactionService();
-  const walletMcp = new MockWalletMcpClient();
-  const messaging = new MockMessagingGateway();
-
-  class MockEmailListener {
-    public recordedReferences: string[] = [];
-
-    recordProcessedTransaction(a: any, referenceNumber?: string): void {
-      if (referenceNumber) {
-        this.recordedReferences.push(referenceNumber);
-      }
-    }
+    return typedError;
   }
 
-  const emailListener = new MockEmailListener();
-
-  const handler = new PendingActionHandler(
-    pendingService,
-    walletMcp as any,
-    messaging as any,
-    () => emailListener
-  );
-
-  // Add transaction with reference number
-  pendingService.addPendingTransaction({
-    sourceType: 'EMAIL',
-    bankDisplayName: 'BCA',
-    accountNameHint: 'Savings',
-    counterParty: 'Vendor',
-    amount: 250000,
-    transactionType: 'EXPENSE',
-    matchedAccountId: 'acc-123',
-    matchedCategoryId: 'cat-001',
-    note: 'Invoice payment',
-    recordDate: '2026-09-10',
-    referenceNumber: 'REF-12345',
-  });
-
-  const confirmIntent: PendingConfirmationIntent = {
-    actionType: 'CONFIRM',
-    targetScope: 1,
-  };
-
-  walletMcp.setFailure(true, 'Network error');
-
-  (async () => {
-    await handler.handlePendingAction(createMockEvent(), confirmIntent, Date.now());
-
-    assertCondition(
-      'Email listener NOT called on MCP failure',
-      emailListener.recordedReferences.length === 0
-    );
-    assertCondition(
-      'Transaction remains pending to retry recording',
-      pendingService.getPendingTransaction(1) !== undefined
-    );
-  })();
+  throw new Error('[FAIL] Expected WalletMcpRequestError but operation succeeded');
 }
 
-// ============================================================
-// TEST SUITE 6: Edge Case - Bulk with Partial Missing Fields
-// ============================================================
-console.log('\n--- TEST SUITE 6: Edge Case - Bulk with Partial Missing Fields ---');
+async function main(): Promise<void> {
+  await runCase('Suite 1: single confirmation succeeds and removes the ticket', async () => {
+    const pendingService = new PendingTransactionService();
+    const walletMcp = new MockWalletMcpClient();
+    const messaging = new MockMessagingGateway();
+    const handler = createHandler(pendingService, walletMcp, messaging);
 
-{
-  const pendingService = new PendingTransactionService();
-  const walletMcp = new MockWalletMcpClient();
-  const messaging = new MockMessagingGateway();
+    addExpense(pendingService);
+    await handler.handlePendingAction(createMockEvent(), confirmTicketOne, Date.now());
 
-  const handler = new PendingActionHandler(
-    pendingService,
-    walletMcp as any,
-    messaging as any,
-    () => null
-  );
-
-  // Add transaction without categoryId (optional field)
-  pendingService.addPendingTransaction({
-    sourceType: 'WHATSAPP',
-    bankDisplayName: 'BCA',
-    accountNameHint: 'Account 1',
-    counterParty: 'Seller',
-    amount: 100000,
-    transactionType: 'EXPENSE',
-    matchedAccountId: 'acc-123',
-    // No matchedCategoryId
-    note: 'Purchase',
-    recordDate: '2026-09-10',
+    assertCondition('Ticket removed after confirmed MCP success', pendingService.getPendingTransaction(1) === undefined);
+    assertCondition('Exactly one MCP call was made', walletMcp.calls.length === 1);
+    assertCondition('Success response was sent to the user', messaging.messages.length === 1);
   });
 
-  // Add transfer without destination account (single-entry only)
-  pendingService.addPendingTransaction({
-    sourceType: 'WHATSAPP',
-    bankDisplayName: 'Mandiri',
-    accountNameHint: 'Account 2',
-    counterParty: 'Recipient',
-    amount: 500000,
-    transactionType: 'TRANSFER',
-    matchedAccountId: 'acc-456',
-    // No matchedDestinationAccountId
-    note: 'Transfer out',
-    recordDate: '2026-09-10',
+  await runCase('Suite 2: bulk partial definitive failures keep only failed tickets retryable', async () => {
+    const pendingService = new PendingTransactionService();
+    const walletMcp = new MockWalletMcpClient();
+    const messaging = new MockMessagingGateway();
+    const handler = createHandler(pendingService, walletMcp, messaging);
+
+    for (let index = 0; index < 5; index++) {
+      addExpense(pendingService, {
+        accountNameHint: `Account ${index + 1}`,
+        counterParty: `Merchant ${index + 1}`,
+        amount: 100000 * (index + 1),
+        matchedAccountId: `acc-${index + 1}`,
+        note: `Transaction ${index + 1}`,
+      });
+    }
+
+    walletMcp.setDefinitiveFailureOnCall(2, 'rate limited');
+    walletMcp.setDefinitiveFailureOnCall(4, 'validation failed');
+
+    await handler.handlePendingAction(createMockEvent(), confirmAll, Date.now());
+
+    assertCondition('Five independent MCP calls were attempted', walletMcp.calls.length === 5);
+    assertCondition('Successful ticket #1 removed', pendingService.getPendingTransaction(1) === undefined);
+    assertCondition('Failed ticket #2 remains', pendingService.getPendingTransaction(2) !== undefined);
+    assertCondition('Successful ticket #3 removed', pendingService.getPendingTransaction(3) === undefined);
+    assertCondition('Failed ticket #4 remains', pendingService.getPendingTransaction(4) !== undefined);
+    assertCondition('Successful ticket #5 removed', pendingService.getPendingTransaction(5) === undefined);
+    assertCondition('Failed ticket #2 returned to PENDING', pendingService.getPendingTransactionState(2) === 'PENDING');
+    assertCondition('Failed ticket #4 returned to PENDING', pendingService.getPendingTransactionState(4) === 'PENDING');
+    assertCondition('Only two retryable tickets remain', pendingService.getAllPendingTransactions().length === 2);
   });
 
-  const confirmIntent: PendingConfirmationIntent = {
-    actionType: 'CONFIRM',
-    targetScope: 'ALL',
-  };
+  await runCase('Suite 3: transfer resumes from the failed leg without duplicating the committed leg', async () => {
+    const pendingService = new PendingTransactionService();
+    const walletMcp = new MockWalletMcpClient();
+    const messaging = new MockMessagingGateway();
+    const handler = createHandler(pendingService, walletMcp, messaging);
 
-  walletMcp.setFailure(true, 'Invalid payload');
-
-  (async () => {
-    await handler.handlePendingAction(createMockEvent(), confirmIntent, Date.now());
-
-    assertCondition(
-      'Transaction without categoryId remains in queue',
-      pendingService.getPendingTransaction(1) !== undefined
-    );
-    assertCondition(
-      'Transfer without dest account remains in queue',
-      pendingService.getPendingTransaction(2) !== undefined
-    );
-    assertCondition(
-      'All 2 transactions still pending after failure',
-      pendingService.getAllPendingTransactions().length === 2
-    );
-  })();
-}
-
-// ============================================================
-// TEST SUITE 7: CRITICAL - Partial Failure (3/5 success)
-// ============================================================
-console.log('\n--- TEST SUITE 7: CRITICAL - Partial Failure (3/5 success) ---');
-
-{
-  const pendingService = new PendingTransactionService();
-  const walletMcp = new MockWalletMcpClient();
-  const messaging = new MockMessagingGateway();
-
-  const handler = new PendingActionHandler(
-    pendingService,
-    walletMcp as any,
-    messaging as any,
-    () => null
-  );
-
-  // Add 5 transactions
-  for (let i = 0; i < 5; i++) {
     pendingService.addPendingTransaction({
       sourceType: 'WHATSAPP',
       bankDisplayName: 'BCA',
-      accountNameHint: `Account ${i + 1}`,
-      counterParty: `Party ${i + 1}`,
-      amount: 100000 * (i + 1),
-      transactionType: 'EXPENSE',
-      matchedAccountId: `acc-${i}`,
-      matchedCategoryId: 'cat-001',
-      note: `Transaction ${i + 1}`,
+      accountNameHint: 'Checking',
+      counterParty: 'Savings',
+      amount: 500000,
+      transactionType: 'TRANSFER',
+      destinationAccountNameHint: 'Savings',
+      matchedAccountId: 'acc-source',
+      matchedDestinationAccountId: 'acc-destination',
+      note: 'Move to savings',
       recordDate: '2026-09-10',
     });
-  }
 
-  // Fail on calls 2 and 4 (tickets #2 and #4 will fail)
-  walletMcp.setFailureOnCalls([2, 4], 'MCP rate limited');
+    walletMcp.setDefinitiveFailureOnCall(2, 'destination leg rejected');
+    await handler.handlePendingAction(createMockEvent(), confirmTicketOne, Date.now());
 
-  const confirmIntent: PendingConfirmationIntent = {
-    actionType: 'CONFIRM',
-    targetScope: 'ALL',
-  };
+    assertCondition('Transfer remains pending after second-leg failure', pendingService.getPendingTransaction(1) !== undefined);
+    assertCondition('Transfer returns to PENDING after definitive failure', pendingService.getPendingTransactionState(1) === 'PENDING');
+    assertCondition('First transfer leg checkpoint persisted', pendingService.getCompletedRecordIndexes(1).join(',') === '0');
+    assertCondition('Two transfer leg calls attempted initially', walletMcp.calls.length === 2);
+    assertCondition('First call was source leg', walletMcp.calls[0][0].accountId === 'acc-source');
+    assertCondition('Second call was destination leg', walletMcp.calls[1][0].accountId === 'acc-destination');
 
-  (async () => {
-    await handler.handlePendingAction(createMockEvent(), confirmIntent, Date.now());
+    walletMcp.clearFailures();
+    await handler.handlePendingAction(createMockEvent('msg-retry'), confirmTicketOne, Date.now());
 
-    assertCondition(
-      '[CRITICAL] Ticket #1 removed after success',
-      pendingService.getPendingTransaction(1) === undefined
-    );
-    assertCondition(
-      '[CRITICAL] Ticket #2 remains in queue after failure',
-      pendingService.getPendingTransaction(2) !== undefined
-    );
-    assertCondition(
-      '[CRITICAL] Ticket #3 removed after success',
-      pendingService.getPendingTransaction(3) === undefined
-    );
-    assertCondition(
-      '[CRITICAL] Ticket #4 remains in queue after failure',
-      pendingService.getPendingTransaction(4) !== undefined
-    );
-    assertCondition(
-      '[CRITICAL] Ticket #5 removed after success',
-      pendingService.getPendingTransaction(5) === undefined
-    );
-    assertCondition(
-      '[CRITICAL] 3 transactions removed, 2 remain in queue',
-      pendingService.getAllPendingTransactions().length === 2
-    );
-    assertCondition(
-      'User notified of partial success',
-      messaging.messages.length === 1 && 
-      messaging.messages[0].content.includes('Sebagian transaksi berhasil')
-    );
-  })();
-}
-
-// ============================================================
-// TEST SUITE 8: Edge Case - Transfer Partial Failure
-// ============================================================
-console.log('\n--- TEST SUITE 8: Edge Case - Transfer Partial Failure ---');
-
-{
-  const pendingService = new PendingTransactionService();
-  const walletMcp = new MockWalletMcpClient();
-  const messaging = new MockMessagingGateway();
-
-  const handler = new PendingActionHandler(
-    pendingService,
-    walletMcp as any,
-    messaging as any,
-    () => null
-  );
-
-  // Add regular expense transaction
-  pendingService.addPendingTransaction({
-    sourceType: 'WHATSAPP',
-    bankDisplayName: 'BCA',
-    accountNameHint: 'Checking',
-    counterParty: 'Shop',
-    amount: 100000,
-    transactionType: 'EXPENSE',
-    matchedAccountId: 'acc-1',
-    matchedCategoryId: 'cat-001',
-    note: 'Shopping',
-    recordDate: '2026-09-10',
+    assertCondition('Retry only dispatched one additional call', walletMcp.calls.length === 3);
+    assertCondition('Retry dispatched only destination leg', walletMcp.calls[2][0].accountId === 'acc-destination');
+    assertCondition('Transfer ticket removed after remaining leg succeeds', pendingService.getPendingTransaction(1) === undefined);
   });
 
-  // Add transfer (creates 2 records)
-  pendingService.addPendingTransaction({
-    sourceType: 'WHATSAPP',
-    bankDisplayName: 'Mandiri',
-    accountNameHint: 'Savings',
-    counterParty: 'Friend',
-    amount: 500000,
-    transactionType: 'TRANSFER',
-    matchedAccountId: 'acc-2',
-    matchedDestinationAccountId: 'acc-3',
-    note: 'Transfer to friend',
-    recordDate: '2026-09-10',
+  await runCase('Suite 4: ambiguous timeout becomes UNKNOWN and is not automatically retried', async () => {
+    const pendingService = new PendingTransactionService();
+    const walletMcp = new MockWalletMcpClient();
+    const messaging = new MockMessagingGateway();
+    const handler = createHandler(pendingService, walletMcp, messaging);
+
+    addExpense(pendingService);
+    walletMcp.setUnknownFailureOnCall(1, 'socket closed after request write');
+
+    await handler.handlePendingAction(createMockEvent(), confirmTicketOne, Date.now());
+
+    assertCondition('Ambiguous ticket remains for reconciliation', pendingService.getPendingTransaction(1) !== undefined);
+    assertCondition('Ambiguous ticket is marked UNKNOWN', pendingService.getPendingTransactionState(1) === 'UNKNOWN');
+    assertCondition('Unknown outcome helper recognizes the error type', isWalletMcpDispatchOutcomeUnknown(new WalletMcpRequestError('timeout', 'UNKNOWN')));
+    assertCondition('User is warned that automatic retry is disabled', messaging.messages[0].content.includes('tidak akan dikirim ulang otomatis'));
+
+    await handler.handlePendingAction(createMockEvent('msg-second-confirm'), confirmTicketOne, Date.now());
+    assertCondition('Second confirmation did not redispatch UNKNOWN ticket', walletMcp.calls.length === 1);
   });
 
-  // Fail on call 2 (transfer submission will fail)
-  walletMcp.setFailureOnCalls([2], 'Network timeout during transfer');
+  await runCase('Suite 5: concurrent confirmations cannot double-dispatch one ticket', async () => {
+    const pendingService = new PendingTransactionService();
+    const walletMcp = new MockWalletMcpClient();
+    const messaging = new MockMessagingGateway();
+    const handler = createHandler(pendingService, walletMcp, messaging);
 
-  const confirmIntent: PendingConfirmationIntent = {
-    actionType: 'CONFIRM',
-    targetScope: 'ALL',
-  };
+    addExpense(pendingService);
+    walletMcp.delayMs = 25;
 
-  (async () => {
-    await handler.handlePendingAction(createMockEvent(), confirmIntent, Date.now());
+    await Promise.all([
+      handler.handlePendingAction(createMockEvent('msg-concurrent-1'), confirmTicketOne, Date.now()),
+      handler.handlePendingAction(createMockEvent('msg-concurrent-2'), confirmTicketOne, Date.now()),
+    ]);
 
-    assertCondition(
-      'Regular expense removed after success',
-      pendingService.getPendingTransaction(1) === undefined
+    assertCondition('Only one concurrent MCP dispatch occurred', walletMcp.calls.length === 1);
+    assertCondition('Ticket resolved once after successful dispatch', pendingService.getPendingTransaction(1) === undefined);
+    assertCondition('Both confirmation attempts received deterministic responses', messaging.messages.length === 2);
+  });
+
+  await runCase('Suite 6: email reference is recorded only after the full transaction succeeds', async () => {
+    const pendingService = new PendingTransactionService();
+    const walletMcp = new MockWalletMcpClient();
+    const messaging = new MockMessagingGateway();
+    const recordedReferences: string[] = [];
+    const emailListener = {
+      recordProcessedTransaction: (_unused: unknown, referenceNumber?: string) => {
+        if (referenceNumber) {
+          recordedReferences.push(referenceNumber);
+        }
+      },
+    };
+    const handler = createHandler(pendingService, walletMcp, messaging, () => emailListener);
+
+    pendingService.addPendingTransaction({
+      sourceType: 'EMAIL',
+      bankDisplayName: 'Mandiri',
+      accountNameHint: 'Checking',
+      counterParty: 'Savings',
+      amount: 300000,
+      transactionType: 'TRANSFER',
+      destinationAccountNameHint: 'Savings',
+      matchedAccountId: 'acc-source',
+      matchedDestinationAccountId: 'acc-destination',
+      note: 'Email transfer',
+      recordDate: '2026-09-10',
+      referenceNumber: 'REF-12345',
+    });
+
+    walletMcp.setDefinitiveFailureOnCall(2, 'second leg failed');
+    await handler.handlePendingAction(createMockEvent(), confirmTicketOne, Date.now());
+    assertCondition('Email reference is not marked after partial transfer', recordedReferences.length === 0);
+
+    walletMcp.clearFailures();
+    await handler.handlePendingAction(createMockEvent('msg-email-retry'), confirmTicketOne, Date.now());
+    assertCondition('Email reference marked once after full success', recordedReferences.join(',') === 'REF-12345');
+  });
+
+  await runCase('Suite 7: backend error details stay in logs and are not exposed to chat', async () => {
+    const pendingService = new PendingTransactionService();
+    const walletMcp = new MockWalletMcpClient();
+    const messaging = new MockMessagingGateway();
+    const handler = createHandler(pendingService, walletMcp, messaging);
+
+    addExpense(pendingService);
+    walletMcp.setDefinitiveFailureOnCall(1, 'internal host=db.internal token=secret-123');
+
+    await handler.handlePendingAction(createMockEvent(), confirmTicketOne, Date.now());
+
+    const chatMessage = messaging.messages[0].content;
+    assertCondition('User receives sanitized retry guidance', chatMessage.includes('aman untuk dicoba lagi'));
+    assertCondition('Internal hostname is not exposed', !chatMessage.includes('db.internal'));
+    assertCondition('Backend token is not exposed', !chatMessage.includes('secret-123'));
+  });
+
+  await runCase('Suite 8: PROCESSING tickets cannot be cancelled concurrently', () => {
+    const pendingService = new PendingTransactionService();
+    addExpense(pendingService);
+
+    const claimed = pendingService.claimPendingTransaction(1);
+    assertCondition('Ticket can be claimed from PENDING', claimed?.ticketId === 1);
+    assertCondition('Claim moves ticket to PROCESSING', pendingService.getPendingTransactionState(1) === 'PROCESSING');
+    assertCondition('PROCESSING ticket cannot be rejected', pendingService.rejectPendingTransaction(1) === undefined);
+
+    pendingService.releaseProcessingTransaction(1);
+    assertCondition('Definitive failure can release ticket to PENDING', pendingService.getPendingTransactionState(1) === 'PENDING');
+
+    const reclaimed = pendingService.claimLatestPendingTransaction();
+    assertCondition('Released ticket can be claimed again', reclaimed?.ticketId === 1);
+    pendingService.markPendingTransactionUnknown(1);
+    assertCondition('UNKNOWN ticket cannot be claimed automatically', pendingService.claimPendingTransaction(1) === undefined);
+    assertCondition('UNKNOWN ticket can be explicitly cancelled after reconciliation', pendingService.rejectPendingTransaction(1)?.ticketId === 1);
+  });
+
+  await runCase('Suite 9: create_records per-item rejection is treated as definitive failure', async () => {
+    const client = new WalletMcpClientService('https://example.invalid', 'test-token');
+    (client as any).httpClient.post = async () => ({
+      data: {
+        result: {
+          structuredContent: {
+            summary: { total: 1, succeeded: 0, failed: 1 },
+            results: [{ success: false, error: 'invalid category' }],
+          },
+        },
+      },
+    });
+
+    await expectWalletMcpRequestError(
+      () => client.createRecords([{ accountId: 'acc-1', amount: -1000, recordDate: '2026-09-10' }]),
+      'DEFINITIVE_FAILURE'
     );
-    assertCondition(
-      '[CRITICAL] Transfer remains in queue after failure',
-      pendingService.getPendingTransaction(2) !== undefined
+  });
+
+  await runCase('Suite 10: transport timeout is classified UNKNOWN', async () => {
+    const client = new WalletMcpClientService('https://example.invalid', 'test-token');
+    const timeoutError = Object.assign(new Error('request timed out'), {
+      isAxiosError: true,
+      code: 'ECONNABORTED',
+    });
+    (client as any).httpClient.post = async () => {
+      throw timeoutError;
+    };
+
+    const error = await expectWalletMcpRequestError(
+      () => client.createRecords([{ accountId: 'acc-1', amount: -1000, recordDate: '2026-09-10' }]),
+      'UNKNOWN'
     );
-    assertCondition(
-      'Only 1 transaction remains pending (the transfer)',
-      pendingService.getAllPendingTransactions().length === 1
+    assertCondition('UNKNOWN helper recognizes real client transport error', isWalletMcpDispatchOutcomeUnknown(error));
+  });
+
+  await runCase('Suite 11: explicit HTTP 400 is definitive while HTTP 503 is ambiguous', async () => {
+    const definitiveClient = new WalletMcpClientService('https://example.invalid', 'test-token');
+    const badRequestError = Object.assign(new Error('bad request'), {
+      isAxiosError: true,
+      response: { status: 400, data: { message: 'invalid payload' } },
+    });
+    (definitiveClient as any).httpClient.post = async () => {
+      throw badRequestError;
+    };
+
+    await expectWalletMcpRequestError(
+      () => definitiveClient.createRecords([{ accountId: 'acc-1', amount: -1000, recordDate: '2026-09-10' }]),
+      'DEFINITIVE_FAILURE'
     );
-  })();
+
+    const ambiguousClient = new WalletMcpClientService('https://example.invalid', 'test-token');
+    const serviceUnavailableError = Object.assign(new Error('service unavailable'), {
+      isAxiosError: true,
+      response: { status: 503, data: { message: 'upstream unavailable' } },
+    });
+    (ambiguousClient as any).httpClient.post = async () => {
+      throw serviceUnavailableError;
+    };
+
+    await expectWalletMcpRequestError(
+      () => ambiguousClient.createRecords([{ accountId: 'acc-1', amount: -1000, recordDate: '2026-09-10' }]),
+      'UNKNOWN'
+    );
+  });
+
+  console.log('\n====================================================');
+  console.log(`[SUCCESS] ${passedCaseCount} test cases passed with ${assertionCount} assertions.`);
+  console.log('====================================================');
 }
-console.log(`\n${'='.repeat(50)}`);
-console.log(`Total Tests: ${totalTestsCount} | Passed: ${passedTestsCount} | Failed: ${totalTestsCount - passedTestsCount}`);
-console.log(`${'='.repeat(50)}`);
 
-if (passedTestsCount === totalTestsCount) {
-  console.log('[SUCCESS] All pending transaction integrity tests passed!');
-  process.exit(0);
-} else {
-  console.error(`[FAILURE] ${totalTestsCount - passedTestsCount} test(s) failed.`);
-  process.exit(1);
-}
+main().catch((error: unknown) => {
+  console.error('[FATAL] pendingActionHandler.test.ts failed:', error);
+  process.exitCode = 1;
+});
