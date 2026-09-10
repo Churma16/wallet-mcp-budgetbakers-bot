@@ -127,7 +127,7 @@ export class EmailListenerService {
     }
 
     this.isServiceRunning = true;
-    applicationLogger.info(`Initializing Gmail IMAP Client for ${this.imapUser}...`);
+    applicationLogger.info('Initializing Gmail IMAP Client...');
 
     this.imapClient = new ImapFlow({
       host: this.imapHost,
@@ -159,7 +159,7 @@ export class EmailListenerService {
     });
 
     await this.imapClient.connect();
-    applicationLogger.success(`Connected to Gmail IMAP successfully (${this.imapUser}).`);
+    applicationLogger.success('Connected to Gmail IMAP successfully.');
 
     // Run initial scan and enter IDLE loop
     await this.runMailboxIdleCycle();
@@ -288,16 +288,23 @@ export class EmailListenerService {
             this.processedMessageIdSet.add(rawMessageId);
             this.savePersistentCache();
 
-            applicationLogger.fileDetail(
-              'email',
-              `[Gate 1 Skip] \"${emailSubject}\" from \"${senderAddress}\": ${gateResult.reason}`
-            );
+            applicationLogger.info('[Gate 1 Skip] Email rejected by initial transaction gate.');
+            applicationLogger.fileDetail('email', 'Gate 1 Rejected Email Candidate', {
+              emailSubject,
+              senderAddress,
+              reason: gateResult.reason,
+            });
             continue;
           }
 
           applicationLogger.info(
-            `[Gate 1 Passed] Matched bank: ${gateResult.matchedBankRule?.displayName}, Amount: Rp ${gateResult.candidateAmount}, Ref: ${gateResult.referenceNumber || 'N/A'}`
+            `[Gate 1 Passed] Matched bank rule: ${gateResult.matchedBankRule?.displayName || 'unknown'}.`
           );
+          applicationLogger.fileDetail('email', 'Gate 1 Accepted Email Candidate', {
+            emailSubject,
+            senderAddress,
+            gateResult,
+          });
 
           // Claim the candidate in memory while downstream Gate 2 / pending transaction handling is active.
           this.inFlightMessageIdSet.add(rawMessageId);
