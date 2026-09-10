@@ -31,6 +31,7 @@ const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
   { filePath: 'tests/pendingActionHandler.test.ts', description: 'Pending transaction data integrity & MCP failure recovery (Issue #72)' },
   { filePath: 'tests/phoneNumberNormalization.test.ts', description: 'International E.164 phone normalization, domestic prefix detection & Indonesian 08 conversion' },
   { filePath: 'tests/receiptOcrPrompt.test.ts', description: 'Receipt vision OCR system instructions, timezone offset & QRIS rules' },
+  { filePath: 'tests/recordValidator.test.ts', description: 'Deterministic account resolution & fail-closed ambiguity handling (Issue #73)' },
   { filePath: 'tests/responseDictionary.test.ts', description: 'Multi-language dictionary resolution & missing token fallbacks' },
   { filePath: 'tests/telegramSafeguards.test.ts', description: 'Telegram rate limiting & unauthorized user whitelist gates' },
   { filePath: 'tests/whatsappSafeguards.test.ts', description: 'WhatsApp exponential backoff, circuit breaker & ban safeguards' },
