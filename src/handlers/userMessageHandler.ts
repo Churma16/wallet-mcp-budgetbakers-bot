@@ -21,17 +21,16 @@ import { getDictionary } from '../i18n/index.js';
 import { applicationLogger, formatConciseErrorMessage } from '../utils/logger.js';
 
 function formatAccountResolutionIssueMessage(issue: AccountResolutionIssue): string {
-  const recordLabel = `Transaksi #${issue.recordIndex + 1}`;
-  const accountHint = issue.accountHint || '(kosong)';
-
+  const dictionary = getDictionary();
   if (issue.reason === 'AMBIGUOUS') {
-    const candidateNames = issue.candidates.map(candidate => candidate.name).join(', ');
-    return candidateNames
-      ? `${recordLabel}: Akun "${accountHint}" ambigu. Kandidat: ${candidateNames}.`
-      : `${recordLabel}: Akun "${accountHint}" ambigu dan tidak dapat dipilih secara aman.`;
+    return dictionary.errors.accountResolutionAmbiguous(
+      issue.recordIndex + 1,
+      issue.accountHint,
+      issue.candidates.map(candidate => candidate.name)
+    );
   }
 
-  return `${recordLabel}: Akun "${accountHint}" tidak dapat ditemukan secara pasti.`;
+  return dictionary.errors.accountResolutionUnresolved(issue.recordIndex + 1, issue.accountHint);
 }
 
 export class UserMessageHandler {
@@ -144,7 +143,7 @@ export class UserMessageHandler {
           const validationErrorMessage = [
             ...validationResult.validationErrors,
             ...accountResolutionMessages,
-          ].join('\n') || 'Akun transaksi tidak dapat ditentukan secara aman.';
+          ].join('\n') || getDictionary().errors.accountResolutionFallback;
 
           applicationLogger.warn(`Financial record validation rejected:\n${validationErrorMessage}`);
 
