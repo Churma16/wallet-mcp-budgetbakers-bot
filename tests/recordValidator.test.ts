@@ -18,8 +18,8 @@ function createRecord(accountId: string): CreateRecordInputPayload {
   };
 }
 
-function validate(accountId: string) {
-  return validateAndSanitizeFinancialRecords([createRecord(accountId)], accounts, []);
+function validate(accountId: string, accountList: WalletAccountItem[] = accounts) {
+  return validateAndSanitizeFinancialRecords([createRecord(accountId)], accountList, []);
 }
 
 {
@@ -45,6 +45,37 @@ function validate(accountId: string) {
   assert.deepEqual(
     result.accountResolutionIssues[0].candidates.map(candidate => candidate.id),
     ['acc-bca-personal', 'acc-bca-business']
+  );
+}
+
+{
+  const duplicateNameAccounts: WalletAccountItem[] = [
+    { id: 'acc-cash-primary', name: 'Cash' },
+    { id: 'acc-cash-secondary', name: 'Cash' },
+  ];
+  const result = validate('cash', duplicateNameAccounts);
+  assert.equal(result.isValid, false);
+  assert.equal(result.sanitizedRecords.length, 0);
+  assert.equal(result.accountResolutionIssues[0].reason, 'AMBIGUOUS');
+  assert.deepEqual(
+    result.accountResolutionIssues[0].candidates.map(candidate => candidate.id),
+    ['acc-cash-primary', 'acc-cash-secondary']
+  );
+}
+
+{
+  const numericCollisionAccounts: WalletAccountItem[] = [
+    { id: 'acc-one', name: 'One' },
+    { id: 'acc-index-two', name: 'Index Two' },
+    { id: 'acc-bank-match', name: 'Bank Match', bankAccountNumber: '99880002' },
+  ];
+  const result = validate('0002', numericCollisionAccounts);
+  assert.equal(result.isValid, false);
+  assert.equal(result.sanitizedRecords.length, 0);
+  assert.equal(result.accountResolutionIssues[0].reason, 'AMBIGUOUS');
+  assert.deepEqual(
+    result.accountResolutionIssues[0].candidates.map(candidate => candidate.id),
+    ['acc-index-two', 'acc-bank-match']
   );
 }
 
