@@ -56,12 +56,57 @@ function findBankAccountMatches(
   });
 }
 
-function uniqueAccountCandidates(accounts: WalletAccountItem[]): AccountResolutionCandidate[] {
+function uniqueAccountsById(accounts: WalletAccountItem[]): WalletAccountItem[] {
   const uniqueAccounts = new Map<string, WalletAccountItem>();
   for (const account of accounts) {
     uniqueAccounts.set(account.id, account);
   }
-  return Array.from(uniqueAccounts.values()).map(toAccountResolutionCandidate);
+  return Array.from(uniqueAccounts.values());
+}
+
+function findAccountResolutionCandidates(
+  rawAccountHint: string,
+  availableAccountList: WalletAccountItem[]
+): WalletAccountItem[] {
+  // An exact Wallet ID is canonical and does not need heuristic interpretation.
+  const exactIdMatches = availableAccountList.filter(account => account.id === rawAccountHint);
+  if (exactIdMatches.length > 0) {
+    return uniqueAccountsById(exactIdMatches);
+  }
+
+  const resolutionCandidates: WalletAccountItem[] = [];
+
+  // Numeric hints may represent the 1-based account index shown to the AI/user.
+  if (/^\d+$/.test(rawAccountHint)) {
+    const accountIndex = Number.parseInt(rawAccountHint, 10) - 1;
+    if (accountIndex >= 0 && accountIndex < availableAccountList.length) {
+      resolutionCandidates.push(availableAccountList[accountIndex]);
+    }
+  }
+
+  // Prefer exact-name interpretation over partial-name interpretation, but compare
+  // that name interpretation with other applicable strategies before resolving.
+  const normalizedAccountHint = rawAccountHint.toLowerCase();
+  const exactNameMatches = availableAccountList.filter(
+    account => account.name.toLowerCase() === normalizedAccountHint
+  );
+
+  if (exactNameMatches.length > 0) {
+    resolutionCandidates.push(...exactNameMatches);
+  } else if (rawAccountHint.length > 1) {
+    resolutionCandidates.push(
+      ...availableAccountList.filter(account =>
+        account.name.toLowerCase().includes(normalizedAccountHint) ||
+        normalizedAccountHint.includes(account.name.toLowerCase())
+      )
+    );
+  }
+
+  // Bank-account interpretation is evaluated alongside index/name interpretations.
+  // Distinct accounts from different strategies must fail closed as ambiguous.
+  resolutionCandidates.push(...findBankAccountMatches(rawAccountHint, availableAccountList));
+
+  return uniqueAccountsById(resolutionCandidates);
 }
 
 /**
@@ -120,120 +165,25 @@ export function validateAndSanitizeFinancialRecords(
       continue;
     }
 
-    // 2. Account ID Resolution & Validation (supports UUID, 1-based index number, exact name, unique partial name, or bank account number)
-    let resolvedAccountId: string | undefined = undefined;
+    // 2. Account ID Resolution & Validation. All applicable heuristic strategies
+    // are compared before committing so conflicting interpretations fail closed.
     const rawAccountIdStr = String(currentRecord.accountId ?? '').trim();
-    const bankAccountMatches = findBankAccountMatches(rawAccountIdStr, availableAccountList);
+    const accountResolutionCandidates = findAccountResolutionCandidates(
+      rawAccountIdStr,
+      availableAccountList
+    );
 
-    // Strategy A: Exact UUID match
-    const exactAccountMatch = availableAccountList.find(account => account.id === rawAccountIdStr);
-    if (exactAccountMatch) {
-      resolvedAccountId = exactAccountMatch.id;
-    }
-
-    // Strategy B: Numeric hints can be either 1-based indexes or bank account numbers.
-    // Resolve only when both interpretations agree or only one interpretation is valid.
-    if (!resolvedAccountId && /^\d+$/.test(rawAccountIdStr)) {
-      const accountIndex = Number.parseInt(rawAccountIdStr, 10) - 1;
-      const indexedAccount = accountIndex >= 0 && accountIndex < availableAccountList.length
-        ? availableAccountList[accountIndex]
-        : undefined;
-
-      if (bankAccountMatches.length > 1) {
-        accountResolutionIssues.push({
-          recordIndex,
-          accountHint: rawAccountIdStr,
-          reason: 'AMBIGUOUS',
-          candidates: uniqueAccountCandidates([
-            ...(indexedAccount ? [indexedAccount] : []),
-            ...bankAccountMatches,
-          ]),
-        });
-        continue;
-      }
-
-      if (bankAccountMatches.length === 1) {
-        const bankMatchedAccount = bankAccountMatches[0];
-        if (indexedAccount && indexedAccount.id !== bankMatchedAccount.id) {
-          accountResolutionIssues.push({
-            recordIndex,
-            accountHint: rawAccountIdStr,
-            reason: 'AMBIGUOUS',
-            candidates: uniqueAccountCandidates([indexedAccount, bankMatchedAccount]),
-          });
-          continue;
-        }
-        resolvedAccountId = bankMatchedAccount.id;
-      } else if (indexedAccount) {
-        resolvedAccountId = indexedAccount.id;
-      }
-    }
-
-    // Strategy C: Exact name match (case-insensitive), only when exactly one account matches
-    if (!resolvedAccountId) {
-      const normalizedAccountHint = rawAccountIdStr.toLowerCase();
-      const exactNameMatches = availableAccountList.filter(
-        account => account.name.toLowerCase() === normalizedAccountHint
-      );
-
-      if (exactNameMatches.length === 1) {
-        resolvedAccountId = exactNameMatches[0].id;
-      } else if (exactNameMatches.length > 1) {
-        accountResolutionIssues.push({
-          recordIndex,
-          accountHint: rawAccountIdStr,
-          reason: 'AMBIGUOUS',
-          candidates: exactNameMatches.map(toAccountResolutionCandidate),
-        });
-        continue;
-      }
-    }
-
-    // Strategy D: Substring / partial name match, only when exactly one account matches
-    if (!resolvedAccountId && rawAccountIdStr.length > 1) {
-      const normalizedAccountHint = rawAccountIdStr.toLowerCase();
-      const partialAccountMatches = availableAccountList.filter(
-        account =>
-          account.name.toLowerCase().includes(normalizedAccountHint) ||
-          normalizedAccountHint.includes(account.name.toLowerCase())
-      );
-
-      if (partialAccountMatches.length === 1) {
-        resolvedAccountId = partialAccountMatches[0].id;
-      } else if (partialAccountMatches.length > 1) {
-        accountResolutionIssues.push({
-          recordIndex,
-          accountHint: rawAccountIdStr,
-          reason: 'AMBIGUOUS',
-          candidates: partialAccountMatches.map(toAccountResolutionCandidate),
-        });
-        continue;
-      }
-    }
-
-    // Strategy E: Bank account number match for non-numeric or otherwise unresolved hints.
-    if (!resolvedAccountId && bankAccountMatches.length === 1) {
-      resolvedAccountId = bankAccountMatches[0].id;
-    } else if (!resolvedAccountId && bankAccountMatches.length > 1) {
+    if (accountResolutionCandidates.length !== 1) {
       accountResolutionIssues.push({
         recordIndex,
         accountHint: rawAccountIdStr,
-        reason: 'AMBIGUOUS',
-        candidates: bankAccountMatches.map(toAccountResolutionCandidate),
+        reason: accountResolutionCandidates.length > 1 ? 'AMBIGUOUS' : 'UNRESOLVED',
+        candidates: accountResolutionCandidates.map(toAccountResolutionCandidate),
       });
       continue;
     }
 
-    // Fail closed when account resolution is not deterministic.
-    if (!resolvedAccountId) {
-      accountResolutionIssues.push({
-        recordIndex,
-        accountHint: rawAccountIdStr,
-        reason: 'UNRESOLVED',
-        candidates: [],
-      });
-      continue;
-    }
+    const resolvedAccountId = accountResolutionCandidates[0].id;
 
     // 3. Category ID Validation (supports UUID, 1-based index number, exact name, or partial name)
     let resolvedCategoryId: string | undefined = undefined;
