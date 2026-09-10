@@ -245,3 +245,205 @@ console.log('\n--- TEST SUITE 3: CRITICAL - MCP Failure Recovery (Single Transac
     );
   })();
 }
+
+// ============================================================
+// TEST SUITE 4: Edge Case - Transfer Transactions
+// ============================================================
+console.log('\n--- TEST SUITE 4: Edge Case - Transfer Transactions ---');
+
+{
+  const pendingService = new PendingTransactionService();
+  const walletMcp = new MockWalletMcpClient();
+  const messaging = new MockMessagingGateway();
+
+  const handler = new PendingActionHandler(
+    pendingService,
+    walletMcp as any,
+    messaging as any,
+    () => null
+  );
+
+  // Add a transfer transaction (creates 2 records)
+  pendingService.addPendingTransaction({
+    sourceType: 'WHATSAPP',
+    bankDisplayName: 'BCA',
+    accountNameHint: 'Checking',
+    counterParty: 'Jane Doe',
+    amount: 1000000,
+    transactionType: 'TRANSFER',
+    matchedAccountId: 'acc-source',
+    matchedDestinationAccountId: 'acc-dest',
+    note: 'Transfer to Jane',
+    recordDate: '2026-09-10',
+  });
+
+  const confirmIntent: PendingConfirmationIntent = {
+    actionType: 'CONFIRM',
+    targetScope: 1,
+  };
+
+  walletMcp.setFailure(true, 'MCP server unavailable');
+
+  (async () => {
+    await handler.handlePendingAction(createMockEvent(), confirmIntent, Date.now());
+
+    assertCondition(
+      'Transfer transaction remains in queue after MCP failure',
+      pendingService.getPendingTransaction(1) !== undefined
+    );
+    assertCondition(
+      'User notified of transfer failure',
+      messaging.messages.length === 1
+    );
+  })();
+}
+
+// ============================================================
+// TEST SUITE 5: Edge Case - Email Listener Integration
+// ============================================================
+console.log('\n--- TEST SUITE 5: Edge Case - Email Listener Integration ---');
+
+{
+  const pendingService = new PendingTransactionService();
+  const walletMcp = new MockWalletMcpClient();
+  const messaging = new MockMessagingGateway();
+
+  class MockEmailListener {
+    public recordedReferences: string[] = [];
+
+    recordProcessedTransaction(a: any, referenceNumber?: string): void {
+      if (referenceNumber) {
+        this.recordedReferences.push(referenceNumber);
+      }
+    }
+  }
+
+  const emailListener = new MockEmailListener();
+
+  const handler = new PendingActionHandler(
+    pendingService,
+    walletMcp as any,
+    messaging as any,
+    () => emailListener
+  );
+
+  // Add transaction with reference number
+  pendingService.addPendingTransaction({
+    sourceType: 'EMAIL',
+    bankDisplayName: 'BCA',
+    accountNameHint: 'Savings',
+    counterParty: 'Vendor',
+    amount: 250000,
+    transactionType: 'EXPENSE',
+    matchedAccountId: 'acc-123',
+    matchedCategoryId: 'cat-001',
+    note: 'Invoice payment',
+    recordDate: '2026-09-10',
+    referenceNumber: 'REF-12345',
+  });
+
+  const confirmIntent: PendingConfirmationIntent = {
+    actionType: 'CONFIRM',
+    targetScope: 1,
+  };
+
+  walletMcp.setFailure(true, 'Network error');
+
+  (async () => {
+    await handler.handlePendingAction(createMockEvent(), confirmIntent, Date.now());
+
+    assertCondition(
+      'Email listener NOT called on MCP failure',
+      emailListener.recordedReferences.length === 0
+    );
+    assertCondition(
+      'Transaction remains pending to retry recording',
+      pendingService.getPendingTransaction(1) !== undefined
+    );
+  })();
+}
+
+// ============================================================
+// TEST SUITE 6: Edge Case - Bulk with Partial Missing Fields
+// ============================================================
+console.log('\n--- TEST SUITE 6: Edge Case - Bulk with Partial Missing Fields ---');
+
+{
+  const pendingService = new PendingTransactionService();
+  const walletMcp = new MockWalletMcpClient();
+  const messaging = new MockMessagingGateway();
+
+  const handler = new PendingActionHandler(
+    pendingService,
+    walletMcp as any,
+    messaging as any,
+    () => null
+  );
+
+  // Add transaction without categoryId (optional field)
+  pendingService.addPendingTransaction({
+    sourceType: 'WHATSAPP',
+    bankDisplayName: 'BCA',
+    accountNameHint: 'Account 1',
+    counterParty: 'Seller',
+    amount: 100000,
+    transactionType: 'EXPENSE',
+    matchedAccountId: 'acc-123',
+    // No matchedCategoryId
+    note: 'Purchase',
+    recordDate: '2026-09-10',
+  });
+
+  // Add transfer without destination account (single-entry only)
+  pendingService.addPendingTransaction({
+    sourceType: 'WHATSAPP',
+    bankDisplayName: 'Mandiri',
+    accountNameHint: 'Account 2',
+    counterParty: 'Recipient',
+    amount: 500000,
+    transactionType: 'TRANSFER',
+    matchedAccountId: 'acc-456',
+    // No matchedDestinationAccountId
+    note: 'Transfer out',
+    recordDate: '2026-09-10',
+  });
+
+  const confirmIntent: PendingConfirmationIntent = {
+    actionType: 'CONFIRM',
+    targetScope: 'ALL',
+  };
+
+  walletMcp.setFailure(true, 'Invalid payload');
+
+  (async () => {
+    await handler.handlePendingAction(createMockEvent(), confirmIntent, Date.now());
+
+    assertCondition(
+      'Transaction without categoryId remains in queue',
+      pendingService.getPendingTransaction(1) !== undefined
+    );
+    assertCondition(
+      'Transfer without dest account remains in queue',
+      pendingService.getPendingTransaction(2) !== undefined
+    );
+    assertCondition(
+      'All 2 transactions still pending after failure',
+      pendingService.getAllPendingTransactions().length === 2
+    );
+  })();
+}
+
+// ============================================================
+// TEST SUMMARY
+// ============================================================
+console.log(`\n${'='.repeat(50)}`);
+console.log(`Total Tests: ${totalTestsCount} | Passed: ${passedTestsCount} | Failed: ${totalTestsCount - passedTestsCount}`);
+console.log(`${'='.repeat(50)}`);
+
+if (passedTestsCount === totalTestsCount) {
+  console.log('[SUCCESS] All pending transaction integrity tests passed!');
+  process.exit(0);
+} else {
+  console.error(`[FAILURE] ${totalTestsCount - passedTestsCount} test(s) failed.`);
+  process.exit(1);
+}
