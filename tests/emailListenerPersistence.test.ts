@@ -62,6 +62,17 @@ function readProcessedMessageIds(cacheDirectory: string): string[] {
   return parsed.processedMessageIds ?? [];
 }
 
+async function waitForCondition(condition: () => boolean): Promise<void> {
+  const timeoutAt = Date.now() + 1000;
+
+  while (!condition()) {
+    if (Date.now() >= timeoutAt) {
+      throw new Error('Timed out waiting for test condition');
+    }
+    await new Promise(resolve => setTimeout(resolve, 1));
+  }
+}
+
 async function testSuccessfulCandidateCommitsAfterCallback(): Promise<void> {
   const cacheDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'wallet-email-success-'));
   const messageId = 'success-transaction@example.com';
@@ -160,10 +171,14 @@ async function testFailedCandidateRemainsRetryable(): Promise<void> {
   }
 }
 
-async function testInFlightCandidateIsSkipped(): Promise<void> {
+async function testProductionInFlightClaimPreventsDuplicateDispatch(): Promise<void> {
   const cacheDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'wallet-email-inflight-'));
   const messageId = 'inflight-transaction@example.com';
   let callbackCount = 0;
+  let releaseCallback: (() => void) | undefined;
+  const callbackBarrier = new Promise<void>(resolve => {
+    releaseCallback = resolve;
+  });
 
   try {
     const service = new EmailListenerService(
@@ -174,6 +189,7 @@ async function testInFlightCandidateIsSkipped(): Promise<void> {
       10,
       async () => {
         callbackCount += 1;
+        await callbackBarrier;
       },
       cacheDirectory
     );
@@ -188,12 +204,42 @@ async function testInFlightCandidateIsSkipped(): Promise<void> {
       )
     );
 
-    internalService.inFlightMessageIdSet.add(`<${messageId}>`);
+    const firstScanPromise = service.scanRecentMessages();
+    await waitForCondition(() => callbackCount === 1);
+
+    assert.equal(
+      internalService.inFlightMessageIdSet.has(`<${messageId}>`),
+      true,
+      'production scan must claim the candidate before awaiting downstream handling'
+    );
+    assert.deepEqual(
+      readProcessedMessageIds(cacheDirectory),
+      [],
+      'in-flight candidate must not be persisted before downstream success'
+    );
+
+    // Bypass the outer scan serialization guard so this invocation exercises the
+    // message-level in-flight deduplication path while the first callback is pending.
+    internalService.isHandlingIncomingMail = false;
     await service.scanRecentMessages();
 
-    assert.equal(callbackCount, 0, 'an in-flight candidate must not be dispatched again');
-    assert.deepEqual(readProcessedMessageIds(cacheDirectory), [], 'in-flight state must remain memory-only');
+    assert.equal(callbackCount, 1, 'a competing scan must not dispatch an in-flight candidate again');
+
+    releaseCallback?.();
+    await firstScanPromise;
+
+    assert.equal(
+      internalService.inFlightMessageIdSet.has(`<${messageId}>`),
+      false,
+      'successful downstream completion must release the in-flight claim'
+    );
+    assert.deepEqual(
+      readProcessedMessageIds(cacheDirectory),
+      [`<${messageId}>`],
+      'successful downstream completion should persist the processed message ID'
+    );
   } finally {
+    releaseCallback?.();
     fs.rmSync(cacheDirectory, { recursive: true, force: true });
   }
 }
@@ -248,8 +294,8 @@ async function runEmailListenerPersistenceTests(): Promise<void> {
   await testFailedCandidateRemainsRetryable();
   console.log('  [PASS] downstream failure remains retryable and commits on retry');
 
-  await testInFlightCandidateIsSkipped();
-  console.log('  [PASS] in-flight candidate is skipped without persistent commit');
+  await testProductionInFlightClaimPreventsDuplicateDispatch();
+  console.log('  [PASS] production in-flight claim prevents duplicate dispatch and cleans up');
 
   await testGateOneRejectionCachesImmediately();
   console.log('  [PASS] Gate 1 rejection is cached immediately');
