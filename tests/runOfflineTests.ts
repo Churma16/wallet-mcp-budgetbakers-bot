@@ -20,6 +20,7 @@ interface TestSuiteExecutionResult {
 
 const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
   { filePath: 'tests/bankEmailRules.test.ts', description: 'Bank email parsing rules, currency parser & confirmation intent detector' },
+  { filePath: 'tests/emailSenderDomainValidation.test.ts', description: 'Bank email sender domain spoofing & malformed angle-bracket rejection' },
   { filePath: 'tests/budgetParsing.test.ts', description: 'Budget schema normalization & closed budget filtering' },
   { filePath: 'tests/fallbackAiProvider.test.ts', description: 'Fallback AI provider cascading failover & error classification' },
   { filePath: 'tests/humanResponseFormatter.test.ts', description: 'Human-facing WhatsApp message formatting & localized responses' },
