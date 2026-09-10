@@ -69,85 +69,110 @@ export class PendingActionHandler {
       return true;
     }
 
-    const recordsToCreate: CreateRecordInputPayload[] = [];
     const activeEmailListener = this.emailListenerServiceGetter();
+    const successfulTickets: number[] = [];
+    const failedTickets: Array<{ ticketId: number; error: string }> = [];
+
+    // PHASE 2: Submit records PER TRANSACTION to prevent partial batch failures
+    applicationLogger.mcp(`Processing ${itemsToRecord.length} transaction(s) individually...`);
 
     for (const item of itemsToRecord) {
-      if (item.transactionType === 'TRANSFER') {
-        recordsToCreate.push({
-          accountId: item.matchedAccountId,
-          amount: -Math.abs(item.amount),
-          recordDate: item.recordDate,
-          note: item.note || `Transfer ke ${item.destinationAccountNameHint || 'akun lain'}`,
-          counterParty: item.destinationAccountNameHint || '',
-        });
+      try {
+        const recordsForThisTransaction: CreateRecordInputPayload[] = [];
 
-        if (item.matchedDestinationAccountId) {
-          recordsToCreate.push({
-            accountId: item.matchedDestinationAccountId,
-            amount: Math.abs(item.amount),
+        // Build records for this transaction
+        if (item.transactionType === 'TRANSFER') {
+          recordsForThisTransaction.push({
+            accountId: item.matchedAccountId,
+            amount: -Math.abs(item.amount),
             recordDate: item.recordDate,
-            note: item.note || `Transfer dari ${item.accountNameHint || 'akun lain'}`,
-            counterParty: item.accountNameHint || '',
+            note: item.note || `Transfer ke ${item.destinationAccountNameHint || 'akun lain'}`,
+            counterParty: item.destinationAccountNameHint || '',
+          });
+
+          if (item.matchedDestinationAccountId) {
+            recordsForThisTransaction.push({
+              accountId: item.matchedDestinationAccountId,
+              amount: Math.abs(item.amount),
+              recordDate: item.recordDate,
+              note: item.note || `Transfer dari ${item.accountNameHint || 'akun lain'}`,
+              counterParty: item.accountNameHint || '',
+            });
+          }
+        } else {
+          const finalAmount = item.transactionType === 'EXPENSE'
+            ? -Math.abs(item.amount)
+            : Math.abs(item.amount);
+
+          recordsForThisTransaction.push({
+            accountId: item.matchedAccountId,
+            categoryId: item.matchedCategoryId,
+            amount: finalAmount,
+            recordDate: item.recordDate,
+            note: item.note,
+            counterParty: item.counterParty,
           });
         }
-      } else {
-        const finalAmount = item.transactionType === 'EXPENSE'
-          ? -Math.abs(item.amount)
-          : Math.abs(item.amount);
 
-        recordsToCreate.push({
-          accountId: item.matchedAccountId,
-          categoryId: item.matchedCategoryId,
-          amount: finalAmount,
-          recordDate: item.recordDate,
-          note: item.note,
-          counterParty: item.counterParty,
-        });
-      }
+        // Submit this transaction's records individually
+        applicationLogger.mcp(`[Ticket #${item.ticketId}] Submitting ${recordsForThisTransaction.length} record(s)...`);
+        await this.walletMcpClient.createRecords(recordsForThisTransaction);
 
-      if (activeEmailListener) {
-        activeEmailListener.recordProcessedTransaction(undefined, item.referenceNumber);
+        // Mark email as processed only on success
+        if (activeEmailListener) {
+          activeEmailListener.recordProcessedTransaction(undefined, item.referenceNumber);
+        }
+
+        // PHASE 3: Delete only this successful ticket
+        this.pendingTransactionManager.resolvePendingTransaction(item.ticketId);
+        successfulTickets.push(item.ticketId);
+        applicationLogger.success(`[Ticket #${item.ticketId}] Successfully recorded.`);
+      } catch (error) {
+        // Track failure but continue processing other transactions
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        failedTickets.push({ ticketId: item.ticketId, error: errorMessage });
+        applicationLogger.error(
+          `[Ticket #${item.ticketId}] Failed to record: ${errorMessage}`
+        );
       }
     }
 
-    // PHASE 2: Attempt MCP dispatch with error recovery
-    applicationLogger.mcp(`Recording ${recordsToCreate.length} confirmed transaction(s) to Wallet MCP...`);
-    try {
-      await this.walletMcpClient.createRecords(recordsToCreate);
+    // PHASE 4: Generate user notification based on results
+    const processingDurationMs = Date.now() - processingStartTimestamp;
 
-      // PHASE 3: Only delete items if MCP dispatch succeeded
-      for (const item of itemsToRecord) {
-        this.pendingTransactionManager.resolvePendingTransaction(item.ticketId);
-      }
-
-      const replyMessage = itemsToRecord.length === 1
-        ? formatPendingConfirmationSuccess(itemsToRecord[0])
-        : formatBulkPendingConfirmationSuccess(itemsToRecord);
+    if (successfulTickets.length > 0 && failedTickets.length === 0) {
+      // All successful
+      const successfulItems = itemsToRecord.filter(item => successfulTickets.includes(item.ticketId));
+      const replyMessage = successfulItems.length === 1
+        ? formatPendingConfirmationSuccess(successfulItems[0])
+        : formatBulkPendingConfirmationSuccess(successfulItems);
 
       await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
-      const processingDurationMs = Date.now() - processingStartTimestamp;
       applicationLogger.success(
-        `[${event.channel.toUpperCase()}] Confirmed & recorded ${recordsToCreate.length} pending transaction(s) to Wallet (${processingDurationMs}ms).`
+        `[${event.channel.toUpperCase()}] Confirmed & recorded ${successfulTickets.length}/${itemsToRecord.length} transaction(s) (${processingDurationMs}ms).`
       );
-
       return true;
-    } catch (error) {
-      // ERROR RECOVERY: Items remain in pending queue, user receives failure notification with retry instructions
-      applicationLogger.error(
-        `[${event.channel.toUpperCase()}] Failed to record ${recordsToCreate.length} pending transaction(s) to Wallet MCP: ${error instanceof Error ? error.message : String(error)}`
-      );
-
-      let errorMessage = '[ERROR] Gagal merekam transaksi ke Wallet. ';
-      
-      if (itemsToRecord.length === 1) {
-        errorMessage += `Tiket #${itemsToRecord[0].ticketId} tetap tersimpan di antrian. Ketik "ya" untuk mencoba lagi atau "tidak" untuk membatalkan.`;
-      } else {
-        errorMessage += `${itemsToRecord.length} transaksi tetap tersimpan di antrian. Ketik "ya" untuk mencoba lagi atau "tidak" untuk membatalkan.`;
-      }
-
+    } else if (successfulTickets.length === 0 && failedTickets.length > 0) {
+      // All failed - all remain in queue
+      let errorMessage = '[ERROR] Gagal merekam semua transaksi ke Wallet. ';
+      errorMessage += `${failedTickets.length} transaksi tetap tersimpan di antrian. Ketik "ya" untuk mencoba lagi atau "tidak" untuk membatalkan.`;
       await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, errorMessage);
-
+      applicationLogger.error(
+        `[${event.channel.toUpperCase()}] Failed all ${failedTickets.length} transaction(s) (${processingDurationMs}ms).`
+      );
+      return true;
+    } else {
+      // Partial success - some recorded, some remain in queue
+      let partialMessage = `[INFO] Sebagian transaksi berhasil dicatat: ${successfulTickets.length}/${itemsToRecord.length}.\n`;
+      partialMessage += `[WARN] ${failedTickets.length} transaksi gagal dan tetap di antrian:\n`;
+      for (const failed of failedTickets) {
+        partialMessage += `  - Tiket #${failed.ticketId}: ${failed.error}\n`;
+      }
+      partialMessage += `Ketik "ya" untuk mencoba ulang yang gagal atau "tidak" untuk membatalkan.`;
+      await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, partialMessage);
+      applicationLogger.warn(
+        `[${event.channel.toUpperCase()}] Partial success: ${successfulTickets.length}/${itemsToRecord.length} recorded, ${failedTickets.length} remain (${processingDurationMs}ms).`
+      );
       return true;
     }
   }
