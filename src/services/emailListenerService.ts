@@ -28,6 +28,7 @@ export class EmailListenerService {
   private startupCutoffTimestamp: Date;
   private readonly processedMessageIdSet: Set<string> = new Set<string>();
   private readonly processedReferenceNumberSet: Set<string> = new Set<string>();
+  private readonly inFlightMessageIdSet: Set<string> = new Set<string>();
   private readonly cacheFilePath: string;
   private readonly maxCachedItemsCount: number = 2000;
 
@@ -259,8 +260,11 @@ export class EmailListenerService {
             '';
           const rawMessageId = parsedMime.messageId || String(messageUid);
 
-          // Fast deduplication check: Has this email message ID already been processed?
-          if (this.processedMessageIdSet.has(rawMessageId)) {
+          // Fast deduplication check: Has this email message ID already been processed or claimed by another scan?
+          if (
+            this.processedMessageIdSet.has(rawMessageId) ||
+            this.inFlightMessageIdSet.has(rawMessageId)
+          ) {
             continue;
           }
 
@@ -279,14 +283,14 @@ export class EmailListenerService {
             this.processedReferenceNumberSet
           );
 
-          // Record message ID as evaluated to avoid re-running Gate 1 for the same email
-          this.processedMessageIdSet.add(rawMessageId);
-          this.savePersistentCache();
-
           if (!gateResult.passed) {
+            // Gate 1 rejection is terminal for this message, so cache immediately to avoid redundant evaluation.
+            this.processedMessageIdSet.add(rawMessageId);
+            this.savePersistentCache();
+
             applicationLogger.fileDetail(
               'email',
-              `[Gate 1 Skip] "${emailSubject}" from "${senderAddress}": ${gateResult.reason}`
+              `[Gate 1 Skip] \"${emailSubject}\" from \"${senderAddress}\": ${gateResult.reason}`
             );
             continue;
           }
@@ -295,15 +299,25 @@ export class EmailListenerService {
             `[Gate 1 Passed] Matched bank: ${gateResult.matchedBankRule?.displayName}, Amount: Rp ${gateResult.candidateAmount}, Ref: ${gateResult.referenceNumber || 'N/A'}`
           );
 
-          // Invoke callback for Gate 2 & WhatsApp confirmation
-          await this.onTransactionDetected({
-            gateResult,
-            emailSubject,
-            emailSender: senderAddress,
-            emailDate,
-            cleanedBodyText: cleanBodyText.substring(0, 3000), // Trim for prompt efficiency
-            rawMessageId,
-          });
+          // Claim the candidate in memory while downstream Gate 2 / pending transaction handling is active.
+          this.inFlightMessageIdSet.add(rawMessageId);
+          try {
+            await this.onTransactionDetected({
+              gateResult,
+              emailSubject,
+              emailSender: senderAddress,
+              emailDate,
+              cleanedBodyText: cleanBodyText.substring(0, 3000), // Trim for prompt efficiency
+              rawMessageId,
+            });
+
+            // Only persist a transaction candidate after downstream handling succeeds.
+            this.processedMessageIdSet.add(rawMessageId);
+            this.savePersistentCache();
+          } finally {
+            // A rejected callback must leave the candidate retryable on a later scan.
+            this.inFlightMessageIdSet.delete(rawMessageId);
+          }
         } catch (individualMessageError) {
           applicationLogger.error(`Failed to process email UID ${messageUid}: ${individualMessageError}`);
         }
