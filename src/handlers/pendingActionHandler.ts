@@ -1,7 +1,7 @@
 import { PendingTransactionService, PendingTransactionItem } from '../services/pendingTransactionService.js';
 import {
   WalletMcpClientService,
-  isWalletMcpDispatchOutcomeUnknown,
+  isWalletMcpDefinitiveFailure,
 } from '../services/walletMcpService.js';
 import { MessagingGatewayService, IncomingUserMessageEvent } from '../services/messaging/index.js';
 import { EmailListenerService } from '../services/emailListenerService.js';
@@ -98,15 +98,15 @@ export class PendingActionHandler {
         const rawErrorMessage = error instanceof Error ? error.message : String(error);
         applicationLogger.error(`[Ticket #${item.ticketId}] Failed to record: ${rawErrorMessage}`);
 
-        if (isWalletMcpDispatchOutcomeUnknown(error)) {
+        if (isWalletMcpDefinitiveFailure(error)) {
+          this.pendingTransactionManager.releaseProcessingTransaction(item.ticketId);
+          retryableFailedTickets.push(item.ticketId);
+        } else {
           this.pendingTransactionManager.markPendingTransactionUnknown(item.ticketId);
           uncertainTickets.push(item.ticketId);
           applicationLogger.warn(
-            `[Ticket #${item.ticketId}] Dispatch outcome is unknown; automatic retry disabled to prevent duplicates.`
+            `[Ticket #${item.ticketId}] Dispatch outcome is unknown or unclassified; automatic retry disabled to prevent duplicates.`
           );
-        } else {
-          this.pendingTransactionManager.releaseProcessingTransaction(item.ticketId);
-          retryableFailedTickets.push(item.ticketId);
         }
       }
     }
@@ -216,10 +216,13 @@ export class PendingActionHandler {
 
     if (retryableFailedTickets.length > 0) {
       const ticketList = retryableFailedTickets.map(ticketId => `#${ticketId}`).join(', ');
+      const retryCommands = retryableFailedTickets
+        .map(ticketId => `"ya #${ticketId}"`)
+        .join(' atau ');
       messageLines.push(
         `[ERROR] Gagal mencatat tiket ${ticketList}. Tiket tetap tersimpan dan aman untuk dicoba lagi.`
       );
-      messageLines.push('Ketik "ya" untuk mencoba ulang tiket yang gagal atau "tidak" untuk membatalkan.');
+      messageLines.push(`Gunakan ${retryCommands} untuk mencoba ulang tiket tersebut.`);
     }
 
     if (uncertainTickets.length > 0) {
