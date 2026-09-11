@@ -31,16 +31,41 @@ function resolveCategoryName(
   return exactNameMatch?.name || normalizedCategoryId;
 }
 
-function resolveDraftCurrency(draft: PendingAccountSelectionDraft): string {
-  const candidateCurrencies = Array.from(new Set(
-    draft.candidateAccounts
-      .map(candidate => candidate.currency?.toUpperCase())
-      .filter((currency): currency is string => Boolean(currency))
-  ));
+function resolveDraftCurrency(draft: PendingAccountSelectionDraft): string | undefined {
+  if (draft.candidateAccounts.length === 0) {
+    return undefined;
+  }
 
-  return candidateCurrencies.length === 1
-    ? candidateCurrencies[0]
-    : process.env.DEFAULT_CURRENCY || 'IDR';
+  const candidateCurrencies = draft.candidateAccounts.map(candidate =>
+    candidate.currency?.trim().toUpperCase() || undefined
+  );
+
+  if (candidateCurrencies.some(currency => !currency)) {
+    return undefined;
+  }
+
+  const uniqueCurrencies = new Set(candidateCurrencies as string[]);
+  return uniqueCurrencies.size === 1
+    ? Array.from(uniqueCurrencies)[0]
+    : undefined;
+}
+
+function formatDraftAmount(draft: PendingAccountSelectionDraft): string {
+  const dictionary = getDictionary();
+  const record = draft.records[draft.pendingRecordIndex];
+  const resolvedCurrency = resolveDraftCurrency(draft);
+
+  if (resolvedCurrency) {
+    return formatCurrencyAmount(record.amount, resolvedCurrency);
+  }
+
+  const formattedNumber = new Intl.NumberFormat(dictionary.localeIdentifier, {
+    maximumFractionDigits: 2,
+  }).format(Math.abs(record.amount));
+
+  return dictionary.languageCode === 'id'
+    ? `${formattedNumber} _(mata uang mengikuti akun yang dipilih)_`
+    : `${formattedNumber} _(currency follows the selected account)_`;
 }
 
 export function formatAccountSelectionPrompt(
@@ -50,13 +75,16 @@ export function formatAccountSelectionPrompt(
 ): string {
   const dictionary = getDictionary();
   const record = draft.records[draft.pendingRecordIndex];
-  const formattedAmount = formatCurrencyAmount(record.amount, resolveDraftCurrency(draft));
+  const formattedAmount = formatDraftAmount(draft);
   const categoryName = resolveCategoryName(record.categoryId, categories);
   const description = record.note || record.counterParty ||
     (dictionary.languageCode === 'id' ? 'Transaksi' : 'Transaction');
-  const candidateLines = draft.candidateAccounts.map(
-    (candidate, index) => `${index + 1}. ${candidate.name}`
-  );
+  const candidateLines = draft.candidateAccounts.map((candidate, index) => {
+    const currencySuffix = candidate.currency
+      ? ` (${candidate.currency.trim().toUpperCase()})`
+      : '';
+    return `${index + 1}. ${candidate.name}${currencySuffix}`;
+  });
   const batchLine = draft.records.length > 1
     ? dictionary.languageCode === 'id'
       ? `Item ${draft.pendingRecordIndex + 1} dari ${draft.records.length}`
@@ -118,6 +146,6 @@ export function formatAccountSelectionRetry(draft: PendingAccountSelectionDraft)
 export function formatAccountSelectionUnknownOutcome(draft: PendingAccountSelectionDraft): string {
   const dictionary = getDictionary();
   return dictionary.languageCode === 'id'
-    ? `⚠️ Status pencatatan draft #${draft.ticketId} belum dapat dipastikan. Demi mencegah duplikasi, draft tidak akan dikirim ulang otomatis. Periksa Wallet terlebih dahulu.`
-    : `⚠️ The recording status of draft #${draft.ticketId} is uncertain. To prevent duplicates, the draft will not be sent again automatically. Check Wallet first.`;
+    ? `⚠️ Status pencatatan draft #${draft.ticketId} belum dapat dipastikan. Demi mencegah duplikasi, draft tidak akan dikirim ulang otomatis. Periksa Wallet terlebih dahulu. Anda masih dapat memakai perintah lain atau ketik *batal* setelah rekonsiliasi.`
+    : `⚠️ The recording status of draft #${draft.ticketId} is uncertain. To prevent duplicates, the draft will not be sent again automatically. Check Wallet first. You can still use other commands or type *cancel* after reconciliation.`;
 }
