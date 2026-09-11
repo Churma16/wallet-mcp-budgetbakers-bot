@@ -1,3 +1,4 @@
+import assert from 'node:assert';
 import {
   parseRelativeTime,
   getLocalTimeParts,
@@ -17,11 +18,13 @@ import { setActiveLanguage } from '../src/i18n/index.js';
 import { applicationLogger } from '../src/utils/logger.js';
 
 function assertCondition(condition: boolean, testDescription: string): void {
-  if (!condition) {
+  try {
+    assert.ok(condition, testDescription);
+    applicationLogger.success(`[PASS] ${testDescription}`);
+  } catch (error) {
     applicationLogger.error(`[FAIL] ${testDescription}`);
-    throw new Error(`Assertion failed: ${testDescription}`);
+    throw error;
   }
-  applicationLogger.success(`[PASS] ${testDescription}`);
 }
 
 async function runRelativeTimeExpressionsTestSuite(): Promise<void> {

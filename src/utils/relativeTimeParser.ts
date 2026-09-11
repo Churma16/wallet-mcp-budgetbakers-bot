@@ -242,6 +242,34 @@ export function resolveTargetLocalToUtcIso(
 }
 
 /**
+ * Adjusts an hour (1-12) based on an explicit or inferred period (siang, sore, malam, subuh).
+ */
+function adjustHourForPeriod(rawHour: number, periodString?: string): number {
+  const normalizedPeriod = (periodString || '').toLowerCase();
+  if (normalizedPeriod === 'siang') {
+    if (rawHour >= 1 && rawHour <= 4) {
+      return rawHour + 12;
+    }
+  } else if (normalizedPeriod === 'sore') {
+    if (rawHour >= 1 && rawHour <= 6) {
+      return rawHour + 12;
+    }
+  } else if (normalizedPeriod === 'malam' || normalizedPeriod === 'malem') {
+    if (rawHour >= 1 && rawHour <= 11) {
+      return rawHour + 12;
+    }
+    if (rawHour === 12) {
+      return 0;
+    }
+  } else if (normalizedPeriod === 'pagi' || normalizedPeriod === 'subuh') {
+    if (rawHour === 12) {
+      return 0;
+    }
+  }
+  return rawHour;
+}
+
+/**
  * Extracts explicit hour and minute from text if specified by the user.
  * Supports 12-hour AM/PM formats, 24-hour formats, bare bounded HH:mm / HH.mm clocks,
  * and Indonesian colloquial times (e.g. jam 3 sore, pukul 15.30).
@@ -255,33 +283,14 @@ function extractExplicitClockTime(
   const indonesianMatch = inputText.match(indonesianClockRegex);
 
   if (indonesianMatch) {
-    let rawHour = Number.parseInt(indonesianMatch[1], 10);
+    const rawHour = Number.parseInt(indonesianMatch[1], 10);
     const rawMinute = indonesianMatch[2] ? Number.parseInt(indonesianMatch[2], 10) : 0;
-    const explicitPeriodString = (indonesianMatch[3] || inferredPeriod || '').toLowerCase();
+    const explicitPeriodString = indonesianMatch[3] || inferredPeriod;
 
     if (rawHour >= 0 && rawHour <= 24 && rawMinute >= 0 && rawMinute < 60) {
-      if (explicitPeriodString === 'siang') {
-        if (rawHour >= 1 && rawHour <= 4) {
-          rawHour += 12;
-        }
-      } else if (explicitPeriodString === 'sore') {
-        if (rawHour >= 1 && rawHour <= 6) {
-          rawHour += 12;
-        }
-      } else if (explicitPeriodString === 'malam' || explicitPeriodString === 'malem') {
-        if (rawHour >= 1 && rawHour <= 11) {
-          rawHour += 12;
-        } else if (rawHour === 12) {
-          rawHour = 0;
-        }
-      } else if (explicitPeriodString === 'pagi' || explicitPeriodString === 'subuh') {
-        if (rawHour === 12) {
-          rawHour = 0;
-        }
-      }
-
+      const adjustedHour = adjustHourForPeriod(rawHour, explicitPeriodString);
       return {
-        hour: rawHour % 24,
+        hour: adjustedHour % 24,
         minute: rawMinute,
         matchedClockSubstring: indonesianMatch[0],
       };
@@ -318,33 +327,13 @@ function extractExplicitClockTime(
   const bare24HourRegex = /(?:at\s+)?(?<![A-Za-z0-9$€£¥])([01]?\d|2[0-3])[.:]([0-5]\d)(?!\d|[.,]\d|[a-zA-Z%])/i;
   const bareMatch = inputText.match(bare24HourRegex);
   if (bareMatch) {
-    let rawHour = Number.parseInt(bareMatch[1], 10);
+    const rawHour = Number.parseInt(bareMatch[1], 10);
     const rawMinute = Number.parseInt(bareMatch[2], 10);
-    const explicitPeriodString = (inferredPeriod || '').toLowerCase();
 
     if (rawHour >= 0 && rawHour < 24 && rawMinute >= 0 && rawMinute < 60) {
-      if (explicitPeriodString === 'siang') {
-        if (rawHour >= 1 && rawHour <= 4) {
-          rawHour += 12;
-        }
-      } else if (explicitPeriodString === 'sore') {
-        if (rawHour >= 1 && rawHour <= 6) {
-          rawHour += 12;
-        }
-      } else if (explicitPeriodString === 'malam' || explicitPeriodString === 'malem') {
-        if (rawHour >= 1 && rawHour <= 11) {
-          rawHour += 12;
-        } else if (rawHour === 12) {
-          rawHour = 0;
-        }
-      } else if (explicitPeriodString === 'pagi' || explicitPeriodString === 'subuh') {
-        if (rawHour === 12) {
-          rawHour = 0;
-        }
-      }
-
+      const adjustedHour = adjustHourForPeriod(rawHour, inferredPeriod);
       return {
-        hour: rawHour % 24,
+        hour: adjustedHour % 24,
         minute: rawMinute,
         matchedClockSubstring: bareMatch[0],
       };
@@ -378,6 +367,43 @@ function normalizePeriodName(rawPeriod: string): RelativeTimePeriodName | undefi
 }
 
 /**
+ * Helper to construct a unified ParsedRelativeTimeResult.
+ */
+function createParsedRelativeTimeResult(
+  inputText: string,
+  matchedKeyword: string,
+  targetDateString: string,
+  dayReference: 'today' | 'yesterday',
+  targetTimezoneIdentifier: string,
+  periodName?: RelativeTimePeriodName,
+  fallbackHour?: number,
+  fallbackMinute?: number
+): ParsedRelativeTimeResult {
+  const explicitClock = extractExplicitClockTime(inputText, periodName);
+  const defaultHour = periodName ? PERIOD_REPRESENTATIVE_HOURS[periodName].hour : (fallbackHour ?? 0);
+  const defaultMinute = periodName ? PERIOD_REPRESENTATIVE_HOURS[periodName].minute : (fallbackMinute ?? 0);
+  const targetHour = explicitClock ? explicitClock.hour : defaultHour;
+  const targetMinute = explicitClock ? explicitClock.minute : defaultMinute;
+  const resolvedUtcIso = resolveTargetLocalToUtcIso(
+    targetDateString,
+    targetHour,
+    targetMinute,
+    targetTimezoneIdentifier
+  );
+
+  return {
+    resolvedUtcIso,
+    matchedExpression: explicitClock ? `${matchedKeyword} ${explicitClock.matchedClockSubstring}` : matchedKeyword,
+    hasExplicitTime: Boolean(explicitClock),
+    targetDateString,
+    targetHour,
+    targetMinute,
+    periodName,
+    dayReference,
+  };
+}
+
+/**
  * Parses natural language relative-time expressions (Indonesian and English).
  * Converts expressions like 'tadi pagi', 'kemarin malam', 'semalam', 'this morning', 'last night'
  * into deterministic UTC ISO 8601 timestamps using the configured application timezone.
@@ -397,247 +423,132 @@ export function parseRelativeTime(
   const yesterdayDateString = getPreviousLocalDateString(todayDateString);
 
   // Group 1: Semalam / Semalem (Indonesian last night -> yesterday at malam 20:00)
-  const semalamRegex = /\b(semalam|semalem)\b/i;
-  const semalamMatch = normalizedInput.match(semalamRegex);
+  const semalamMatch = normalizedInput.match(/\b(semalam|semalem)\b/i);
   if (semalamMatch) {
-    const explicitClock = extractExplicitClockTime(inputText, 'malam');
-    const targetHour = explicitClock ? explicitClock.hour : PERIOD_REPRESENTATIVE_HOURS.malam.hour;
-    const targetMinute = explicitClock ? explicitClock.minute : PERIOD_REPRESENTATIVE_HOURS.malam.minute;
-    const resolvedUtcIso = resolveTargetLocalToUtcIso(
+    return createParsedRelativeTimeResult(
+      inputText,
+      semalamMatch[0],
       yesterdayDateString,
-      targetHour,
-      targetMinute,
-      targetTimezoneIdentifier
+      'yesterday',
+      targetTimezoneIdentifier,
+      'malam'
     );
-
-    return {
-      resolvedUtcIso,
-      matchedExpression: explicitClock ? `${semalamMatch[0]} ${explicitClock.matchedClockSubstring}` : semalamMatch[0],
-      hasExplicitTime: Boolean(explicitClock),
-      targetDateString: yesterdayDateString,
-      targetHour,
-      targetMinute,
-      periodName: 'malam',
-      dayReference: 'yesterday',
-    };
   }
 
   // Group 2: Last Night (English last night -> yesterday at night 20:00)
-  const lastNightRegex = /\blast\s+night\b/i;
-  const lastNightMatch = normalizedInput.match(lastNightRegex);
+  const lastNightMatch = normalizedInput.match(/\blast\s+night\b/i);
   if (lastNightMatch) {
-    const explicitClock = extractExplicitClockTime(inputText, 'malam');
-    const targetHour = explicitClock ? explicitClock.hour : PERIOD_REPRESENTATIVE_HOURS.malam.hour;
-    const targetMinute = explicitClock ? explicitClock.minute : PERIOD_REPRESENTATIVE_HOURS.malam.minute;
-    const resolvedUtcIso = resolveTargetLocalToUtcIso(
+    return createParsedRelativeTimeResult(
+      inputText,
+      lastNightMatch[0],
       yesterdayDateString,
-      targetHour,
-      targetMinute,
-      targetTimezoneIdentifier
+      'yesterday',
+      targetTimezoneIdentifier,
+      'malam'
     );
-
-    return {
-      resolvedUtcIso,
-      matchedExpression: explicitClock ? `${lastNightMatch[0]} ${explicitClock.matchedClockSubstring}` : lastNightMatch[0],
-      hasExplicitTime: Boolean(explicitClock),
-      targetDateString: yesterdayDateString,
-      targetHour,
-      targetMinute,
-      periodName: 'malam',
-      dayReference: 'yesterday',
-    };
   }
 
   // Group 3: Tadi malam / Tadi malem (Indonesian last night -> yesterday at malam 20:00)
-  const tadiMalamRegex = /\btadi\s+(malam|malem)\b/i;
-  const tadiMalamMatch = normalizedInput.match(tadiMalamRegex);
+  const tadiMalamMatch = normalizedInput.match(/\btadi\s+(malam|malem)\b/i);
   if (tadiMalamMatch) {
-    const explicitClock = extractExplicitClockTime(inputText, 'malam');
-    const targetHour = explicitClock ? explicitClock.hour : PERIOD_REPRESENTATIVE_HOURS.malam.hour;
-    const targetMinute = explicitClock ? explicitClock.minute : PERIOD_REPRESENTATIVE_HOURS.malam.minute;
-    const resolvedUtcIso = resolveTargetLocalToUtcIso(
+    return createParsedRelativeTimeResult(
+      inputText,
+      tadiMalamMatch[0],
       yesterdayDateString,
-      targetHour,
-      targetMinute,
-      targetTimezoneIdentifier
+      'yesterday',
+      targetTimezoneIdentifier,
+      'malam'
     );
-
-    return {
-      resolvedUtcIso,
-      matchedExpression: explicitClock ? `${tadiMalamMatch[0]} ${explicitClock.matchedClockSubstring}` : tadiMalamMatch[0],
-      hasExplicitTime: Boolean(explicitClock),
-      targetDateString: yesterdayDateString,
-      targetHour,
-      targetMinute,
-      periodName: 'malam',
-      dayReference: 'yesterday',
-    };
   }
 
   // Group 4: Kemarin / Kemaren + Period (e.g. kemarin pagi, kemaren sore, kemarin siang, kemarin subuh, kemarin malam)
-  const kemarinPeriodRegex = /\b(kemarin|kemaren)\s+(subuh|pagi|siang|sore|malam|malem)\b/i;
-  const kemarinPeriodMatch = normalizedInput.match(kemarinPeriodRegex);
+  const kemarinPeriodMatch = normalizedInput.match(/\b(kemarin|kemaren)\s+(subuh|pagi|siang|sore|malam|malem)\b/i);
   if (kemarinPeriodMatch) {
     const periodName = normalizePeriodName(kemarinPeriodMatch[2]) || 'pagi';
-    const explicitClock = extractExplicitClockTime(inputText, periodName);
-    const targetHour = explicitClock ? explicitClock.hour : PERIOD_REPRESENTATIVE_HOURS[periodName].hour;
-    const targetMinute = explicitClock ? explicitClock.minute : PERIOD_REPRESENTATIVE_HOURS[periodName].minute;
-    const resolvedUtcIso = resolveTargetLocalToUtcIso(
+    return createParsedRelativeTimeResult(
+      inputText,
+      kemarinPeriodMatch[0],
       yesterdayDateString,
-      targetHour,
-      targetMinute,
-      targetTimezoneIdentifier
+      'yesterday',
+      targetTimezoneIdentifier,
+      periodName
     );
-
-    return {
-      resolvedUtcIso,
-      matchedExpression: explicitClock ? `${kemarinPeriodMatch[0]} ${explicitClock.matchedClockSubstring}` : kemarinPeriodMatch[0],
-      hasExplicitTime: Boolean(explicitClock),
-      targetDateString: yesterdayDateString,
-      targetHour,
-      targetMinute,
-      periodName,
-      dayReference: 'yesterday',
-    };
   }
 
   // Group 5: Yesterday + Period (English: yesterday morning, yesterday afternoon, yesterday evening, yesterday night)
-  const yesterdayPeriodRegex = /\byesterday\s+(morning|afternoon|evening|night|dawn)\b/i;
-  const yesterdayPeriodMatch = normalizedInput.match(yesterdayPeriodRegex);
+  const yesterdayPeriodMatch = normalizedInput.match(/\byesterday\s+(morning|afternoon|evening|night|dawn)\b/i);
   if (yesterdayPeriodMatch) {
     const periodName = normalizePeriodName(yesterdayPeriodMatch[1]) || 'pagi';
-    const explicitClock = extractExplicitClockTime(inputText, periodName);
-    const targetHour = explicitClock ? explicitClock.hour : PERIOD_REPRESENTATIVE_HOURS[periodName].hour;
-    const targetMinute = explicitClock ? explicitClock.minute : PERIOD_REPRESENTATIVE_HOURS[periodName].minute;
-    const resolvedUtcIso = resolveTargetLocalToUtcIso(
+    return createParsedRelativeTimeResult(
+      inputText,
+      yesterdayPeriodMatch[0],
       yesterdayDateString,
-      targetHour,
-      targetMinute,
-      targetTimezoneIdentifier
+      'yesterday',
+      targetTimezoneIdentifier,
+      periodName
     );
-
-    return {
-      resolvedUtcIso,
-      matchedExpression: explicitClock ? `${yesterdayPeriodMatch[0]} ${explicitClock.matchedClockSubstring}` : yesterdayPeriodMatch[0],
-      hasExplicitTime: Boolean(explicitClock),
-      targetDateString: yesterdayDateString,
-      targetHour,
-      targetMinute,
-      periodName,
-      dayReference: 'yesterday',
-    };
   }
 
   // Group 6: Tadi + Period (Indonesian: tadi subuh, tadi pagi, tadi siang, tadi sore)
-  const tadiPeriodRegex = /\btadi\s+(subuh|pagi|siang|sore)\b/i;
-  const tadiPeriodMatch = normalizedInput.match(tadiPeriodRegex);
+  const tadiPeriodMatch = normalizedInput.match(/\btadi\s+(subuh|pagi|siang|sore)\b/i);
   if (tadiPeriodMatch) {
     const periodName = normalizePeriodName(tadiPeriodMatch[1]) || 'pagi';
-    const explicitClock = extractExplicitClockTime(inputText, periodName);
-    const targetHour = explicitClock ? explicitClock.hour : PERIOD_REPRESENTATIVE_HOURS[periodName].hour;
-    const targetMinute = explicitClock ? explicitClock.minute : PERIOD_REPRESENTATIVE_HOURS[periodName].minute;
-    const resolvedUtcIso = resolveTargetLocalToUtcIso(
+    return createParsedRelativeTimeResult(
+      inputText,
+      tadiPeriodMatch[0],
       todayDateString,
-      targetHour,
-      targetMinute,
-      targetTimezoneIdentifier
+      'today',
+      targetTimezoneIdentifier,
+      periodName
     );
-
-    return {
-      resolvedUtcIso,
-      matchedExpression: explicitClock ? `${tadiPeriodMatch[0]} ${explicitClock.matchedClockSubstring}` : tadiPeriodMatch[0],
-      hasExplicitTime: Boolean(explicitClock),
-      targetDateString: todayDateString,
-      targetHour,
-      targetMinute,
-      periodName,
-      dayReference: 'today',
-    };
   }
 
   // Group 7: Period + Ini (Indonesian: pagi ini, siang ini, sore ini, malam ini, subuh ini)
-  const periodIniRegex = /\b(subuh|pagi|siang|sore|malam|malem)\s+ini\b/i;
-  const periodIniMatch = normalizedInput.match(periodIniRegex);
+  const periodIniMatch = normalizedInput.match(/\b(subuh|pagi|siang|sore|malam|malem)\s+ini\b/i);
   if (periodIniMatch) {
     const periodName = normalizePeriodName(periodIniMatch[1]) || 'pagi';
-    const explicitClock = extractExplicitClockTime(inputText, periodName);
-    const targetHour = explicitClock ? explicitClock.hour : PERIOD_REPRESENTATIVE_HOURS[periodName].hour;
-    const targetMinute = explicitClock ? explicitClock.minute : PERIOD_REPRESENTATIVE_HOURS[periodName].minute;
-    const resolvedUtcIso = resolveTargetLocalToUtcIso(
+    return createParsedRelativeTimeResult(
+      inputText,
+      periodIniMatch[0],
       todayDateString,
-      targetHour,
-      targetMinute,
-      targetTimezoneIdentifier
+      'today',
+      targetTimezoneIdentifier,
+      periodName
     );
-
-    return {
-      resolvedUtcIso,
-      matchedExpression: explicitClock ? `${periodIniMatch[0]} ${explicitClock.matchedClockSubstring}` : periodIniMatch[0],
-      hasExplicitTime: Boolean(explicitClock),
-      targetDateString: todayDateString,
-      targetHour,
-      targetMinute,
-      periodName,
-      dayReference: 'today',
-    };
   }
 
   // Group 8: This + Period (English: this morning, this afternoon, this evening, tonight)
-  const thisPeriodRegex = /\b(?:this\s+(morning|afternoon|evening|dawn)|tonight)\b/i;
-  const thisPeriodMatch = normalizedInput.match(thisPeriodRegex);
+  const thisPeriodMatch = normalizedInput.match(/\b(?:this\s+(morning|afternoon|evening|dawn)|tonight)\b/i);
   if (thisPeriodMatch) {
     const matchedToken = thisPeriodMatch[1] ? thisPeriodMatch[1] : 'night';
     const periodName = normalizePeriodName(matchedToken) || 'pagi';
-    const explicitClock = extractExplicitClockTime(inputText, periodName);
-    const targetHour = explicitClock ? explicitClock.hour : PERIOD_REPRESENTATIVE_HOURS[periodName].hour;
-    const targetMinute = explicitClock ? explicitClock.minute : PERIOD_REPRESENTATIVE_HOURS[periodName].minute;
-    const resolvedUtcIso = resolveTargetLocalToUtcIso(
+    return createParsedRelativeTimeResult(
+      inputText,
+      thisPeriodMatch[0],
       todayDateString,
-      targetHour,
-      targetMinute,
-      targetTimezoneIdentifier
+      'today',
+      targetTimezoneIdentifier,
+      periodName
     );
-
-    return {
-      resolvedUtcIso,
-      matchedExpression: explicitClock ? `${thisPeriodMatch[0]} ${explicitClock.matchedClockSubstring}` : thisPeriodMatch[0],
-      hasExplicitTime: Boolean(explicitClock),
-      targetDateString: todayDateString,
-      targetHour,
-      targetMinute,
-      periodName,
-      dayReference: 'today',
-    };
   }
 
   // Group 9: Kemarin / Kemaren / Yesterday alone (without period, but check if explicit clock exists)
-  const bareYesterdayRegex = /\b(kemarin|kemaren|yesterday)\b/i;
-  const bareYesterdayMatch = normalizedInput.match(bareYesterdayRegex);
+  const bareYesterdayMatch = normalizedInput.match(/\b(kemarin|kemaren|yesterday)\b/i);
   if (bareYesterdayMatch) {
-    const explicitClock = extractExplicitClockTime(inputText);
-    const targetHour = explicitClock ? explicitClock.hour : localTimeParts.hour;
-    const targetMinute = explicitClock ? explicitClock.minute : localTimeParts.minute;
-    const resolvedUtcIso = resolveTargetLocalToUtcIso(
+    return createParsedRelativeTimeResult(
+      inputText,
+      bareYesterdayMatch[0],
       yesterdayDateString,
-      targetHour,
-      targetMinute,
-      targetTimezoneIdentifier
+      'yesterday',
+      targetTimezoneIdentifier,
+      undefined,
+      localTimeParts.hour,
+      localTimeParts.minute
     );
-
-    return {
-      resolvedUtcIso,
-      matchedExpression: explicitClock ? `${bareYesterdayMatch[0]} ${explicitClock.matchedClockSubstring}` : bareYesterdayMatch[0],
-      hasExplicitTime: Boolean(explicitClock),
-      targetDateString: yesterdayDateString,
-      targetHour,
-      targetMinute,
-      dayReference: 'yesterday',
-    };
   }
 
   // Group 10: Tadi / Earlier today alone (with or without explicit clock)
-  const bareTadiRegex = /\b(tadi|earlier\s+today)\b/i;
-  const bareTadiMatch = normalizedInput.match(bareTadiRegex);
+  const bareTadiMatch = normalizedInput.match(/\b(tadi|earlier\s+today)\b/i);
   if (bareTadiMatch) {
     const explicitClock = extractExplicitClockTime(inputText);
     if (explicitClock) {
