@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import test from 'node:test';
 import { extractHashtags, normalizeTagName, deduplicateTags } from '../src/utils/hashtagParser.js';
 import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
 import { resolveAndEnsureLabels } from '../src/services/walletLabelResolver.js';
@@ -31,7 +32,7 @@ const mockCategories: WalletCategoryItem[] = [
 // ---------------------------------------------------------------------------
 // 1. Hashtag Parser Unit Tests
 // ---------------------------------------------------------------------------
-{
+test('1. Hashtag Parser Unit Tests', () => {
   console.log('  [SUITE 1] Hashtag Parser Unit Tests');
 
   // Single tag extraction
@@ -91,12 +92,12 @@ const mockCategories: WalletCategoryItem[] = [
   assert.equal(normalizeTagName('#reimburse'), 'reimburse');
   assert.equal(normalizeTagName('###tag'), 'tag');
   assert.deepEqual(deduplicateTags(['#alpha', 'Alpha', 'ALPHA', '#beta']), ['alpha', 'beta']);
-}
+});
 
 // ---------------------------------------------------------------------------
 // 2. Record Validator Sanitization & Note Cleaning
 // ---------------------------------------------------------------------------
-{
+test('2. Record Validator Sanitization & Note Cleaning', () => {
   console.log('  [SUITE 2] Record Validator Sanitization & Note Cleaning');
 
   // Hashtags in note are extracted and stripped from note
@@ -218,12 +219,12 @@ const mockCategories: WalletCategoryItem[] = [
     ['kantor', 'reimburse'],
     'Single-record input must union all explicit hashtags from user input'
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // 3. Label Resolution, Caching & MCP Auto-Creation
 // ---------------------------------------------------------------------------
-{
+test('3. Label Resolution, Caching & MCP Auto-Creation', async () => {
   console.log('  [SUITE 3] Label Resolution, Caching & MCP Auto-Creation');
 
   const initialLabels: WalletLabelItem[] = [
@@ -361,12 +362,12 @@ const mockCategories: WalletCategoryItem[] = [
   assert.deepEqual(failResult.resolvedLabelIds, [], 'Unverified label must have no ID');
   assert.deepEqual(failResult.resolvedLabelNames, ['kantor']);
   assert.equal(createLabelCallsF.length, 0, 'Persistent read failure must NEVER trigger createLabel');
-}
+});
 
 // ---------------------------------------------------------------------------
 // 4. Human-Facing Success Message Formatting with Labels
 // ---------------------------------------------------------------------------
-{
+test('4. Human-Facing Success Message Formatting with Labels', () => {
   console.log('  [SUITE 4] Human-Facing Success Message Formatting with Labels');
 
   // Indonesian single record with labels
@@ -446,12 +447,12 @@ const mockCategories: WalletCategoryItem[] = [
     'id'
   );
   assert.ok(!noLabelMessage.includes('🔖'));
-}
+});
 
 // ---------------------------------------------------------------------------
 // 5. End-to-End Record Payload Generation with labelIds
 // ---------------------------------------------------------------------------
-{
+test('5. End-to-End Record Payload Generation with labelIds', async () => {
   console.log('  [SUITE 5] End-to-End Record Payload Generation with labelIds');
 
   let dispatchedRecordsPayload: CreateRecordInputPayload[] = [];
@@ -505,12 +506,12 @@ const mockCategories: WalletCategoryItem[] = [
   assert.equal(dispatchedRecordsPayload.length, 1);
   assert.deepEqual(dispatchedRecordsPayload[0].labelIds, ['lbl-reimburse', 'lbl-kantor']);
   assert.equal(dispatchedRecordsPayload[0].note, 'Kopi kenangan 28rb');
-}
+});
 
 // ---------------------------------------------------------------------------
 // 6. WalletMcpClientService & WalletCacheService Label Integration
 // ---------------------------------------------------------------------------
-{
+test('6. WalletMcpClientService & WalletCacheService Label Integration', async () => {
   console.log('  [SUITE 6] WalletMcpClientService & WalletCacheService Label Integration');
 
   const realMcpClient = new WalletMcpClientService('http://localhost:8080');
@@ -690,12 +691,12 @@ const mockCategories: WalletCategoryItem[] = [
   };
   await assert.rejects(async () => realCacheService.refreshLabels(), /Refresh error/);
   assert.equal(realCacheService.isLabelsLoaded(), false);
-}
+});
 
 // ---------------------------------------------------------------------------
 // 7. UserMessageHandler Hashtag Fallback & Label Resolution
 // ---------------------------------------------------------------------------
-{
+test('7. UserMessageHandler Hashtag Fallback & Label Resolution', async () => {
   console.log('  [SUITE 7] UserMessageHandler Hashtag Fallback & Label Resolution');
 
   const dispatchedMcpRecords: CreateRecordInputPayload[][] = [];
@@ -902,12 +903,12 @@ const mockCategories: WalletCategoryItem[] = [
     'Outbound record must include all explicit user hashtags'
   );
   assert.ok(sentMessages[0].includes('🔖 #kantor #reimburse'), 'Confirmation reply must include all user hashtags');
-}
+});
 
 // ---------------------------------------------------------------------------
 // 8. AccountClarificationHandler Label Resolution on Draft Finalization
 // ---------------------------------------------------------------------------
-{
+test('8. AccountClarificationHandler Label Resolution on Draft Finalization', async () => {
   console.log('  [SUITE 8] AccountClarificationHandler Label Resolution on Draft Finalization');
 
   const dispatchedMcpRecords: CreateRecordInputPayload[][] = [];
@@ -986,7 +987,7 @@ const mockCategories: WalletCategoryItem[] = [
   assert.deepEqual(finalizedRecord.labelIds, ['lbl-reimburse', 'lbl-proyek-baru']);
   assert.deepEqual(finalizedRecord.labels, ['reimburse', 'proyek-baru']);
   assert.ok(sentMessages[1].includes('🔖 #reimburse #proyek-baru'));
-}
+});
 
 console.log('[SUCCESS] All Hashtag Parsing & Label Auto-Creation tests passed cleanly!');
 

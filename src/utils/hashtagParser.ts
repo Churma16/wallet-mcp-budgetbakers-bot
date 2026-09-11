@@ -65,13 +65,31 @@ export function extractHashtags(sourceText: string): ExtractedHashtagsResult {
   const uniqueTags = deduplicateTags(rawExtractedTags);
 
   // Clean the text by tidying residual empty brackets, whitespace, and punctuation
-  const cleanedText = cleanedWithSpaces
+  const collapsedText = cleanedWithSpaces
     .replace(/\(\s*\)|\[\s*\]|\{\s*\}/g, ' ')
     .replace(/\s+/g, ' ')
-    .replace(/ ([,.:;?!])/g, '$1')
-    .replace(/^[,\s;:\u2014-]+/, '')
-    .replace(/[,\s;:\u2014-]+$/, '')
-    .trim();
+    .replace(/ ([,.:;?!])/g, '$1');
+
+  // Strip leading and trailing punctuation and whitespace safely without regex backtracking
+  const punctuationCharSet = new Set([',', ';', ':', '—', '-']);
+  let startIdx = 0;
+  let endIdx = collapsedText.length;
+
+  while (
+    startIdx < endIdx &&
+    (collapsedText.charCodeAt(startIdx) <= 32 || punctuationCharSet.has(collapsedText[startIdx]))
+  ) {
+    startIdx++;
+  }
+
+  while (
+    endIdx > startIdx &&
+    (collapsedText.charCodeAt(endIdx - 1) <= 32 || punctuationCharSet.has(collapsedText[endIdx - 1]))
+  ) {
+    endIdx--;
+  }
+
+  const cleanedText = collapsedText.slice(startIdx, endIdx);
 
   return {
     tags: uniqueTags,
