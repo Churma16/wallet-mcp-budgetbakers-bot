@@ -5,6 +5,18 @@ dotenv.config();
 
 export type SupportedAiProviderType = 'gemini' | 'openrouter' | 'groq' | 'ollama' | 'openai' | 'custom';
 
+export interface ConfigurationValidationIssue {
+  readonly variableName: string;
+  readonly message: string;
+  readonly hint?: string;
+}
+
+export interface ConfigurationValidationResult {
+  readonly isValid: boolean;
+  readonly errors: ConfigurationValidationIssue[];
+  readonly warnings: ConfigurationValidationIssue[];
+}
+
 export interface ApplicationEnvironmentConfiguration {
   aiProvider: SupportedAiProviderType;
   aiProviders: SupportedAiProviderType[];
@@ -274,6 +286,114 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     telegramMaxStartupAttempts,
     telegramStartupRetryDelayMs,
     maxMediaDownloadMb,
+  };
+}
+
+export function validateApplicationConfiguration(
+  config: ApplicationEnvironmentConfiguration
+): ConfigurationValidationResult {
+  const validationErrorList: ConfigurationValidationIssue[] = [];
+  const validationWarningList: ConfigurationValidationIssue[] = [];
+
+  // 1. AI Provider validation
+  const isAiConfigured =
+    (config.aiProvider === 'gemini' && Boolean(config.geminiApiKey)) ||
+    config.aiProvider === 'ollama' ||
+    Boolean(config.aiApiKey);
+
+  if (!isAiConfigured) {
+    if (config.aiProvider === 'gemini') {
+      validationErrorList.push({
+        variableName: 'GEMINI_API_KEY',
+        message: 'GEMINI_API_KEY is not defined in .env file!',
+        hint: 'Get your free API key at: https://aistudio.google.com',
+      });
+    } else {
+      validationErrorList.push({
+        variableName: 'AI_API_KEY',
+        message: `API key for provider '${config.aiProvider}' (AI_API_KEY / ${config.aiProvider.toUpperCase()}_API_KEY) is not defined in .env file!`,
+      });
+    }
+  }
+
+  // 2. BudgetBakers Wallet MCP Token validation
+  if (!config.walletMcpAccessToken) {
+    validationErrorList.push({
+      variableName: 'WALLET_MCP_ACCESS_TOKEN',
+      message: 'WALLET_MCP_ACCESS_TOKEN is not defined in .env file!',
+      hint: 'Generate your personal access token at: https://web.budgetbakers.com/settings/mcp-server',
+    });
+  }
+
+  // 3. Messenger channels & whitelist authorization validation
+  if (config.enabledMessengerChannels.length === 0) {
+    validationErrorList.push({
+      variableName: 'ENABLED_MESSENGER_CHANNELS',
+      message: 'No messaging channels are enabled. Configure at least one channel in ENABLED_MESSENGER_CHANNELS.',
+    });
+  }
+
+  const isWhatsAppEnabled = config.enabledMessengerChannels.includes('whatsapp');
+  const isTelegramEnabled = config.enabledMessengerChannels.includes('telegram');
+
+  if (isWhatsAppEnabled && !config.allowedPhoneNumber) {
+    validationErrorList.push({
+      variableName: 'ALLOWED_PHONE_NUMBER',
+      message: 'WhatsApp is enabled in configuration but ALLOWED_PHONE_NUMBER is not set.',
+      hint: 'Configure your authorized WhatsApp phone number in international format (e.g. 6281234567890) in .env.',
+    });
+  }
+
+  if (isTelegramEnabled) {
+    if (!config.telegramBotToken) {
+      validationErrorList.push({
+        variableName: 'TELEGRAM_BOT_TOKEN',
+        message: 'Telegram is enabled in configuration but TELEGRAM_BOT_TOKEN is not set.',
+        hint: 'Generate your bot token from @BotFather in Telegram and set TELEGRAM_BOT_TOKEN in .env.',
+      });
+    }
+
+    const rawTelegramAllowedUserId = config.telegramAllowedUserId || '';
+    const trimmedTelegramUserId = rawTelegramAllowedUserId.trim();
+    const canonicalTelegramAllowedUserId = trimmedTelegramUserId.replace(/^@/, '');
+
+    if (!trimmedTelegramUserId) {
+      validationErrorList.push({
+        variableName: 'TELEGRAM_ALLOWED_USER_ID',
+        message: 'Telegram is enabled in configuration but TELEGRAM_ALLOWED_USER_ID is not set.',
+        hint: 'Get your Telegram user ID from @userinfobot or @raw_data_bot and set TELEGRAM_ALLOWED_USER_ID in .env.',
+      });
+    } else if (!canonicalTelegramAllowedUserId) {
+      validationErrorList.push({
+        variableName: 'TELEGRAM_ALLOWED_USER_ID',
+        message: 'TELEGRAM_ALLOWED_USER_ID is empty or invalid. Configure a valid numeric Telegram user ID (e.g. 123456789).',
+        hint: 'Configure a valid numeric Telegram user ID (e.g. 123456789) without spaces or isolated symbols.',
+      });
+    } else if (!/^\d+$/.test(canonicalTelegramAllowedUserId)) {
+      validationErrorList.push({
+        variableName: 'TELEGRAM_ALLOWED_USER_ID',
+        message: 'TELEGRAM_ALLOWED_USER_ID must contain only numeric digits; usernames are not supported.',
+        hint: 'Get your immutable numeric Telegram user ID from @userinfobot or @raw_data_bot and configure only digits.',
+      });
+    }
+  }
+
+  const canonicalTelegramAllowedUserId = (config.telegramAllowedUserId || '').trim().replace(/^@/, '');
+  const hasValidTelegramAllowedUserId = /^\d+$/.test(canonicalTelegramAllowedUserId);
+  const hasValidWhatsApp = isWhatsAppEnabled && Boolean(config.allowedPhoneNumber);
+  const hasValidTelegram = isTelegramEnabled && Boolean(config.telegramBotToken) && hasValidTelegramAllowedUserId;
+
+  if (!hasValidWhatsApp && !hasValidTelegram) {
+    validationErrorList.push({
+      variableName: 'CHANNELS',
+      message: 'No messaging channels are properly configured! Configure either WhatsApp (ALLOWED_PHONE_NUMBER) or Telegram (TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_USER_ID) in .env.',
+    });
+  }
+
+  return {
+    isValid: validationErrorList.length === 0,
+    errors: validationErrorList,
+    warnings: validationWarningList,
   };
 }
 

@@ -1,4 +1,4 @@
-import { GrammyError, HttpError } from 'grammy';
+import { Context, GrammyError, HttpError } from 'grammy';
 import { TelegramMessagingAdapter } from '../src/services/messaging/telegramAdapter.js';
 
 interface AssertionStatistics {
@@ -239,6 +239,64 @@ async function runTestSuite(): Promise<void> {
     assertCondition(
       'TG-4.4: Retry loop exhausts all attempts when transient error persists',
       attemptCounter4 === 3 && (errorCaught4 as { code?: string })?.code === 'ETIMEDOUT'
+    );
+  }
+
+  // ----------------------------------------------------
+  // TEST GROUP 5: Whitelist Authorization Gates (Fail-Closed)
+  // ----------------------------------------------------
+  console.log('\n[TEST GROUP 5] Whitelist Authorization Gates (Fail-Closed)');
+  {
+    const emptyAllowlistAdapter = new TelegramMessagingAdapter(dummyToken, '', dummyCallback);
+    assertCondition(
+      'TG-5.1: Missing allowlist rejects arbitrary sender in isAuthorizedSender',
+      emptyAllowlistAdapter.isAuthorizedSender('123456789') === false
+    );
+
+    let nextCalledWhenEmpty = false;
+    const mockContextWhenEmpty: Partial<Context> = {
+      from: { id: 123456789, is_bot: false, first_name: 'Attacker' },
+    };
+    await emptyAllowlistAdapter.handleInboundMiddleware(mockContextWhenEmpty as Context, async () => {
+      nextCalledWhenEmpty = true;
+    });
+    assertCondition(
+      'TG-5.2: Inbound middleware blocks message when allowlist is empty (fail-closed)',
+      nextCalledWhenEmpty === false
+    );
+
+    const configuredAdapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback);
+    assertCondition(
+      'TG-5.3: Whitelisted user ID is authorized',
+      configuredAdapter.isAuthorizedSender(dummyUserId) === true
+    );
+    assertCondition(
+      'TG-5.4: Unauthorized user ID is rejected',
+      configuredAdapter.isAuthorizedSender('999999999') === false
+    );
+
+    let nextCalledWhenAuthorized = false;
+    const mockContextAuthorized: Partial<Context> = {
+      from: { id: Number(dummyUserId), is_bot: false, first_name: 'Owner' },
+    };
+    await configuredAdapter.handleInboundMiddleware(mockContextAuthorized as Context, async () => {
+      nextCalledWhenAuthorized = true;
+    });
+    assertCondition(
+      'TG-5.5: Inbound middleware invokes next() for whitelisted user ID',
+      nextCalledWhenAuthorized === true
+    );
+
+    let nextCalledWhenUnauthorized = false;
+    const mockContextUnauthorized: Partial<Context> = {
+      from: { id: 999999999, is_bot: false, first_name: 'Stranger' },
+    };
+    await configuredAdapter.handleInboundMiddleware(mockContextUnauthorized as Context, async () => {
+      nextCalledWhenUnauthorized = true;
+    });
+    assertCondition(
+      'TG-5.6: Inbound middleware blocks message for unauthorized sender',
+      nextCalledWhenUnauthorized === false
     );
   }
 

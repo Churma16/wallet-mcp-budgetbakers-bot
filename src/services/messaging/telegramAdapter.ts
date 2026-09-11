@@ -1,4 +1,4 @@
-import { Bot, GrammyError, HttpError } from 'grammy';
+import { Bot, Context, GrammyError, HttpError } from 'grammy';
 import axios from 'axios';
 import { randomInt } from 'node:crypto';
 import { applicationLogger } from '../../utils/logger.js';
@@ -34,13 +34,42 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     private readonly onUserMessageReceived: UserMessageCallback,
     safeguardConfiguration?: TelegramSafeguardConfiguration
   ) {
-    this.normalizedAllowedUserId = this.allowedUserId.trim().replace(/^@/, '');
+    const rawAllowedUserId = (this.allowedUserId || '').trim().replace(/^@/, '');
+    this.normalizedAllowedUserId = /^\d+$/.test(rawAllowedUserId) ? rawAllowedUserId : '';
     this.maxStartupAttempts = safeguardConfiguration?.maxStartupAttempts ?? 5;
     this.startupRetryBaseDelayMs = safeguardConfiguration?.startupRetryBaseDelayMs ?? 2000;
     this.startupRetryMaxDelayMs = safeguardConfiguration?.startupRetryMaxDelayMs ?? 15000;
     this.maxMediaDownloadBytes = safeguardConfiguration?.maxMediaDownloadBytes ?? (10 * 1024 * 1024);
   }
 
+  public isAuthorizedSender(senderUserId: string, _senderUsername?: string): boolean {
+    if (!this.normalizedAllowedUserId) {
+      return false;
+    }
+
+    const cleanSenderUserId = (senderUserId || '').trim();
+    return cleanSenderUserId === this.normalizedAllowedUserId;
+  }
+
+  public async handleInboundMiddleware(ctx: Context, next: () => Promise<void>): Promise<void> {
+    const senderUserId = ctx.from?.id ? String(ctx.from.id) : '';
+    const senderUsername = ctx.from?.username ? ctx.from.username : undefined;
+
+    if (!this.isAuthorizedSender(senderUserId, senderUsername)) {
+      if (!this.normalizedAllowedUserId) {
+        applicationLogger.security(
+          '[SECURITY] Telegram rejected message: TELEGRAM_ALLOWED_USER_ID is not configured or invalid. Fail-closed authorization active.'
+        );
+      } else {
+        applicationLogger.security(
+          `[SECURITY] Telegram ignored message from unauthorized user: ${senderUserId} (@${ctx.from?.username || 'unknown'})`
+        );
+      }
+      return;
+    }
+
+    await next();
+  }
 
   public async startConnection(): Promise<void> {
     if (this.botInstance) {
@@ -55,22 +84,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
 
     // 1. Security Whitelist Middleware
     this.botInstance.use(async (ctx, next) => {
-      const senderUserId = ctx.from?.id ? String(ctx.from.id) : '';
-      const senderUsername = ctx.from?.username ? ctx.from.username.toLowerCase() : '';
-
-      if (this.normalizedAllowedUserId) {
-        const isNumericMatch = senderUserId === this.normalizedAllowedUserId;
-        const isUsernameMatch = senderUsername === this.normalizedAllowedUserId.toLowerCase();
-
-        if (!isNumericMatch && !isUsernameMatch) {
-          applicationLogger.security(
-            `Telegram ignored message from unauthorized user: ${senderUserId} (@${ctx.from?.username || 'unknown'})`
-          );
-          return;
-        }
-      }
-
-      await next();
+      await this.handleInboundMiddleware(ctx, next);
     });
 
     // 2. Handle Text Messages
@@ -267,7 +281,9 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       if (this.normalizedAllowedUserId) {
         applicationLogger.security(`Telegram whitelist active. Only responding to: ${this.normalizedAllowedUserId}`);
       } else {
-        applicationLogger.warn('TELEGRAM_ALLOWED_USER_ID is not set in .env. The bot will respond to all users.');
+        applicationLogger.warn(
+          'TELEGRAM_ALLOWED_USER_ID is not set in .env. Inbound Telegram messages will be rejected (fail-closed).'
+        );
       }
 
       this.isRunning = true;

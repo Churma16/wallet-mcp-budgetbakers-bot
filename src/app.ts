@@ -1,4 +1,8 @@
-import { loadEnvironmentConfiguration, ApplicationEnvironmentConfiguration } from './config/environmentConfig.js';
+import {
+  loadEnvironmentConfiguration,
+  validateApplicationConfiguration,
+  ApplicationEnvironmentConfiguration,
+} from './config/environmentConfig.js';
 import { WalletMcpClientService } from './services/walletMcpService.js';
 import { WalletCacheService } from './services/walletCacheService.js';
 import { createFinancialAiProvider, FinancialAiProvider } from './services/ai/index.js';
@@ -82,45 +86,16 @@ export class Application {
    * Validates mandatory environment variables before starting services
    */
   private validateConfiguration(): void {
-    const isAiConfigured =
-      (this.environmentConfig.aiProvider === 'gemini' && Boolean(this.environmentConfig.geminiApiKey)) ||
-      (this.environmentConfig.aiProvider === 'ollama') ||
-      Boolean(this.environmentConfig.aiApiKey);
+    const validationResult = validateApplicationConfiguration(this.environmentConfig);
 
-    if (!isAiConfigured) {
-      if (this.environmentConfig.aiProvider === 'gemini') {
-        applicationLogger.error('GEMINI_API_KEY is not defined in .env file!');
-        console.log('[hint] Get your free API key at: https://aistudio.google.com');
-      } else {
-        applicationLogger.error(
-          `API key for provider '${this.environmentConfig.aiProvider}' (AI_API_KEY / ${this.environmentConfig.aiProvider.toUpperCase()}_API_KEY) is not defined in .env file!`
-        );
+    if (!validationResult.isValid) {
+      for (const errorIssue of validationResult.errors) {
+        applicationLogger.error(errorIssue.message);
+        if (errorIssue.hint) {
+          console.log(`[hint] ${errorIssue.hint}`);
+        }
       }
-    }
 
-    if (!this.environmentConfig.walletMcpAccessToken) {
-      applicationLogger.error('WALLET_MCP_ACCESS_TOKEN is not defined in .env file!');
-      console.log('[hint] Generate your personal access token at: https://web.budgetbakers.com/settings/mcp-server');
-    }
-
-    const isWhatsAppConfigured =
-      this.environmentConfig.enabledMessengerChannels.includes('whatsapp') &&
-      Boolean(this.environmentConfig.allowedPhoneNumber);
-    const isTelegramConfigured =
-      this.environmentConfig.enabledMessengerChannels.includes('telegram') &&
-      Boolean(this.environmentConfig.telegramBotToken);
-
-    if (!isWhatsAppConfigured && !isTelegramConfigured) {
-      applicationLogger.error(
-        'No messaging channels are properly configured! Configure either WhatsApp (ALLOWED_PHONE_NUMBER) or Telegram (TELEGRAM_BOT_TOKEN) in .env.'
-      );
-    }
-
-    if (
-      !isAiConfigured ||
-      !this.environmentConfig.walletMcpAccessToken ||
-      (!isWhatsAppConfigured && !isTelegramConfigured)
-    ) {
       applicationLogger.warn('Please configure all required environment variables in your .env file before running the bot.');
       applicationLogger.info('You can test the Wallet MCP connection independently with: npm run test:mcp\n');
       process.exit(1);
@@ -173,7 +148,7 @@ export class Application {
     }
 
     if (this.environmentConfig.enabledMessengerChannels.includes('telegram')) {
-      if (this.environmentConfig.telegramBotToken) {
+      if (this.environmentConfig.telegramBotToken && this.environmentConfig.telegramAllowedUserId) {
         const telegramAdapter = new TelegramMessagingAdapter(
           this.environmentConfig.telegramBotToken,
           this.environmentConfig.telegramAllowedUserId,
@@ -188,7 +163,7 @@ export class Application {
         this.messagingGateway.registerAdapter(telegramAdapter);
       } else {
         applicationLogger.warn(
-          'Telegram is enabled in configuration but TELEGRAM_BOT_TOKEN is not set. Telegram adapter skipped.'
+          'Telegram is enabled in configuration but TELEGRAM_BOT_TOKEN or TELEGRAM_ALLOWED_USER_ID is not set. Telegram adapter skipped.'
         );
       }
     }

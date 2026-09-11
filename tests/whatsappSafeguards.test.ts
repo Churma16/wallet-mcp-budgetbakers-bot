@@ -1,5 +1,5 @@
 import { WhatsappMessagingAdapter } from '../src/services/messaging/whatsappAdapter.js';
-import { DisconnectReason } from '@whiskeysockets/baileys';
+import { DisconnectReason, type proto } from '@whiskeysockets/baileys';
 
 interface AssertionStatistics {
   totalCount: number;
@@ -346,6 +346,94 @@ async function runTestSuite(): Promise<void> {
     adapter.handleConnectionClose(DisconnectReason.loggedOut, 'Second Logout (Device Banned or Unlinked Repeatedly)');
     assertCondition('EC-6.2: Repeated logout trips circuit breaker', adapter.getCircuitBreakerStatus() === true);
     assertCondition('EC-6.3: Consecutive failure count incremented', adapter.getConsecutiveFailureCount() === 1);
+  }
+
+  // ----------------------------------------------------
+  // TEST GROUP 7: Whitelist Inbound Authorization Gates (Fail-Closed)
+  // ----------------------------------------------------
+  console.log('\n[TEST GROUP 7] Whitelist Inbound Authorization Gates (Fail-Closed)');
+  {
+    let receivedCallback = false;
+    const testCallback = async () => {
+      receivedCallback = true;
+    };
+
+    const emptyPhoneAdapter = new WhatsappMessagingAdapter(dummySessionDirectory, '', testCallback);
+    assertCondition(
+      'TC-7.1: Missing allowlist rejects non-self sender in isAuthorizedSender',
+      emptyPhoneAdapter.isAuthorizedSender('6281234567890@s.whatsapp.net', false) === false
+    );
+
+    const externalMessage: proto.IWebMessageInfo = {
+      key: {
+        remoteJid: '62899998888@s.whatsapp.net',
+        fromMe: false,
+        id: 'MSG_FAILCLOSED_001',
+      },
+      message: {
+        conversation: 'Beli bensin 50000',
+      },
+    };
+
+    await emptyPhoneAdapter.processIncomingMessages([externalMessage]);
+    assertCondition(
+      'TC-7.2: Inbound non-self message with missing allowlist is dropped in processIncomingMessages',
+      receivedCallback === false
+    );
+
+    const whitelistedAdapter = new WhatsappMessagingAdapter(
+      dummySessionDirectory,
+      dummyPhoneNumber,
+      testCallback
+    );
+    assertCondition(
+      'TC-7.3: Configured allowlist authorizes matching phone number',
+      whitelistedAdapter.isAuthorizedSender(`${dummyPhoneNumber}@s.whatsapp.net`, false) === true
+    );
+    assertCondition(
+      'TC-7.4: Configured allowlist rejects non-matching phone number',
+      whitelistedAdapter.isAuthorizedSender('62899998888@s.whatsapp.net', false) === false
+    );
+    assertCondition(
+      'TC-7.5: Self-targeted message returns true from isAuthorizedSender',
+      whitelistedAdapter.isAuthorizedSender('62899998888@s.whatsapp.net', true) === true
+    );
+
+    // Test message dispatch for whitelisted sender
+    receivedCallback = false;
+    const whitelistedMessage: proto.IWebMessageInfo = {
+      key: {
+        remoteJid: `${dummyPhoneNumber}@s.whatsapp.net`,
+        fromMe: false,
+        id: 'MSG_WHITELISTED_001',
+      },
+      message: {
+        conversation: 'Makan siang 35000',
+      },
+    };
+    await whitelistedAdapter.processIncomingMessages([whitelistedMessage]);
+    assertCondition(
+      'TC-7.6: Inbound non-self message from whitelisted sender is dispatched to callback',
+      receivedCallback === true
+    );
+
+    // Test message dispatch rejection for unauthorized sender
+    receivedCallback = false;
+    const unauthorizedMessage: proto.IWebMessageInfo = {
+      key: {
+        remoteJid: '62899998888@s.whatsapp.net',
+        fromMe: false,
+        id: 'MSG_UNAUTHORIZED_001',
+      },
+      message: {
+        conversation: 'Transfer 500000',
+      },
+    };
+    await whitelistedAdapter.processIncomingMessages([unauthorizedMessage]);
+    assertCondition(
+      'TC-7.7: Inbound non-self message from unauthorized sender is dropped in processIncomingMessages',
+      receivedCallback === false
+    );
   }
 
   // ----------------------------------------------------
