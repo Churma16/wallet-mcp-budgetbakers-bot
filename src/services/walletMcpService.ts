@@ -401,18 +401,51 @@ export class WalletMcpClientService {
       ? ['+recordDate', '+createdAt']
       : ['-recordDate', '-createdAt'];
 
+    const mcpCallPayload: Record<string, unknown> = {
+      limit: resolvedLimit,
+      offset: resolvedOffset,
+      sortBy: upstreamSortBy,
+    };
+
+    if (queryOptions?.accountId) {
+      mcpCallPayload.accountId = Array.isArray(queryOptions.accountId)
+        ? queryOptions.accountId.join(',')
+        : queryOptions.accountId;
+    }
+
+    if (queryOptions?.categoryId) {
+      mcpCallPayload.categoryId = Array.isArray(queryOptions.categoryId)
+        ? queryOptions.categoryId
+        : [queryOptions.categoryId];
+    }
+
+    if (queryOptions?.categoryGroup) {
+      mcpCallPayload.categoryGroup = queryOptions.categoryGroup;
+    }
+
+    if (queryOptions?.recordType) {
+      mcpCallPayload.recordType = queryOptions.recordType;
+    }
+
+    if (Array.isArray(queryOptions?.dateRange)) {
+      mcpCallPayload.recordDate = queryOptions.dateRange;
+    }
+
     applicationLogger.fileDetail('mcp', 'Dispatching fetchRecords to Wallet MCP', {
       limit: resolvedLimit,
       offset: resolvedOffset,
       sort: resolvedSort,
       sortBy: upstreamSortBy,
+      filters: {
+        accountId: mcpCallPayload.accountId,
+        categoryId: mcpCallPayload.categoryId,
+        categoryGroup: mcpCallPayload.categoryGroup,
+        recordType: mcpCallPayload.recordType,
+        recordDate: mcpCallPayload.recordDate,
+      },
     });
 
-    const rawResponse = await this.callMcpTool<any>('get_records', {
-      limit: resolvedLimit,
-      offset: resolvedOffset,
-      sortBy: upstreamSortBy,
-    });
+    const rawResponse = await this.callMcpTool<any>('get_records', mcpCallPayload);
 
     const rawRecordArray: any[] = Array.isArray(rawResponse)
       ? rawResponse

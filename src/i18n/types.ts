@@ -1,7 +1,7 @@
-import type { TransactionSortOrder } from '../types/walletTypes.js';
+import type { TransactionSortOrder, UnresolvedFilterIssue } from '../types/walletTypes.js';
 
 export type SupportedLanguage = 'id' | 'en';
-export type { TransactionSortOrder };
+export type { TransactionSortOrder, UnresolvedFilterIssue };
 
 export interface RecordMessageParams {
   transactionTitle: string;
@@ -109,16 +109,25 @@ export interface ResponseDictionary {
       totalPages?: number,
       displayedCount?: number,
       totalCount?: number,
-      sortOrderLabel?: string
+      sortOrderLabel?: string,
+      filterSummary?: string
     ): string;
     emptyState: string;
+    emptyFilteredState(filterSummary: string): string;
+    unresolvedFilters(issues: UnresolvedFilterIssue[]): string;
     outOfBounds(totalCount: number): string;
     navigationHint(
       nextPage: number,
-      options?: { limit?: number; sort?: TransactionSortOrder }
+      options?: {
+        limit?: number;
+        sort?: TransactionSortOrder;
+        filterTokens?: string[];
+      }
     ): string;
     sortNewest: string;
     sortOldest: string;
+    typeExpense: string;
+    typeIncome: string;
   };
 
   emailPending: {

@@ -7,6 +7,7 @@ import {
   PendingBulkItemParams,
   PendingCancellationParams,
   type TransactionSortOrder,
+  type UnresolvedFilterIssue,
 } from '../types.js';
 
 export const englishDictionary: ResponseDictionary = {
@@ -84,24 +85,85 @@ export const englishDictionary: ResponseDictionary = {
       totalPages?: number,
       displayedCount?: number,
       totalCount?: number,
-      sortOrderLabel?: string
+      sortOrderLabel?: string,
+      filterSummary?: string
     ): string {
       const sortSuffix = sortOrderLabel ? ` [${sortOrderLabel}]` : '';
+      const filterSuffix = filterSummary ? ` [${filterSummary}]` : '';
       const pageInfo = typeof totalPages === 'number' ? `Page ${page}/${totalPages}` : `Page ${page}`;
       const countInfo = typeof totalCount === 'number'
         ? ` • ${displayedCount ?? 0} of ${totalCount}`
         : (typeof displayedCount === 'number' && displayedCount > 0 ? ` • ${displayedCount} transactions` : '');
-      return `📋 *Transaction History* (${pageInfo}${countInfo})${sortSuffix}`;
+      return `📋 *Transaction History* (${pageInfo}${countInfo})${filterSuffix}${sortSuffix}`;
     },
     emptyState: 'No transactions recorded yet.',
+    emptyFilteredState(filterSummary: string): string {
+      return `No transactions match the filter [${filterSummary}].`;
+    },
+    unresolvedFilters(issues: UnresolvedFilterIssue[]): string {
+      const issueLines = issues.map(issue => {
+        if (issue.filterKey === 'account') {
+          if (issue.reason === 'NOT_FOUND') {
+            return `• Account "${issue.rawValue}" was not found in your Wallet accounts list.`;
+          }
+          if (issue.reason === 'UNRESOLVED' || issue.reason === 'AMBIGUOUS') {
+            if (issue.subType === 'bank_account' && issue.candidates && issue.candidates.length > 0) {
+              return `• Bank account number "${issue.rawValue}" is ambiguous. Candidates: ${issue.candidates.join(', ')}.`;
+            }
+            if (issue.candidates && issue.candidates.length > 0) {
+              return `• Account "${issue.rawValue}" is ambiguous. Candidates: ${issue.candidates.join(', ')}.`;
+            }
+            return `• Account "${issue.rawValue}" is ambiguous. Multiple accounts found with the same name.`;
+          }
+        }
+        if (issue.filterKey === 'category') {
+          if (issue.reason === 'NOT_FOUND') {
+            return `• Category "${issue.rawValue}" was not found in your Wallet categories list.`;
+          }
+          if (issue.reason === 'UNSUPPORTED') {
+            return `• Category group "${issue.rawValue}" is not supported by Wallet.`;
+          }
+          if (issue.reason === 'UNRESOLVED' || issue.reason === 'AMBIGUOUS') {
+            if (issue.candidates && issue.candidates.length > 0) {
+              return `• Category "${issue.rawValue}" is ambiguous. Candidates: ${issue.candidates.join(', ')}.`;
+            }
+            return `• Category "${issue.rawValue}" is ambiguous. Multiple categories found with the same name.`;
+          }
+        }
+        if (issue.filterKey === 'recordType') {
+          return `• Transaction type "${issue.rawValue}" is invalid. Use "expense" or "income".`;
+        }
+        if (issue.filterKey === 'dateRange') {
+          if (issue.reason === 'INVALID_RANGE') {
+            return `• Invalid date range: start boundary cannot be greater than end boundary.`;
+          }
+          if (issue.reason === 'INVALID_FORMAT') {
+            if (issue.subType === 'operator_prefix') {
+              return `• Date filter format "${issue.rawValue}" is invalid. Use operator prefix: eq., gt., gte., lt., or lte.`;
+            }
+            return `• Date "${issue.rawValue}" is invalid or not a valid calendar date.`;
+          }
+        }
+        return `• ${issue.message}`;
+      });
+      return [
+        '⚠️ *Transaction History Filter Not Found:*',
+        ...issueLines,
+        '',
+        '💡 _Tip: Check your filter spelling, or type *history* without filters to view all transactions._',
+      ].join('\n');
+    },
     outOfBounds(totalCount: number): string {
       return `This page exceeds available transactions (Total: ${totalCount} transactions).`;
     },
     navigationHint(
       nextPage: number,
-      options?: { limit?: number; sort?: TransactionSortOrder }
+      options?: { limit?: number; sort?: TransactionSortOrder; filterTokens?: string[] }
     ): string {
       const commandParts = ['history'];
+      if (options?.filterTokens && options.filterTokens.length > 0) {
+        commandParts.push(...options.filterTokens);
+      }
       if (options?.limit && options.limit !== 10) {
         commandParts.push(String(options.limit));
       }
@@ -113,6 +175,8 @@ export const englishDictionary: ResponseDictionary = {
     },
     sortNewest: 'Newest',
     sortOldest: 'Oldest',
+    typeExpense: 'Expense',
+    typeIncome: 'Income',
   },
 
   emailPending: {

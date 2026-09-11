@@ -3,9 +3,12 @@ import {
   parseRelativeTime,
   getLocalTimeParts,
   getPreviousLocalDateString,
+  getNextLocalDateString,
   getCurrentLocalDateString,
   formatLocalToUtcIso,
   resolveTargetLocalToUtcIso,
+  resolveLocalCalendarDayRange,
+  resolveLocalCalendarRange,
   formatLocalTimeAnchor,
   PERIOD_REPRESENTATIVE_HOURS,
 } from '../src/utils/relativeTimeParser.js';
@@ -1544,6 +1547,83 @@ async function runRelativeTimeExpressionsTestSuite(): Promise<void> {
   } finally {
     process.env.APP_TIMEZONE = originalEnvTimezoneForTest20;
   }
+
+  // Test 21: Shared Calendar Range Helpers (PR #106 Time Engine Extension)
+  applicationLogger.info('\nTEST 21: Shared Calendar Interval Helpers & Invariant Guarantees');
+
+  // 1. getNextLocalDateString transitions
+  assertCondition(
+    getNextLocalDateString('2026-09-11') === '2026-09-12',
+    'getNextLocalDateString advances standard day'
+  );
+  assertCondition(
+    getNextLocalDateString('2026-09-30') === '2026-10-01',
+    'getNextLocalDateString advances across month boundary'
+  );
+  assertCondition(
+    getNextLocalDateString('2024-02-28') === '2024-02-29',
+    'getNextLocalDateString advances to leap day'
+  );
+  assertCondition(
+    getNextLocalDateString('2024-02-29') === '2024-03-01',
+    'getNextLocalDateString advances past leap day'
+  );
+  assertCondition(
+    getNextLocalDateString('2026-12-31') === '2027-01-01',
+    'getNextLocalDateString advances across year boundary'
+  );
+
+  // 2. resolveLocalCalendarDayRange
+  const explicitJakartaDayBounds = resolveLocalCalendarDayRange('2026-09-11', 'Asia/Jakarta');
+  assertCondition(
+    explicitJakartaDayBounds[0] === 'gte.2026-09-10T17:00:00.000Z' &&
+      explicitJakartaDayBounds[1] === 'lt.2026-09-11T17:00:00.000Z',
+    `resolveLocalCalendarDayRange for 2026-09-11 in Asia/Jakarta produces half-open UTC interval (got: ${JSON.stringify(explicitJakartaDayBounds)})`
+  );
+
+  // Invariant check: reference Date instant on date D produces identical boundaries to explicit date D
+  const instantOnSept11Wib = new Date('2026-09-11T05:30:00.000Z'); // 12:30 WIB on Sept 11
+  const instantJakartaDayBounds = resolveLocalCalendarDayRange(instantOnSept11Wib, 'Asia/Jakarta');
+  assertCondition(
+    explicitJakartaDayBounds[0] === instantJakartaDayBounds[0] &&
+      explicitJakartaDayBounds[1] === instantJakartaDayBounds[1],
+    'Invariant satisfied: resolveLocalCalendarDayRange(D) and resolveLocalCalendarDayRange(instantOnD) produce identical UTC interval'
+  );
+
+  // Inclusion & exclusion verification
+  const lowerBoundaryUtcIso = explicitJakartaDayBounds[0].replace('gte.', '');
+  const upperBoundaryUtcIso = explicitJakartaDayBounds[1].replace('lt.', '');
+  const earlyTxIso = '2026-09-10T17:30:00.000Z'; // 00:30 WIB Sept 11
+  const lateTxIso = '2026-09-11T16:30:00.000Z';  // 23:30 WIB Sept 11
+  const nextDayTxIso = '2026-09-11T17:05:00.000Z'; // 00:05 WIB Sept 12
+  assertCondition(
+    earlyTxIso >= lowerBoundaryUtcIso && earlyTxIso < upperBoundaryUtcIso,
+    '00:30 WIB transaction is included within day boundaries'
+  );
+  assertCondition(
+    lateTxIso >= lowerBoundaryUtcIso && lateTxIso < upperBoundaryUtcIso,
+    '23:30 WIB transaction is included within day boundaries'
+  );
+  assertCondition(
+    nextDayTxIso >= upperBoundaryUtcIso,
+    '00:05 WIB transaction on next day is excluded from day boundaries'
+  );
+
+  // 3. resolveLocalCalendarRange
+  const multiDayRangeBounds = resolveLocalCalendarRange('2026-09-01', '2026-09-30', 'Asia/Jakarta');
+  assertCondition(
+    multiDayRangeBounds[0] === 'gte.2026-08-31T17:00:00.000Z' &&
+      multiDayRangeBounds[1] === 'lt.2026-09-30T17:00:00.000Z',
+    `resolveLocalCalendarRange for 2026-09-01..2026-09-30 produces half-open UTC interval (got: ${JSON.stringify(multiDayRangeBounds)})`
+  );
+
+  // Same-day range produces identical bounds to resolveLocalCalendarDayRange
+  const sameDayRangeBounds = resolveLocalCalendarRange('2026-09-11', '2026-09-11', 'Asia/Jakarta');
+  assertCondition(
+    sameDayRangeBounds[0] === explicitJakartaDayBounds[0] &&
+      sameDayRangeBounds[1] === explicitJakartaDayBounds[1],
+    'resolveLocalCalendarRange(D, D) is identical to resolveLocalCalendarDayRange(D)'
+  );
 
   console.log('\n======================================================');
   applicationLogger.success('ALL NATURAL LANGUAGE RELATIVE TIME TESTS PASSED!');

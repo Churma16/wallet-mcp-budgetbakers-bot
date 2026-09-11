@@ -7,6 +7,7 @@ import {
   PendingBulkItemParams,
   PendingCancellationParams,
   type TransactionSortOrder,
+  type UnresolvedFilterIssue,
 } from '../types.js';
 
 export const indonesianDictionary: ResponseDictionary = {
@@ -84,24 +85,84 @@ export const indonesianDictionary: ResponseDictionary = {
       totalPages?: number,
       displayedCount?: number,
       totalCount?: number,
-      sortOrderLabel?: string
+      sortOrderLabel?: string,
+      filterSummary?: string
     ): string {
       const sortSuffix = sortOrderLabel ? ` [${sortOrderLabel}]` : '';
+      const filterSuffix = filterSummary ? ` [${filterSummary}]` : '';
       const pageInfo = typeof totalPages === 'number' ? `Hal. ${page}/${totalPages}` : `Hal. ${page}`;
       const countInfo = typeof totalCount === 'number'
         ? ` • ${displayedCount ?? 0} dari ${totalCount}`
         : (typeof displayedCount === 'number' && displayedCount > 0 ? ` • ${displayedCount} transaksi` : '');
-      return `📋 *Riwayat Transaksi* (${pageInfo}${countInfo})${sortSuffix}`;
+      return `📋 *Riwayat Transaksi* (${pageInfo}${countInfo})${filterSuffix}${sortSuffix}`;
     },
     emptyState: 'Belum ada transaksi yang tercatat.',
+    emptyFilteredState(filterSummary: string): string {
+      return `Belum ada transaksi yang cocok dengan filter [${filterSummary}].`;
+    },
+    unresolvedFilters(issues: UnresolvedFilterIssue[]): string {
+      const issueLines = issues.map(issue => {
+        if (issue.filterKey === 'account') {
+          if (issue.reason === 'NOT_FOUND') {
+            return `• Akun "${issue.rawValue}" tidak ditemukan dalam daftar akun Wallet Anda.`;
+          }
+          if (issue.reason === 'UNRESOLVED' || issue.reason === 'AMBIGUOUS') {
+            if (issue.subType === 'bank_account' && issue.candidates && issue.candidates.length > 0) {
+              return `• Nomor rekening "${issue.rawValue}" ambigu. Kandidat: ${issue.candidates.join(', ')}.`;
+            }
+            if (issue.candidates && issue.candidates.length > 0) {
+              return `• Akun "${issue.rawValue}" ambigu. Kandidat: ${issue.candidates.join(', ')}.`;
+            }
+            return `• Akun "${issue.rawValue}" ambigu. Ditemukan beberapa akun dengan nama yang sama.`;
+          }
+        }
+        if (issue.filterKey === 'category') {
+          if (issue.reason === 'NOT_FOUND') {
+            return `• Kategori "${issue.rawValue}" tidak ditemukan dalam daftar kategori Wallet Anda.`;
+          }
+          if (issue.reason === 'UNSUPPORTED') {
+            return `• Grup kategori "${issue.rawValue}" tidak didukung oleh Wallet.`;
+          }
+          if (issue.reason === 'UNRESOLVED' || issue.reason === 'AMBIGUOUS') {
+            if (issue.candidates && issue.candidates.length > 0) {
+              return `• Kategori "${issue.rawValue}" ambigu. Kandidat: ${issue.candidates.join(', ')}.`;
+            }
+            return `• Kategori "${issue.rawValue}" ambigu. Ditemukan beberapa kategori dengan nama yang sama.`;
+          }
+        }
+        if (issue.filterKey === 'recordType') {
+          return `• Tipe transaksi "${issue.rawValue}" tidak valid. Gunakan "expense" (pengeluaran) atau "income" (pemasukan).`;
+        }
+        if (issue.filterKey === 'dateRange') {
+          if (issue.reason === 'INVALID_RANGE') {
+            return `• Rentang tanggal tidak valid: batas awal tidak boleh lebih besar dari batas akhir.`;
+          }
+          if (issue.reason === 'INVALID_FORMAT') {
+            if (issue.subType === 'operator_prefix') {
+              return `• Format filter tanggal "${issue.rawValue}" tidak valid. Gunakan prefix operator: eq., gt., gte., lt., atau lte.`;
+            }
+            return `• Tanggal "${issue.rawValue}" tidak valid atau bukan tanggal kalender yang valid.`;
+          }
+        }
+        return `• ${issue.message}`;
+      });
+      return [
+        '⚠️ *Filter Riwayat Tidak Ditemukan:*',
+        ...issueLines,
+        '_Pastikan nama akun atau kategori sudah sesuai dengan data Wallet Anda._',
+      ].join('\n');
+    },
     outOfBounds(totalCount: number): string {
       return `Halaman ini melebihi jumlah transaksi yang tersedia (Total: ${totalCount} transaksi).`;
     },
     navigationHint(
       nextPage: number,
-      options?: { limit?: number; sort?: TransactionSortOrder }
+      options?: { limit?: number; sort?: TransactionSortOrder; filterTokens?: string[] }
     ): string {
       const commandParts = ['riwayat'];
+      if (options?.filterTokens && options.filterTokens.length > 0) {
+        commandParts.push(...options.filterTokens);
+      }
       if (options?.limit && options.limit !== 10) {
         commandParts.push(String(options.limit));
       }
@@ -113,6 +174,8 @@ export const indonesianDictionary: ResponseDictionary = {
     },
     sortNewest: 'Terbaru',
     sortOldest: 'Terlama',
+    typeExpense: 'Pengeluaran',
+    typeIncome: 'Pemasukan',
   },
 
   emailPending: {

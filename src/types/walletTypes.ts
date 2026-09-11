@@ -59,11 +59,73 @@ export interface WalletBudgetItem {
 
 export type TransactionSortOrder = 'newest' | 'oldest';
 
-export interface TransactionHistoryQueryOptions {
+export type TransactionRecordTypeFilter = 'expense' | 'income';
+
+export interface TransactionDateRangeFilter {
+  from?: string;
+  to?: string;
+}
+
+export type RelativeDatePeriod =
+  | 'today'
+  | 'yesterday'
+  | 'this_week'
+  | 'last_week'
+  | 'this_month'
+  | 'last_month'
+  | 'this_year';
+
+export interface TransactionHistoryFilters {
+  accountId?: string | string[];
+  accountName?: string;
+  categoryId?: string | string[];
+  categoryName?: string;
+  categoryGroup?: string;
+  recordType?: TransactionRecordTypeFilter;
+  startDate?: string;
+  endDate?: string;
+  dateRange?: string[] | TransactionDateRangeFilter;
+  datePeriod?: RelativeDatePeriod;
+}
+
+export interface TransactionHistoryQueryOptions extends TransactionHistoryFilters {
   limit?: number;
   offset?: number;
   page?: number;
   sort?: TransactionSortOrder;
+}
+
+export interface AppliedTransactionHistoryFilters {
+  account?: {
+    id: string;
+    name: string;
+    selector?: string;
+  };
+  category?: {
+    id: string;
+    name: string;
+    group?: string;
+    selector?: string;
+  };
+  categoryGroup?: string;
+  recordType?: TransactionRecordTypeFilter;
+  dateRange?: {
+    from?: string;
+    to?: string;
+    rawRange?: string[];
+    label?: string;
+    selector?: string;
+  };
+  navigationTokens?: string[];
+}
+
+export interface UnresolvedFilterIssue {
+  filterKey: 'account' | 'category' | 'recordType' | 'dateRange';
+  rawValue: string;
+  reason: 'NOT_FOUND' | 'INVALID_FORMAT' | 'INVALID_RANGE' | 'UNSUPPORTED' | 'UNRESOLVED' | 'AMBIGUOUS';
+  message: string;
+  candidates?: string[];
+  subType?: 'bank_account' | 'name' | 'operator_prefix' | 'calendar_date' | 'start_after_end';
 }
 
 export interface WalletRecordItem {
@@ -106,5 +168,7 @@ export interface TransactionHistoryPage {
   nextOffset: number | null;
   hasMore: boolean;
   sort: TransactionSortOrder;
+  appliedFilters?: AppliedTransactionHistoryFilters;
+  unresolvedFilters?: UnresolvedFilterIssue[];
 }
 

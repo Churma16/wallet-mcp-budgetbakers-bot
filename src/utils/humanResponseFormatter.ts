@@ -366,19 +366,62 @@ export function formatTransactionHistoryMessage(
 ): string {
   const dictionary = getDictionary(languageCode);
 
+  // If fail-closed unresolved filter issues occurred, return explicit explanation
+  if (historyPage.unresolvedFilters && historyPage.unresolvedFilters.length > 0) {
+    return dictionary.history.unresolvedFilters(historyPage.unresolvedFilters);
+  }
+
   const sortOrderLabel = historyPage.sort === 'oldest'
     ? dictionary.history.sortOldest
     : '';
+
+  // Build filter summary badges
+  const filterBadges: string[] = [];
+  const appliedFilters = historyPage.appliedFilters;
+
+  if (appliedFilters?.recordType) {
+    filterBadges.push(
+      appliedFilters.recordType === 'expense'
+        ? dictionary.history.typeExpense
+        : dictionary.history.typeIncome
+    );
+  }
+
+  if (appliedFilters?.category?.name) {
+    filterBadges.push(appliedFilters.category.name);
+  } else if (appliedFilters?.categoryGroup) {
+    filterBadges.push(appliedFilters.categoryGroup);
+  }
+
+  if (appliedFilters?.account?.name) {
+    filterBadges.push(appliedFilters.account.name);
+  }
+
+  if (appliedFilters?.dateRange?.label) {
+    filterBadges.push(appliedFilters.dateRange.label);
+  } else if (appliedFilters?.dateRange?.from && appliedFilters?.dateRange?.to) {
+    filterBadges.push(`${appliedFilters.dateRange.from} - ${appliedFilters.dateRange.to}`);
+  } else if (appliedFilters?.dateRange?.from) {
+    filterBadges.push(`>= ${appliedFilters.dateRange.from}`);
+  } else if (appliedFilters?.dateRange?.to) {
+    filterBadges.push(`<= ${appliedFilters.dateRange.to}`);
+  }
+
+  const filterSummary = filterBadges.length > 0 ? filterBadges.join(' • ') : undefined;
 
   const headerText = dictionary.history.header(
     historyPage.page,
     historyPage.totalPages,
     historyPage.records.length,
     historyPage.total,
-    sortOrderLabel
+    sortOrderLabel,
+    filterSummary
   );
 
   if (historyPage.total === 0 || (historyPage.total === undefined && historyPage.records.length === 0 && historyPage.offset === 0)) {
+    if (filterSummary) {
+      return `${headerText}\n\n${dictionary.history.emptyFilteredState(filterSummary)}`;
+    }
     return `${headerText}\n\n${dictionary.history.emptyState}`;
   }
 
@@ -421,11 +464,70 @@ export function formatTransactionHistoryMessage(
 
   if (historyPage.hasMore) {
     const nextPageIndex = historyPage.page + 1;
+    const filterTokens: string[] = [];
+
+    if (appliedFilters?.navigationTokens && appliedFilters.navigationTokens.length > 0) {
+      if (languageCode === 'en') {
+        const localizedTokens = appliedFilters.navigationTokens.map(token => {
+          if (token === 'pengeluaran') return 'expense';
+          if (token === 'pemasukan') return 'income';
+          if (token === 'hari ini') return 'today';
+          if (token === 'kemarin') return 'yesterday';
+          if (token === 'minggu ini') return 'this week';
+          if (token === 'minggu lalu') return 'last week';
+          if (token === 'bulan ini') return 'this month';
+          if (token === 'bulan lalu') return 'last month';
+          if (token === 'tahun ini') return 'this year';
+          if (token === 'makanan') return 'food';
+          if (token === 'minuman') return 'drink';
+          if (token.startsWith('akun ')) return `account ${token.slice(5)}`;
+          if (token.startsWith('kategori ')) return `category ${token.slice(9)}`;
+          return token;
+        });
+        filterTokens.push(...localizedTokens);
+      } else {
+        filterTokens.push(...appliedFilters.navigationTokens);
+      }
+    } else {
+      if (appliedFilters?.account?.selector) {
+        filterTokens.push(appliedFilters.account.selector);
+      } else if (appliedFilters?.account?.name) {
+        filterTokens.push(appliedFilters.account.name.toLowerCase());
+      }
+
+      if (appliedFilters?.category?.selector) {
+        filterTokens.push(appliedFilters.category.selector);
+      } else if (appliedFilters?.categoryGroup) {
+        filterTokens.push(appliedFilters.categoryGroup);
+      } else if (appliedFilters?.category?.name) {
+        filterTokens.push(appliedFilters.category.name.toLowerCase());
+      }
+
+      if (appliedFilters?.recordType) {
+        filterTokens.push(
+          appliedFilters.recordType === 'expense'
+            ? (languageCode === 'en' ? 'expense' : 'pengeluaran')
+            : (languageCode === 'en' ? 'income' : 'pemasukan')
+        );
+      }
+
+      if (appliedFilters?.dateRange?.selector) {
+        filterTokens.push(
+          languageCode === 'en' && appliedFilters.dateRange.selector === 'bulan ini'
+            ? 'this month'
+            : appliedFilters.dateRange.selector
+        );
+      } else if (appliedFilters?.dateRange?.label) {
+        filterTokens.push(appliedFilters.dateRange.label.toLowerCase());
+      }
+    }
+
     messageParts.push('');
     messageParts.push(
       dictionary.history.navigationHint(nextPageIndex, {
         limit: historyPage.limit,
         sort: historyPage.sort,
+        filterTokens: filterTokens.length > 0 ? filterTokens : undefined,
       })
     );
   }

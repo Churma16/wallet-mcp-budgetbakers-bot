@@ -12,6 +12,285 @@ export type FastPathAction =
   | FastPathTransactionHistoryAction
   | null;
 
+const KNOWN_ACCOUNT_KEYWORDS = new Set([
+  'bca',
+  'mandiri',
+  'bri',
+  'bni',
+  'jago',
+  'cimb',
+  'jenius',
+  'permata',
+  'bsi',
+  'seabank',
+  'blu',
+  'gopay',
+  'ovo',
+  'dana',
+  'shopeepay',
+  'linkaja',
+  'cash',
+  'tunai',
+  'dompet',
+  'bank',
+  'rekening',
+  'wallet',
+]);
+
+const KNOWN_CATEGORY_KEYWORDS = new Set([
+  'makanan',
+  'minuman',
+  'food',
+  'drink',
+  'drinks',
+  'makan',
+  'minum',
+  'transport',
+  'transportasi',
+  'belanja',
+  'shopping',
+  'hiburan',
+  'entertainment',
+  'tagihan',
+  'bills',
+  'investasi',
+  'investment',
+  'gaji',
+  'salary',
+  'kesehatan',
+  'health',
+  'pulsa',
+  'listrik',
+  'kendaraan',
+  'rumah',
+  'housing',
+  'pendidikan',
+  'education',
+  'communication_pc',
+  'financial_expenses',
+  'food_and_drinks',
+  'income',
+  'investments',
+  'life_entertainment',
+  'others',
+  'shopping',
+  'system_categories',
+  'transportation',
+  'unknown_records',
+  'vehicle',
+]);
+
+function extractHistoryQueryOptionsFromTokens(
+  rawTokens: string,
+  baseOptions: Partial<TransactionHistoryQueryOptions> = {}
+): TransactionHistoryQueryOptions | null {
+  let remainingTokens = rawTokens.trim();
+  let resolvedLimit: number | undefined = baseOptions.limit;
+  let resolvedPage: number | undefined = baseOptions.page;
+  let resolvedSort: 'newest' | 'oldest' = baseOptions.sort || 'newest';
+  let resolvedRecordType: 'expense' | 'income' | undefined = undefined;
+  let resolvedDatePeriod: TransactionHistoryQueryOptions['datePeriod'] = undefined;
+  let resolvedDateRange: string[] | undefined = undefined;
+  let resolvedAccountName: string | undefined = undefined;
+  let resolvedCategoryName: string | undefined = undefined;
+
+  // 1. Extract sort token
+  const sortMatch = remainingTokens.match(/\b(terlama|oldest|terbaru|newest)\b/i);
+  if (sortMatch) {
+    const matchedSortWord = sortMatch[1].toLowerCase();
+    resolvedSort = (matchedSortWord === 'terlama' || matchedSortWord === 'oldest') ? 'oldest' : 'newest';
+    remainingTokens = remainingTokens.replace(sortMatch[0], ' ').trim();
+  }
+
+  // 2. Extract page token (e.g. "hal 2", "halaman 3", "page 4", "p 5")
+  const pageMatch = remainingTokens.match(/\b(?:hal(?:aman)?|page|p)\s*(\d+)\b/i);
+  if (pageMatch) {
+    const parsedPage = Number.parseInt(pageMatch[1], 10);
+    if (Number.isNaN(parsedPage) || parsedPage <= 0) {
+      return null;
+    }
+    resolvedPage = parsedPage;
+    remainingTokens = remainingTokens.replace(pageMatch[0], ' ').trim();
+  }
+
+  // 3. Extract explicit dates or ISO datetimes with optional comparison operators (e.g. >= 2024-01-01, > 2024-01-01T12:00:00Z, gte.2024-01-01, etc.)
+  const operatorDateRegex =
+    /(?:(>=|>|<=|<|gte\.|gt\.|lte\.|lt\.|eq\.)\s*)?(\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:?\d{2}))?)/gi;
+  const operatorMatches: Array<{ fullMatch: string; operator?: string; dateString: string }> = [];
+  let matchExec: RegExpExecArray | null = null;
+
+  while ((matchExec = operatorDateRegex.exec(remainingTokens)) !== null) {
+    operatorMatches.push({
+      fullMatch: matchExec[0],
+      operator: matchExec[1],
+      dateString: matchExec[2],
+    });
+  }
+
+  if (operatorMatches.length === 1) {
+    const singleMatch = operatorMatches[0];
+    let resolvedOp = 'eq';
+    if (singleMatch.operator) {
+      const cleanOp = singleMatch.operator.replace('.', '');
+      if (cleanOp === '>' || cleanOp === 'gt') resolvedOp = 'gt';
+      else if (cleanOp === '>=' || cleanOp === 'gte') resolvedOp = 'gte';
+      else if (cleanOp === '<' || cleanOp === 'lt') resolvedOp = 'lt';
+      else if (cleanOp === '<=' || cleanOp === 'lte') resolvedOp = 'lte';
+    }
+    resolvedDateRange = [`${resolvedOp}.${singleMatch.dateString}`];
+    remainingTokens = remainingTokens.replace(singleMatch.fullMatch, ' ').trim();
+  } else if (operatorMatches.length >= 2) {
+    const firstMatch = operatorMatches[0];
+    const secondMatch = operatorMatches[1];
+
+    let firstOp = 'gte';
+    if (firstMatch.operator) {
+      const cleanOp = firstMatch.operator.replace('.', '');
+      if (cleanOp === '>' || cleanOp === 'gt') firstOp = 'gt';
+      else if (cleanOp === '>=' || cleanOp === 'gte') firstOp = 'gte';
+    }
+
+    let secondOp = 'lte';
+    if (secondMatch.operator) {
+      const cleanOp = secondMatch.operator.replace('.', '');
+      if (cleanOp === '<' || cleanOp === 'lt') secondOp = 'lt';
+      else if (cleanOp === '<=' || cleanOp === 'lte') secondOp = 'lte';
+    }
+
+    resolvedDateRange = [`${firstOp}.${firstMatch.dateString}`, `${secondOp}.${secondMatch.dateString}`];
+    remainingTokens = remainingTokens
+      .replace(firstMatch.fullMatch, ' ')
+      .replace(secondMatch.fullMatch, ' ')
+      .trim();
+  }
+
+  // 4. Extract limit token (standalone positive integer) if not already set
+  if (!resolvedLimit) {
+    const limitMatch = remainingTokens.match(/\b(\d+)\b/);
+    if (limitMatch) {
+      const parsedLimit = Number.parseInt(limitMatch[1], 10);
+      if (Number.isNaN(parsedLimit) || parsedLimit <= 0 || parsedLimit > 100) {
+        return null;
+      }
+      resolvedLimit = parsedLimit;
+      remainingTokens = remainingTokens.replace(limitMatch[0], ' ').trim();
+    }
+  }
+
+  // 5. Extract record type (expense / income)
+  const expenseMatch = remainingTokens.match(/\b(pengeluaran|keluar|expenses?|spending)\b/i);
+  if (expenseMatch) {
+    resolvedRecordType = 'expense';
+    remainingTokens = remainingTokens.replace(expenseMatch[0], ' ').trim();
+  } else {
+    const incomeMatch = remainingTokens.match(/\b(pemasukan|masuk|income)\b/i);
+    if (incomeMatch) {
+      resolvedRecordType = 'income';
+      remainingTokens = remainingTokens.replace(incomeMatch[0], ' ').trim();
+    }
+  }
+
+  // 6. Extract relative date period
+  const todayMatch = remainingTokens.match(/\b(hari\s+ini|today)\b/i);
+  if (todayMatch) {
+    resolvedDatePeriod = 'today';
+    remainingTokens = remainingTokens.replace(todayMatch[0], ' ').trim();
+  } else {
+    const yesterdayMatch = remainingTokens.match(/\b(kemarin|yesterday|semalam)\b/i);
+    if (yesterdayMatch) {
+      resolvedDatePeriod = 'yesterday';
+      remainingTokens = remainingTokens.replace(yesterdayMatch[0], ' ').trim();
+    } else {
+      const thisWeekMatch = remainingTokens.match(/\b(minggu\s+ini|this\s+week)\b/i);
+      if (thisWeekMatch) {
+        resolvedDatePeriod = 'this_week';
+        remainingTokens = remainingTokens.replace(thisWeekMatch[0], ' ').trim();
+      } else {
+        const lastWeekMatch = remainingTokens.match(/\b(minggu\s+lalu|last\s+week)\b/i);
+        if (lastWeekMatch) {
+          resolvedDatePeriod = 'last_week';
+          remainingTokens = remainingTokens.replace(lastWeekMatch[0], ' ').trim();
+        } else {
+          const thisMonthMatch = remainingTokens.match(/\b(bulan\s+ini|this\s+month)\b/i);
+          if (thisMonthMatch) {
+            resolvedDatePeriod = 'this_month';
+            remainingTokens = remainingTokens.replace(thisMonthMatch[0], ' ').trim();
+          } else {
+            const lastMonthMatch = remainingTokens.match(/\b(bulan\s+lalu|last\s+month)\b/i);
+            if (lastMonthMatch) {
+              resolvedDatePeriod = 'last_month';
+              remainingTokens = remainingTokens.replace(lastMonthMatch[0], ' ').trim();
+            } else {
+              const thisYearMatch = remainingTokens.match(/\b(tahun\s+ini|this\s+year)\b/i);
+              if (thisYearMatch) {
+                resolvedDatePeriod = 'this_year';
+                remainingTokens = remainingTokens.replace(thisYearMatch[0], ' ').trim();
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 7. Extract explicit account and category prefixes (supports unquoted or quoted strings)
+  const explicitAccountMatch = remainingTokens.match(/\b(?:akun|account|rekening)\s+(?:"([^"]+)"|'([^']+)'|([a-zA-Z0-9_-]+)\b)/i);
+  if (explicitAccountMatch) {
+    resolvedAccountName = explicitAccountMatch[1] || explicitAccountMatch[2] || explicitAccountMatch[3];
+    remainingTokens = remainingTokens.replace(explicitAccountMatch[0], ' ').trim();
+  }
+
+  const explicitCategoryMatch = remainingTokens.match(/\b(?:kategori|category)\s+(?:"([^"]+)"|'([^']+)'|([a-zA-Z0-9_-]+)\b)/i);
+  if (explicitCategoryMatch) {
+    resolvedCategoryName = explicitCategoryMatch[1] || explicitCategoryMatch[2] || explicitCategoryMatch[3];
+    remainingTokens = remainingTokens.replace(explicitCategoryMatch[0], ' ').trim();
+  }
+
+  // 8. Remove grammatical connectors
+  remainingTokens = remainingTokens.replace(/\b(dari|di|untuk|for|in|on|pada)\b/gi, ' ').trim();
+
+  // 9. Inspect leftover tokens
+  if (remainingTokens.length > 0) {
+    const leftoverWords = remainingTokens.split(/\s+/).filter(word => word.length > 0);
+
+    for (const rawWord of leftoverWords) {
+      const cleanWord = rawWord.toLowerCase();
+      if (KNOWN_ACCOUNT_KEYWORDS.has(cleanWord) && !resolvedAccountName) {
+        resolvedAccountName = cleanWord;
+      } else if (KNOWN_CATEGORY_KEYWORDS.has(cleanWord) && !resolvedCategoryName) {
+        resolvedCategoryName = cleanWord;
+      } else {
+        // Unknown token; fail safe to LLM intent analysis
+        return null;
+      }
+    }
+  }
+
+  const resultOptions: TransactionHistoryQueryOptions = {
+    limit: resolvedLimit,
+    page: resolvedPage,
+    sort: resolvedSort,
+  };
+
+  if (resolvedRecordType !== undefined) {
+    resultOptions.recordType = resolvedRecordType;
+  }
+  if (resolvedDatePeriod !== undefined) {
+    resultOptions.datePeriod = resolvedDatePeriod;
+  }
+  if (resolvedDateRange !== undefined) {
+    resultOptions.dateRange = resolvedDateRange;
+  }
+  if (resolvedAccountName !== undefined) {
+    resultOptions.accountName = resolvedAccountName;
+  }
+  if (resolvedCategoryName !== undefined) {
+    resultOptions.categoryName = resolvedCategoryName;
+  }
+
+  return resultOptions;
+}
+
 function parseTransactionHistoryIntent(userMessageText: string): FastPathTransactionHistoryAction | null {
   const trimmedLowerText = userMessageText.toLowerCase().trim();
 
@@ -97,54 +376,17 @@ function parseTransactionHistoryIntent(userMessageText: string): FastPathTransac
     };
   }
 
-  let remainingTokens = rawRemainder.trim();
-  let resolvedLimit: number | undefined = undefined;
-  let resolvedPage: number | undefined = undefined;
-  let resolvedSort: 'newest' | 'oldest' = 'newest';
+  const parsedOptions = extractHistoryQueryOptionsFromTokens(rawRemainder, {
+    sort: 'newest',
+  });
 
-  // 1. Extract sort token
-  const sortMatch = remainingTokens.match(/\b(terlama|oldest|terbaru|newest)\b/i);
-  if (sortMatch) {
-    const matchedSortWord = sortMatch[1].toLowerCase();
-    resolvedSort = (matchedSortWord === 'terlama' || matchedSortWord === 'oldest') ? 'oldest' : 'newest';
-    remainingTokens = remainingTokens.replace(sortMatch[0], ' ').trim();
-  }
-
-  // 2. Extract page token (e.g. "hal 2", "halaman 3", "page 4", "p 5")
-  const pageMatch = remainingTokens.match(/\b(?:hal(?:aman)?|page|p)\s*(\d+)\b/i);
-  if (pageMatch) {
-    const parsedPage = Number.parseInt(pageMatch[1], 10);
-    if (Number.isNaN(parsedPage) || parsedPage <= 0) {
-      return null;
-    }
-    resolvedPage = parsedPage;
-    remainingTokens = remainingTokens.replace(pageMatch[0], ' ').trim();
-  }
-
-  // 3. Extract limit token (standalone positive integer)
-  const limitMatch = remainingTokens.match(/\b(\d+)\b/);
-  if (limitMatch) {
-    const parsedLimit = Number.parseInt(limitMatch[1], 10);
-    if (Number.isNaN(parsedLimit) || parsedLimit <= 0) {
-      return null;
-    }
-    resolvedLimit = parsedLimit;
-    remainingTokens = remainingTokens.replace(limitMatch[0], ' ').trim();
-  }
-
-  // 4. Require the entire remainder to be consumed by the grammar;
-  // return null when unknown tokens remain (e.g. "history coffee", "history 10 20", etc.)
-  if (remainingTokens.length > 0) {
+  if (!parsedOptions) {
     return null;
   }
 
   return {
     type: 'TRANSACTION_HISTORY',
-    options: {
-      limit: resolvedLimit,
-      page: resolvedPage,
-      sort: resolvedSort,
-    },
+    options: parsedOptions,
   };
 }
 
