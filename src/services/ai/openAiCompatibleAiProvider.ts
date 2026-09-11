@@ -251,7 +251,8 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
       availableAccountList,
       availableCategoryList,
       currentDateIso,
-      applicationTimezone
+      applicationTimezone,
+      referenceInstant
     );
 
     const trimmedUserMessage = userMessageText.trim();
@@ -303,7 +304,8 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
       availableAccountList,
       availableCategoryList,
       currentDateIso,
-      applicationTimezoneIdentifier
+      applicationTimezoneIdentifier,
+      referenceInstant
     );
 
     const currentTransactionTimestampIso = referenceInstant.toISOString();

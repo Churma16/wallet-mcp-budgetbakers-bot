@@ -245,10 +245,61 @@ const CURRENCY_PREFIX_REGEX =
   /(?:[\$€£¥₹₩฿₫₱]|\b(?:USD|EUR|GBP|IDR|SGD|AUD|CAD|CHF|JPY|CNY|MYR|THB|PHP|KRW|INR|NZD|HKD|Rp\.?|dollars?|dolar|euros?|pounds?|rupiah))\s*$/i;
 const CURRENCY_SUFFIX_REGEX =
   /^\s*(?:[\$€£¥₹₩฿₫₱]|(?:USD|EUR|GBP|IDR|SGD|AUD|CAD|CHF|JPY|CNY|MYR|THB|PHP|KRW|INR|NZD|HKD|dollars?|dolar|euros?|pounds?|rupiah|bucks|cents?|yen|yuan|ringgit|pesos?|rupees?)\b)/i;
-const TEMPORAL_PRECEDING_TOKEN_REGEX =
-  /(?:\b(?:yesterday|kemarin|kemaren|today|tadi|semalam|semalem|last\s+night|pagi|siang|sore|malam|malem|subuh|morning|afternoon|evening|night))\s*$/i;
-const TEMPORAL_FOLLOWING_TOKEN_REGEX =
-  /^\s*(?:\b(?:wib|wita|wit|gmt|utc|yesterday|kemarin|kemaren|today|tadi|semalam|semalem|pagi|siang|sore|malam|malem|subuh|morning|afternoon|evening|night)\b)/i;
+export const SUPPORTED_RELATIVE_DAY_TOKENS = [
+  'yesterday',
+  'kemarin',
+  'kemaren',
+  'today',
+  'tadi',
+  'semalam',
+  'semalem',
+  'tonight',
+  'hari\\s+ini',
+  'last\\s+night',
+] as const;
+
+export const SUPPORTED_PERIOD_TOKENS = [
+  'subuh',
+  'dawn',
+  'early\\s+morning',
+  'pagi',
+  'morning',
+  'siang',
+  'noon',
+  'afternoon',
+  'sore',
+  'evening',
+  'malam',
+  'malem',
+  'night',
+] as const;
+
+export const SUPPORTED_TIMEZONE_TOKENS = ['wib', 'wita', 'wit', 'gmt', 'utc'] as const;
+
+export const SUPPORTED_TEMPORAL_PREFIX_TOKENS = ['at', 'jam', 'pukul', 'this', 'ini'] as const;
+
+const ALL_TEMPORAL_PRECEDING_TOKENS = [
+  ...SUPPORTED_RELATIVE_DAY_TOKENS,
+  ...SUPPORTED_PERIOD_TOKENS,
+  ...SUPPORTED_TEMPORAL_PREFIX_TOKENS,
+];
+
+const ALL_TEMPORAL_FOLLOWING_TOKENS = [
+  ...SUPPORTED_TIMEZONE_TOKENS,
+  ...SUPPORTED_RELATIVE_DAY_TOKENS,
+  ...SUPPORTED_PERIOD_TOKENS,
+  'ini',
+];
+
+const TEMPORAL_PRECEDING_TOKEN_REGEX = new RegExp(
+  `(?:\\b(?:${ALL_TEMPORAL_PRECEDING_TOKENS.join('|')}))\\s*$`,
+  'i'
+);
+
+const TEMPORAL_FOLLOWING_TOKEN_REGEX = new RegExp(
+  `^\\s*(?:\\b(?:${ALL_TEMPORAL_FOLLOWING_TOKENS.join('|')})\\b)`,
+  'i'
+);
 
 /**
  * Retrieves the current calendar date string (YYYY-MM-DD) in the specified or application timezone.

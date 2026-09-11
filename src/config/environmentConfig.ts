@@ -203,7 +203,8 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
   const rawLanguage = (process.env.APP_LANGUAGE || process.env.BOT_LANGUAGE || 'id').toLowerCase().trim();
   const appLanguage: 'id' | 'en' = rawLanguage === 'en' ? 'en' : 'id';
   const defaultCurrency = (process.env.DEFAULT_CURRENCY || 'IDR').toUpperCase().trim();
-  const appTimezone = process.env.APP_TIMEZONE || 'Asia/Jakarta';
+  const rawAppTimezone = process.env.APP_TIMEZONE?.trim();
+  const appTimezone = rawAppTimezone && rawAppTimezone.length > 0 ? rawAppTimezone : 'Asia/Jakarta';
 
   const rawAllowedPhoneNumber = (process.env.ALLOWED_PHONE_NUMBER || process.env.OWNER_PHONE_NUMBER || '')
     .trim();
@@ -388,6 +389,19 @@ export function validateApplicationConfiguration(
       variableName: 'CHANNELS',
       message: 'No messaging channels are properly configured! Configure either WhatsApp (ALLOWED_PHONE_NUMBER) or Telegram (TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_USER_ID) in .env.',
     });
+  }
+
+  // 4. Timezone validation (fail closed on invalid IANA identifier)
+  if (config.appTimezone) {
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: config.appTimezone });
+    } catch {
+      validationErrorList.push({
+        variableName: 'APP_TIMEZONE',
+        message: `APP_TIMEZONE '${config.appTimezone}' is not a valid IANA timezone identifier!`,
+        hint: 'Specify a valid IANA timezone identifier (e.g. "Asia/Jakarta", "America/New_York", or "UTC").',
+      });
+    }
   }
 
   return {

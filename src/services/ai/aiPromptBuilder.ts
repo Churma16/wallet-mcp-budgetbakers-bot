@@ -51,7 +51,8 @@ export function buildCompactSystemInstruction(
   availableAccountList: WalletAccountItem[],
   availableCategoryList: WalletCategoryItem[],
   currentDateIso: string,
-  applicationTimezoneIdentifier: string = 'Asia/Jakarta'
+  applicationTimezoneIdentifier: string = 'Asia/Jakarta',
+  referenceInstant: Date = new Date()
 ): string {
   const formattedAccounts = availableAccountList
     .map((account, index) => {
@@ -67,7 +68,7 @@ export function buildCompactSystemInstruction(
 
   const activeLanguage = getActiveLanguage();
   const summaryLanguageName = activeLanguage === 'en' ? 'English' : 'Indonesian';
-  const timezoneOffsetDetails = getTimezoneOffsetDetails(applicationTimezoneIdentifier);
+  const timezoneOffsetDetails = getTimezoneOffsetDetails(applicationTimezoneIdentifier, referenceInstant);
 
   const relativeTimeRules = activeLanguage === 'en'
     ? `3. RECORD DATE & TIMEZONE CONVERSION:
@@ -133,7 +134,8 @@ export function buildReceiptSystemInstruction(
   availableAccountList: WalletAccountItem[],
   availableCategoryList: WalletCategoryItem[],
   currentDateIso: string,
-  applicationTimezoneIdentifier: string
+  applicationTimezoneIdentifier: string,
+  referenceInstant: Date = new Date()
 ): string {
   const formattedAccounts = availableAccountList
     .map((account, index) => {
@@ -149,7 +151,7 @@ export function buildReceiptSystemInstruction(
 
   const activeLanguage = getActiveLanguage();
   const summaryLanguageName = activeLanguage === 'en' ? 'English' : 'Indonesian';
-  const timezoneOffsetDetails = getTimezoneOffsetDetails(applicationTimezoneIdentifier);
+  const timezoneOffsetDetails = getTimezoneOffsetDetails(applicationTimezoneIdentifier, referenceInstant);
 
   return `You are an expert financial receipt and invoice parser for BudgetBakers Wallet.
 Current Date: ${currentDateIso}

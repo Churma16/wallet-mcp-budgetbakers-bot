@@ -16,6 +16,11 @@ import {
 import { GeminiAiProvider } from '../src/services/ai/geminiAiProvider.js';
 import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
 import { WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
+import {
+  loadEnvironmentConfiguration,
+  validateApplicationConfiguration,
+  ApplicationEnvironmentConfiguration,
+} from '../src/config/environmentConfig.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import { applicationLogger } from '../src/utils/logger.js';
 
@@ -790,6 +795,57 @@ async function runRelativeTimeExpressionsTestSuite(): Promise<void> {
     `kemarin 15.30 beli makan resolves to 2026-09-10T08:30:00.000Z (got: ${indonesianBareClock?.resolvedUtcIso})`
   );
 
+  // Positive context test 1: "tonight 20.30 dinner" (tonight 20:30 WIB -> UTC 13:30)
+  const tonightDotClock = parseRelativeTime(
+    'tonight 20.30 dinner',
+    fixedReferenceUtc,
+    defaultTimezone
+  );
+  assertCondition(
+    tonightDotClock?.hasExplicitTime === true &&
+      tonightDotClock.targetHour === 20 &&
+      tonightDotClock.targetMinute === 30,
+    'tonight 20.30 dinner is preserved as explicit clock 20:30'
+  );
+  assertCondition(
+    tonightDotClock?.resolvedUtcIso === '2026-09-11T13:30:00.000Z',
+    `tonight 20.30 dinner resolves to 2026-09-11T13:30:00.000Z (got: ${tonightDotClock?.resolvedUtcIso})`
+  );
+
+  // Positive context test 2: "this dawn 05.30" (today 05:30 WIB -> UTC 2026-09-10 22:30:00Z)
+  const thisDawnDotClock = parseRelativeTime(
+    'this dawn 05.30',
+    fixedReferenceUtc,
+    defaultTimezone
+  );
+  assertCondition(
+    thisDawnDotClock?.hasExplicitTime === true &&
+      thisDawnDotClock.targetHour === 5 &&
+      thisDawnDotClock.targetMinute === 30,
+    'this dawn 05.30 is preserved as explicit clock 05:30'
+  );
+  assertCondition(
+    thisDawnDotClock?.resolvedUtcIso === '2026-09-10T22:30:00.000Z',
+    `this dawn 05.30 resolves to 2026-09-10T22:30:00.000Z (got: ${thisDawnDotClock?.resolvedUtcIso})`
+  );
+
+  // Positive context test 3: "yesterday dawn 05.30" (yesterday 05:30 WIB -> UTC 2026-09-09 22:30:00Z)
+  const yesterdayDawnDotClock = parseRelativeTime(
+    'yesterday dawn 05.30',
+    fixedReferenceUtc,
+    defaultTimezone
+  );
+  assertCondition(
+    yesterdayDawnDotClock?.hasExplicitTime === true &&
+      yesterdayDawnDotClock.targetHour === 5 &&
+      yesterdayDawnDotClock.targetMinute === 30,
+    'yesterday dawn 05.30 is preserved as explicit clock 05:30'
+  );
+  assertCondition(
+    yesterdayDawnDotClock?.resolvedUtcIso === '2026-09-09T22:30:00.000Z',
+    `yesterday dawn 05.30 resolves to 2026-09-09T22:30:00.000Z (got: ${yesterdayDawnDotClock?.resolvedUtcIso})`
+  );
+
   // Test 14: Derive Current Date from Local Timezone & Midnight Cache Rollover (PR Review Comment B)
   applicationLogger.info('\nTEST 14: Local Timezone Date Derivation and Midnight Cache Rollover');
 
@@ -997,6 +1053,153 @@ async function runRelativeTimeExpressionsTestSuite(): Promise<void> {
   assertCondition(
     anchoredValidationResult.sanitizedRecords[0].recordDate !== unanchoredDriftedResult.sanitizedRecords[0].recordDate,
     'Request-scoped reference instant successfully eliminates 1-day drift across midnight'
+  );
+
+  // Test 17: Gemini System Instruction DST Offset Invalidation (PR Review Item 1)
+  applicationLogger.info('\nTEST 17: Gemini System Instruction DST Offset Invalidation Across Fallback');
+  const originalAppTimezoneForDstTest = process.env.APP_TIMEZONE;
+  try {
+    process.env.APP_TIMEZONE = 'America/New_York';
+    const dstTestGeminiProvider = new GeminiAiProvider('test-api-key', 'gemini-3.6-flash', []);
+
+    // 1. Before DST fallback on 2026-11-01 at 01:30 EDT (UTC: 2026-11-01 05:30:00Z)
+    // Offset in America/New_York is UTC-04:00
+    const instantBeforeDstFallback = new Date('2026-11-01T05:30:00.000Z');
+    const localDateBeforeDst = getCurrentLocalDateString(instantBeforeDstFallback, 'America/New_York');
+    assertCondition(
+      localDateBeforeDst === '2026-11-01',
+      `Before fallback local date in America/New_York is 2026-11-01 (got: ${localDateBeforeDst})`
+    );
+
+    const instructionBeforeDstFallback = dstTestGeminiProvider.getSystemInstruction(
+      mockAccounts,
+      mockCategories,
+      instantBeforeDstFallback
+    );
+    const keyBeforeDstFallback = dstTestGeminiProvider.getSystemInstructionCacheKey();
+    assertCondition(
+      keyBeforeDstFallback.includes('-04:00'),
+      `Cache key before DST fallback contains offset -04:00 (got: ${keyBeforeDstFallback})`
+    );
+    assertCondition(
+      instructionBeforeDstFallback.includes('Offset: UTC-04:00'),
+      'Instruction before DST fallback contains Offset: UTC-04:00'
+    );
+
+    // 2. After DST fallback on 2026-11-01 at 02:30 EST (UTC: 2026-11-01 07:30:00Z)
+    // Same local calendar date: 2026-11-01, but offset has changed to UTC-05:00
+    const instantAfterDstFallback = new Date('2026-11-01T07:30:00.000Z');
+    const localDateAfterDst = getCurrentLocalDateString(instantAfterDstFallback, 'America/New_York');
+    assertCondition(
+      localDateAfterDst === '2026-11-01',
+      `After fallback local date is still 2026-11-01 (got: ${localDateAfterDst})`
+    );
+
+    const instructionAfterDstFallback = dstTestGeminiProvider.getSystemInstruction(
+      mockAccounts,
+      mockCategories,
+      instantAfterDstFallback
+    );
+    const keyAfterDstFallback = dstTestGeminiProvider.getSystemInstructionCacheKey();
+    assertCondition(
+      keyAfterDstFallback.includes('-05:00'),
+      `Cache key after DST fallback contains updated offset -05:00 (got: ${keyAfterDstFallback})`
+    );
+    assertCondition(
+      instructionAfterDstFallback.includes('Offset: UTC-05:00'),
+      'Instruction after DST fallback contains Offset: UTC-05:00'
+    );
+    assertCondition(
+      instructionAfterDstFallback !== instructionBeforeDstFallback,
+      'System instruction invalidated and recompiled when timezone offset changes on the same date'
+    );
+  } finally {
+    process.env.APP_TIMEZONE = originalAppTimezoneForDstTest;
+  }
+
+  // Test 18: APP_TIMEZONE Fail-Closed Configuration Validation (PR Review Item 3)
+  applicationLogger.info('\nTEST 18: Fail Closed on Invalid APP_TIMEZONE Configuration');
+  const baseTestConfiguration: ApplicationEnvironmentConfiguration = {
+    aiProvider: 'gemini',
+    aiProviders: ['gemini'],
+    aiApiKey: '',
+    aiBaseUrl: '',
+    aiModel: 'gemini-3.6-flash',
+    aiFallbackModels: [],
+    aiRequestTimeoutMilliseconds: 20000,
+    geminiApiKey: 'test-gemini-key',
+    geminiModel: 'gemini-3.6-flash',
+    geminiFallbackModels: [],
+    geminiRequestTimeoutMilliseconds: 20000,
+    walletMcpBaseUrl: 'https://mcp.wallet.budgetbakers.com',
+    walletMcpAccessToken: 'test-wallet-token',
+    allowedPhoneNumber: '6281234567890',
+    whatsappSessionPath: './test_session',
+    telegramBotToken: '',
+    telegramAllowedUserId: '',
+    enabledMessengerChannels: ['whatsapp'],
+    logRetentionDays: 7,
+    emailSyncEnabled: false,
+    emailImapHost: 'imap.gmail.com',
+    emailImapPort: 993,
+    emailImapUser: '',
+    emailImapPassword: '',
+    emailLookbackMinutes: 10,
+    appLanguage: 'id',
+    defaultCurrency: 'IDR',
+    appTimezone: 'Asia/Jakarta',
+    whatsappMaxReconnectAttempts: 6,
+    whatsappReconnectMaxBackoffSeconds: 300,
+    whatsappMessageQueueIntervalMs: 1000,
+    whatsappTypingPresenceCooldownMs: 15000,
+    telegramMaxStartupAttempts: 5,
+    telegramStartupRetryDelayMs: 3000,
+    maxMediaDownloadMb: 15,
+  };
+
+  // 1. Valid IANA timezone passes validation
+  const validTimezoneConfig: ApplicationEnvironmentConfiguration = {
+    ...baseTestConfiguration,
+    appTimezone: 'America/New_York',
+  };
+  const validTimezoneValidationResult = validateApplicationConfiguration(validTimezoneConfig);
+  assertCondition(
+    validTimezoneValidationResult.isValid === true,
+    'Valid IANA timezone America/New_York passes configuration validation'
+  );
+  assertCondition(
+    validTimezoneValidationResult.errors.filter(issue => issue.variableName === 'APP_TIMEZONE').length === 0,
+    'Valid IANA timezone produces zero APP_TIMEZONE validation errors'
+  );
+
+  // 2. Unset APP_TIMEZONE defaults to Asia/Jakarta
+  const originalEnvTimezoneForConfigTest = process.env.APP_TIMEZONE;
+  delete process.env.APP_TIMEZONE;
+  try {
+    const loadedConfigWithDefaultTimezone = loadEnvironmentConfiguration();
+    assertCondition(
+      loadedConfigWithDefaultTimezone.appTimezone === 'Asia/Jakarta',
+      `Unset APP_TIMEZONE defaults to Asia/Jakarta (got: ${loadedConfigWithDefaultTimezone.appTimezone})`
+    );
+  } finally {
+    if (originalEnvTimezoneForConfigTest !== undefined) {
+      process.env.APP_TIMEZONE = originalEnvTimezoneForConfigTest;
+    }
+  }
+
+  // 3. Typo / invalid timezone fails configuration validation (fail-closed)
+  const typoTimezoneConfig: ApplicationEnvironmentConfiguration = {
+    ...baseTestConfiguration,
+    appTimezone: 'America/New_Yrok',
+  };
+  const typoTimezoneValidationResult = validateApplicationConfiguration(typoTimezoneConfig);
+  assertCondition(
+    typoTimezoneValidationResult.isValid === false,
+    'Typo timezone America/New_Yrok fails configuration validation'
+  );
+  assertCondition(
+    typoTimezoneValidationResult.errors.some(issue => issue.variableName === 'APP_TIMEZONE'),
+    'Typo timezone produces an explicit APP_TIMEZONE validation error'
   );
 
   console.log('\n======================================================');

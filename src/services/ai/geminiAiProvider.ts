@@ -12,7 +12,7 @@ import { extractAndParseJsonObject } from './jsonExtractionHelper.js';
 import { getActiveLanguage } from '../../i18n/index.js';
 
 import { getApplicationTimezone } from '../../utils/humanResponseFormatter.js';
-import { getCurrentLocalDateString } from '../../utils/relativeTimeParser.js';
+import { getCurrentLocalDateString, getTimezoneOffsetDetails } from '../../utils/relativeTimeParser.js';
 import {
   buildCompactSystemInstruction,
   buildReceiptSystemInstruction,
@@ -58,8 +58,9 @@ export class GeminiAiProvider implements FinancialAiProvider {
   ): string {
     const applicationTimezone = getApplicationTimezone();
     const currentDateIso = getCurrentLocalDateString(referenceDate, applicationTimezone);
+    const timezoneOffsetDetails = getTimezoneOffsetDetails(applicationTimezone, referenceDate);
     const activeLanguage = getActiveLanguage();
-    const cacheKey = `${activeLanguage}|${currentDateIso}|${applicationTimezone}|${availableAccountList.map(account => account.id).join(',')}|${availableCategoryList.map(category => category.id).join(',')}`;
+    const cacheKey = `${activeLanguage}|${currentDateIso}|${applicationTimezone}|${timezoneOffsetDetails.formattedOffset}|${availableAccountList.map(account => account.id).join(',')}|${availableCategoryList.map(category => category.id).join(',')}`;
 
     if (this.systemInstructionCacheKey === cacheKey && this.cachedSystemInstruction) {
       return this.cachedSystemInstruction;
@@ -69,7 +70,8 @@ export class GeminiAiProvider implements FinancialAiProvider {
       availableAccountList,
       availableCategoryList,
       currentDateIso,
-      applicationTimezone
+      applicationTimezone,
+      referenceDate
     );
     this.systemInstructionCacheKey = cacheKey;
     return this.cachedSystemInstruction;
@@ -319,7 +321,8 @@ export class GeminiAiProvider implements FinancialAiProvider {
       availableAccountList,
       availableCategoryList,
       currentDateIso,
-      applicationTimezoneIdentifier
+      applicationTimezoneIdentifier,
+      referenceInstant
     );
     const currentTransactionTimestampIso = referenceInstant.toISOString();
     const promptText = buildReceiptExtractionPrompt(optionalCaption, currentTransactionTimestampIso);
