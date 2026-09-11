@@ -469,7 +469,7 @@ export function normalizeTransactionHistoryFilters(
             selector: accountSelector,
           };
         } else if (substringMatches.length > 1) {
-          const candidateNames = substringMatches.map(account => account.name);
+          const candidateNames = substringMatches.map(account => account.name).sort((a, b) => a.localeCompare(b));
           unresolvedFilterIssues.push({
             filterKey: 'account',
             rawValue: trimmedAccountHint,
@@ -498,7 +498,7 @@ export function normalizeTransactionHistoryFilters(
               selector: buildCanonicalAccountSelector(bankAccountMatches[0].name),
             };
           } else if (bankAccountMatches.length > 1) {
-            const candidateNames = bankAccountMatches.map(account => account.name);
+            const candidateNames = bankAccountMatches.map(account => account.name).sort((a, b) => a.localeCompare(b));
             unresolvedFilterIssues.push({
               filterKey: 'account',
               rawValue: trimmedAccountHint,
@@ -587,13 +587,21 @@ export function normalizeTransactionHistoryFilters(
           category => category.name.toLowerCase() === normalizedCategoryHint
         );
 
-        if (exactNameMatches.length > 0) {
+        if (exactNameMatches.length === 1) {
           upstreamCategoryId = [exactNameMatches[0].id];
           appliedFilters.category = {
             id: exactNameMatches[0].id,
             name: exactNameMatches[0].name,
             selector: categorySelector,
           };
+        } else if (exactNameMatches.length > 1) {
+          const candidateNames = exactNameMatches.map(category => category.name).sort((a, b) => a.localeCompare(b));
+          unresolvedFilterIssues.push({
+            filterKey: 'category',
+            rawValue: trimmedCategoryHint,
+            reason: 'UNRESOLVED',
+            message: `Kategori "${trimmedCategoryHint}" ambigu. Ditemukan beberapa kategori dengan nama yang sama: ${candidateNames.join(', ')}.`,
+          });
         } else {
           // Strategy D: Substring match on category name
           const substringMatches = availableCategoryList.filter(
@@ -602,13 +610,21 @@ export function normalizeTransactionHistoryFilters(
               normalizedCategoryHint.includes(category.name.toLowerCase())
           );
 
-          if (substringMatches.length > 0) {
+          if (substringMatches.length === 1) {
             upstreamCategoryId = [substringMatches[0].id];
             appliedFilters.category = {
               id: substringMatches[0].id,
               name: substringMatches[0].name,
               selector: categorySelector,
             };
+          } else if (substringMatches.length > 1) {
+            const candidateNames = substringMatches.map(category => category.name).sort((a, b) => a.localeCompare(b));
+            unresolvedFilterIssues.push({
+              filterKey: 'category',
+              rawValue: trimmedCategoryHint,
+              reason: 'UNRESOLVED',
+              message: `Kategori "${trimmedCategoryHint}" ambigu. Kandidat: ${candidateNames.join(', ')}.`,
+            });
           } else {
             // Strategy E: Known category group slug or alias
             const aliasGroupSlug = CATEGORY_GROUP_ALIASES[normalizedCategoryHint];
@@ -763,6 +779,9 @@ export function normalizeTransactionHistoryFilters(
     if (unresolvedFilterIssues.every(issue => issue.filterKey !== 'dateRange') && validatedTokens.length > 0) {
       let fromDateString: string | undefined = undefined;
       let toDateString: string | undefined = undefined;
+      let lowerOperator: 'gte' | 'gt' | undefined = undefined;
+      let upperOperator: 'lte' | 'lt' | undefined = undefined;
+      let eqDateString: string | undefined = undefined;
       let isAllDateOnly = true;
 
       for (const token of validatedTokens) {
@@ -774,17 +793,35 @@ export function normalizeTransactionHistoryFilters(
         }
         const opName = matchedOp.replace('.', '');
         if (opName === 'eq') {
+          eqDateString = rawPart;
           fromDateString = rawPart;
           toDateString = rawPart;
         } else if (opName === 'gte' || opName === 'gt') {
           fromDateString = rawPart;
+          lowerOperator = opName;
         } else if (opName === 'lte' || opName === 'lt') {
           toDateString = rawPart;
+          upperOperator = opName;
         }
       }
 
-      if (isAllDateOnly && (fromDateString || toDateString)) {
-        if (fromDateString && toDateString && fromDateString === toDateString) {
+      if (isAllDateOnly && (eqDateString || fromDateString || toDateString)) {
+        if (eqDateString) {
+          upstreamRecordDate = resolveLocalCalendarDayRange(eqDateString, timezoneIdentifier);
+          appliedFilters.dateRange = {
+            from: eqDateString,
+            to: eqDateString,
+            selector: eqDateString,
+            label: eqDateString,
+            rawRange: upstreamRecordDate,
+          };
+        } else if (
+          fromDateString &&
+          toDateString &&
+          fromDateString === toDateString &&
+          lowerOperator === 'gte' &&
+          upperOperator === 'lte'
+        ) {
           upstreamRecordDate = resolveLocalCalendarDayRange(fromDateString, timezoneIdentifier);
           appliedFilters.dateRange = {
             from: fromDateString,
@@ -794,37 +831,106 @@ export function normalizeTransactionHistoryFilters(
             rawRange: upstreamRecordDate,
           };
         } else if (fromDateString && toDateString) {
-          upstreamRecordDate = resolveLocalCalendarRange(fromDateString, toDateString, timezoneIdentifier);
-          appliedFilters.dateRange = {
-            from: fromDateString,
-            to: toDateString,
-            selector: `${fromDateString} ${toDateString}`,
-            label: `${fromDateString} - ${toDateString}`,
-            rawRange: upstreamRecordDate,
-          };
+          const lowerBoundary = lowerOperator === 'gt'
+            ? resolveLocalCalendarDayRange(getNextLocalDateString(fromDateString), timezoneIdentifier)[0]
+            : resolveLocalCalendarDayRange(fromDateString, timezoneIdentifier)[0];
+
+          const upperBoundary = upperOperator === 'lt'
+            ? resolveLocalCalendarDayRange(toDateString, timezoneIdentifier)[0].replace('gte.', 'lt.')
+            : resolveLocalCalendarDayRange(toDateString, timezoneIdentifier)[1];
+
+          const lowerBoundaryTimestamp = Date.parse(lowerBoundary.replace('gte.', ''));
+          const upperBoundaryTimestamp = Date.parse(upperBoundary.replace('lt.', ''));
+
+          if (lowerBoundaryTimestamp >= upperBoundaryTimestamp) {
+            unresolvedFilterIssues.push({
+              filterKey: 'dateRange',
+              rawValue: rawArray.join(' '),
+              reason: 'INVALID_RANGE',
+              message: `Rentang tanggal tidak valid: batas awal tidak boleh lebih besar atau sama dengan batas akhir.`,
+            });
+          } else {
+            upstreamRecordDate = [lowerBoundary, upperBoundary];
+            const isStandardRange = lowerOperator === 'gte' && upperOperator === 'lte';
+            const lowerSymbol = lowerOperator === 'gt' ? '>' : '>=';
+            const upperSymbol = upperOperator === 'lt' ? '<' : '<=';
+
+            appliedFilters.dateRange = {
+              from: fromDateString,
+              to: toDateString,
+              selector: isStandardRange
+                ? `${fromDateString} ${toDateString}`
+                : `${lowerSymbol} ${fromDateString} ${upperSymbol} ${toDateString}`,
+              label: isStandardRange
+                ? `${fromDateString} - ${toDateString}`
+                : `${lowerSymbol} ${fromDateString} - ${upperSymbol} ${toDateString}`,
+              rawRange: upstreamRecordDate,
+            };
+          }
         } else if (fromDateString) {
-          const [gteStartBoundary] = resolveLocalCalendarDayRange(fromDateString, timezoneIdentifier);
-          upstreamRecordDate = [gteStartBoundary];
-          appliedFilters.dateRange = {
-            from: fromDateString,
-            selector: fromDateString,
-            label: `>= ${fromDateString}`,
-            rawRange: upstreamRecordDate,
-          };
+          if (lowerOperator === 'gt') {
+            const nextDayString = getNextLocalDateString(fromDateString);
+            const [gteStartBoundary] = resolveLocalCalendarDayRange(nextDayString, timezoneIdentifier);
+            upstreamRecordDate = [gteStartBoundary];
+            appliedFilters.dateRange = {
+              from: fromDateString,
+              selector: `> ${fromDateString}`,
+              label: `> ${fromDateString}`,
+              rawRange: upstreamRecordDate,
+            };
+          } else {
+            const [gteStartBoundary] = resolveLocalCalendarDayRange(fromDateString, timezoneIdentifier);
+            upstreamRecordDate = [gteStartBoundary];
+            appliedFilters.dateRange = {
+              from: fromDateString,
+              selector: `>= ${fromDateString}`,
+              label: `>= ${fromDateString}`,
+              rawRange: upstreamRecordDate,
+            };
+          }
         } else if (toDateString) {
-          const [, ltEndBoundary] = resolveLocalCalendarDayRange(toDateString, timezoneIdentifier);
-          upstreamRecordDate = [ltEndBoundary];
-          appliedFilters.dateRange = {
-            to: toDateString,
-            selector: toDateString,
-            label: `<= ${toDateString}`,
-            rawRange: upstreamRecordDate,
-          };
+          if (upperOperator === 'lt') {
+            const [startOfToDateBoundary] = resolveLocalCalendarDayRange(toDateString, timezoneIdentifier);
+            const ltEndBoundary = startOfToDateBoundary.replace('gte.', 'lt.');
+            upstreamRecordDate = [ltEndBoundary];
+            appliedFilters.dateRange = {
+              to: toDateString,
+              selector: `< ${toDateString}`,
+              label: `< ${toDateString}`,
+              rawRange: upstreamRecordDate,
+            };
+          } else {
+            const [, ltEndBoundary] = resolveLocalCalendarDayRange(toDateString, timezoneIdentifier);
+            upstreamRecordDate = [ltEndBoundary];
+            appliedFilters.dateRange = {
+              to: toDateString,
+              selector: `<= ${toDateString}`,
+              label: `<= ${toDateString}`,
+              rawRange: upstreamRecordDate,
+            };
+          }
         }
       } else {
         upstreamRecordDate = validatedTokens;
+        let isoFromString: string | undefined = undefined;
+        let isoToString: string | undefined = undefined;
+        for (const token of validatedTokens) {
+          if (token.startsWith('gte.') || token.startsWith('gt.')) {
+            isoFromString = token.slice(token.indexOf('.') + 1);
+          } else if (token.startsWith('lte.') || token.startsWith('lt.')) {
+            isoToString = token.slice(token.indexOf('.') + 1);
+          } else if (token.startsWith('eq.')) {
+            isoFromString = token.slice(3);
+            isoToString = token.slice(3);
+          }
+        }
         appliedFilters.dateRange = {
+          ...(isoFromString ? { from: isoFromString } : {}),
+          ...(isoToString ? { to: isoToString } : {}),
           rawRange: validatedTokens,
+          label: isoFromString && isoToString
+            ? `${isoFromString} - ${isoToString}`
+            : (isoFromString ? `>= ${isoFromString}` : (isoToString ? `<= ${isoToString}` : undefined)),
         };
       }
     }
@@ -882,58 +988,71 @@ export function normalizeTransactionHistoryFilters(
           message: `Rentang tanggal tidak valid: tanggal mulai (${rawFrom}) tidak boleh lebih besar dari tanggal akhir (${rawTo}).`,
         });
       } else if (unresolvedFilterIssues.every(issue => issue.filterKey !== 'dateRange')) {
-        const fromDateString = rawFrom ? rawFrom.trim().slice(0, 10) : undefined;
-        const toDateString = rawTo ? rawTo.trim().slice(0, 10) : undefined;
+        const trimmedFrom = rawFrom?.trim();
+        const trimmedTo = rawTo?.trim();
+        const isFromDateOnly = trimmedFrom ? isDateOnlyString(trimmedFrom) : false;
+        const isToDateOnly = trimmedTo ? isDateOnlyString(trimmedTo) : false;
+        const areAllProvidedDateOnly = (trimmedFrom ? isFromDateOnly : true) && (trimmedTo ? isToDateOnly : true);
 
-        if (fromDateString && toDateString && fromDateString === toDateString && isDateOnlyString(fromDateString)) {
-          upstreamRecordDate = resolveLocalCalendarDayRange(fromDateString, timezoneIdentifier);
-          appliedFilters.dateRange = {
-            from: fromDateString,
-            to: toDateString,
-            selector: fromDateString,
-            label: fromDateString,
-            rawRange: upstreamRecordDate,
-          };
-        } else if (fromDateString && toDateString && isDateOnlyString(fromDateString) && isDateOnlyString(toDateString)) {
-          upstreamRecordDate = resolveLocalCalendarRange(fromDateString, toDateString, timezoneIdentifier);
-          appliedFilters.dateRange = {
-            from: fromDateString,
-            to: toDateString,
-            selector: `${fromDateString} ${toDateString}`,
-            label: `${fromDateString} - ${toDateString}`,
-            rawRange: upstreamRecordDate,
-          };
-        } else if (fromDateString && isDateOnlyString(fromDateString)) {
-          const [gteStartBoundary] = resolveLocalCalendarDayRange(fromDateString, timezoneIdentifier);
-          upstreamRecordDate = [gteStartBoundary];
-          appliedFilters.dateRange = {
-            from: fromDateString,
-            selector: fromDateString,
-            label: `>= ${fromDateString}`,
-            rawRange: upstreamRecordDate,
-          };
-        } else if (toDateString && isDateOnlyString(toDateString)) {
-          const [, ltEndBoundary] = resolveLocalCalendarDayRange(toDateString, timezoneIdentifier);
-          upstreamRecordDate = [ltEndBoundary];
-          appliedFilters.dateRange = {
-            to: toDateString,
-            selector: toDateString,
-            label: `<= ${toDateString}`,
-            rawRange: upstreamRecordDate,
-          };
+        if (areAllProvidedDateOnly) {
+          const fromDateString = trimmedFrom;
+          const toDateString = trimmedTo;
+
+          if (fromDateString && toDateString && fromDateString === toDateString) {
+            upstreamRecordDate = resolveLocalCalendarDayRange(fromDateString, timezoneIdentifier);
+            appliedFilters.dateRange = {
+              from: fromDateString,
+              to: toDateString,
+              selector: fromDateString,
+              label: fromDateString,
+              rawRange: upstreamRecordDate,
+            };
+          } else if (fromDateString && toDateString) {
+            upstreamRecordDate = resolveLocalCalendarRange(fromDateString, toDateString, timezoneIdentifier);
+            appliedFilters.dateRange = {
+              from: fromDateString,
+              to: toDateString,
+              selector: `${fromDateString} ${toDateString}`,
+              label: `${fromDateString} - ${toDateString}`,
+              rawRange: upstreamRecordDate,
+            };
+          } else if (fromDateString) {
+            const [gteStartBoundary] = resolveLocalCalendarDayRange(fromDateString, timezoneIdentifier);
+            upstreamRecordDate = [gteStartBoundary];
+            appliedFilters.dateRange = {
+              from: fromDateString,
+              selector: `>= ${fromDateString}`,
+              label: `>= ${fromDateString}`,
+              rawRange: upstreamRecordDate,
+            };
+          } else if (toDateString) {
+            const [, ltEndBoundary] = resolveLocalCalendarDayRange(toDateString, timezoneIdentifier);
+            upstreamRecordDate = [ltEndBoundary];
+            appliedFilters.dateRange = {
+              to: toDateString,
+              selector: `<= ${toDateString}`,
+              label: `<= ${toDateString}`,
+              rawRange: upstreamRecordDate,
+            };
+          }
         } else {
           const tokens: string[] = [];
-          if (rawFrom) {
-            tokens.push(`gte.${rawFrom}`);
+          if (trimmedFrom) {
+            const utcIsoFrom = new Date(trimmedFrom).toISOString();
+            tokens.push(`gte.${utcIsoFrom}`);
           }
-          if (rawTo) {
-            tokens.push(`lte.${rawTo}`);
+          if (trimmedTo) {
+            const utcIsoTo = new Date(trimmedTo).toISOString();
+            tokens.push(`lte.${utcIsoTo}`);
           }
           upstreamRecordDate = tokens;
           appliedFilters.dateRange = {
-            from: rawFrom,
-            to: rawTo,
+            ...(trimmedFrom ? { from: trimmedFrom } : {}),
+            ...(trimmedTo ? { to: trimmedTo } : {}),
             rawRange: tokens,
+            label: trimmedFrom && trimmedTo
+              ? `${trimmedFrom} - ${trimmedTo}`
+              : (trimmedFrom ? `>= ${trimmedFrom}` : (trimmedTo ? `<= ${trimmedTo}` : undefined)),
           };
         }
       }

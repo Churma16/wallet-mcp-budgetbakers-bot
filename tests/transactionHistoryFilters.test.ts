@@ -36,6 +36,8 @@ const MOCK_CATEGORIES: WalletCategoryItem[] = [
   { id: 'cat-bills-004', name: 'Tagihan Listrik' },
 ];
 
+const FIXED_TEST_REFERENCE_DATE = new Date('2026-09-11T12:00:00Z');
+
 function createMockClient() {
   const client = new WalletMcpClientService('http://localhost:8080', 'mock-token');
   const capturedCalls: Array<{ toolName: string; args: Record<string, unknown> }> = [];
@@ -148,6 +150,81 @@ console.log('\n[Suite 2] Testing Category Filtering & Resolution...');
   assert.strictEqual(unresolvedCategoryPage.unresolvedFilters?.length, 1);
   assert.strictEqual(unresolvedCategoryPage.unresolvedFilters[0].filterKey, 'category');
   assert.strictEqual(unresolvedCategoryPage.unresolvedFilters[0].reason, 'NOT_FOUND');
+
+  // 2.6 Fail-closed: ambiguous category substring match produces explicit UNRESOLVED error listing candidates
+  const ambiguousCategories: WalletCategoryItem[] = [
+    { id: 'cat-bills-electric', name: 'Tagihan Listrik' },
+    { id: 'cat-bills-water', name: 'Tagihan Air' },
+    { id: 'cat-bills-inet', name: 'Tagihan Internet' },
+  ];
+  const ambiguousCache = new WalletCacheService(client);
+  (ambiguousCache as any).cachedAccountList = [...MOCK_ACCOUNTS];
+  (ambiguousCache as any).cachedCategoryList = ambiguousCategories;
+  (ambiguousCache as any).cachedLabelList = [];
+
+  const ambiguousCategoryService = new TransactionHistoryService(client, ambiguousCache);
+  const callsBeforeAmbiguousCategory = capturedCalls.length;
+  const ambiguousResult = await ambiguousCategoryService.getTransactionHistory({ categoryName: 'tagihan' });
+
+  assert.strictEqual(capturedCalls.length, callsBeforeAmbiguousCategory); // No MCP call made!
+  assert.strictEqual(ambiguousResult.records.length, 0);
+  assert.strictEqual(ambiguousResult.unresolvedFilters?.length, 1);
+  assert.strictEqual(ambiguousResult.unresolvedFilters[0].filterKey, 'category');
+  assert.strictEqual(ambiguousResult.unresolvedFilters[0].reason, 'UNRESOLVED');
+  assert.strictEqual(
+    ambiguousResult.unresolvedFilters[0].message,
+    'Kategori "tagihan" ambigu. Kandidat: Tagihan Air, Tagihan Internet, Tagihan Listrik.'
+  );
+
+  // 2.7 Determinism invariant: reordering cached categories must not alter the ambiguous fail-closed outcome
+  const reorderedCategories: WalletCategoryItem[] = [
+    { id: 'cat-bills-water', name: 'Tagihan Air' },
+    { id: 'cat-bills-electric', name: 'Tagihan Listrik' },
+    { id: 'cat-bills-inet', name: 'Tagihan Internet' },
+  ];
+  const reorderedCache = new WalletCacheService(client);
+  (reorderedCache as any).cachedAccountList = [...MOCK_ACCOUNTS];
+  (reorderedCache as any).cachedCategoryList = reorderedCategories;
+  (reorderedCache as any).cachedLabelList = [];
+
+  const reorderedCategoryService = new TransactionHistoryService(client, reorderedCache);
+  const reorderedResult = await reorderedCategoryService.getTransactionHistory({ categoryName: 'tagihan' });
+
+  assert.strictEqual(capturedCalls.length, callsBeforeAmbiguousCategory); // Still no MCP call!
+  assert.deepStrictEqual(ambiguousResult.unresolvedFilters, reorderedResult.unresolvedFilters);
+
+  // 2.8 Exact name match takes precedence over ambiguous substrings
+  const withExactMatchCategories: WalletCategoryItem[] = [
+    { id: 'cat-exact', name: 'Tagihan' },
+    { id: 'cat-bills-electric', name: 'Tagihan Listrik' },
+    { id: 'cat-bills-water', name: 'Tagihan Air' },
+  ];
+  const exactCache = new WalletCacheService(client);
+  (exactCache as any).cachedAccountList = [...MOCK_ACCOUNTS];
+  (exactCache as any).cachedCategoryList = withExactMatchCategories;
+  (exactCache as any).cachedLabelList = [];
+
+  const exactCategoryService = new TransactionHistoryService(client, exactCache);
+  const exactResult = await exactCategoryService.getTransactionHistory({ categoryName: 'tagihan' });
+  assert.strictEqual(capturedCalls.length, callsBeforeAmbiguousCategory + 1); // 1 MCP call made!
+  assert.deepStrictEqual(capturedCalls[capturedCalls.length - 1].args.categoryId, ['cat-exact']);
+  assert.strictEqual(exactResult.appliedFilters?.category?.id, 'cat-exact');
+
+  // 2.9 Multiple categories sharing identical exact name fail closed
+  const duplicateExactCategories: WalletCategoryItem[] = [
+    { id: 'cat-dup-1', name: 'Tagihan' },
+    { id: 'cat-dup-2', name: 'Tagihan' },
+  ];
+  const duplicateExactCache = new WalletCacheService(client);
+  (duplicateExactCache as any).cachedAccountList = [...MOCK_ACCOUNTS];
+  (duplicateExactCache as any).cachedCategoryList = duplicateExactCategories;
+  (duplicateExactCache as any).cachedLabelList = [];
+
+  const duplicateExactService = new TransactionHistoryService(client, duplicateExactCache);
+  const dupCallsBefore = capturedCalls.length;
+  const dupResult = await duplicateExactService.getTransactionHistory({ categoryName: 'Tagihan' });
+  assert.strictEqual(capturedCalls.length, dupCallsBefore); // No MCP call!
+  assert.strictEqual(dupResult.unresolvedFilters?.[0].reason, 'UNRESOLVED');
 
   console.log('  [PASS] Category filtering resolves IDs, names, groups, and enforces fail-closed safety.');
 }
@@ -407,6 +484,112 @@ console.log('\n[Suite 4] Testing Date & Date Range Filtering...');
   const categoryGroupNorm = normalizeTransactionHistoryFilters({ categoryGroup: 'food_and_drinks' });
   assert.strictEqual(categoryGroupNorm.isValid, true);
   assert.strictEqual(categoryGroupNorm.appliedFilters.navigationTokens?.[0], 'kategori "food_and_drinks"');
+
+  // 4.18 Datetime precision preservation: 1-hour same-day ISO range must preserve exact 1-hour interval
+  const oneHourStart = '2026-09-11T12:00:00.000Z';
+  const oneHourEnd = '2026-09-11T13:00:00.000Z';
+  const oneHourResult = normalizeTransactionHistoryFilters(
+    { startDate: oneHourStart, endDate: oneHourEnd },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(oneHourResult.isValid, true);
+  assert.deepStrictEqual(oneHourResult.upstreamRecordDate, [
+    `gte.${oneHourStart}`,
+    `lte.${oneHourEnd}`,
+  ]);
+  const startTimestamp = Date.parse(oneHourStart);
+  const endTimestamp = Date.parse(oneHourEnd);
+  assert.strictEqual(endTimestamp - startTimestamp, 3600000); // Exactly 1 hour, not 24 hours (86400000)
+  assert.strictEqual(oneHourResult.appliedFilters.dateRange?.from, oneHourStart);
+  assert.strictEqual(oneHourResult.appliedFilters.dateRange?.to, oneHourEnd);
+
+  // Verify MCP call passes exact 1-hour ISO strings through service
+  const callsBeforeOneHour = capturedCalls.length;
+  await service.getTransactionHistory({ startDate: oneHourStart, endDate: oneHourEnd });
+  assert.strictEqual(capturedCalls.length, callsBeforeOneHour + 1);
+  assert.deepStrictEqual(capturedCalls[capturedCalls.length - 1].args.recordDate, [
+    `gte.${oneHourStart}`,
+    `lte.${oneHourEnd}`,
+  ]);
+
+  // 4.19 Array format with full ISO timestamps also preserves exact precision
+  const arrayIsoResult = normalizeTransactionHistoryFilters(
+    { dateRange: [`gte.${oneHourStart}`, `lte.${oneHourEnd}`] },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(arrayIsoResult.isValid, true);
+  assert.deepStrictEqual(arrayIsoResult.upstreamRecordDate, [
+    `gte.${oneHourStart}`,
+    `lte.${oneHourEnd}`,
+  ]);
+
+  // 4.20 Date-only gt calendar semantics: strictly after 2026-09-11 starts at midnight of Sep 12 WIB
+  // Sep 11 in WIB: 2026-09-10T17:00:00.000Z to 2026-09-11T17:00:00.000Z
+  // Next local day (Sep 12 WIB): starts at 2026-09-11T17:00:00.000Z
+  const gtDateOnlyResult = normalizeTransactionHistoryFilters(
+    { dateRange: ['gt.2026-09-11'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(gtDateOnlyResult.isValid, true);
+  assert.deepStrictEqual(gtDateOnlyResult.upstreamRecordDate, ['gte.2026-09-11T17:00:00.000Z']);
+  assert.strictEqual(gtDateOnlyResult.appliedFilters.dateRange?.selector, '> 2026-09-11');
+  assert.strictEqual(gtDateOnlyResult.appliedFilters.dateRange?.label, '> 2026-09-11');
+
+  // Verify exclusion of Sep 11 and inclusion of Sep 12 for gt
+  const gtLowerBound = Date.parse(gtDateOnlyResult.upstreamRecordDate![0].replace('gte.', ''));
+  assert.strictEqual(Date.parse('2026-09-11T16:30:00.000Z') >= gtLowerBound, false); // 23:30 WIB Sep 11 EXCLUDED
+  assert.strictEqual(Date.parse('2026-09-11T17:30:00.000Z') >= gtLowerBound, true);  // 00:30 WIB Sep 12 INCLUDED
+
+  // 4.21 Date-only gte calendar semantics: on or after 2026-09-11 starts at midnight of Sep 11 WIB
+  const gteDateOnlyResult = normalizeTransactionHistoryFilters(
+    { dateRange: ['gte.2026-09-11'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(gteDateOnlyResult.isValid, true);
+  assert.deepStrictEqual(gteDateOnlyResult.upstreamRecordDate, ['gte.2026-09-10T17:00:00.000Z']);
+  assert.strictEqual(gteDateOnlyResult.appliedFilters.dateRange?.selector, '>= 2026-09-11');
+  assert.strictEqual(gteDateOnlyResult.appliedFilters.dateRange?.label, '>= 2026-09-11');
+  const gteLowerBound = Date.parse(gteDateOnlyResult.upstreamRecordDate![0].replace('gte.', ''));
+  assert.strictEqual(Date.parse('2026-09-10T17:30:00.000Z') >= gteLowerBound, true); // 00:30 WIB Sep 11 INCLUDED
+  assert.strictEqual(Date.parse('2026-09-10T16:30:00.000Z') >= gteLowerBound, false); // 23:30 WIB Sep 10 EXCLUDED
+
+  // 4.22 Date-only lt calendar semantics: strictly before 2026-09-11 ends at midnight of Sep 11 WIB
+  const ltDateOnlyResult = normalizeTransactionHistoryFilters(
+    { dateRange: ['lt.2026-09-11'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(ltDateOnlyResult.isValid, true);
+  assert.deepStrictEqual(ltDateOnlyResult.upstreamRecordDate, ['lt.2026-09-10T17:00:00.000Z']);
+  assert.strictEqual(ltDateOnlyResult.appliedFilters.dateRange?.selector, '< 2026-09-11');
+  assert.strictEqual(ltDateOnlyResult.appliedFilters.dateRange?.label, '< 2026-09-11');
+  const ltUpperBound = Date.parse(ltDateOnlyResult.upstreamRecordDate![0].replace('lt.', ''));
+  assert.strictEqual(Date.parse('2026-09-10T16:30:00.000Z') < ltUpperBound, true);  // 23:30 WIB Sep 10 INCLUDED
+  assert.strictEqual(Date.parse('2026-09-10T17:30:00.000Z') < ltUpperBound, false); // 00:30 WIB Sep 11 EXCLUDED
+
+  // 4.23 Date-only lte calendar semantics: on or before 2026-09-11 ends at midnight of Sep 12 WIB
+  const lteDateOnlyResult = normalizeTransactionHistoryFilters(
+    { dateRange: ['lte.2026-09-11'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(lteDateOnlyResult.isValid, true);
+  assert.deepStrictEqual(lteDateOnlyResult.upstreamRecordDate, ['lt.2026-09-11T17:00:00.000Z']);
+  assert.strictEqual(lteDateOnlyResult.appliedFilters.dateRange?.selector, '<= 2026-09-11');
+  assert.strictEqual(lteDateOnlyResult.appliedFilters.dateRange?.label, '<= 2026-09-11');
+  const lteUpperBound = Date.parse(lteDateOnlyResult.upstreamRecordDate![0].replace('lt.', ''));
+  assert.strictEqual(Date.parse('2026-09-11T16:30:00.000Z') < lteUpperBound, true);  // 23:30 WIB Sep 11 INCLUDED
+  assert.strictEqual(Date.parse('2026-09-11T17:30:00.000Z') < lteUpperBound, false); // 00:30 WIB Sep 12 EXCLUDED
 
   console.log('  [PASS] Timezone UTC boundaries, strict calendar validation, and reversed bounds verified.');
 }
@@ -733,6 +916,57 @@ console.log('\n[Suite 7] Testing Human-Facing Response Formatting & i18n...');
     'gte.2026-09-01',
     'lte.2026-09-30',
   ]);
+
+  // 7.7.1 Round-trip open-ended date operators (gt, gte, lt, lte) through formatter -> parser -> normalizer
+  for (const testCase of [
+    { op: 'gt', symbol: '>', selector: '> 2026-09-11', expectedUpstream: ['gte.2026-09-11T17:00:00.000Z'] },
+    { op: 'gte', symbol: '>=', selector: '>= 2026-09-11', expectedUpstream: ['gte.2026-09-10T17:00:00.000Z'] },
+    { op: 'lt', symbol: '<', selector: '< 2026-09-11', expectedUpstream: ['lt.2026-09-10T17:00:00.000Z'] },
+    { op: 'lte', symbol: '<=', selector: '<= 2026-09-11', expectedUpstream: ['lt.2026-09-11T17:00:00.000Z'] },
+  ]) {
+    const normalized = normalizeTransactionHistoryFilters(
+      { dateRange: [`${testCase.op}.2026-09-11`] },
+      MOCK_ACCOUNTS,
+      MOCK_CATEGORIES,
+      FIXED_TEST_REFERENCE_DATE
+    );
+    assert.strictEqual(normalized.appliedFilters.dateRange?.selector, testCase.selector);
+    assert.deepStrictEqual(normalized.upstreamRecordDate, testCase.expectedUpstream);
+
+    const histPage: any = {
+      records: samplePage.records,
+      total: 20,
+      limit: 10,
+      offset: 0,
+      page: 1,
+      totalPages: 2,
+      hasMore: true,
+      sort: 'newest',
+      appliedFilters: normalized.appliedFilters,
+    };
+
+    // 1. Formatter generates navigation command with operator
+    const hintId = formatTransactionHistoryMessage(histPage, 'id');
+    const expectedRegex = new RegExp(`riwayat\\s+${testCase.symbol.replace(/[<>=]/g, '\\$&')}\\s+2026-09-11\\s+hal\\s+2`);
+    assert.match(hintId, expectedRegex);
+
+    // 2. Parser recovers the operator and page number
+    const navCommand = `riwayat ${testCase.symbol} 2026-09-11 hal 2`;
+    const parsedAction = detectFastPathAction(navCommand);
+    assert.ok(parsedAction, `Failed to parse ${navCommand}`);
+    assert.strictEqual((parsedAction as any).options.page, 2);
+    assert.deepStrictEqual((parsedAction as any).options.dateRange, [`${testCase.op}.2026-09-11`]);
+
+    // 3. Normalizer re-evaluates to the EXACT same upstream UTC interval
+    const reNormalized = normalizeTransactionHistoryFilters(
+      (parsedAction as any).options,
+      MOCK_ACCOUNTS,
+      MOCK_CATEGORIES,
+      FIXED_TEST_REFERENCE_DATE
+    );
+    assert.deepStrictEqual(reNormalized.upstreamRecordDate, testCase.expectedUpstream);
+    assert.strictEqual(reNormalized.appliedFilters.dateRange?.selector, testCase.selector);
+  }
 
   // 7.8 Quoted multiword navigation round-trip for accountId, categoryId, and categoryGroup (Item 3)
   // Account ID -> BCA Tabungan -> akun "BCA Tabungan"

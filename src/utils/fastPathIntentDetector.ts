@@ -113,16 +113,54 @@ function extractHistoryQueryOptionsFromTokens(
     remainingTokens = remainingTokens.replace(pageMatch[0], ' ').trim();
   }
 
-  // 3. Extract explicit ISO dates (e.g. 2024-01-01) before standalone limit numbers
-  const isoDateMatches = remainingTokens.match(/\b(\d{4}-\d{2}-\d{2})\b/g);
-  if (isoDateMatches) {
-    if (isoDateMatches.length === 1) {
-      resolvedDateRange = [`eq.${isoDateMatches[0]}`];
-      remainingTokens = remainingTokens.replace(isoDateMatches[0], ' ').trim();
-    } else if (isoDateMatches.length >= 2) {
-      resolvedDateRange = [`gte.${isoDateMatches[0]}`, `lte.${isoDateMatches[1]}`];
-      remainingTokens = remainingTokens.replace(isoDateMatches[0], ' ').replace(isoDateMatches[1], ' ').trim();
+  // 3. Extract explicit dates with optional comparison operators (e.g. >= 2024-01-01, > 2024-01-01, gte.2024-01-01, etc.)
+  const operatorDateRegex = /(?:(>=|>|<=|<|gte\.|gt\.|lte\.|lt\.|eq\.)\s*)?(\d{4}-\d{2}-\d{2})/g;
+  const operatorMatches: Array<{ fullMatch: string; operator?: string; dateString: string }> = [];
+  let matchExec: RegExpExecArray | null = null;
+
+  while ((matchExec = operatorDateRegex.exec(remainingTokens)) !== null) {
+    operatorMatches.push({
+      fullMatch: matchExec[0],
+      operator: matchExec[1],
+      dateString: matchExec[2],
+    });
+  }
+
+  if (operatorMatches.length === 1) {
+    const singleMatch = operatorMatches[0];
+    let resolvedOp = 'eq';
+    if (singleMatch.operator) {
+      const cleanOp = singleMatch.operator.replace('.', '');
+      if (cleanOp === '>' || cleanOp === 'gt') resolvedOp = 'gt';
+      else if (cleanOp === '>=' || cleanOp === 'gte') resolvedOp = 'gte';
+      else if (cleanOp === '<' || cleanOp === 'lt') resolvedOp = 'lt';
+      else if (cleanOp === '<=' || cleanOp === 'lte') resolvedOp = 'lte';
     }
+    resolvedDateRange = [`${resolvedOp}.${singleMatch.dateString}`];
+    remainingTokens = remainingTokens.replace(singleMatch.fullMatch, ' ').trim();
+  } else if (operatorMatches.length >= 2) {
+    const firstMatch = operatorMatches[0];
+    const secondMatch = operatorMatches[1];
+
+    let firstOp = 'gte';
+    if (firstMatch.operator) {
+      const cleanOp = firstMatch.operator.replace('.', '');
+      if (cleanOp === '>' || cleanOp === 'gt') firstOp = 'gt';
+      else if (cleanOp === '>=' || cleanOp === 'gte') firstOp = 'gte';
+    }
+
+    let secondOp = 'lte';
+    if (secondMatch.operator) {
+      const cleanOp = secondMatch.operator.replace('.', '');
+      if (cleanOp === '<' || cleanOp === 'lt') secondOp = 'lt';
+      else if (cleanOp === '<=' || cleanOp === 'lte') secondOp = 'lte';
+    }
+
+    resolvedDateRange = [`${firstOp}.${firstMatch.dateString}`, `${secondOp}.${secondMatch.dateString}`];
+    remainingTokens = remainingTokens
+      .replace(firstMatch.fullMatch, ' ')
+      .replace(secondMatch.fullMatch, ' ')
+      .trim();
   }
 
   // 4. Extract limit token (standalone positive integer) if not already set
