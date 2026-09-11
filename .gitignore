@@ -29,3 +29,7 @@ Thumbs.db
 
 # Custom category and user context (example committed separately)
 config/category-context.json
+
+# Local agent workspaces and locks
+.worktrees/
+skills-lock.json

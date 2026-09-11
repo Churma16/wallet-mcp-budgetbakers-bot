@@ -39,6 +39,7 @@
         "test:ai:live": "tsx tests/aiProvider.test.ts",
         "test:gemini": "tsx tests/geminiAiProvider.test.ts",
         "test:gemini:live": "tsx tests/geminiAiProvider.test.ts",
+        "test:history": "tsx tests/transactionHistory.test.ts",
         "build": "tsc"
     },
     "dependencies": {

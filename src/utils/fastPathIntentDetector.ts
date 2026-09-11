@@ -1,13 +1,111 @@
-﻿export type FastPathAction = 'CHECK_BALANCE' | 'CHECK_BUDGET' | 'HELP_MENU' | null;
+import { TransactionHistoryQueryOptions } from '../types/walletTypes.js';
+
+export interface FastPathTransactionHistoryAction {
+  type: 'TRANSACTION_HISTORY';
+  options: TransactionHistoryQueryOptions;
+}
+
+export type FastPathAction =
+  | 'CHECK_BALANCE'
+  | 'CHECK_BUDGET'
+  | 'HELP_MENU'
+  | FastPathTransactionHistoryAction
+  | null;
+
+function parseTransactionHistoryIntent(userMessageText: string): FastPathTransactionHistoryAction | null {
+  const trimmedLowerText = userMessageText.toLowerCase().trim();
+
+  // Price indicator check: if text has price units (rb, k, jt, ribu, juta) or currency words (rp),
+  // it is almost certainly a transaction recording, not a history query.
+  if (/(?:^|\s)(?:rb|k|jt|ribu|juta|rp)(?:$|\s|\d)/i.test(trimmedLowerText)) {
+    return null;
+  }
+
+  // Common recording verbs: if text starts with explicit transaction recording keywords
+  if (/^(?:beli|bayar|catat|transfer|topup|top\s*up)\b/i.test(trimmedLowerText)) {
+    return null;
+  }
+
+  // 1. Pattern matching "X transaksi terakhir" or "X last/recent transactions"
+  const leadingCountMatch = trimmedLowerText.match(
+    /^(?:cek|lihat|show|view)?\s*(\d+)\s+(?:transaksi\s+terakhir|last\s+transactions?|recent\s+transactions?)(?:\s+(terlama|oldest|terbaru|newest))?$/i
+  );
+  if (leadingCountMatch) {
+    const parsedLimit = Number.parseInt(leadingCountMatch[1], 10);
+    const sortKeyword = leadingCountMatch[2]?.toLowerCase();
+    const resolvedSort = (sortKeyword === 'terlama' || sortKeyword === 'oldest') ? 'oldest' : 'newest';
+    return {
+      type: 'TRANSACTION_HISTORY',
+      options: {
+        limit: Number.isNaN(parsedLimit) ? undefined : parsedLimit,
+        sort: resolvedSort,
+      },
+    };
+  }
+
+  // 2. Pattern matching history commands with optional parameters:
+  // e.g. "riwayat", "cek riwayat", "history", "transaksi terakhir", "daftar transaksi", "recent transactions", "last transactions"
+  const historyCommandPattern =
+    /^(?:cek|lihat|info|daftar|show|view|check|get|my)?\s*(?:riwayat\s+transaksi|transaction\s+history|daftar\s+transaksi|transaksi\s+terakhir|last\s+transactions?|recent\s+transactions?|riwayat|history)(?:\s+(.*))?$/i;
+  const historyMatch = trimmedLowerText.match(historyCommandPattern);
+  if (!historyMatch) {
+    return null;
+  }
+
+  const remainderString = (historyMatch[1] || '').trim();
+  let resolvedLimit: number | undefined = undefined;
+  let resolvedPage: number | undefined = undefined;
+  let resolvedSort: 'newest' | 'oldest' = 'newest';
+
+  if (remainderString) {
+    if (/\b(?:terlama|oldest)\b/i.test(remainderString)) {
+      resolvedSort = 'oldest';
+    } else if (/\b(?:terbaru|newest)\b/i.test(remainderString)) {
+      resolvedSort = 'newest';
+    }
+
+    const pageMatch = remainderString.match(/\b(?:hal(?:aman)?|page|p)\s*(\d+)\b/i);
+    if (pageMatch && pageMatch[1]) {
+      const parsedPage = Number.parseInt(pageMatch[1], 10);
+      if (!Number.isNaN(parsedPage) && parsedPage > 0) {
+        resolvedPage = parsedPage;
+      }
+    }
+
+    const remainderWithoutPage = remainderString.replace(/\b(?:hal(?:aman)?|page|p)\s*\d+\b/i, '').trim();
+    const limitMatch = remainderWithoutPage.match(/\b(\d+)\b/);
+    if (limitMatch && limitMatch[1]) {
+      const parsedLimit = Number.parseInt(limitMatch[1], 10);
+      if (!Number.isNaN(parsedLimit) && parsedLimit > 0) {
+        resolvedLimit = parsedLimit;
+      }
+    }
+  }
+
+  return {
+    type: 'TRANSACTION_HISTORY',
+    options: {
+      limit: resolvedLimit,
+      page: resolvedPage,
+      sort: resolvedSort,
+    },
+  };
+}
 
 /**
  * Fast-path deterministic classifier that intercepts common repetitive commands
- * (e.g. balance check, budget check, help menu) directly in code to save 100% of AI tokens.
+ * (e.g. balance check, budget check, transaction history, help menu) directly in code to save 100% of AI tokens.
  * Supports both Indonesian and English keywords.
  */
 export function detectFastPathAction(userMessageText: string): FastPathAction {
   if (!userMessageText || typeof userMessageText !== 'string') {
     return null;
+  }
+
+  // 0. Transaction history checks (supports parameterized limits, pages, and sorting)
+  const transactionHistoryIntent = parseTransactionHistoryIntent(userMessageText);
+  if (transactionHistoryIntent) {
+    return transactionHistoryIntent;
   }
 
   const trimmedLowerText = userMessageText.toLowerCase().trim();

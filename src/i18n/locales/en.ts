@@ -77,6 +77,22 @@ export const englishDictionary: ResponseDictionary = {
     },
   },
 
+  history: {
+    header(page: number, totalPages: number, displayedCount: number, totalCount: number, sortOrderLabel: string): string {
+      const sortSuffix = sortOrderLabel ? ` [${sortOrderLabel}]` : '';
+      return `📋 *Transaction History* (Page ${page}/${totalPages} • ${displayedCount} of ${totalCount})${sortSuffix}`;
+    },
+    emptyState: 'No transactions recorded yet.',
+    outOfBounds(totalCount: number): string {
+      return `This page exceeds available transactions (Total: ${totalCount} transactions).`;
+    },
+    navigationHint(nextPage: number): string {
+      return `_Type *history page ${nextPage}* for the next page._`;
+    },
+    sortNewest: 'Newest',
+    sortOldest: 'Oldest',
+  },
+
   emailPending: {
     formatNotification(params: PendingEmailNotificationParams): string {
       const lines = [
@@ -179,6 +195,7 @@ export const englishDictionary: ResponseDictionary = {
     quickCommandsTitle: '*Quick Commands (0 AI Tokens):*',
     commandBalance: '• *Balance* / *Check Balance*: Check all account balances',
     commandBudget: '• *Budget* / *Check Budget*: Check budget limit status',
+    commandHistory: '• *History*: Check recent transaction history',
     commandMenu: '• *Menu* / *Help*: Show this guidance',
   },
 

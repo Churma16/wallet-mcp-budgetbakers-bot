@@ -57,3 +57,54 @@ export interface WalletBudgetItem {
   isOverspent?: boolean;
 }
 
+export type TransactionSortOrder = 'newest' | 'oldest';
+
+export interface TransactionHistoryQueryOptions {
+  limit?: number;
+  offset?: number;
+  page?: number;
+  sort?: TransactionSortOrder;
+}
+
+export interface WalletRecordItem {
+  id: string;
+  accountId: string;
+  accountName?: string;
+  amount: number;
+  currency: string;
+  recordDate: string;
+  recordType: 'expense' | 'income';
+  category?: {
+    id: string;
+    name: string;
+    color?: string;
+    group?: string;
+  };
+  note?: string;
+  counterParty?: string;
+  labels?: Array<{
+    id: string;
+    name: string;
+    color?: string;
+    icon?: string;
+  }>;
+  recordState?: string;
+  transfer?: {
+    type: string;
+    transferId?: string;
+    mirrorRecord?: unknown;
+  } | null;
+}
+
+export interface TransactionHistoryPage {
+  records: WalletRecordItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  page: number;
+  totalPages: number;
+  nextOffset: number | null;
+  hasMore: boolean;
+  sort: TransactionSortOrder;
+}
+

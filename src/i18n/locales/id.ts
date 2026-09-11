@@ -77,6 +77,22 @@ export const indonesianDictionary: ResponseDictionary = {
     },
   },
 
+  history: {
+    header(page: number, totalPages: number, displayedCount: number, totalCount: number, sortOrderLabel: string): string {
+      const sortSuffix = sortOrderLabel ? ` [${sortOrderLabel}]` : '';
+      return `📋 *Riwayat Transaksi* (Hal. ${page}/${totalPages} • ${displayedCount} dari ${totalCount})${sortSuffix}`;
+    },
+    emptyState: 'Belum ada transaksi yang tercatat.',
+    outOfBounds(totalCount: number): string {
+      return `Halaman ini melebihi jumlah transaksi yang tersedia (Total: ${totalCount} transaksi).`;
+    },
+    navigationHint(nextPage: number): string {
+      return `_Ketik *riwayat hal ${nextPage}* untuk halaman selanjutnya._`;
+    },
+    sortNewest: 'Terbaru',
+    sortOldest: 'Terlama',
+  },
+
   emailPending: {
     formatNotification(params: PendingEmailNotificationParams): string {
       const lines = [
@@ -179,6 +195,7 @@ export const indonesianDictionary: ResponseDictionary = {
     quickCommandsTitle: '*Perintah Cepat (0 Token AI):*',
     commandBalance: '• *Saldo* / *Cek Saldo*: Cek saldo semua rekening',
     commandBudget: '• *Budget* / *Cek Budget*: Cek status limit anggaran',
+    commandHistory: '• *Riwayat* / *History*: Cek riwayat transaksi terakhir',
     commandMenu: '• *Menu* / *Bantuan*: Menampilkan petunjuk ini',
   },
 

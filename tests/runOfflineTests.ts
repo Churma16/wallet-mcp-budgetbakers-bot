@@ -51,6 +51,7 @@ const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
   { filePath: 'tests/whatsappComponentBoundaries.test.ts', description: 'WhatsApp component boundaries & identifier-based loop prevention (Issue #31)' },
   { filePath: 'tests/hashtagLabels.test.ts', description: 'Hashtag parsing, note cleaning, label resolution & auto-creation (Issue #20)' },
   { filePath: 'tests/categoryContextService.test.ts', description: 'Custom category semantics, user context loader & disambiguation (Issue #21)' },
+  { filePath: 'tests/transactionHistory.test.ts', description: 'Transaction history retrieval, bounded pagination & deterministic sorting (Issue #100)' },
 ];
 
 const isVerboseMode = process.argv.includes('--verbose') || process.argv.includes('-v');
