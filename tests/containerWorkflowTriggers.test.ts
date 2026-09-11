@@ -37,6 +37,7 @@ assert.deepEqual(
     '.dockerignore',
     'package.json',
     'package-lock.json',
+    'tsconfig.json',
     '.github/workflows/container.yml',
   ],
   'container builds must run only for files that can change container assembly or production dependencies'
