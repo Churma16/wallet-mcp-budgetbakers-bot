@@ -7,6 +7,7 @@ import {
   PendingBulkItemParams,
   PendingCancellationParams,
   type TransactionSortOrder,
+  type UnresolvedFilterIssue,
 } from '../types.js';
 
 export const englishDictionary: ResponseDictionary = {
@@ -99,12 +100,57 @@ export const englishDictionary: ResponseDictionary = {
     emptyFilteredState(filterSummary: string): string {
       return `No transactions match the filter [${filterSummary}].`;
     },
-    unresolvedFilters(issues: Array<{ filterKey: string; message: string }>): string {
-      const issueLines = issues.map(issue => `• ${issue.message}`);
+    unresolvedFilters(issues: UnresolvedFilterIssue[]): string {
+      const issueLines = issues.map(issue => {
+        if (issue.filterKey === 'account') {
+          if (issue.reason === 'NOT_FOUND') {
+            return `• Account "${issue.rawValue}" was not found in your Wallet accounts list.`;
+          }
+          if (issue.reason === 'UNRESOLVED' || issue.reason === 'AMBIGUOUS') {
+            if (issue.subType === 'bank_account' && issue.candidates && issue.candidates.length > 0) {
+              return `• Bank account number "${issue.rawValue}" is ambiguous. Candidates: ${issue.candidates.join(', ')}.`;
+            }
+            if (issue.candidates && issue.candidates.length > 0) {
+              return `• Account "${issue.rawValue}" is ambiguous. Candidates: ${issue.candidates.join(', ')}.`;
+            }
+            return `• Account "${issue.rawValue}" is ambiguous. Multiple accounts found with the same name.`;
+          }
+        }
+        if (issue.filterKey === 'category') {
+          if (issue.reason === 'NOT_FOUND') {
+            return `• Category "${issue.rawValue}" was not found in your Wallet categories list.`;
+          }
+          if (issue.reason === 'UNSUPPORTED') {
+            return `• Category group "${issue.rawValue}" is not supported by Wallet.`;
+          }
+          if (issue.reason === 'UNRESOLVED' || issue.reason === 'AMBIGUOUS') {
+            if (issue.candidates && issue.candidates.length > 0) {
+              return `• Category "${issue.rawValue}" is ambiguous. Candidates: ${issue.candidates.join(', ')}.`;
+            }
+            return `• Category "${issue.rawValue}" is ambiguous. Multiple categories found with the same name.`;
+          }
+        }
+        if (issue.filterKey === 'recordType') {
+          return `• Transaction type "${issue.rawValue}" is invalid. Use "expense" or "income".`;
+        }
+        if (issue.filterKey === 'dateRange') {
+          if (issue.reason === 'INVALID_RANGE') {
+            return `• Invalid date range: start boundary cannot be greater than end boundary.`;
+          }
+          if (issue.reason === 'INVALID_FORMAT') {
+            if (issue.subType === 'operator_prefix') {
+              return `• Date filter format "${issue.rawValue}" is invalid. Use operator prefix: eq., gt., gte., lt., or lte.`;
+            }
+            return `• Date "${issue.rawValue}" is invalid or not a valid calendar date.`;
+          }
+        }
+        return `• ${issue.message}`;
+      });
       return [
         '⚠️ *Transaction History Filter Not Found:*',
         ...issueLines,
-        '_Please ensure the account or category name matches your Wallet data._',
+        '',
+        '💡 _Tip: Check your filter spelling, or type *history* without filters to view all transactions._',
       ].join('\n');
     },
     outOfBounds(totalCount: number): string {

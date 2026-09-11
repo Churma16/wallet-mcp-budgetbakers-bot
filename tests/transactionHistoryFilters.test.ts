@@ -591,6 +591,76 @@ console.log('\n[Suite 4] Testing Date & Date Range Filtering...');
   assert.strictEqual(Date.parse('2026-09-11T16:30:00.000Z') < lteUpperBound, true);  // 23:30 WIB Sep 11 INCLUDED
   assert.strictEqual(Date.parse('2026-09-11T17:30:00.000Z') < lteUpperBound, false); // 00:30 WIB Sep 12 EXCLUDED
 
+  // 4.24 Mixed date-only start and datetime end normalized independently
+  // startDate=2026-09-11 (date-only) + endDate=2026-09-11T13:00:00Z (datetime)
+  // In Asia/Jakarta (UTC+7): 2026-09-11 starts at 2026-09-10T17:00:00.000Z (00:00 WIB)
+  const mixedStartResult = normalizeTransactionHistoryFilters(
+    { startDate: '2026-09-11', endDate: '2026-09-11T13:00:00Z' },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(mixedStartResult.isValid, true);
+  assert.deepStrictEqual(mixedStartResult.upstreamRecordDate, [
+    'gte.2026-09-10T17:00:00.000Z',
+    'lte.2026-09-11T13:00:00.000Z',
+  ]);
+  assert.strictEqual(mixedStartResult.appliedFilters.dateRange?.from, '2026-09-11');
+  assert.strictEqual(mixedStartResult.appliedFilters.dateRange?.to, '2026-09-11T13:00:00.000Z');
+  assert.strictEqual(mixedStartResult.appliedFilters.dateRange?.selector, '2026-09-11 2026-09-11T13:00:00.000Z');
+  // Verify transactions between 00:00 and 06:59 WIB on Sep 11 are included (e.g. 01:00 WIB = 2026-09-10T18:00:00Z)
+  const mixedStartLowerTimestamp = Date.parse('2026-09-10T17:00:00.000Z');
+  const earlyMorningWibTimestamp = Date.parse('2026-09-10T18:00:00.000Z');
+  assert.strictEqual(earlyMorningWibTimestamp >= mixedStartLowerTimestamp, true);
+
+  // 4.25 Mixed datetime start and date-only end normalized independently
+  // startDate=2026-09-11T10:00:00Z (datetime) + endDate=2026-09-11 (date-only)
+  // In Asia/Jakarta (UTC+7): 2026-09-11 ends at 2026-09-11T17:00:00.000Z (24:00 WIB)
+  const mixedEndResult = normalizeTransactionHistoryFilters(
+    { startDate: '2026-09-11T10:00:00Z', endDate: '2026-09-11' },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(mixedEndResult.isValid, true);
+  assert.deepStrictEqual(mixedEndResult.upstreamRecordDate, [
+    'gte.2026-09-11T10:00:00.000Z',
+    'lt.2026-09-11T17:00:00.000Z',
+  ]);
+  assert.strictEqual(mixedEndResult.appliedFilters.dateRange?.from, '2026-09-11T10:00:00.000Z');
+  assert.strictEqual(mixedEndResult.appliedFilters.dateRange?.to, '2026-09-11');
+  assert.strictEqual(mixedEndResult.appliedFilters.dateRange?.selector, '2026-09-11T10:00:00.000Z 2026-09-11');
+  // Verify transactions up to 23:59 WIB on Sep 11 are included (e.g. 23:00 WIB = 2026-09-11T16:00:00Z)
+  const mixedEndUpperTimestamp = Date.parse('2026-09-11T17:00:00.000Z');
+  const lateNightWibTimestamp = Date.parse('2026-09-11T16:00:00.000Z');
+  assert.strictEqual(lateNightWibTimestamp < mixedEndUpperTimestamp, true);
+
+  // 4.26 Mixed bounds in array format
+  const mixedArrayResult = normalizeTransactionHistoryFilters(
+    { dateRange: ['gte.2026-09-11', 'lte.2026-09-11T13:00:00Z'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(mixedArrayResult.isValid, true);
+  assert.deepStrictEqual(mixedArrayResult.upstreamRecordDate, [
+    'gte.2026-09-10T17:00:00.000Z',
+    'lte.2026-09-11T13:00:00.000Z',
+  ]);
+
+  // 4.27 Mixed bounds with datetime start and date-only end in array format
+  const mixedArrayResult2 = normalizeTransactionHistoryFilters(
+    { dateRange: ['gte.2026-09-11T10:00:00Z', 'lte.2026-09-11'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(mixedArrayResult2.isValid, true);
+  assert.deepStrictEqual(mixedArrayResult2.upstreamRecordDate, [
+    'gte.2026-09-11T10:00:00.000Z',
+    'lt.2026-09-11T17:00:00.000Z',
+  ]);
+
   console.log('  [PASS] Timezone UTC boundaries, strict calendar validation, and reversed bounds verified.');
 }
 
@@ -1141,6 +1211,85 @@ console.log('\n[Suite 7] Testing Human-Facing Response Formatting & i18n...');
     'lt.2026-09-10T17:00:00.000Z',
   ]);
 
+  // 7.10 Unresolved filter error messages localization in English mode
+  // English responses must contain 0 Indonesian words and properly format structured issues
+  const enAccountNotFoundPage: any = {
+    records: [],
+    total: 0,
+    page: 1,
+    unresolvedFilters: [
+      {
+        filterKey: 'account',
+        rawValue: 'NonExistentBank',
+        reason: 'NOT_FOUND',
+        message: 'Akun "NonExistentBank" tidak ditemukan dalam daftar akun Wallet Anda.',
+      },
+    ],
+  };
+  const enAccountNotFoundText = formatTransactionHistoryMessage(enAccountNotFoundPage, 'en');
+  assert.match(enAccountNotFoundText, /Transaction History Filter Not Found/);
+  assert.match(enAccountNotFoundText, /Account "NonExistentBank" was not found in your Wallet accounts list\./);
+  assert.strictEqual(/\b(tidak ditemukan|akun|daftar akun)\b/i.test(enAccountNotFoundText), false);
+
+  const enAmbiguousCandidatesPage: any = {
+    records: [],
+    total: 0,
+    page: 1,
+    unresolvedFilters: [
+      {
+        filterKey: 'account',
+        rawValue: 'BCA',
+        reason: 'UNRESOLVED',
+        candidates: ['BCA Tabungan', 'BCA Giro'],
+        subType: 'name',
+        message: 'Akun "BCA" ambigu. Kandidat: BCA Tabungan, BCA Giro.',
+      },
+      {
+        filterKey: 'category',
+        rawValue: 'Food',
+        reason: 'UNRESOLVED',
+        candidates: ['Food & Drink', 'Fast Food'],
+        subType: 'name',
+        message: 'Kategori "Food" ambigu. Kandidat: Food & Drink, Fast Food.',
+      },
+    ],
+  };
+  const enAmbiguousText = formatTransactionHistoryMessage(enAmbiguousCandidatesPage, 'en');
+  assert.match(enAmbiguousText, /Account "BCA" is ambiguous\. Candidates: BCA Tabungan, BCA Giro\./);
+  assert.match(enAmbiguousText, /Category "Food" is ambiguous\. Candidates: Food & Drink, Fast Food\./);
+  assert.strictEqual(/\b(ambigu|kandidat|kategori|akun|daftar akun)\b/i.test(enAmbiguousText), false);
+
+  const enDateErrorsPage: any = {
+    records: [],
+    total: 0,
+    page: 1,
+    unresolvedFilters: [
+      {
+        filterKey: 'dateRange',
+        rawValue: 'bad_date',
+        reason: 'INVALID_FORMAT',
+        subType: 'operator_prefix',
+        message: 'Format filter tanggal "bad_date" tidak valid.',
+      },
+      {
+        filterKey: 'dateRange',
+        rawValue: '2026-09-15 2026-09-10',
+        reason: 'INVALID_RANGE',
+        subType: 'start_after_end',
+        message: 'Rentang tanggal tidak valid: batas awal tidak boleh lebih besar dari batas akhir.',
+      },
+    ],
+  };
+  const enDateErrorsText = formatTransactionHistoryMessage(enDateErrorsPage, 'en');
+  assert.match(enDateErrorsText, /Date filter format "bad_date" is invalid\. Use operator prefix: eq\., gt\., gte\., lt\., or lte\./);
+  assert.match(enDateErrorsText, /Invalid date range: start boundary cannot be greater than end boundary\./);
+  assert.strictEqual(/\b(rentang|tanggal|batas|tidak valid)\b/i.test(enDateErrorsText), false);
+
+  // Indonesian mode preserves original Indonesian strings
+  const idFormattedUnresolved = formatTransactionHistoryMessage(enAccountNotFoundPage, 'id');
+  assert.match(idFormattedUnresolved, /Filter Riwayat Tidak Ditemukan/);
+  assert.match(idFormattedUnresolved, /Akun "NonExistentBank" tidak ditemukan/);
+
   console.log('  [PASS] Localized headers, badges, warnings, and navigation hints formatted properly.');
 }
 
@@ -1197,6 +1346,85 @@ console.log('\n[Suite 8] Testing Fast-Path Intent Detection with Composable Filt
   assert.strictEqual(detectFastPathAction('beli kopi 25rb'), null);
   assert.strictEqual(detectFastPathAction('riwayat belanja 50000'), null);
   assert.strictEqual(detectFastPathAction('catat bensin 30k pakai bca'), null);
+
+  // 8.6 Datetime filter preservation across pagination round-trip (Indonesian & English)
+  const dtPage1Options = {
+    dateRange: ['gte.2026-09-11T12:00:00.000Z', 'lte.2026-09-11T13:00:00.000Z'],
+  };
+  const dtPage1Norm = normalizeTransactionHistoryFilters(dtPage1Options, [], []);
+  assert.strictEqual(dtPage1Norm.isValid, true);
+  assert.strictEqual(dtPage1Norm.appliedFilters.dateRange?.selector, '2026-09-11T12:00:00.000Z 2026-09-11T13:00:00.000Z');
+
+  const dtPage1History = {
+    records: [
+      {
+        id: 'rec-dt-1',
+        accountId: 'acc-1',
+        amount: -50000,
+        currency: 'IDR',
+        recordDate: '2026-09-11T12:30:00.000Z',
+        recordType: 'expense',
+        note: 'Coffee',
+      },
+    ],
+    total: 25,
+    limit: 10,
+    offset: 0,
+    page: 1,
+    totalPages: 3,
+    nextOffset: 10,
+    hasMore: true,
+    sort: 'newest' as const,
+    appliedFilters: dtPage1Norm.appliedFilters,
+  };
+
+  // Indonesian round-trip
+  const dtPage1MsgId = formatTransactionHistoryMessage(dtPage1History, 'id');
+  const matchIdCmd = dtPage1MsgId.match(/\*([^*]+hal\s+2[^*]*)\*/i);
+  assert.ok(matchIdCmd, 'Should generate navigation command with hal 2 in Indonesian');
+  const extractedIdCmd = matchIdCmd[1];
+  const parsedIdAction = detectFastPathAction(extractedIdCmd);
+  assert.ok(parsedIdAction, 'Fast-path detector must parse generated page 2 command');
+  assert.strictEqual((parsedIdAction as any).options.page, 2);
+  const page2NormId = normalizeTransactionHistoryFilters((parsedIdAction as any).options, [], []);
+  assert.strictEqual(page2NormId.isValid, true);
+  assert.deepStrictEqual(page2NormId.upstreamRecordDate, dtPage1Norm.upstreamRecordDate);
+
+  // English round-trip
+  const dtPage1MsgEn = formatTransactionHistoryMessage(dtPage1History, 'en');
+  const matchEnCmd = dtPage1MsgEn.match(/\*([^*]+page\s+2[^*]*)\*/i);
+  assert.ok(matchEnCmd, 'Should generate navigation command with page 2 in English');
+  const extractedEnCmd = matchEnCmd[1];
+  const parsedEnAction = detectFastPathAction(extractedEnCmd);
+  assert.ok(parsedEnAction, 'Fast-path detector must parse generated page 2 English command');
+  assert.strictEqual((parsedEnAction as any).options.page, 2);
+  const page2NormEn = normalizeTransactionHistoryFilters((parsedEnAction as any).options, [], []);
+  assert.strictEqual(page2NormEn.isValid, true);
+  assert.deepStrictEqual(page2NormEn.upstreamRecordDate, dtPage1Norm.upstreamRecordDate);
+
+  // 8.7 Mixed date-only and datetime preservation across pagination round-trip
+  const mixedPage1Options = {
+    startDate: '2026-09-11',
+    endDate: '2026-09-11T13:00:00.000Z',
+  };
+  const mixedPage1Norm = normalizeTransactionHistoryFilters(mixedPage1Options, [], []);
+  assert.strictEqual(mixedPage1Norm.isValid, true);
+  assert.strictEqual(mixedPage1Norm.appliedFilters.dateRange?.selector, '2026-09-11 2026-09-11T13:00:00.000Z');
+
+  const mixedPage1History = {
+    ...dtPage1History,
+    appliedFilters: mixedPage1Norm.appliedFilters,
+  };
+  const mixedPage1Msg = formatTransactionHistoryMessage(mixedPage1History, 'id');
+  const matchMixedCmd = mixedPage1Msg.match(/\*([^*]+hal\s+2[^*]*)\*/i);
+  assert.ok(matchMixedCmd);
+  const extractedMixedCmd = matchMixedCmd[1];
+  const parsedMixedAction = detectFastPathAction(extractedMixedCmd);
+  assert.ok(parsedMixedAction);
+  assert.strictEqual((parsedMixedAction as any).options.page, 2);
+  const page2NormMixed = normalizeTransactionHistoryFilters((parsedMixedAction as any).options, [], []);
+  assert.strictEqual(page2NormMixed.isValid, true);
+  assert.deepStrictEqual(page2NormMixed.upstreamRecordDate, mixedPage1Norm.upstreamRecordDate);
 
   console.log('  [PASS] Fast-path intent detector correctly identifies composable history filter commands.');
 }

@@ -124,6 +124,8 @@ export interface UnresolvedFilterIssue {
   rawValue: string;
   reason: 'NOT_FOUND' | 'INVALID_FORMAT' | 'INVALID_RANGE' | 'UNSUPPORTED' | 'UNRESOLVED' | 'AMBIGUOUS';
   message: string;
+  candidates?: string[];
+  subType?: 'bank_account' | 'name' | 'operator_prefix' | 'calendar_date' | 'start_after_end';
 }
 
 export interface WalletRecordItem {

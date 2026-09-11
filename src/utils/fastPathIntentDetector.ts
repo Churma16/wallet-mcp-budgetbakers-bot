@@ -113,8 +113,9 @@ function extractHistoryQueryOptionsFromTokens(
     remainingTokens = remainingTokens.replace(pageMatch[0], ' ').trim();
   }
 
-  // 3. Extract explicit dates with optional comparison operators (e.g. >= 2024-01-01, > 2024-01-01, gte.2024-01-01, etc.)
-  const operatorDateRegex = /(?:(>=|>|<=|<|gte\.|gt\.|lte\.|lt\.|eq\.)\s*)?(\d{4}-\d{2}-\d{2})/g;
+  // 3. Extract explicit dates or ISO datetimes with optional comparison operators (e.g. >= 2024-01-01, > 2024-01-01T12:00:00Z, gte.2024-01-01, etc.)
+  const operatorDateRegex =
+    /(?:(>=|>|<=|<|gte\.|gt\.|lte\.|lt\.|eq\.)\s*)?(\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:?\d{2}))?)/gi;
   const operatorMatches: Array<{ fullMatch: string; operator?: string; dateString: string }> = [];
   let matchExec: RegExpExecArray | null = null;
 

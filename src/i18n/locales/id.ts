@@ -7,6 +7,7 @@ import {
   PendingBulkItemParams,
   PendingCancellationParams,
   type TransactionSortOrder,
+  type UnresolvedFilterIssue,
 } from '../types.js';
 
 export const indonesianDictionary: ResponseDictionary = {
@@ -99,8 +100,52 @@ export const indonesianDictionary: ResponseDictionary = {
     emptyFilteredState(filterSummary: string): string {
       return `Belum ada transaksi yang cocok dengan filter [${filterSummary}].`;
     },
-    unresolvedFilters(issues: Array<{ filterKey: string; message: string }>): string {
-      const issueLines = issues.map(issue => `• ${issue.message}`);
+    unresolvedFilters(issues: UnresolvedFilterIssue[]): string {
+      const issueLines = issues.map(issue => {
+        if (issue.filterKey === 'account') {
+          if (issue.reason === 'NOT_FOUND') {
+            return `• Akun "${issue.rawValue}" tidak ditemukan dalam daftar akun Wallet Anda.`;
+          }
+          if (issue.reason === 'UNRESOLVED' || issue.reason === 'AMBIGUOUS') {
+            if (issue.subType === 'bank_account' && issue.candidates && issue.candidates.length > 0) {
+              return `• Nomor rekening "${issue.rawValue}" ambigu. Kandidat: ${issue.candidates.join(', ')}.`;
+            }
+            if (issue.candidates && issue.candidates.length > 0) {
+              return `• Akun "${issue.rawValue}" ambigu. Kandidat: ${issue.candidates.join(', ')}.`;
+            }
+            return `• Akun "${issue.rawValue}" ambigu. Ditemukan beberapa akun dengan nama yang sama.`;
+          }
+        }
+        if (issue.filterKey === 'category') {
+          if (issue.reason === 'NOT_FOUND') {
+            return `• Kategori "${issue.rawValue}" tidak ditemukan dalam daftar kategori Wallet Anda.`;
+          }
+          if (issue.reason === 'UNSUPPORTED') {
+            return `• Grup kategori "${issue.rawValue}" tidak didukung oleh Wallet.`;
+          }
+          if (issue.reason === 'UNRESOLVED' || issue.reason === 'AMBIGUOUS') {
+            if (issue.candidates && issue.candidates.length > 0) {
+              return `• Kategori "${issue.rawValue}" ambigu. Kandidat: ${issue.candidates.join(', ')}.`;
+            }
+            return `• Kategori "${issue.rawValue}" ambigu. Ditemukan beberapa kategori dengan nama yang sama.`;
+          }
+        }
+        if (issue.filterKey === 'recordType') {
+          return `• Tipe transaksi "${issue.rawValue}" tidak valid. Gunakan "expense" (pengeluaran) atau "income" (pemasukan).`;
+        }
+        if (issue.filterKey === 'dateRange') {
+          if (issue.reason === 'INVALID_RANGE') {
+            return `• Rentang tanggal tidak valid: batas awal tidak boleh lebih besar dari batas akhir.`;
+          }
+          if (issue.reason === 'INVALID_FORMAT') {
+            if (issue.subType === 'operator_prefix') {
+              return `• Format filter tanggal "${issue.rawValue}" tidak valid. Gunakan prefix operator: eq., gt., gte., lt., atau lte.`;
+            }
+            return `• Tanggal "${issue.rawValue}" tidak valid atau bukan tanggal kalender yang valid.`;
+          }
+        }
+        return `• ${issue.message}`;
+      });
       return [
         '⚠️ *Filter Riwayat Tidak Ditemukan:*',
         ...issueLines,
