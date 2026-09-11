@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0",
+  "userContext": {
+    "profile": "Software engineer living in Jakarta/Singapore. Hybrid work setup with daily commute, frequent weekend dining, and grocery shopping.",
+    "notes": [
+      "Prefers cashless payments (QRIS, credit card, Apple Pay)",
+      "Distinguishes impulse snacks from main meals",
+      "Splits bills with friends for group dinners"
+    ]
+  },
+  "categories": [
+    {
+      "category": "Groceries & Supermarket",
+      "scope": "Raw ingredients, weekly supermarket groceries, fresh produce, and bulk pantry restocking for home cooking.",
+      "examples": [
+        "Supermarket grocery run",
+        "Fresh fruits and vegetables from farmers market",
+        "Milk, eggs, bread, and pantry supplies",
+        "Organic store produce"
+      ],
+      "exclusions": [
+        "Prepared fast food meals",
+        "Restaurant take-outs",
+        "Single-serving ready-to-drink coffee or boba"
+      ]
+    },
+    {
+      "category": "Coffee & Quick Bites",
+      "scope": "Impulsive snacks, specialty coffee, tea, pastries, boba, and quick snacks on the go outside staple meals.",
+      "examples": [
+        "Morning espresso and artisan latte",
+        "Afternoon boba tea",
+        "Bakery croissant and donut snack",
+        "Gelato and frozen yogurt"
+      ],
+      "exclusions": [
+        "Full sit-down lunch or dinner meals",
+        "Supermarket grocery runs",
+        "Alcoholic beverages at bars"
+      ]
+    },
+    {
+      "category": "Dining Out & Social",
+      "scope": "Social gatherings, sit-down dinners at restaurants, weekend brunches with friends or colleagues, and split group checks.",
+      "examples": [
+        "Weekend brunch with friends",
+        "Family dinner at Italian bistro",
+        "Colleague farewell lunch",
+        "Split dinner bill via payment link"
+      ],
+      "exclusions": [
+        "Solo desk lunch at the office",
+        "Impulse coffee or boba drink runs",
+        "Home grocery ingredients"
+      ]
+    },
+    {
+      "category": "Public Transit & Commute",
+      "scope": "Daily urban transit, subway/metro, commuter trains, city buses, highway toll tags, and micro-mobility rentals.",
+      "examples": [
+        "Subway / MRT card top-up",
+        "Commuter train ticket",
+        "City bus transit fare",
+        "Electronic road toll reload"
+      ],
+      "exclusions": [
+        "Long-distance vacation flights",
+        "Car purchase or vehicle financing",
+        "Hotel accommodations"
+      ]
+    },
+    {
+      "category": "Home & Garden",
+      "scope": "Household furnishings, domestic cleaning supplies, kitchen utensils, bedding, and routine home maintenance.",
+      "examples": [
+        "Broom, mop, and floor cleaner detergent",
+        "Bed sheets, pillowcases, and duvet",
+        "Kitchen cookware, dish rack, and utensils",
+        "LED bulb replacements and garden tools"
+      ],
+      "exclusions": [
+        "Office electronics and computer hardware",
+        "Personal smartphone gadgets",
+        "Living rent or mortgage payments"
+      ]
+    },
+    {
+      "category": "Makan Nafsu",
+      "scope": "Impulsive snacking, boba, artisan coffee, desserts, and premium snacks that are not regular staple meals (Indonesian custom context example).",
+      "examples": [
+        "boba chatime",
+        "kopi kenangan",
+        "croissant pastry",
+        "ice cream gelato"
+      ],
+      "exclusions": [
+        "makan siang kantor harian",
+        "nasi warteg",
+        "groceries supermarket"
+      ]
+    },
+    {
+      "category": "Makan Hangout",
+      "scope": "Social dining, gathering with friends or colleagues, restaurant meals, and cafe hangouts with split bills (Indonesian custom context example).",
+      "examples": [
+        "dinner bareng teman",
+        "cafe bill split",
+        "makan keluarga akhir pekan"
+      ],
+      "exclusions": [
+        "makan sendiri di kost",
+        "belanja kebutuhan masak"
+      ]
+    }
+  ]
+}

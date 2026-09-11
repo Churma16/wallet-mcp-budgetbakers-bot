@@ -5,6 +5,8 @@ import {
 } from './config/environmentConfig.js';
 import { WalletMcpClientService } from './services/walletMcpService.js';
 import { WalletCacheService } from './services/walletCacheService.js';
+import { CategoryContextService } from './services/categoryContextService.js';
+import { CategoryContextValidationResult } from './types/categoryContextTypes.js';
 import { createFinancialAiProvider, FinancialAiProvider } from './services/ai/index.js';
 import {
   MessagingGatewayService,
@@ -26,6 +28,7 @@ export class Application {
   private readonly environmentConfig: ApplicationEnvironmentConfiguration;
   private readonly walletMcpClient: WalletMcpClientService;
   private readonly walletCacheService: WalletCacheService;
+  private readonly categoryContextService: CategoryContextService;
   private readonly financialAiProvider: FinancialAiProvider;
   private readonly pendingTransactionManager: PendingTransactionService;
   private readonly messagingGateway: MessagingGatewayService;
@@ -46,7 +49,13 @@ export class Application {
     );
 
     this.walletCacheService = new WalletCacheService(this.walletMcpClient);
-    this.financialAiProvider = createFinancialAiProvider(this.environmentConfig);
+    this.categoryContextService = new CategoryContextService(
+      this.environmentConfig.categoryContextFilePath
+    );
+    this.financialAiProvider = createFinancialAiProvider(
+      this.environmentConfig,
+      this.categoryContextService
+    );
     this.pendingTransactionManager = new PendingTransactionService();
     this.messagingGateway = new MessagingGatewayService();
 
@@ -217,5 +226,19 @@ export class Application {
 
     this.isRunning = false;
     applicationLogger.info('All services stopped gracefully.');
+  }
+
+  /**
+   * Reloads category context configuration from disk.
+   */
+  public reloadCategoryContext(): CategoryContextValidationResult {
+    return this.categoryContextService.reload();
+  }
+
+  /**
+   * Returns the active category context service instance.
+   */
+  public getCategoryContextService(): CategoryContextService {
+    return this.categoryContextService;
   }
 }

@@ -49,6 +49,7 @@ const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
   { filePath: 'tests/whatsappSocketHardening.test.ts', description: 'WhatsApp Baileys socket options & typing presence debouncing' },
   { filePath: 'tests/whatsappComponentBoundaries.test.ts', description: 'WhatsApp component boundaries & identifier-based loop prevention (Issue #31)' },
   { filePath: 'tests/hashtagLabels.test.ts', description: 'Hashtag parsing, note cleaning, label resolution & auto-creation (Issue #20)' },
+  { filePath: 'tests/categoryContextService.test.ts', description: 'Custom category semantics, user context loader & disambiguation (Issue #21)' },
 ];
 
 const isVerboseMode = process.argv.includes('--verbose') || process.argv.includes('-v');
