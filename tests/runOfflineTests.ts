@@ -24,6 +24,7 @@ const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
   { filePath: 'tests/budgetParsing.test.ts', description: 'Budget schema normalization & closed budget filtering' },
   { filePath: 'tests/emailListenerPersistence.test.ts', description: 'Email transactional dedup persistence & downstream failure recovery (Issue #75)' },
   { filePath: 'tests/fallbackAiProvider.test.ts', description: 'Fallback AI provider cascading failover & error classification' },
+  { filePath: 'tests/financialLoggingPolicy.test.ts', description: 'Financial payload log minimization, metadata-only defaults & debug opt-in (Issue #77)' },
   { filePath: 'tests/humanResponseFormatter.test.ts', description: 'Human-facing WhatsApp message formatting & localized responses' },
   { filePath: 'tests/loggerRedaction.test.ts', description: 'Logger credential redaction for tokens, passwords, and secrets' },
   { filePath: 'tests/loggerSanitizer.test.ts', description: 'Logger PAN and bank account number masking & circular reference safety' },

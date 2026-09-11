@@ -1,3 +1,4 @@
+import './utils/financialLoggingPolicy.js';
 import { Application } from './app.js';
 import { applicationLogger } from './utils/logger.js';
 
