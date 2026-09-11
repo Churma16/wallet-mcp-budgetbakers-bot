@@ -2,6 +2,7 @@ import { PendingTransactionService, PendingTransactionItem } from '../services/p
 import {
   WalletMcpClientService,
   isWalletMcpDefinitiveFailure,
+  isWalletMcpDispatchOutcomeUnknown,
 } from '../services/walletMcpService.js';
 import { MessagingGatewayService, IncomingUserMessageEvent } from '../services/messaging/index.js';
 import { EmailListenerService } from '../services/emailListenerService.js';
@@ -95,8 +96,21 @@ export class PendingActionHandler {
         successfulTickets.push(item.ticketId);
         applicationLogger.success(`[Ticket #${item.ticketId}] Successfully recorded.`);
       } catch (error) {
-        const rawErrorMessage = error instanceof Error ? error.message : String(error);
-        applicationLogger.error(`[Ticket #${item.ticketId}] Failed to record: ${rawErrorMessage}`);
+        const errorName = error instanceof Error ? error.name : 'UnknownError';
+        const dispatchOutcome = isWalletMcpDefinitiveFailure(error)
+          ? 'DEFINITIVE_FAILURE'
+          : isWalletMcpDispatchOutcomeUnknown(error)
+            ? 'UNKNOWN'
+            : 'UNCLASSIFIED';
+
+        applicationLogger.error(
+          `[Ticket #${item.ticketId}] Failed to record (${errorName}; outcome=${dispatchOutcome}).`
+        );
+        applicationLogger.fileDetail('error', 'Pending Transaction Dispatch Failure', {
+          ticketId: item.ticketId,
+          dispatchOutcome,
+          error,
+        });
 
         if (isWalletMcpDefinitiveFailure(error)) {
           this.pendingTransactionManager.releaseProcessingTransaction(item.ticketId);
