@@ -372,7 +372,7 @@ export function validateApplicationConfiguration(
     } else if (!/^\d+$/.test(canonicalTelegramAllowedUserId)) {
       validationErrorList.push({
         variableName: 'TELEGRAM_ALLOWED_USER_ID',
-        message: `TELEGRAM_ALLOWED_USER_ID must be a numeric Telegram user ID, but got '${config.telegramAllowedUserId}'. Usernames are mutable and not supported.`,
+        message: 'TELEGRAM_ALLOWED_USER_ID must contain only numeric digits; usernames are not supported.',
         hint: 'Get your immutable numeric Telegram user ID from @userinfobot or @raw_data_bot and configure only digits.',
       });
     }

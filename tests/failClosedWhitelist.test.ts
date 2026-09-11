@@ -161,7 +161,7 @@ async function runTestSuite(): Promise<void> {
     assertCondition('SEC-1.6e: Username in TELEGRAM_ALLOWED_USER_ID fails validation', result3d.isValid === false);
     assertCondition(
       'SEC-1.6f: Error explains mutable usernames are not supported',
-      result3d.errors.some(errorItem => errorItem.variableName === 'TELEGRAM_ALLOWED_USER_ID' && errorItem.message.includes('Usernames are mutable and not supported'))
+      result3d.errors.some(errorItem => errorItem.variableName === 'TELEGRAM_ALLOWED_USER_ID' && errorItem.message.includes('usernames are not supported'))
     );
 
     // Case 1.7: Username with leading @ in TELEGRAM_ALLOWED_USER_ID fails validation
@@ -183,6 +183,25 @@ async function runTestSuite(): Promise<void> {
     });
     const result3f = validateApplicationConfiguration(telegramAlphanumericConfig);
     assertCondition('SEC-1.6h: Alphanumeric garbage in TELEGRAM_ALLOWED_USER_ID fails validation', result3f.isValid === false);
+
+    // Case 1.8b: Sentinel secret-like invalid value must NOT be echoed in validation messages (CWE-532 / CodeQL)
+    const sentinelSecretValue = 'super-secret-telegram-token-xyz-12345-never-log';
+    const telegramSentinelConfig = createBaseConfiguration({
+      enabledMessengerChannels: ['telegram'],
+      allowedPhoneNumber: '',
+      telegramBotToken: dummyToken,
+      telegramAllowedUserId: sentinelSecretValue,
+    });
+    const resultSentinel = validateApplicationConfiguration(telegramSentinelConfig);
+    assertCondition('SEC-1.6h1: Sentinel secret in TELEGRAM_ALLOWED_USER_ID fails validation', resultSentinel.isValid === false);
+
+    const doesErrorsContainSentinel = resultSentinel.errors.some(errorItem =>
+      errorItem.message.includes(sentinelSecretValue) || (errorItem.hint ? errorItem.hint.includes(sentinelSecretValue) : false)
+    );
+    assertCondition(
+      'SEC-1.6h2: Validation errors do not reproduce raw sentinel secret value (prevents clear-text secret leakage)',
+      doesErrorsContainSentinel === false
+    );
 
     // Case 1.9: Valid numeric ID with optional leading @ passes validation
     const telegramValidNumericWithAt = createBaseConfiguration({
@@ -651,6 +670,55 @@ async function runTestSuite(): Promise<void> {
     assertCondition(
       'SEC-5.3: Application.validateConfiguration exits with code 1 when configuration validation fails',
       processExitCode === 1
+    );
+
+    // Case 5.2: Sentinel secret-like invalid value must not be logged to console/logs during Application.validateConfiguration()
+    const sentinelSecretLeakValue = 'sentinel-super-secret-token-do-not-leak-999';
+    const sentinelLeakTestConfig = createBaseConfiguration({
+      enabledMessengerChannels: ['telegram'],
+      telegramBotToken: dummyToken,
+      telegramAllowedUserId: sentinelSecretLeakValue,
+    });
+    const leakTestApp = new Application(sentinelLeakTestConfig);
+    const capturedLogOutputs: string[] = [];
+
+    const originalConsoleLog = console.log;
+    const originalConsoleError = console.error;
+    const originalConsoleWarn = console.warn;
+    const originalConsoleInfo = console.info;
+
+    try {
+      const logCatcher = (...args: any[]) => {
+        capturedLogOutputs.push(args.map(argumentItem => (typeof argumentItem === 'string' ? argumentItem : JSON.stringify(argumentItem))).join(' '));
+      };
+      console.log = logCatcher;
+      console.error = logCatcher;
+      console.warn = logCatcher;
+      console.info = logCatcher;
+
+      process.exit = (() => {
+        throw new Error('INTERCEPTED_PROCESS_EXIT');
+      }) as unknown as typeof process.exit;
+
+      try {
+        (leakTestApp as any).validateConfiguration();
+      } catch (exitError) {
+        if ((exitError as Error).message !== 'INTERCEPTED_PROCESS_EXIT') {
+          throw exitError;
+        }
+      }
+    } finally {
+      process.exit = originalProcessExit;
+      console.log = originalConsoleLog;
+      console.error = originalConsoleError;
+      console.warn = originalConsoleWarn;
+      console.info = originalConsoleInfo;
+    }
+
+    const combinedOutput = capturedLogOutputs.join('\n');
+    assertCondition(
+      'SEC-5.4: Application.validateConfiguration does not log raw sentinel secret value to console or logs',
+      combinedOutput.includes(sentinelSecretLeakValue) === false
     );
   }
 
