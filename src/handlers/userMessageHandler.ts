@@ -226,7 +226,8 @@ export class UserMessageHandler {
         const validationResult = validateAndSanitizeFinancialRecords(
           extractedIntent.records,
           cachedAccounts,
-          cachedCategories
+          cachedCategories,
+          event.textPayload
         );
 
         if (

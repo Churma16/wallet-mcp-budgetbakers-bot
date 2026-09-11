@@ -117,7 +117,8 @@ function findAccountResolutionCandidates(
 export function validateAndSanitizeFinancialRecords(
   incomingRecords: CreateRecordInputPayload[],
   availableAccountList: WalletAccountItem[],
-  availableCategoryList: WalletCategoryItem[]
+  availableCategoryList: WalletCategoryItem[],
+  sourceUserText?: string
 ): FinancialRecordValidationResult {
   const validationErrors: string[] = [];
   const sanitizedRecords: CreateRecordInputPayload[] = [];
@@ -141,6 +142,25 @@ export function validateAndSanitizeFinancialRecords(
       ],
       accountResolutionIssues: [],
     };
+  }
+
+  // Deterministically derive allowed explicit hashtags from raw user text and record notes
+  const allowedExplicitTagSet = new Set<string>();
+
+  if (sourceUserText && typeof sourceUserText === 'string') {
+    const sourceHashtags = extractHashtags(sourceUserText).tags;
+    for (const tag of sourceHashtags) {
+      allowedExplicitTagSet.add(tag.toLowerCase());
+    }
+  }
+
+  for (const record of incomingRecords) {
+    if (record && record.note && typeof record.note === 'string') {
+      const noteHashtags = extractHashtags(record.note).tags;
+      for (const tag of noteHashtags) {
+        allowedExplicitTagSet.add(tag.toLowerCase());
+      }
+    }
   }
 
   for (let recordIndex = 0; recordIndex < incomingRecords.length; recordIndex++) {
@@ -260,11 +280,30 @@ export function validateAndSanitizeFinancialRecords(
       cleanedNote = hashtagResult.cleanedText.length > 0 ? hashtagResult.cleanedText : undefined;
     }
 
+    // Require explicit hashtags before accepting AI-provided labels
     const incomingLabels = Array.isArray(currentRecord.labels)
-      ? currentRecord.labels.map(normalizeTagName)
+      ? currentRecord.labels
+          .map(normalizeTagName)
+          .filter(tag => allowedExplicitTagSet.has(tag.toLowerCase()))
       : [];
 
-    const combinedLabels = deduplicateTags([...incomingLabels, ...extractedTagsFromNote]);
+    // For single-record input without note tags, allow explicit tags from the raw message
+    const fallbackSourceTags: string[] = [];
+    if (
+      incomingRecords.length === 1 &&
+      extractedTagsFromNote.length === 0 &&
+      incomingLabels.length === 0 &&
+      sourceUserText
+    ) {
+      const sourceTags = extractHashtags(sourceUserText).tags;
+      fallbackSourceTags.push(...sourceTags);
+    }
+
+    const combinedLabels = deduplicateTags([
+      ...incomingLabels,
+      ...extractedTagsFromNote,
+      ...fallbackSourceTags,
+    ]);
 
     const sanitizedCounterParty = currentRecord.counterParty
       ? String(currentRecord.counterParty).slice(0, 100).trim()
@@ -282,9 +321,9 @@ export function validateAndSanitizeFinancialRecords(
     if (combinedLabels.length > 0) {
       sanitizedRecordItem.labels = combinedLabels;
     }
-    if (Array.isArray(currentRecord.labelIds) && currentRecord.labelIds.length > 0) {
-      sanitizedRecordItem.labelIds = currentRecord.labelIds;
-    }
+
+    // Incoming labelIds are always discarded at the validation boundary to prevent
+    // untrusted or hallucinated IDs from bypassing name-based label resolution.
 
     sanitizedRecords.push(sanitizedRecordItem);
   }

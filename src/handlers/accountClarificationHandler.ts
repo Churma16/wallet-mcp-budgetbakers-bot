@@ -62,6 +62,7 @@ export class AccountClarificationHandler {
       pendingRecordIndex: firstIssue.recordIndex,
       accountHint: firstIssue.accountHint,
       candidateAccounts,
+      sourceUserText: event.textPayload,
     });
 
     applicationLogger.info(
@@ -231,7 +232,8 @@ export class AccountClarificationHandler {
     const validationResult = validateAndSanitizeFinancialRecords(
       updatedRecords,
       availableAccounts,
-      availableCategories
+      availableCategories,
+      claimedDraft.sourceUserText
     );
 
     if (validationResult.validationErrors.length > 0) {

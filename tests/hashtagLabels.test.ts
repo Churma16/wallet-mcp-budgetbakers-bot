@@ -129,12 +129,12 @@ const mockCategories: WalletCategoryItem[] = [
   assert.equal(onlyTagValidation.sanitizedRecords[0].note, undefined);
   assert.deepEqual(onlyTagValidation.sanitizedRecords[0].labels, ['reimburse']);
 
-  // Merging note hashtags with existing labels without duplicates
+  // Merging note hashtags with existing labels without duplicates when explicit hashtags are present
   const preLabeledRecord: CreateRecordInputPayload = {
     accountId: 'acc-bca',
     amount: -10_000,
     recordDate: '2026-09-11T10:00:00Z',
-    note: 'Kopi #reimburse',
+    note: 'Kopi #reimburse #kantor',
     labels: ['reimburse', 'kantor'],
   };
 
@@ -142,6 +142,40 @@ const mockCategories: WalletCategoryItem[] = [
   assert.equal(preLabeledValidation.isValid, true);
   assert.equal(preLabeledValidation.sanitizedRecords[0].note, 'Kopi');
   assert.deepEqual(preLabeledValidation.sanitizedRecords[0].labels, ['reimburse', 'kantor']);
+
+  // Discard AI-invented labels that do not appear as explicit hashtags in input
+  const unmentionedLabelRecord: CreateRecordInputPayload = {
+    accountId: 'acc-bca',
+    amount: -50_000,
+    recordDate: '2026-09-11T10:00:00Z',
+    note: 'makan di Bandung',
+    labels: ['bandung'],
+  };
+  const unmentionedValidation = validateAndSanitizeFinancialRecords(
+    [unmentionedLabelRecord],
+    mockAccounts,
+    mockCategories,
+    'makan di Bandung 50rb'
+  );
+  assert.equal(unmentionedValidation.isValid, true);
+  assert.equal(unmentionedValidation.sanitizedRecords[0].labels, undefined, 'AI labels without explicit # must be discarded');
+
+  // Discard AI-supplied labelIds at the validation boundary
+  const injectedLabelIdsRecord: CreateRecordInputPayload = {
+    accountId: 'acc-bca',
+    amount: -50_000,
+    recordDate: '2026-09-11T10:00:00Z',
+    note: 'makan siang',
+    labelIds: ['lbl-injected-id', 'lbl-fake'],
+  };
+  const injectedValidation = validateAndSanitizeFinancialRecords(
+    [injectedLabelIdsRecord],
+    mockAccounts,
+    mockCategories,
+    'makan siang 50rb'
+  );
+  assert.equal(injectedValidation.isValid, true);
+  assert.equal(injectedValidation.sanitizedRecords[0].labelIds, undefined, 'Incoming labelIds must be discarded during validation');
 }
 
 // ---------------------------------------------------------------------------
@@ -747,6 +781,44 @@ const mockCategories: WalletCategoryItem[] = [
   assert.deepEqual(multiRecords[1].labelIds, ['lbl-liburan']);
   assert.ok(sentMessages[0].includes('🔖 #kantor'));
   assert.ok(sentMessages[0].includes('🔖 #liburan'));
+
+  // Scenario C: Message contains no #, but mock AI output contains labels: ['bandung'] and arbitrary labelIds
+  sentMessages.length = 0;
+  dispatchedMcpRecords.length = 0;
+  let createLabelCallsCount = 0;
+  (mockClient as any).createLabel = async (name: string) => {
+    createLabelCallsCount++;
+    return { id: `lbl-${name}`, name };
+  };
+
+  aiRecordOutput = [
+    {
+      accountId: 'acc-bca',
+      amount: -50000,
+      recordDate: '2026-09-11T12:00:00Z',
+      categoryId: 'cat-food',
+      note: 'makan di Bandung',
+      labels: ['bandung'],
+      labelIds: ['lbl-injected-id'],
+    } as any,
+  ];
+
+  const noHashEvent: IncomingUserMessageEvent = {
+    channel: 'whatsapp',
+    senderIdentifier: '+628123456789',
+    chatIdentifier: '+628123456789',
+    messageType: 'text',
+    textPayload: 'makan di Bandung 50rb',
+  };
+
+  await userMessageHandler.handleIncomingUserMessage(noHashEvent);
+
+  assert.equal(createLabelCallsCount, 0, 'createLabel() must never be called when input has no explicit #');
+  assert.equal(dispatchedMcpRecords.length, 1);
+  const outboundRecordNoHash = dispatchedMcpRecords[0][0];
+  assert.equal(outboundRecordNoHash.labels, undefined, 'Outbound record must have no label when input has no explicit #');
+  assert.equal(outboundRecordNoHash.labelIds, undefined, 'Outbound record must have no labelIds from raw AI JSON');
+  assert.ok(!sentMessages[0].includes('🔖'), 'Confirmation reply must not show label icon when no explicit tag was present');
 }
 
 // ---------------------------------------------------------------------------
