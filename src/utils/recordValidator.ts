@@ -146,6 +146,8 @@ export function validateAndSanitizeFinancialRecords(
 
   const applicationTimezone = getApplicationTimezone();
 
+  const invalidRecordIndices = new Set<number>();
+
   // Pre-normalize recordDate upfront for all records into an immutable UTC ISO string
   // BEFORE account resolution or any validation short-circuits.
   // This guarantees:
@@ -177,17 +179,68 @@ export function validateAndSanitizeFinancialRecords(
       normalizedRecordDate = parsedRelativeTime.resolvedUtcIso;
     } else if (typeof normalizedRecordDate === 'string') {
       const trimmedDateString = normalizedRecordDate.trim();
-      // If date string has no timezone offset or Z indicator (e.g. 2026-09-08T11:54:00)
-      if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(trimmedDateString)) {
-        const normalizedIsoDate = trimmedDateString.replace(' ', 'T');
-        const [datePart, timePart] = normalizedIsoDate.split('T');
-        const [hourPart, minutePart] = timePart.split(':');
-        normalizedRecordDate = resolveTargetLocalToUtcIso(
-          datePart,
-          Number.parseInt(hourPart, 10),
-          Number.parseInt(minutePart, 10),
-          applicationTimezone
+      // 1. Local ISO format without timezone offset or Z indicator (e.g. 2026-07-15T11:54:00 or 2026-07-15 11:54)
+      const localIsoWithoutOffsetMatch = trimmedDateString.match(
+        /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?$/
+      );
+      if (localIsoWithoutOffsetMatch) {
+        const [, datePart, hourPart, minutePart] = localIsoWithoutOffsetMatch;
+        try {
+          normalizedRecordDate = resolveTargetLocalToUtcIso(
+            datePart,
+            Number.parseInt(hourPart, 10),
+            Number.parseInt(minutePart, 10),
+            applicationTimezone
+          );
+        } catch (error) {
+          if (error instanceof RangeError) {
+            validationErrors.push(
+              `Transaksi #${recordIndex + 1}: Waktu transaksi tidak valid pada timezone ${applicationTimezone} (${trimmedDateString}).`
+            );
+            invalidRecordIndices.add(recordIndex);
+            continue;
+          }
+          throw error;
+        }
+      } else {
+        // 2. Format with explicit timezone offset (e.g. 2026-07-15T11:54:00-05:00)
+        const offsetDateMatch = trimmedDateString.match(
+          /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?([+-]\d{2}:\d{2})$/
         );
+        if (offsetDateMatch) {
+          const [, datePart, hourPart, minutePart, , explicitOffset] = offsetDateMatch;
+          const requestOffsetDetails = getTimezoneOffsetDetails(applicationTimezone, referenceDate);
+          const targetDateMiddayEstimate = new Date(`${datePart}T12:00:00.000Z`);
+          const targetOffsetDetails = getTimezoneOffsetDetails(
+            applicationTimezone,
+            targetDateMiddayEstimate
+          );
+
+          // If the explicit offset matches the request instant's offset but differs from the target date's offset in applicationTimezone,
+          // re-resolve using the target date's accurate offset to correct request-scoped offset pollution.
+          if (
+            explicitOffset === requestOffsetDetails.formattedOffset &&
+            explicitOffset !== targetOffsetDetails.formattedOffset
+          ) {
+            try {
+              normalizedRecordDate = resolveTargetLocalToUtcIso(
+                datePart,
+                Number.parseInt(hourPart, 10),
+                Number.parseInt(minutePart, 10),
+                applicationTimezone
+              );
+            } catch (error) {
+              if (error instanceof RangeError) {
+                validationErrors.push(
+                  `Transaksi #${recordIndex + 1}: Waktu transaksi tidak valid pada timezone ${applicationTimezone} (${trimmedDateString}).`
+                );
+                invalidRecordIndices.add(recordIndex);
+                continue;
+              }
+              throw error;
+            }
+          }
+        }
       }
     }
 
@@ -203,6 +256,9 @@ export function validateAndSanitizeFinancialRecords(
   }
 
   for (let recordIndex = 0; recordIndex < incomingRecords.length; recordIndex++) {
+    if (invalidRecordIndices.has(recordIndex)) {
+      continue;
+    }
     const currentRecord = incomingRecords[recordIndex];
     const recordLabel = `Transaksi #${recordIndex + 1}`;
 

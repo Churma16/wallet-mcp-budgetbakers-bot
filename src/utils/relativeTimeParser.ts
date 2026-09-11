@@ -205,6 +205,12 @@ export function formatLocalTimeAnchor(
  * Resolves a local date and time in a given timezone to a UTC ISO 8601 string.
  * Accurately evaluates the IANA timezone offset at the target instant to prevent
  * offset errors across Daylight Saving Time (DST) transitions (e.g., fall back or spring forward).
+ *
+ * DST Boundary Policies:
+ * 1. Spring-Forward Gaps: Nonexistent local wall-clock times (e.g. 02:30 during a 02:00 -> 03:00 jump)
+ *    fail closed by throwing a RangeError rather than silently shifting to a different hour.
+ * 2. Fall-Back Overlaps: Ambiguous local wall-clock times occurring twice (e.g. 01:30 during a 02:00 -> 01:00 rewind)
+ *    deterministically resolve to the post-transition standard time offset (e.g. EST UTC-05:00 in America/New_York).
  */
 export function resolveTargetLocalToUtcIso(
   targetDateString: string,
@@ -229,16 +235,32 @@ export function resolveTargetLocalToUtcIso(
   const candidateDate = new Date(candidateTimestamp);
   const refinedOffsetDetails = getTimezoneOffsetDetails(targetTimezoneIdentifier, candidateDate);
 
+  let resolvedUtcIso: string;
   if (refinedOffsetDetails.formattedOffset === initialOffsetDetails.formattedOffset) {
-    return candidateDate.toISOString();
+    resolvedUtcIso = candidateDate.toISOString();
+  } else {
+    const refinedIso = `${targetDateString}T${paddedHour}:${paddedMinute}:00.000${refinedOffsetDetails.formattedOffset}`;
+    const refinedTimestamp = Date.parse(refinedIso);
+    resolvedUtcIso = Number.isNaN(refinedTimestamp)
+      ? candidateDate.toISOString()
+      : new Date(refinedTimestamp).toISOString();
   }
 
-  const refinedIso = `${targetDateString}T${paddedHour}:${paddedMinute}:00.000${refinedOffsetDetails.formattedOffset}`;
-  const refinedTimestamp = Date.parse(refinedIso);
-  if (Number.isNaN(refinedTimestamp)) {
-    return candidateDate.toISOString();
+  // Round-trip verification: ensure candidate UTC corresponds back to requested local wall-clock time.
+  // During DST spring-forward gaps, nonexistent wall-clock times must not be silently shifted.
+  const roundTripLocalParts = getLocalTimeParts(new Date(resolvedUtcIso), targetTimezoneIdentifier);
+  const matchesRequestedWallClock =
+    roundTripLocalParts.dateString === targetDateString &&
+    roundTripLocalParts.hour === targetHour &&
+    roundTripLocalParts.minute === targetMinute;
+
+  if (!matchesRequestedWallClock) {
+    throw new RangeError(
+      `Nonexistent local wall-clock time '${targetDateString} ${paddedHour}:${paddedMinute}' in timezone '${targetTimezoneIdentifier}' (e.g. DST spring-forward gap).`
+    );
   }
-  return new Date(refinedTimestamp).toISOString();
+
+  return resolvedUtcIso;
 }
 
 const CURRENCY_PREFIX_REGEX =
@@ -474,29 +496,37 @@ function createParsedRelativeTimeResult(
   periodName?: RelativeTimePeriodName,
   fallbackHour?: number,
   fallbackMinute?: number
-): ParsedRelativeTimeResult {
+): ParsedRelativeTimeResult | null {
   const explicitClock = extractExplicitClockTime(inputText, periodName);
   const defaultHour = periodName ? PERIOD_REPRESENTATIVE_HOURS[periodName].hour : (fallbackHour ?? 0);
   const defaultMinute = periodName ? PERIOD_REPRESENTATIVE_HOURS[periodName].minute : (fallbackMinute ?? 0);
   const targetHour = explicitClock ? explicitClock.hour : defaultHour;
   const targetMinute = explicitClock ? explicitClock.minute : defaultMinute;
-  const resolvedUtcIso = resolveTargetLocalToUtcIso(
-    targetDateString,
-    targetHour,
-    targetMinute,
-    targetTimezoneIdentifier
-  );
 
-  return {
-    resolvedUtcIso,
-    matchedExpression: explicitClock ? `${matchedKeyword} ${explicitClock.matchedClockSubstring}` : matchedKeyword,
-    hasExplicitTime: Boolean(explicitClock),
-    targetDateString,
-    targetHour,
-    targetMinute,
-    periodName,
-    dayReference,
-  };
+  try {
+    const resolvedUtcIso = resolveTargetLocalToUtcIso(
+      targetDateString,
+      targetHour,
+      targetMinute,
+      targetTimezoneIdentifier
+    );
+
+    return {
+      resolvedUtcIso,
+      matchedExpression: explicitClock ? `${matchedKeyword} ${explicitClock.matchedClockSubstring}` : matchedKeyword,
+      hasExplicitTime: Boolean(explicitClock),
+      targetDateString,
+      targetHour,
+      targetMinute,
+      periodName,
+      dayReference,
+    };
+  } catch (error) {
+    if (error instanceof RangeError) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -636,22 +666,29 @@ export function parseRelativeTime(
   if (bareTadiMatch) {
     const explicitClock = extractExplicitClockTime(inputText);
     if (explicitClock) {
-      const resolvedUtcIso = resolveTargetLocalToUtcIso(
-        todayDateString,
-        explicitClock.hour,
-        explicitClock.minute,
-        targetTimezoneIdentifier
-      );
+      try {
+        const resolvedUtcIso = resolveTargetLocalToUtcIso(
+          todayDateString,
+          explicitClock.hour,
+          explicitClock.minute,
+          targetTimezoneIdentifier
+        );
 
-      return {
-        resolvedUtcIso,
-        matchedExpression: `${bareTadiMatch[0]} ${explicitClock.matchedClockSubstring}`,
-        hasExplicitTime: true,
-        targetDateString: todayDateString,
-        targetHour: explicitClock.hour,
-        targetMinute: explicitClock.minute,
-        dayReference: 'today',
-      };
+        return {
+          resolvedUtcIso,
+          matchedExpression: `${bareTadiMatch[0]} ${explicitClock.matchedClockSubstring}`,
+          hasExplicitTime: true,
+          targetDateString: todayDateString,
+          targetHour: explicitClock.hour,
+          targetMinute: explicitClock.minute,
+          dayReference: 'today',
+        };
+      } catch (error) {
+        if (error instanceof RangeError) {
+          return null;
+        }
+        throw error;
+      }
     }
   }
 

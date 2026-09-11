@@ -1202,6 +1202,210 @@ async function runRelativeTimeExpressionsTestSuite(): Promise<void> {
     'Typo timezone produces an explicit APP_TIMEZONE validation error'
   );
 
+  // Test 19: Cross-DST Request Instant Invariance and Target-Date-Specific Offset Resolution (PR Comment 5, Item 1)
+  applicationLogger.info('\nTEST 19: Cross-DST Request Instant Invariance & Target-Date-Specific Offset');
+  const originalEnvTimezoneForTest19 = process.env.APP_TIMEZONE;
+  process.env.APP_TIMEZONE = 'America/New_York';
+  try {
+    // Reference instants:
+    // Request instant in November (EST, UTC-05:00): 2026-11-15T15:00:00.000Z (10:00 EST)
+    const requestInstantInEst = new Date('2026-11-15T15:00:00.000Z');
+    // Request instant in July (EDT, UTC-04:00): 2026-07-15T15:00:00.000Z (11:00 EDT)
+    const requestInstantInEdt = new Date('2026-07-15T15:00:00.000Z');
+
+    // 1. July transaction (EDT, UTC-04:00): local 11:54 -> UTC 15:54:00.000Z
+    // When request occurs in November (EST), July local receipt date must resolve to EDT (-04:00), NOT EST (-05:00)
+    const julyReceiptValidationFromEstRequest = validateAndSanitizeFinancialRecords(
+      [{ accountId: 'acc-cash', amount: -25, recordDate: '2026-07-15T11:54:00' }],
+      mockAccounts,
+      mockCategories,
+      'Lunch receipt',
+      requestInstantInEst
+    );
+    assertCondition(
+      julyReceiptValidationFromEstRequest.isValid === true,
+      'July receipt processed during November EST request validates successfully'
+    );
+    assertCondition(
+      julyReceiptValidationFromEstRequest.sanitizedRecords[0].recordDate === '2026-07-15T15:54:00.000Z',
+      `July receipt processed during November EST request resolves to EDT UTC 15:54:00.000Z (got: ${julyReceiptValidationFromEstRequest.sanitizedRecords[0].recordDate})`
+    );
+
+    // When request occurs in July (EDT), same July transaction must resolve to the identical UTC instant
+    const julyReceiptValidationFromEdtRequest = validateAndSanitizeFinancialRecords(
+      [{ accountId: 'acc-cash', amount: -25, recordDate: '2026-07-15T11:54:00' }],
+      mockAccounts,
+      mockCategories,
+      'Lunch receipt',
+      requestInstantInEdt
+    );
+    assertCondition(
+      julyReceiptValidationFromEdtRequest.sanitizedRecords[0].recordDate === '2026-07-15T15:54:00.000Z',
+      `July receipt processed during July EDT request resolves to identical EDT UTC 15:54:00.000Z (got: ${julyReceiptValidationFromEdtRequest.sanitizedRecords[0].recordDate})`
+    );
+    assertCondition(
+      julyReceiptValidationFromEstRequest.sanitizedRecords[0].recordDate ===
+        julyReceiptValidationFromEdtRequest.sanitizedRecords[0].recordDate,
+      'Changing request date between EST and EDT does not alter July transaction UTC timestamp'
+    );
+
+    // 2. November transaction (EST, UTC-05:00): local 11:54 -> UTC 16:54:00.000Z
+    // When request occurs in July (EDT), November local transaction date must resolve to EST (-05:00), NOT EDT (-04:00)
+    const novemberReceiptValidationFromEdtRequest = validateAndSanitizeFinancialRecords(
+      [{ accountId: 'acc-cash', amount: -30, recordDate: '2026-11-15T11:54:00' }],
+      mockAccounts,
+      mockCategories,
+      'Dinner receipt',
+      requestInstantInEdt
+    );
+    assertCondition(
+      novemberReceiptValidationFromEdtRequest.isValid === true,
+      'November receipt processed during July EDT request validates successfully'
+    );
+    assertCondition(
+      novemberReceiptValidationFromEdtRequest.sanitizedRecords[0].recordDate === '2026-11-15T16:54:00.000Z',
+      `November receipt processed during July EDT request resolves to EST UTC 16:54:00.000Z (got: ${novemberReceiptValidationFromEdtRequest.sanitizedRecords[0].recordDate})`
+    );
+
+    // When request occurs in November (EST), same November transaction must resolve to identical UTC instant
+    const novemberReceiptValidationFromEstRequest = validateAndSanitizeFinancialRecords(
+      [{ accountId: 'acc-cash', amount: -30, recordDate: '2026-11-15T11:54:00' }],
+      mockAccounts,
+      mockCategories,
+      'Dinner receipt',
+      requestInstantInEst
+    );
+    assertCondition(
+      novemberReceiptValidationFromEstRequest.sanitizedRecords[0].recordDate === '2026-11-15T16:54:00.000Z',
+      `November receipt processed during November EST request resolves to identical EST UTC 16:54:00.000Z (got: ${novemberReceiptValidationFromEstRequest.sanitizedRecords[0].recordDate})`
+    );
+    assertCondition(
+      novemberReceiptValidationFromEdtRequest.sanitizedRecords[0].recordDate ===
+        novemberReceiptValidationFromEstRequest.sanitizedRecords[0].recordDate,
+      'Changing request date between EDT and EST does not alter November transaction UTC timestamp'
+    );
+
+    // 3. Request-scoped offset pollution correction:
+    // If an incoming record has an explicit offset matching the request instant (-05:00 EST) but the transaction
+    // is in July (EDT, -04:00), validator corrects the offset using target date resolver
+    const pollutedOffsetRecordValidation = validateAndSanitizeFinancialRecords(
+      [{ accountId: 'acc-cash', amount: -15, recordDate: '2026-07-15T11:54:00-05:00' }],
+      mockAccounts,
+      mockCategories,
+      'Coffee',
+      requestInstantInEst
+    );
+    assertCondition(
+      pollutedOffsetRecordValidation.isValid === true,
+      'Record with request-scoped offset pollution validates successfully'
+    );
+    assertCondition(
+      pollutedOffsetRecordValidation.sanitizedRecords[0].recordDate === '2026-07-15T15:54:00.000Z',
+      `Request-scoped offset pollution is corrected to July EDT UTC 15:54:00.000Z (got: ${pollutedOffsetRecordValidation.sanitizedRecords[0].recordDate})`
+    );
+
+    // 4. Direct resolveTargetLocalToUtcIso verification
+    const directJulyUtc = resolveTargetLocalToUtcIso('2026-07-15', 11, 54, 'America/New_York');
+    assertCondition(
+      directJulyUtc === '2026-07-15T15:54:00.000Z',
+      `Direct resolveTargetLocalToUtcIso for July 15 11:54 America/New_York produces 2026-07-15T15:54:00.000Z (got: ${directJulyUtc})`
+    );
+
+    const directNovemberUtc = resolveTargetLocalToUtcIso('2026-11-15', 11, 54, 'America/New_York');
+    assertCondition(
+      directNovemberUtc === '2026-11-15T16:54:00.000Z',
+      `Direct resolveTargetLocalToUtcIso for November 15 11:54 America/New_York produces 2026-11-15T16:54:00.000Z (got: ${directNovemberUtc})`
+    );
+  } finally {
+    process.env.APP_TIMEZONE = originalEnvTimezoneForTest19;
+  }
+
+  // Test 20: Nonexistent Local Clock Times Across DST Spring-Forward Gaps Fail Closed (PR Comment 5, Item 2)
+  applicationLogger.info('\nTEST 20: Nonexistent Local Clock Times Across DST Spring-Forward Gaps');
+  const originalEnvTimezoneForTest20 = process.env.APP_TIMEZONE;
+  process.env.APP_TIMEZONE = 'America/New_York';
+  try {
+    // On Sunday, March 8, 2026 in America/New_York:
+    // Clocks spring forward from 02:00:00 EST to 03:00:00 EDT.
+    // Therefore, wall-clock times between 02:00:00 and 02:59:59 DO NOT EXIST.
+
+    // 1. Nonexistent wall-clock time 02:30 throws RangeError in resolveTargetLocalToUtcIso
+    let nonexistentClockErrorEncountered: Error | null = null;
+    try {
+      resolveTargetLocalToUtcIso('2026-03-08', 2, 30, 'America/New_York');
+    } catch (error) {
+      nonexistentClockErrorEncountered = error as Error;
+    }
+    assertCondition(
+      nonexistentClockErrorEncountered instanceof RangeError,
+      `Nonexistent wall-clock time 2026-03-08 02:30 America/New_York throws RangeError (got: ${nonexistentClockErrorEncountered})`
+    );
+    assertCondition(
+      nonexistentClockErrorEncountered?.message.includes('Nonexistent local wall-clock time') === true,
+      'RangeError message explicitly identifies nonexistent wall-clock time in DST gap'
+    );
+
+    // 2. parseRelativeTime fails closed (returns null) for nonexistent wall-clock time
+    const nonexistentRelativeParseResult = parseRelativeTime(
+      '02:30',
+      new Date('2026-03-08T12:00:00.000Z'),
+      'America/New_York'
+    );
+    assertCondition(
+      nonexistentRelativeParseResult === null,
+      'parseRelativeTime returns null for nonexistent wall-clock time 02:30 during DST spring-forward'
+    );
+
+    // 3. validateAndSanitizeFinancialRecords rejects record with nonexistent local clock time (fail-closed)
+    const nonexistentValidationResult = validateAndSanitizeFinancialRecords(
+      [{ accountId: 'acc-cash', amount: -10, recordDate: '2026-03-08T02:30:00' }],
+      mockAccounts,
+      mockCategories,
+      'Coffee during DST gap',
+      new Date('2026-03-08T12:00:00.000Z')
+    );
+    assertCondition(
+      nonexistentValidationResult.isValid === false,
+      'validateAndSanitizeFinancialRecords fails for nonexistent local wall-clock time'
+    );
+    assertCondition(
+      nonexistentValidationResult.validationErrors.some(error =>
+        error.includes('Waktu transaksi tidak valid pada timezone America/New_York')
+      ),
+      'Validation errors contain explicit invalid transaction time error for nonexistent DST clock'
+    );
+    assertCondition(
+      nonexistentValidationResult.sanitizedRecords.length === 0,
+      'No sanitized records produced for nonexistent wall-clock time'
+    );
+
+    // 4. Valid neighboring times on same spring-forward date pass cleanly:
+    // 01:30 EST (pre-transition, UTC-05:00) -> UTC 06:30:00.000Z
+    const validPreTransitionUtc = resolveTargetLocalToUtcIso('2026-03-08', 1, 30, 'America/New_York');
+    assertCondition(
+      validPreTransitionUtc === '2026-03-08T06:30:00.000Z',
+      `Valid pre-transition 2026-03-08 01:30 in NY resolves to 2026-03-08T06:30:00.000Z (got: ${validPreTransitionUtc})`
+    );
+
+    // 03:30 EDT (post-transition, UTC-04:00) -> UTC 07:30:00.000Z
+    const validPostTransitionUtc = resolveTargetLocalToUtcIso('2026-03-08', 3, 30, 'America/New_York');
+    assertCondition(
+      validPostTransitionUtc === '2026-03-08T07:30:00.000Z',
+      `Valid post-transition 2026-03-08 03:30 in NY resolves to 2026-03-08T07:30:00.000Z (got: ${validPostTransitionUtc})`
+    );
+
+    // 5. Ambiguous fall-back overlap:
+    // On Sunday, Nov 1, 2026 in America/New_York, clocks rewind 02:00:00 -> 01:00:00.
+    // 01:30 occurs twice. Policy deterministically resolves to post-transition standard time (EST, UTC-05:00).
+    const ambiguousFallBackUtc = resolveTargetLocalToUtcIso('2026-11-01', 1, 30, 'America/New_York');
+    assertCondition(
+      ambiguousFallBackUtc === '2026-11-01T06:30:00.000Z',
+      `Ambiguous fall-back 2026-11-01 01:30 in NY deterministically resolves to EST UTC 06:30:00.000Z (got: ${ambiguousFallBackUtc})`
+    );
+  } finally {
+    process.env.APP_TIMEZONE = originalEnvTimezoneForTest20;
+  }
+
   console.log('\n======================================================');
   applicationLogger.success('ALL NATURAL LANGUAGE RELATIVE TIME TESTS PASSED!');
   console.log('======================================================\n');
