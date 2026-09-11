@@ -4,6 +4,7 @@ import {
   validateApplicationConfiguration,
   ApplicationEnvironmentConfiguration,
 } from '../src/config/environmentConfig.js';
+import { Application } from '../src/app.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/types.js';
 import type { proto } from '@whiskeysockets/baileys';
 import type { Context } from 'grammy';
@@ -121,7 +122,86 @@ async function runTestSuite(): Promise<void> {
       result3.errors.some(errorItem => errorItem.variableName === 'TELEGRAM_ALLOWED_USER_ID')
     );
 
-    // Case 1.4: Enabled WhatsApp with missing ALLOWED_PHONE_NUMBER fails closed
+    // Case 1.4: Whitespace-only TELEGRAM_ALLOWED_USER_ID fails validation
+    const telegramWhitespaceUserIdConfig = createBaseConfiguration({
+      enabledMessengerChannels: ['telegram'],
+      allowedPhoneNumber: '',
+      telegramBotToken: dummyToken,
+      telegramAllowedUserId: '   ',
+    });
+    const result3b = validateApplicationConfiguration(telegramWhitespaceUserIdConfig);
+    assertCondition('SEC-1.6a: Whitespace-only TELEGRAM_ALLOWED_USER_ID fails validation', result3b.isValid === false);
+    assertCondition(
+      'SEC-1.6b: Error flags missing/whitespace TELEGRAM_ALLOWED_USER_ID',
+      result3b.errors.some(errorItem => errorItem.variableName === 'TELEGRAM_ALLOWED_USER_ID' && errorItem.message.includes('not set'))
+    );
+
+    // Case 1.5: Isolated '@' symbol in TELEGRAM_ALLOWED_USER_ID fails validation (empty canonical ID)
+    const telegramAtSymbolUserIdConfig = createBaseConfiguration({
+      enabledMessengerChannels: ['telegram'],
+      allowedPhoneNumber: '',
+      telegramBotToken: dummyToken,
+      telegramAllowedUserId: '@',
+    });
+    const result3c = validateApplicationConfiguration(telegramAtSymbolUserIdConfig);
+    assertCondition('SEC-1.6c: Isolated @ in TELEGRAM_ALLOWED_USER_ID fails validation', result3c.isValid === false);
+    assertCondition(
+      'SEC-1.6d: Error specifically identifies empty or invalid canonical TELEGRAM_ALLOWED_USER_ID',
+      result3c.errors.some(errorItem => errorItem.variableName === 'TELEGRAM_ALLOWED_USER_ID' && errorItem.message.includes('empty or invalid'))
+    );
+
+    // Case 1.6: Username in TELEGRAM_ALLOWED_USER_ID fails validation (mutable identity rejected)
+    const telegramUsernameUserIdConfig = createBaseConfiguration({
+      enabledMessengerChannels: ['telegram'],
+      allowedPhoneNumber: '',
+      telegramBotToken: dummyToken,
+      telegramAllowedUserId: 'churma16',
+    });
+    const result3d = validateApplicationConfiguration(telegramUsernameUserIdConfig);
+    assertCondition('SEC-1.6e: Username in TELEGRAM_ALLOWED_USER_ID fails validation', result3d.isValid === false);
+    assertCondition(
+      'SEC-1.6f: Error explains mutable usernames are not supported',
+      result3d.errors.some(errorItem => errorItem.variableName === 'TELEGRAM_ALLOWED_USER_ID' && errorItem.message.includes('Usernames are mutable and not supported'))
+    );
+
+    // Case 1.7: Username with leading @ in TELEGRAM_ALLOWED_USER_ID fails validation
+    const telegramAtUsernameConfig = createBaseConfiguration({
+      enabledMessengerChannels: ['telegram'],
+      allowedPhoneNumber: '',
+      telegramBotToken: dummyToken,
+      telegramAllowedUserId: '@churma16',
+    });
+    const result3e = validateApplicationConfiguration(telegramAtUsernameConfig);
+    assertCondition('SEC-1.6g: @username in TELEGRAM_ALLOWED_USER_ID fails validation', result3e.isValid === false);
+
+    // Case 1.8: Alphanumeric garbage in TELEGRAM_ALLOWED_USER_ID fails validation
+    const telegramAlphanumericConfig = createBaseConfiguration({
+      enabledMessengerChannels: ['telegram'],
+      allowedPhoneNumber: '',
+      telegramBotToken: dummyToken,
+      telegramAllowedUserId: '12345abc',
+    });
+    const result3f = validateApplicationConfiguration(telegramAlphanumericConfig);
+    assertCondition('SEC-1.6h: Alphanumeric garbage in TELEGRAM_ALLOWED_USER_ID fails validation', result3f.isValid === false);
+
+    // Case 1.9: Valid numeric ID with optional leading @ passes validation
+    const telegramValidNumericWithAt = createBaseConfiguration({
+      enabledMessengerChannels: ['telegram'],
+      allowedPhoneNumber: '',
+      telegramBotToken: dummyToken,
+      telegramAllowedUserId: '@987654321',
+    });
+    const result3g = validateApplicationConfiguration(telegramValidNumericWithAt);
+    assertCondition('SEC-1.6i: Valid numeric ID with leading @ passes validation', result3g.isValid === true);
+
+    // Verify adapter compatibility: every accepted configuration produces a usable target in the adapter
+    const canonicalAdapter = new TelegramMessagingAdapter(dummyToken, telegramValidNumericWithAt.telegramAllowedUserId, dummyCallback);
+    assertCondition(
+      'SEC-1.6j: Accepted configuration produces a usable authorization target in the adapter',
+      canonicalAdapter.isAuthorizedSender('987654321') === true
+    );
+
+    // Case 1.10: Enabled WhatsApp with missing ALLOWED_PHONE_NUMBER fails closed
     const whatsAppMissingPhoneConfig = createBaseConfiguration({
       enabledMessengerChannels: ['whatsapp'],
       allowedPhoneNumber: '',
@@ -135,7 +215,7 @@ async function runTestSuite(): Promise<void> {
       result4.errors.some(errorItem => errorItem.variableName === 'ALLOWED_PHONE_NUMBER')
     );
 
-    // Case 1.5: Both channels enabled, but Telegram lacks allowlist -> validation must fail
+    // Case 1.11: Both channels enabled, but Telegram lacks allowlist -> validation must fail
     const mixedConfigWithMissingTelegramAllowlist = createBaseConfiguration({
       enabledMessengerChannels: ['whatsapp', 'telegram'],
       allowedPhoneNumber: '6281234567890',
@@ -152,7 +232,7 @@ async function runTestSuite(): Promise<void> {
       result5.errors.some(errorItem => errorItem.variableName === 'TELEGRAM_ALLOWED_USER_ID')
     );
 
-    // Case 1.6: Enabled Telegram without TELEGRAM_BOT_TOKEN fails validation
+    // Case 1.12: Enabled Telegram without TELEGRAM_BOT_TOKEN fails validation
     const telegramMissingTokenConfig = createBaseConfiguration({
       enabledMessengerChannels: ['telegram'],
       allowedPhoneNumber: '',
@@ -166,12 +246,57 @@ async function runTestSuite(): Promise<void> {
       result6.errors.some(errorItem => errorItem.variableName === 'TELEGRAM_BOT_TOKEN')
     );
 
-    // Case 1.7: No enabled messenger channels fails validation
+    // Case 1.13: Empty enabledMessengerChannels fails validation
     const noChannelsConfig = createBaseConfiguration({
       enabledMessengerChannels: [],
     });
     const result7 = validateApplicationConfiguration(noChannelsConfig);
     assertCondition('SEC-1.13: Empty enabledMessengerChannels fails validation', result7.isValid === false);
+
+    // Case 1.14: Missing AI API key for gemini provider
+    const missingGeminiKeyConfig = createBaseConfiguration({
+      aiProvider: 'gemini',
+      geminiApiKey: '',
+    });
+    const resultAi1 = validateApplicationConfiguration(missingGeminiKeyConfig);
+    assertCondition('SEC-1.14: Missing GEMINI_API_KEY fails validation', resultAi1.isValid === false);
+    assertCondition(
+      'SEC-1.15: Error flags missing GEMINI_API_KEY with hint',
+      resultAi1.errors.some(errorItem => errorItem.variableName === 'GEMINI_API_KEY' && Boolean(errorItem.hint))
+    );
+
+    // Case 1.15: Missing AI API key for non-gemini provider (e.g. openrouter)
+    const missingOtherAiKeyConfig = createBaseConfiguration({
+      aiProvider: 'openrouter',
+      aiApiKey: '',
+      geminiApiKey: '',
+    });
+    const resultAi2 = validateApplicationConfiguration(missingOtherAiKeyConfig);
+    assertCondition('SEC-1.16: Missing AI_API_KEY for non-gemini provider fails validation', resultAi2.isValid === false);
+    assertCondition(
+      'SEC-1.17: Error flags missing AI_API_KEY for openrouter',
+      resultAi2.errors.some(errorItem => errorItem.variableName === 'AI_API_KEY')
+    );
+
+    // Case 1.16: Ollama AI provider does not require an API key
+    const ollamaConfig = createBaseConfiguration({
+      aiProvider: 'ollama',
+      aiApiKey: '',
+      geminiApiKey: '',
+    });
+    const resultOllama = validateApplicationConfiguration(ollamaConfig);
+    assertCondition('SEC-1.18: Ollama AI provider passes validation without API key', resultOllama.isValid === true);
+
+    // Case 1.17: Missing WALLET_MCP_ACCESS_TOKEN fails validation
+    const missingWalletTokenConfig = createBaseConfiguration({
+      walletMcpAccessToken: '',
+    });
+    const resultWallet = validateApplicationConfiguration(missingWalletTokenConfig);
+    assertCondition('SEC-1.19: Missing WALLET_MCP_ACCESS_TOKEN fails validation', resultWallet.isValid === false);
+    assertCondition(
+      'SEC-1.20: Error flags missing WALLET_MCP_ACCESS_TOKEN with hint',
+      resultWallet.errors.some(errorItem => errorItem.variableName === 'WALLET_MCP_ACCESS_TOKEN' && Boolean(errorItem.hint))
+    );
   }
 
   // ----------------------------------------------------
@@ -259,39 +384,72 @@ async function runTestSuite(): Promise<void> {
       unauthorizedNextCalled === false
     );
 
-    // Case 2.4: Configured username allowlist allows case-insensitive username match
-    const usernameAllowlistAdapter = new TelegramMessagingAdapter(dummyToken, '@Churma16', dummyCallback);
+    // Case 2.4: Non-numeric configured string (e.g. '@Churma16' or 'churma16') fails closed in adapter
+    const nonNumericAllowlistAdapter = new TelegramMessagingAdapter(dummyToken, '@Churma16', dummyCallback);
     assertCondition(
-      'SEC-2.11: Whitelisted username matches exact case',
-      usernameAllowlistAdapter.isAuthorizedSender('12345', 'Churma16') === true
+      'SEC-2.11: Non-numeric configured allowlist rejects sender with matching username',
+      nonNumericAllowlistAdapter.isAuthorizedSender('12345', 'Churma16') === false
     );
     assertCondition(
-      'SEC-2.12: Whitelisted username matches lowercase',
-      usernameAllowlistAdapter.isAuthorizedSender('12345', 'churma16') === true
-    );
-    assertCondition(
-      'SEC-2.13: Whitelisted username matches uppercase',
-      usernameAllowlistAdapter.isAuthorizedSender('12345', 'CHURMA16') === true
-    );
-    assertCondition(
-      'SEC-2.14: Whitelisted username matches with leading @ in sender',
-      usernameAllowlistAdapter.isAuthorizedSender('12345', '@churma16') === true
-    );
-    assertCondition(
-      'SEC-2.15: Unmatched username is rejected',
-      usernameAllowlistAdapter.isAuthorizedSender('12345', 'otheruser') === false
+      'SEC-2.12: Non-numeric configured allowlist rejects arbitrary numeric ID',
+      nonNumericAllowlistAdapter.isAuthorizedSender('12345') === false
     );
 
-    let usernameNextCalled = false;
-    const usernameContext: Partial<Context> = {
-      from: { id: 99999, is_bot: false, first_name: 'Churma', username: 'churma16' },
+    let nonNumericNextCalled = false;
+    const nonNumericContext: Partial<Context> = {
+      from: { id: 12345, is_bot: false, first_name: 'Churma', username: 'Churma16' },
     };
-    await usernameAllowlistAdapter.handleInboundMiddleware(usernameContext as Context, async () => {
-      usernameNextCalled = true;
+    await nonNumericAllowlistAdapter.handleInboundMiddleware(nonNumericContext as Context, async () => {
+      nonNumericNextCalled = true;
     });
     assertCondition(
-      'SEC-2.16: Middleware invokes next() for whitelisted username sender',
-      usernameNextCalled === true
+      'SEC-2.13: Middleware blocks next() when allowlist was configured with non-numeric username',
+      nonNumericNextCalled === false
+    );
+
+    // Case 2.5: Sender with wrong numeric ID is rejected EVEN IF username matches the configured target
+    const targetUserId = '77889900';
+    const strictIdAdapter = new TelegramMessagingAdapter(dummyToken, targetUserId, dummyCallback);
+
+    assertCondition(
+      'SEC-2.14: Sender with wrong numeric ID is rejected even when username equals target ID string',
+      strictIdAdapter.isAuthorizedSender('99999999', targetUserId) === false
+    );
+    assertCondition(
+      'SEC-2.15: Sender with wrong numeric ID is rejected even when username is owner handle',
+      strictIdAdapter.isAuthorizedSender('99999999', 'owner_handle') === false
+    );
+    assertCondition(
+      'SEC-2.16: Sender with correct numeric ID is accepted regardless of matching or non-matching username',
+      strictIdAdapter.isAuthorizedSender(targetUserId, 'any_random_username') === true
+    );
+    assertCondition(
+      'SEC-2.17: Sender with correct numeric ID without username is accepted',
+      strictIdAdapter.isAuthorizedSender(targetUserId, undefined) === true
+    );
+
+    let impersonatorNextCalled = false;
+    const impersonatorContext: Partial<Context> = {
+      from: { id: 99999999, is_bot: false, first_name: 'Impersonator', username: 'owner_handle' },
+    };
+    await strictIdAdapter.handleInboundMiddleware(impersonatorContext as Context, async () => {
+      impersonatorNextCalled = true;
+    });
+    assertCondition(
+      'SEC-2.18: Middleware blocks sender with wrong numeric ID even if username matches owner handle',
+      impersonatorNextCalled === false
+    );
+
+    let legitimateOwnerNextCalled = false;
+    const legitimateOwnerContext: Partial<Context> = {
+      from: { id: Number(targetUserId), is_bot: false, first_name: 'Real Owner', username: 'different_handle' },
+    };
+    await strictIdAdapter.handleInboundMiddleware(legitimateOwnerContext as Context, async () => {
+      legitimateOwnerNextCalled = true;
+    });
+    assertCondition(
+      'SEC-2.19: Middleware invokes next() for sender with matching numeric ID even if username changed',
+      legitimateOwnerNextCalled === true
     );
   }
 
@@ -436,6 +594,63 @@ async function runTestSuite(): Promise<void> {
     assertCondition(
       'SEC-4.3: WhatsApp adapter with undefined allowlist fails closed for non-self sender',
       undefWhatsAppAdapter.isAuthorizedSender('628123456789@s.whatsapp.net', false) === false
+    );
+  }
+
+  // ----------------------------------------------------
+  // TEST GROUP 5: Application Class Configuration Validation Integration
+  // ----------------------------------------------------
+  console.log('\n[TEST GROUP 5] Application Class Configuration Validation Integration');
+  {
+    // Valid configuration instantiation and validation check
+    const validAppConfig = createBaseConfiguration({
+      enabledMessengerChannels: ['whatsapp'],
+      allowedPhoneNumber: '6281234567890',
+    });
+    const validApp = new Application(validAppConfig);
+    assertCondition('SEC-5.1: Application instantiates successfully with valid configuration', Boolean(validApp));
+
+    let validValidationThrew = false;
+    try {
+      (validApp as any).validateConfiguration();
+    } catch {
+      validValidationThrew = true;
+    }
+    assertCondition(
+      'SEC-5.2: Application.validateConfiguration succeeds without error on valid configuration',
+      validValidationThrew === false
+    );
+
+    // Invalid configuration triggers exit(1) with logged issues
+    const invalidAppConfig = createBaseConfiguration({
+      enabledMessengerChannels: ['telegram'],
+      telegramBotToken: dummyToken,
+      telegramAllowedUserId: '',
+    });
+    const invalidApp = new Application(invalidAppConfig);
+    let processExitCode: number | null = null;
+    const originalProcessExit = process.exit;
+
+    try {
+      process.exit = ((exitCode?: number) => {
+        processExitCode = exitCode ?? 0;
+        throw new Error('INTERCEPTED_PROCESS_EXIT');
+      }) as unknown as typeof process.exit;
+
+      try {
+        (invalidApp as any).validateConfiguration();
+      } catch (exitError) {
+        if ((exitError as Error).message !== 'INTERCEPTED_PROCESS_EXIT') {
+          throw exitError;
+        }
+      }
+    } finally {
+      process.exit = originalProcessExit;
+    }
+
+    assertCondition(
+      'SEC-5.3: Application.validateConfiguration exits with code 1 when configuration validation fails',
+      processExitCode === 1
     );
   }
 

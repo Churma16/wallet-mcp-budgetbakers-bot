@@ -352,17 +352,36 @@ export function validateApplicationConfiguration(
         hint: 'Generate your bot token from @BotFather in Telegram and set TELEGRAM_BOT_TOKEN in .env.',
       });
     }
-    if (!config.telegramAllowedUserId) {
+
+    const rawTelegramAllowedUserId = config.telegramAllowedUserId || '';
+    const trimmedTelegramUserId = rawTelegramAllowedUserId.trim();
+    const canonicalTelegramAllowedUserId = trimmedTelegramUserId.replace(/^@/, '');
+
+    if (!trimmedTelegramUserId) {
       validationErrorList.push({
         variableName: 'TELEGRAM_ALLOWED_USER_ID',
         message: 'Telegram is enabled in configuration but TELEGRAM_ALLOWED_USER_ID is not set.',
         hint: 'Get your Telegram user ID from @userinfobot or @raw_data_bot and set TELEGRAM_ALLOWED_USER_ID in .env.',
       });
+    } else if (!canonicalTelegramAllowedUserId) {
+      validationErrorList.push({
+        variableName: 'TELEGRAM_ALLOWED_USER_ID',
+        message: 'TELEGRAM_ALLOWED_USER_ID is empty or invalid. Configure a valid numeric Telegram user ID (e.g. 123456789).',
+        hint: 'Configure a valid numeric Telegram user ID (e.g. 123456789) without spaces or isolated symbols.',
+      });
+    } else if (!/^\d+$/.test(canonicalTelegramAllowedUserId)) {
+      validationErrorList.push({
+        variableName: 'TELEGRAM_ALLOWED_USER_ID',
+        message: `TELEGRAM_ALLOWED_USER_ID must be a numeric Telegram user ID, but got '${config.telegramAllowedUserId}'. Usernames are mutable and not supported.`,
+        hint: 'Get your immutable numeric Telegram user ID from @userinfobot or @raw_data_bot and configure only digits.',
+      });
     }
   }
 
+  const canonicalTelegramAllowedUserId = (config.telegramAllowedUserId || '').trim().replace(/^@/, '');
+  const hasValidTelegramAllowedUserId = /^\d+$/.test(canonicalTelegramAllowedUserId);
   const hasValidWhatsApp = isWhatsAppEnabled && Boolean(config.allowedPhoneNumber);
-  const hasValidTelegram = isTelegramEnabled && Boolean(config.telegramBotToken) && Boolean(config.telegramAllowedUserId);
+  const hasValidTelegram = isTelegramEnabled && Boolean(config.telegramBotToken) && hasValidTelegramAllowedUserId;
 
   if (!hasValidWhatsApp && !hasValidTelegram) {
     validationErrorList.push({

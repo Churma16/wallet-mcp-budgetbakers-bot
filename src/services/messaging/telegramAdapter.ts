@@ -34,26 +34,21 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     private readonly onUserMessageReceived: UserMessageCallback,
     safeguardConfiguration?: TelegramSafeguardConfiguration
   ) {
-    this.normalizedAllowedUserId = (this.allowedUserId || '').trim().replace(/^@/, '');
+    const rawAllowedUserId = (this.allowedUserId || '').trim().replace(/^@/, '');
+    this.normalizedAllowedUserId = /^\d+$/.test(rawAllowedUserId) ? rawAllowedUserId : '';
     this.maxStartupAttempts = safeguardConfiguration?.maxStartupAttempts ?? 5;
     this.startupRetryBaseDelayMs = safeguardConfiguration?.startupRetryBaseDelayMs ?? 2000;
     this.startupRetryMaxDelayMs = safeguardConfiguration?.startupRetryMaxDelayMs ?? 15000;
     this.maxMediaDownloadBytes = safeguardConfiguration?.maxMediaDownloadBytes ?? (10 * 1024 * 1024);
   }
 
-  public isAuthorizedSender(senderUserId: string, senderUsername?: string): boolean {
+  public isAuthorizedSender(senderUserId: string, _senderUsername?: string): boolean {
     if (!this.normalizedAllowedUserId) {
       return false;
     }
 
     const cleanSenderUserId = (senderUserId || '').trim();
-    const cleanSenderUsername = (senderUsername || '').trim().toLowerCase().replace(/^@/, '');
-    const normalizedTarget = this.normalizedAllowedUserId.toLowerCase();
-
-    const isNumericMatch = cleanSenderUserId === this.normalizedAllowedUserId;
-    const isUsernameMatch = cleanSenderUsername.length > 0 && cleanSenderUsername === normalizedTarget;
-
-    return isNumericMatch || isUsernameMatch;
+    return cleanSenderUserId === this.normalizedAllowedUserId;
   }
 
   public async handleInboundMiddleware(ctx: Context, next: () => Promise<void>): Promise<void> {
@@ -63,7 +58,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     if (!this.isAuthorizedSender(senderUserId, senderUsername)) {
       if (!this.normalizedAllowedUserId) {
         applicationLogger.security(
-          '[SECURITY] Telegram rejected message: TELEGRAM_ALLOWED_USER_ID is not configured. Fail-closed authorization active.'
+          '[SECURITY] Telegram rejected message: TELEGRAM_ALLOWED_USER_ID is not configured or invalid. Fail-closed authorization active.'
         );
       } else {
         applicationLogger.security(
