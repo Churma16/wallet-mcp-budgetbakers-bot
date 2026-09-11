@@ -534,10 +534,10 @@ export class WalletMcpClientService {
         )
       : normalizedRecords;
 
+    // Local matching verifies each upstream page, but pagination must remain based on
+    // the upstream dataset so matches on later pages never become unreachable.
     const hasExplicitTotal = typeof rawResponse?.total === 'number' && Number.isFinite(rawResponse.total);
-    const resolvedTotalCount = (hasExplicitTotal && (!queryOptions?.searchQuery || filteredRecords.length === normalizedRecords.length))
-      ? Math.max(0, rawResponse.total)
-      : (queryOptions?.searchQuery ? filteredRecords.length : undefined);
+    const resolvedTotalCount = hasExplicitTotal ? Math.max(0, rawResponse.total) : undefined;
 
     const hasExplicitNextOffset = typeof rawResponse?.nextOffset === 'number' && Number.isFinite(rawResponse.nextOffset);
     let hasMore = false;
@@ -550,8 +550,8 @@ export class WalletMcpClientService {
       hasMore = false;
       nextOffset = null;
     } else if (typeof resolvedTotalCount === 'number') {
-      hasMore = (resolvedOffset + filteredRecords.length) < resolvedTotalCount;
-      nextOffset = hasMore ? (resolvedOffset + filteredRecords.length) : null;
+      hasMore = (resolvedOffset + rawRecordArray.length) < resolvedTotalCount;
+      nextOffset = hasMore ? (resolvedOffset + rawRecordArray.length) : null;
     }
 
     const pageNumber = Math.floor(resolvedOffset / resolvedLimit) + 1;
