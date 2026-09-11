@@ -77,7 +77,32 @@ export class UserMessageHandler {
     await this.messagingGateway.sendTypingPresence(event.channel, event.chatIdentifier);
 
     try {
-      // 0. Account-clarification drafts consume free-form account replies before other routing.
+      // 0. Generic standard-pending commands (LATEST / ALL) must remain reachable even when an
+      // unrelated account-clarification draft exists. If a standard pending transaction exists,
+      // give its deterministic command router precedence for inputs such as `ya`, `confirm`,
+      // `batal`, `ya semua`, and `batal semua`.
+      if (
+        event.messageType === 'text' &&
+        event.textPayload &&
+        this.pendingTransactionManager.hasPendingTransactions()
+      ) {
+        const genericPendingIntent = detectPendingConfirmationAction(event.textPayload);
+        if (
+          genericPendingIntent &&
+          (genericPendingIntent.targetScope === 'LATEST' || genericPendingIntent.targetScope === 'ALL')
+        ) {
+          const handled = await this.pendingActionHandler.handlePendingAction(
+            event,
+            genericPendingIntent,
+            processingStartTimestamp
+          );
+          if (handled) {
+            return;
+          }
+        }
+      }
+
+      // 1. Account-clarification drafts consume free-form account replies before other routing.
       if (event.messageType === 'text' && event.textPayload) {
         const handled = await this.accountClarificationHandler.handlePendingAccountSelectionReply(
           event,
@@ -89,7 +114,7 @@ export class UserMessageHandler {
         }
       }
 
-      // 1. Pending confirmation handler (checks if user is confirming or canceling a pending ticket)
+      // 2. Pending confirmation handler (checks if user is confirming or canceling a pending ticket)
       if (event.messageType === 'text' && event.textPayload && this.pendingTransactionManager.hasPendingTransactions()) {
         const confirmationIntent = detectPendingConfirmationAction(event.textPayload);
         if (confirmationIntent) {
@@ -104,7 +129,7 @@ export class UserMessageHandler {
         }
       }
 
-      // 2. Fast-path intent classifier: Skip AI entirely for simple balance/budget/help queries (0 tokens used)
+      // 3. Fast-path intent classifier: Skip AI entirely for simple balance/budget/help queries (0 tokens used)
       if (event.messageType === 'text' && event.textPayload) {
         const fastPathAction = detectFastPathAction(event.textPayload);
         if (fastPathAction) {
@@ -119,7 +144,7 @@ export class UserMessageHandler {
         }
       }
 
-      // 3. AI Intent Extraction (Gemini / Ollama / Vision)
+      // 4. AI Intent Extraction (Gemini / Ollama / Vision)
       const cachedAccounts = this.walletCacheService.getAccounts();
       const cachedCategories = this.walletCacheService.getCategories();
 
@@ -150,7 +175,7 @@ export class UserMessageHandler {
         records: extractedIntent.records,
       });
 
-      // 4. Route actions based on AI analysis
+      // 5. Route actions based on AI analysis
       if (extractedIntent.action === 'CREATE_RECORD' && extractedIntent.records && extractedIntent.records.length > 0) {
         const validationResult = validateAndSanitizeFinancialRecords(
           extractedIntent.records,
