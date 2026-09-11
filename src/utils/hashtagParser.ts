@@ -68,8 +68,9 @@ export function extractHashtags(sourceText: string): ExtractedHashtagsResult {
   const cleanedText = cleanedWithSpaces
     .replace(/\(\s*\)|\[\s*\]|\{\s*\}/g, ' ')
     .replace(/\s+/g, ' ')
-    .replace(/\s+([,.:;?!])/g, '$1')
-    .replace(/^[,\s;:—-]+|[,\s;:—-]+$/g, '')
+    .replace(/ ([,.:;?!])/g, '$1')
+    .replace(/^[,\s;:\u2014-]+/, '')
+    .replace(/[,\s;:\u2014-]+$/, '')
     .trim();
 
   return {

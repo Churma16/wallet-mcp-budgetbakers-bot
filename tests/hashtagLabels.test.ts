@@ -176,6 +176,48 @@ const mockCategories: WalletCategoryItem[] = [
   );
   assert.equal(injectedValidation.isValid, true);
   assert.equal(injectedValidation.sanitizedRecords[0].labelIds, undefined, 'Incoming labelIds must be discarded during validation');
+
+  // Discard AI-invented hashtags in note when not present in raw source text
+  const hallucinatedNoteRecord: CreateRecordInputPayload = {
+    accountId: 'acc-bca',
+    amount: -50_000,
+    recordDate: '2026-09-11T10:00:00Z',
+    note: 'makan di Bandung #bandung',
+  };
+  const hallucinatedNoteValidation = validateAndSanitizeFinancialRecords(
+    [hallucinatedNoteRecord],
+    mockAccounts,
+    mockCategories,
+    'makan di Bandung 50rb'
+  );
+  assert.equal(hallucinatedNoteValidation.isValid, true);
+  assert.equal(hallucinatedNoteValidation.sanitizedRecords[0].note, 'makan di Bandung');
+  assert.equal(
+    hallucinatedNoteValidation.sanitizedRecords[0].labels,
+    undefined,
+    'AI note hashtags absent from raw user text must not become labels'
+  );
+
+  // Single-record input unions all explicit hashtags from sourceUserText even if AI omitted some
+  const partialAiRecord: CreateRecordInputPayload = {
+    accountId: 'acc-bca',
+    amount: -50_000,
+    recordDate: '2026-09-11T10:00:00Z',
+    note: 'makan siang',
+    labels: ['kantor'], // AI only returned 'kantor', omitted 'reimburse'
+  };
+  const unionValidation = validateAndSanitizeFinancialRecords(
+    [partialAiRecord],
+    mockAccounts,
+    mockCategories,
+    'makan siang 50rb #kantor #reimburse'
+  );
+  assert.equal(unionValidation.isValid, true);
+  assert.deepEqual(
+    unionValidation.sanitizedRecords[0].labels,
+    ['kantor', 'reimburse'],
+    'Single-record input must union all explicit hashtags from user input'
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -782,7 +824,7 @@ const mockCategories: WalletCategoryItem[] = [
   assert.ok(sentMessages[0].includes('🔖 #kantor'));
   assert.ok(sentMessages[0].includes('🔖 #liburan'));
 
-  // Scenario C: Message contains no #, but mock AI output contains labels: ['bandung'] and arbitrary labelIds
+  // Scenario C: Message contains no #, but mock AI output contains note with #bandung, labels: ['bandung'] and arbitrary labelIds
   sentMessages.length = 0;
   dispatchedMcpRecords.length = 0;
   let createLabelCallsCount = 0;
@@ -797,7 +839,7 @@ const mockCategories: WalletCategoryItem[] = [
       amount: -50000,
       recordDate: '2026-09-11T12:00:00Z',
       categoryId: 'cat-food',
-      note: 'makan di Bandung',
+      note: 'makan di Bandung #bandung',
       labels: ['bandung'],
       labelIds: ['lbl-injected-id'],
     } as any,
@@ -816,9 +858,50 @@ const mockCategories: WalletCategoryItem[] = [
   assert.equal(createLabelCallsCount, 0, 'createLabel() must never be called when input has no explicit #');
   assert.equal(dispatchedMcpRecords.length, 1);
   const outboundRecordNoHash = dispatchedMcpRecords[0][0];
+  assert.equal(outboundRecordNoHash.note, 'makan di Bandung', 'AI note hashtag must be cleaned from note');
   assert.equal(outboundRecordNoHash.labels, undefined, 'Outbound record must have no label when input has no explicit #');
   assert.equal(outboundRecordNoHash.labelIds, undefined, 'Outbound record must have no labelIds from raw AI JSON');
   assert.ok(!sentMessages[0].includes('🔖'), 'Confirmation reply must not show label icon when no explicit tag was present');
+
+  // Scenario D: Raw input has two explicit hashtags while mock AI returns only one
+  sentMessages.length = 0;
+  dispatchedMcpRecords.length = 0;
+  createLabelCallsCount = 0;
+
+  aiRecordOutput = [
+    {
+      accountId: 'acc-bca',
+      amount: -50000,
+      recordDate: '2026-09-11T12:00:00Z',
+      categoryId: 'cat-food',
+      note: 'makan siang',
+      labels: ['kantor'], // Mock AI returned only one tag, omitted #reimburse
+    },
+  ];
+
+  const partialAiEvent: IncomingUserMessageEvent = {
+    channel: 'whatsapp',
+    senderIdentifier: '+628123456789',
+    chatIdentifier: '+628123456789',
+    messageType: 'text',
+    textPayload: 'makan siang 50rb #kantor #reimburse',
+  };
+
+  await userMessageHandler.handleIncomingUserMessage(partialAiEvent);
+
+  assert.equal(dispatchedMcpRecords.length, 1);
+  const outboundPartialRecord = dispatchedMcpRecords[0][0];
+  assert.deepEqual(
+    outboundPartialRecord.labelIds,
+    ['lbl-kantor', 'lbl-reimburse'],
+    'Outbound record must attach both label IDs even if AI returned only one'
+  );
+  assert.deepEqual(
+    outboundPartialRecord.labels,
+    ['kantor', 'reimburse'],
+    'Outbound record must include all explicit user hashtags'
+  );
+  assert.ok(sentMessages[0].includes('🔖 #kantor #reimburse'), 'Confirmation reply must include all user hashtags');
 }
 
 // ---------------------------------------------------------------------------

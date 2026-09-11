@@ -144,21 +144,28 @@ export function validateAndSanitizeFinancialRecords(
     };
   }
 
-  // Deterministically derive allowed explicit hashtags from raw user text and record notes
+  // Deterministically derive allowed explicit hashtags from raw user input.
+  // Raw user input (sourceUserText) is the sole authority for explicit hashtags.
+  // Model-generated fields (like record.note) must never authorize new hashtags absent from user input.
+  const rawSourceHashtags =
+    typeof sourceUserText === 'string'
+      ? extractHashtags(sourceUserText).tags
+      : undefined;
+
   const allowedExplicitTagSet = new Set<string>();
 
-  if (sourceUserText && typeof sourceUserText === 'string') {
-    const sourceHashtags = extractHashtags(sourceUserText).tags;
-    for (const tag of sourceHashtags) {
+  if (rawSourceHashtags !== undefined) {
+    for (const tag of rawSourceHashtags) {
       allowedExplicitTagSet.add(tag.toLowerCase());
     }
-  }
-
-  for (const record of incomingRecords) {
-    if (record && record.note && typeof record.note === 'string') {
-      const noteHashtags = extractHashtags(record.note).tags;
-      for (const tag of noteHashtags) {
-        allowedExplicitTagSet.add(tag.toLowerCase());
+  } else {
+    // When sourceUserText is not provided (e.g. standalone validator tests), fall back to note hashtags
+    for (const record of incomingRecords) {
+      if (record && record.note && typeof record.note === 'string') {
+        const noteHashtags = extractHashtags(record.note).tags;
+        for (const tag of noteHashtags) {
+          allowedExplicitTagSet.add(tag.toLowerCase());
+        }
       }
     }
   }
@@ -276,8 +283,12 @@ export function validateAndSanitizeFinancialRecords(
     if (currentRecord.note) {
       const rawNoteString = String(currentRecord.note).slice(0, 500);
       const hashtagResult = extractHashtags(rawNoteString);
-      extractedTagsFromNote = hashtagResult.tags;
       cleanedNote = hashtagResult.cleanedText.length > 0 ? hashtagResult.cleanedText : undefined;
+      // AI note hashtags are cleaned from note, but only accepted as labels if they also exist
+      // in the authorized explicit hashtag set derived from raw user input
+      extractedTagsFromNote = hashtagResult.tags.filter(tag =>
+        allowedExplicitTagSet.has(tag.toLowerCase())
+      );
     }
 
     // Require explicit hashtags before accepting AI-provided labels
@@ -287,16 +298,11 @@ export function validateAndSanitizeFinancialRecords(
           .filter(tag => allowedExplicitTagSet.has(tag.toLowerCase()))
       : [];
 
-    // For single-record input without note tags, allow explicit tags from the raw message
+    // For single-record input, always union all deterministically parsed sourceUserText hashtags
+    // with validated per-record labels so omission by the model never drops user-authored hashtags
     const fallbackSourceTags: string[] = [];
-    if (
-      incomingRecords.length === 1 &&
-      extractedTagsFromNote.length === 0 &&
-      incomingLabels.length === 0 &&
-      sourceUserText
-    ) {
-      const sourceTags = extractHashtags(sourceUserText).tags;
-      fallbackSourceTags.push(...sourceTags);
+    if (incomingRecords.length === 1 && rawSourceHashtags && rawSourceHashtags.length > 0) {
+      fallbackSourceTags.push(...rawSourceHashtags);
     }
 
     const combinedLabels = deduplicateTags([
