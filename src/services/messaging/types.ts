@@ -1,4 +1,4 @@
-export type SupportedMessengerChannel = 'whatsapp' | 'telegram';
+export type SupportedMessengerChannel = 'whatsapp' | 'telegram' | 'console';
 
 export type AdapterConnectionState = 'idle' | 'connected' | 'reconnecting' | 'failed';
 

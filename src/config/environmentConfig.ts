@@ -37,7 +37,7 @@ export interface ApplicationEnvironmentConfiguration {
   whatsappSessionPath: string;
   telegramBotToken: string;
   telegramAllowedUserId: string;
-  enabledMessengerChannels: ('whatsapp' | 'telegram')[];
+  enabledMessengerChannels: ('whatsapp' | 'telegram' | 'console')[];
   logRetentionDays: number;
   emailSyncEnabled: boolean;
   emailImapHost: string;
@@ -217,11 +217,14 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
   );
 
   // Resolve enabled messenger channels
-  let enabledMessengerChannels: ('whatsapp' | 'telegram')[] = [];
+  let enabledMessengerChannels: ('whatsapp' | 'telegram' | 'console')[] = [];
   if (process.env.ENABLED_MESSENGER_CHANNELS) {
     const rawChannels = process.env.ENABLED_MESSENGER_CHANNELS.split(',')
       .map(channel => channel.trim().toLowerCase())
-      .filter((channel): channel is 'whatsapp' | 'telegram' => channel === 'whatsapp' || channel === 'telegram');
+      .filter(
+        (channel): channel is 'whatsapp' | 'telegram' | 'console' =>
+          channel === 'whatsapp' || channel === 'telegram' || channel === 'console'
+      );
     enabledMessengerChannels = Array.from(new Set(rawChannels));
   } else {
     // Auto-detect based on provided credentials
@@ -344,6 +347,7 @@ export function validateApplicationConfiguration(
 
   const isWhatsAppEnabled = config.enabledMessengerChannels.includes('whatsapp');
   const isTelegramEnabled = config.enabledMessengerChannels.includes('telegram');
+  const isConsoleEnabled = config.enabledMessengerChannels.includes('console');
 
   if (isWhatsAppEnabled && !config.allowedPhoneNumber) {
     validationErrorList.push({
@@ -391,11 +395,12 @@ export function validateApplicationConfiguration(
   const hasValidTelegramAllowedUserId = /^\d+$/.test(canonicalTelegramAllowedUserId);
   const hasValidWhatsApp = isWhatsAppEnabled && Boolean(config.allowedPhoneNumber);
   const hasValidTelegram = isTelegramEnabled && Boolean(config.telegramBotToken) && hasValidTelegramAllowedUserId;
+  const hasValidConsole = isConsoleEnabled;
 
-  if (!hasValidWhatsApp && !hasValidTelegram) {
+  if (!hasValidWhatsApp && !hasValidTelegram && !hasValidConsole) {
     validationErrorList.push({
       variableName: 'CHANNELS',
-      message: 'No messaging channels are properly configured! Configure either WhatsApp (ALLOWED_PHONE_NUMBER) or Telegram (TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_USER_ID) in .env.',
+      message: 'No messaging channels are properly configured! Configure either WhatsApp (ALLOWED_PHONE_NUMBER), Telegram (TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_USER_ID), or Console (ENABLED_MESSENGER_CHANNELS=console) in .env.',
     });
   }
 
