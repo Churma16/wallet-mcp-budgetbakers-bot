@@ -4,6 +4,8 @@ Thank you for your interest in contributing to the **AI Bookkeeper for BudgetBak
 
 Please take a few moments to review this guide before submitting your pull requests.
 
+For setup, use the [README quickstart](README.md#quickstart). Supporting guides cover [configuration](docs/configuration.md), [architecture](docs/architecture.md), and [logging, diagnostics, and release workflows](docs/development.md).
+
 ---
 
 ## Table of Contents
@@ -26,9 +28,9 @@ Please take a few moments to review this guide before submitting your pull reque
 
 ### Prerequisites
 
-- **Node.js**: Version 18.0.0 or higher
+- **Node.js**: Version 22, matching CI
 - **Package Manager**: npm (bundled with Node.js)
-- **TypeScript**: 5.x (executed seamlessly via `tsx`)
+- **TypeScript**: Installed from the repository lockfile; development scripts use `tsx`
 
 ### Local Setup
 
