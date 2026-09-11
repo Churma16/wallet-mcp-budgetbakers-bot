@@ -10,6 +10,7 @@ import {
 } from './financialAiProvider.js';
 import { extractAndParseJsonObject } from './jsonExtractionHelper.js';
 import { getApplicationTimezone } from '../../utils/humanResponseFormatter.js';
+import { getCurrentLocalDateString } from '../../utils/relativeTimeParser.js';
 import {
   buildCompactSystemInstruction,
   buildReceiptSystemInstruction,
@@ -241,18 +242,26 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
   public async processTextMessage(
     userMessageText: string,
     availableAccountList: WalletAccountItem[],
-    availableCategoryList: WalletCategoryItem[]
+    availableCategoryList: WalletCategoryItem[],
+    referenceInstant: Date = new Date()
   ): Promise<ExtractedFinancialIntent> {
-    const currentDateIso = new Date().toISOString().split('T')[0];
+    const applicationTimezone = getApplicationTimezone();
+    const currentDateIso = getCurrentLocalDateString(referenceInstant, applicationTimezone);
     const systemInstruction = buildCompactSystemInstruction(
       availableAccountList,
       availableCategoryList,
-      currentDateIso
+      currentDateIso,
+      applicationTimezone,
+      referenceInstant
     );
 
     const trimmedUserMessage = userMessageText.trim();
-    const currentTransactionTimestampIso = new Date().toISOString();
-    const promptTextWithTimestamp = buildTextMessagePrompt(trimmedUserMessage, currentTransactionTimestampIso);
+    const currentTransactionTimestampIso = referenceInstant.toISOString();
+    const promptTextWithTimestamp = buildTextMessagePrompt(
+      trimmedUserMessage,
+      currentTransactionTimestampIso,
+      applicationTimezone
+    );
 
     const messages = [
       { role: 'system', content: systemInstruction },
@@ -286,18 +295,20 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     mimeType: string,
     optionalCaption: string,
     availableAccountList: WalletAccountItem[],
-    availableCategoryList: WalletCategoryItem[]
+    availableCategoryList: WalletCategoryItem[],
+    referenceInstant: Date = new Date()
   ): Promise<ExtractedFinancialIntent> {
-    const currentDateIso = new Date().toISOString().split('T')[0];
     const applicationTimezoneIdentifier = getApplicationTimezone();
+    const currentDateIso = getCurrentLocalDateString(referenceInstant, applicationTimezoneIdentifier);
     const systemInstruction = buildReceiptSystemInstruction(
       availableAccountList,
       availableCategoryList,
       currentDateIso,
-      applicationTimezoneIdentifier
+      applicationTimezoneIdentifier,
+      referenceInstant
     );
 
-    const currentTransactionTimestampIso = new Date().toISOString();
+    const currentTransactionTimestampIso = referenceInstant.toISOString();
     const promptText = buildReceiptExtractionPrompt(optionalCaption, currentTransactionTimestampIso);
 
     const base64ImageUrl = `data:${mimeType};base64,${imageBuffer.toString('base64')}`;

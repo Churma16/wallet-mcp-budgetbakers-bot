@@ -12,6 +12,7 @@ import { extractAndParseJsonObject } from './jsonExtractionHelper.js';
 import { getActiveLanguage } from '../../i18n/index.js';
 
 import { getApplicationTimezone } from '../../utils/humanResponseFormatter.js';
+import { getCurrentLocalDateString, getTimezoneOffsetDetails } from '../../utils/relativeTimeParser.js';
 import {
   buildCompactSystemInstruction,
   buildReceiptSystemInstruction,
@@ -52,11 +53,14 @@ export class GeminiAiProvider implements FinancialAiProvider {
    */
   public getSystemInstruction(
     availableAccountList: WalletAccountItem[],
-    availableCategoryList: WalletCategoryItem[]
+    availableCategoryList: WalletCategoryItem[],
+    referenceDate: Date = new Date()
   ): string {
-    const currentDateIso = new Date().toISOString().split('T')[0];
+    const applicationTimezone = getApplicationTimezone();
+    const currentDateIso = getCurrentLocalDateString(referenceDate, applicationTimezone);
+    const timezoneOffsetDetails = getTimezoneOffsetDetails(applicationTimezone, referenceDate);
     const activeLanguage = getActiveLanguage();
-    const cacheKey = `${activeLanguage}|${currentDateIso}|${availableAccountList.map(account => account.id).join(',')}|${availableCategoryList.map(category => category.id).join(',')}`;
+    const cacheKey = `${activeLanguage}|${currentDateIso}|${applicationTimezone}|${timezoneOffsetDetails.formattedOffset}|${availableAccountList.map(account => account.id).join(',')}|${availableCategoryList.map(category => category.id).join(',')}`;
 
     if (this.systemInstructionCacheKey === cacheKey && this.cachedSystemInstruction) {
       return this.cachedSystemInstruction;
@@ -65,10 +69,16 @@ export class GeminiAiProvider implements FinancialAiProvider {
     this.cachedSystemInstruction = buildCompactSystemInstruction(
       availableAccountList,
       availableCategoryList,
-      currentDateIso
+      currentDateIso,
+      applicationTimezone,
+      referenceDate
     );
     this.systemInstructionCacheKey = cacheKey;
     return this.cachedSystemInstruction;
+  }
+
+  public getSystemInstructionCacheKey(): string {
+    return this.systemInstructionCacheKey;
   }
 
   /**
@@ -251,13 +261,23 @@ export class GeminiAiProvider implements FinancialAiProvider {
   public async processTextMessage(
     userMessageText: string,
     availableAccountList: WalletAccountItem[],
-    availableCategoryList: WalletCategoryItem[]
+    availableCategoryList: WalletCategoryItem[],
+    referenceInstant: Date = new Date()
   ): Promise<ExtractedFinancialIntent> {
-    const systemInstructionContent = this.getSystemInstruction(availableAccountList, availableCategoryList);
+    const systemInstructionContent = this.getSystemInstruction(
+      availableAccountList,
+      availableCategoryList,
+      referenceInstant
+    );
 
     const trimmedUserMessage = userMessageText.trim();
-    const currentTransactionTimestampIso = new Date().toISOString();
-    const promptTextWithTimestamp = buildTextMessagePrompt(trimmedUserMessage, currentTransactionTimestampIso);
+    const currentTransactionTimestampIso = referenceInstant.toISOString();
+    const applicationTimezone = getApplicationTimezone();
+    const promptTextWithTimestamp = buildTextMessagePrompt(
+      trimmedUserMessage,
+      currentTransactionTimestampIso,
+      applicationTimezone
+    );
 
     const generationResult = await this.executeGenerationWithFallback({
       contents: [
@@ -292,17 +312,19 @@ export class GeminiAiProvider implements FinancialAiProvider {
     mimeType: string,
     optionalCaption: string,
     availableAccountList: WalletAccountItem[],
-    availableCategoryList: WalletCategoryItem[]
+    availableCategoryList: WalletCategoryItem[],
+    referenceInstant: Date = new Date()
   ): Promise<ExtractedFinancialIntent> {
-    const currentDateIso = new Date().toISOString().split('T')[0];
     const applicationTimezoneIdentifier = getApplicationTimezone();
+    const currentDateIso = getCurrentLocalDateString(referenceInstant, applicationTimezoneIdentifier);
     const systemInstructionContent = buildReceiptSystemInstruction(
       availableAccountList,
       availableCategoryList,
       currentDateIso,
-      applicationTimezoneIdentifier
+      applicationTimezoneIdentifier,
+      referenceInstant
     );
-    const currentTransactionTimestampIso = new Date().toISOString();
+    const currentTransactionTimestampIso = referenceInstant.toISOString();
     const promptText = buildReceiptExtractionPrompt(optionalCaption, currentTransactionTimestampIso);
 
     const generationResult = await this.executeGenerationWithFallback({

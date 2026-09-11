@@ -1,6 +1,11 @@
 import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload } from '../types/walletTypes.js';
 import { getApplicationTimezone } from './humanResponseFormatter.js';
-import { getTimezoneOffsetDetails } from '../services/ai/aiPromptBuilder.js';
+import {
+  getTimezoneOffsetDetails,
+  parseRelativeTime,
+  resolveTargetLocalToUtcIso,
+  ParsedRelativeTimeResult,
+} from './relativeTimeParser.js';
 import { extractHashtags, deduplicateTags, normalizeTagName } from './hashtagParser.js';
 
 export type AccountResolutionIssueReason = 'UNRESOLVED' | 'AMBIGUOUS';
@@ -118,7 +123,9 @@ export function validateAndSanitizeFinancialRecords(
   incomingRecords: CreateRecordInputPayload[],
   availableAccountList: WalletAccountItem[],
   availableCategoryList: WalletCategoryItem[],
-  sourceUserText?: string
+  contextualUserMessage?: string,
+  referenceDate: Date = new Date(),
+  sourceUserTextForHashtags?: string
 ): FinancialRecordValidationResult {
   const validationErrors: string[] = [];
   const sanitizedRecords: CreateRecordInputPayload[] = [];
@@ -144,12 +151,19 @@ export function validateAndSanitizeFinancialRecords(
     };
   }
 
+  const applicationTimezone = getApplicationTimezone();
+
   // Deterministically derive allowed explicit hashtags from raw user input.
-  // Raw user input (sourceUserText) is the sole authority for explicit hashtags.
+  // Raw user input (sourceUserTextForHashtags or contextualUserMessage) is the sole authority for explicit hashtags.
   // Model-generated fields (like record.note) must never authorize new hashtags absent from user input.
+  const rawUserTextForHashtags =
+    typeof sourceUserTextForHashtags === 'string'
+      ? sourceUserTextForHashtags
+      : contextualUserMessage;
+
   const rawSourceHashtags =
-    typeof sourceUserText === 'string'
-      ? extractHashtags(sourceUserText).tags
+    typeof rawUserTextForHashtags === 'string'
+      ? extractHashtags(rawUserTextForHashtags).tags
       : undefined;
 
   const allowedExplicitTagSet = new Set<string>();
@@ -159,7 +173,7 @@ export function validateAndSanitizeFinancialRecords(
       allowedExplicitTagSet.add(tag.toLowerCase());
     }
   } else {
-    // When sourceUserText is not provided (e.g. standalone validator tests), fall back to note hashtags
+    // When contextualUserMessage is not provided (e.g. standalone validator tests), fall back to note hashtags
     for (const record of incomingRecords) {
       if (record && record.note && typeof record.note === 'string') {
         const noteHashtags = extractHashtags(record.note).tags;
@@ -170,7 +184,99 @@ export function validateAndSanitizeFinancialRecords(
     }
   }
 
+  const invalidRecordIndices = new Set<number>();
+
+  // Pre-normalize recordDate upfront for all records into an immutable UTC ISO string
+  // BEFORE account resolution or any validation short-circuits.
+  // This guarantees:
+  // 1. Account-clarification drafts store the finalized UTC timestamp, preventing date shifts
+  //    if the user replies after midnight.
+  // 2. Multi-record batches do not have the single contextualUserMessage applied across all records.
   for (let recordIndex = 0; recordIndex < incomingRecords.length; recordIndex++) {
+    const currentRecord = incomingRecords[recordIndex];
+
+    // For single-record inputs, prioritize contextualUserMessage (falling back to currentRecord.note).
+    // For multi-record inputs, strictly check currentRecord.note per record so records don't inherit
+    // whichever relative-time expression appears first in the contextualUserMessage.
+    let candidateTextForRelativeTime = '';
+    if (contextualUserMessage !== undefined) {
+      candidateTextForRelativeTime = incomingRecords.length === 1
+        ? (contextualUserMessage || currentRecord.note || '')
+        : (currentRecord.note || '');
+    } else if (!currentRecord.recordDate) {
+      candidateTextForRelativeTime = currentRecord.note || '';
+    }
+
+    let parsedRelativeTime: ParsedRelativeTimeResult | null = null;
+    if (candidateTextForRelativeTime) {
+      try {
+        parsedRelativeTime = parseRelativeTime(
+          candidateTextForRelativeTime,
+          referenceDate,
+          applicationTimezone
+        );
+      } catch (error) {
+        if (error instanceof RangeError) {
+          validationErrors.push(
+            `Transaksi #${recordIndex + 1}: Waktu transaksi tidak valid pada timezone ${applicationTimezone} (${error.message}).`
+          );
+          invalidRecordIndices.add(recordIndex);
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    let normalizedRecordDate = currentRecord.recordDate;
+
+    if (parsedRelativeTime) {
+      normalizedRecordDate = parsedRelativeTime.resolvedUtcIso;
+    } else if (typeof normalizedRecordDate === 'string') {
+      const trimmedDateString = normalizedRecordDate.trim();
+      // Only apply application-IANA target-date resolution to local timestamps that do not contain an offset
+      // (e.g. 2026-07-15T11:54:00 or 2026-07-15 11:54).
+      // Explicit ISO offsets (e.g. 2026-07-15T11:54:00-05:00) are treated as authoritative source information
+      // and are preserved without being overwritten.
+      const localIsoWithoutOffsetMatch = trimmedDateString.match(
+        /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?$/
+      );
+      if (localIsoWithoutOffsetMatch) {
+        const [, datePart, hourPart, minutePart] = localIsoWithoutOffsetMatch;
+        try {
+          normalizedRecordDate = resolveTargetLocalToUtcIso(
+            datePart,
+            Number.parseInt(hourPart, 10),
+            Number.parseInt(minutePart, 10),
+            applicationTimezone
+          );
+        } catch (error) {
+          if (error instanceof RangeError) {
+            validationErrors.push(
+              `Transaksi #${recordIndex + 1}: Waktu transaksi tidak valid pada timezone ${applicationTimezone} (${trimmedDateString}).`
+            );
+            invalidRecordIndices.add(recordIndex);
+            continue;
+          }
+          throw error;
+        }
+      }
+    }
+
+    const parsedDateTimestamp = Date.parse(normalizedRecordDate);
+    if (Number.isNaN(parsedDateTimestamp)) {
+      normalizedRecordDate = new Date(referenceDate).toISOString();
+    } else {
+      normalizedRecordDate = new Date(parsedDateTimestamp).toISOString();
+    }
+
+    // Mutate the incoming record upfront to preserve normalized UTC date across drafts & retries
+    currentRecord.recordDate = normalizedRecordDate;
+  }
+
+  for (let recordIndex = 0; recordIndex < incomingRecords.length; recordIndex++) {
+    if (invalidRecordIndices.has(recordIndex)) {
+      continue;
+    }
     const currentRecord = incomingRecords[recordIndex];
     const recordLabel = `Transaksi #${recordIndex + 1}`;
 
@@ -256,22 +362,11 @@ export function validateAndSanitizeFinancialRecords(
       // If still not matched, omit categoryId rather than failing the transaction with bad UUID
     }
 
-    // 4. Record Date Validation
+    // 4. Record Date Validation (already normalized into immutable UTC ISO string upfront)
     let resolvedRecordDate = currentRecord.recordDate;
-    if (typeof resolvedRecordDate === 'string') {
-      const trimmedDateString = resolvedRecordDate.trim();
-      // If date string has no timezone offset or Z indicator (e.g. 2026-09-08T11:54:00)
-      if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(trimmedDateString)) {
-        const normalizedIsoDate = trimmedDateString.replace(' ', 'T');
-        const applicationTimezone = getApplicationTimezone();
-        const timezoneOffsetDetails = getTimezoneOffsetDetails(applicationTimezone);
-        resolvedRecordDate = `${normalizedIsoDate}${timezoneOffsetDetails.formattedOffset}`;
-      }
-    }
-
     const parsedDateTimestamp = Date.parse(resolvedRecordDate);
     if (Number.isNaN(parsedDateTimestamp)) {
-      resolvedRecordDate = new Date().toISOString();
+      resolvedRecordDate = new Date(referenceDate).toISOString();
     } else {
       resolvedRecordDate = new Date(parsedDateTimestamp).toISOString();
     }

@@ -41,7 +41,8 @@ export class AccountClarificationHandler {
     originalRecords: CreateRecordInputPayload[],
     accountResolutionIssues: AccountResolutionIssue[],
     availableAccounts: WalletAccountItem[],
-    availableCategories: WalletCategoryItem[]
+    availableCategories: WalletCategoryItem[],
+    requestReferenceInstant: Date = new Date()
   ): Promise<boolean> {
     const firstIssue = this.getFirstAccountResolutionIssue(accountResolutionIssues);
     if (!firstIssue || !originalRecords[firstIssue.recordIndex]) {
@@ -63,6 +64,7 @@ export class AccountClarificationHandler {
       accountHint: firstIssue.accountHint,
       candidateAccounts,
       sourceUserText: event.textPayload,
+      sourceReferenceInstant: requestReferenceInstant,
     });
 
     applicationLogger.info(
@@ -229,10 +231,14 @@ export class AccountClarificationHandler {
 
     const availableAccounts = this.walletCacheService.getAccounts();
     const availableCategories = this.walletCacheService.getCategories();
+    const referenceInstantForClarification =
+      claimedDraft.sourceReferenceInstant ?? claimedDraft.createdAt;
     const validationResult = validateAndSanitizeFinancialRecords(
       updatedRecords,
       availableAccounts,
       availableCategories,
+      undefined,
+      referenceInstantForClarification,
       claimedDraft.sourceUserText
     );
 

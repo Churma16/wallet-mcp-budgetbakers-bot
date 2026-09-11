@@ -41,6 +41,7 @@ const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
   { filePath: 'tests/promptInjectionDefense.test.ts', description: 'Prompt trust boundaries for email-derived Gate 1 fields (Issue #76)' },
   { filePath: 'tests/receiptOcrPrompt.test.ts', description: 'Receipt vision OCR system instructions, timezone offset & QRIS rules' },
   { filePath: 'tests/recordValidator.test.ts', description: 'Deterministic account resolution & fail-closed ambiguity handling (Issue #73)' },
+  { filePath: 'tests/relativeTimeExpressions.test.ts', description: 'Indonesian and English natural language relative time expressions & timezone conversion (Issue #4)' },
   { filePath: 'tests/responseDictionary.test.ts', description: 'Multi-language dictionary resolution & missing token fallbacks' },
   { filePath: 'tests/telegramSafeguards.test.ts', description: 'Telegram rate limiting & unauthorized user whitelist gates' },
   { filePath: 'tests/whatsappSafeguards.test.ts', description: 'WhatsApp exponential backoff, circuit breaker & ban safeguards' },
