@@ -20,7 +20,10 @@ export class ConsoleMessagingAdapter implements MessagingAdapter {
   public readonly channelName: SupportedMessengerChannel = 'console';
   private readlineInterface: readline.Interface | null = null;
   private isRunning: boolean = false;
-  private isProcessingMessage: boolean = false;
+  private isShuttingDown: boolean = false;
+
+  private readonly pendingTaskQueue: Array<() => Promise<void>> = [];
+  private currentTaskPromise: Promise<void> | null = null;
 
   private readonly inputStream: NodeJS.ReadableStream;
   private readonly outputStream: NodeJS.WritableStream;
@@ -53,6 +56,37 @@ export class ConsoleMessagingAdapter implements MessagingAdapter {
     return this.chatIdentifier;
   }
 
+  public getPendingTaskCount(): number {
+    return this.pendingTaskQueue.length + (this.currentTaskPromise !== null ? 1 : 0);
+  }
+
+  private processNextQueueItem(): void {
+    if (this.currentTaskPromise !== null || this.pendingTaskQueue.length === 0) {
+      if (
+        this.currentTaskPromise === null &&
+        this.pendingTaskQueue.length === 0 &&
+        this.isRunning &&
+        !this.isShuttingDown &&
+        this.readlineInterface
+      ) {
+        this.readlineInterface.prompt();
+      }
+      return;
+    }
+
+    const nextTask = this.pendingTaskQueue.shift()!;
+    this.currentTaskPromise = (async () => {
+      try {
+        await nextTask();
+      } catch (taskExecutionError: unknown) {
+        applicationLogger.error(`[ERROR] Unhandled error in console task queue: ${taskExecutionError}`);
+      } finally {
+        this.currentTaskPromise = null;
+        this.processNextQueueItem();
+      }
+    })();
+  }
+
   public async startConnection(): Promise<void> {
     if (this.isRunning) {
       await this.stopConnection();
@@ -65,80 +99,114 @@ export class ConsoleMessagingAdapter implements MessagingAdapter {
     });
 
     this.isRunning = true;
+    this.isShuttingDown = false;
+    this.pendingTaskQueue.length = 0;
+    this.currentTaskPromise = null;
 
     this.outputStream.write(
       '\n[INFO] Console messaging adapter active. Type your message and press Enter (type \'exit\' or \'quit\' to exit).\n\n'
     );
 
-    this.readlineInterface.on('line', async (rawLine: string) => {
+    this.readlineInterface.on('line', (rawLine: string) => {
+      if (this.isShuttingDown) {
+        return;
+      }
+
       const trimmedLine = rawLine.trim();
 
       if (!trimmedLine) {
-        if (this.isRunning && this.readlineInterface) {
+        if (
+          this.isRunning &&
+          !this.isShuttingDown &&
+          this.readlineInterface &&
+          this.currentTaskPromise === null &&
+          this.pendingTaskQueue.length === 0
+        ) {
           this.readlineInterface.prompt();
         }
         return;
       }
 
       if (trimmedLine.toLowerCase() === 'exit' || trimmedLine.toLowerCase() === 'quit') {
-        this.outputStream.write('\n[INFO] Exiting console session...\n');
-        await this.stopConnection();
-        if (this.onExitRequested) {
-          await this.onExitRequested();
+        this.isShuttingDown = true;
+        if (this.readlineInterface) {
+          this.readlineInterface.pause();
         }
+
+        this.pendingTaskQueue.push(async () => {
+          this.outputStream.write('\n[INFO] Exiting console session...\n');
+          await this.performInternalShutdown();
+          if (this.onExitRequested) {
+            await this.onExitRequested();
+          }
+        });
+        this.processNextQueueItem();
         return;
       }
 
-      this.isProcessingMessage = true;
-      try {
-        await this.onUserMessageReceived({
-          channel: 'console',
-          senderIdentifier: this.senderIdentifier,
-          chatIdentifier: this.chatIdentifier,
-          messageType: 'text',
-          textPayload: trimmedLine,
-        });
-      } catch (messageProcessingError: unknown) {
-        const errorDetail =
-          messageProcessingError instanceof Error
-            ? messageProcessingError.message
-            : String(messageProcessingError);
-        applicationLogger.error(`[ERROR] Failed to process console message: ${errorDetail}`);
-        this.outputStream.write(
-          `\n[ERROR] An error occurred while processing your message: ${errorDetail}\n\n`
-        );
-      } finally {
-        this.isProcessingMessage = false;
-        if (this.isRunning && this.readlineInterface) {
-          this.readlineInterface.prompt();
+      this.pendingTaskQueue.push(async () => {
+        try {
+          await this.onUserMessageReceived({
+            channel: 'console',
+            senderIdentifier: this.senderIdentifier,
+            chatIdentifier: this.chatIdentifier,
+            messageType: 'text',
+            textPayload: trimmedLine,
+          });
+        } catch (messageProcessingError: unknown) {
+          const errorDetail =
+            messageProcessingError instanceof Error
+              ? messageProcessingError.message
+              : String(messageProcessingError);
+          applicationLogger.error(`[ERROR] Failed to process console message: ${errorDetail}`);
+          this.outputStream.write(
+            `\n[ERROR] An error occurred while processing your message: ${errorDetail}\n\n`
+          );
         }
-      }
+      });
+      this.processNextQueueItem();
     });
 
     this.readlineInterface.on('close', () => {
-      if (this.isRunning) {
-        this.isRunning = false;
-        if (this.onExitRequested) {
-          void this.onExitRequested();
-        }
+      if (this.isShuttingDown) {
+        return;
       }
+      this.isShuttingDown = true;
+
+      this.pendingTaskQueue.push(async () => {
+        await this.performInternalShutdown();
+        if (this.onExitRequested) {
+          await this.onExitRequested();
+        }
+      });
+      this.processNextQueueItem();
     });
 
     this.readlineInterface.on('SIGINT', () => {
-      this.outputStream.write('\n[INFO] Console session interrupted.\n');
-      void this.stopConnection().then(async () => {
+      if (this.isShuttingDown) {
+        return;
+      }
+      this.isShuttingDown = true;
+      this.outputStream.write('\n[INFO] Console session interrupted. Waiting for in-flight tasks to finish...\n');
+      if (this.readlineInterface) {
+        this.readlineInterface.pause();
+      }
+
+      this.pendingTaskQueue.push(async () => {
+        await this.performInternalShutdown();
         if (this.onExitRequested) {
           await this.onExitRequested();
         } else {
           process.exit(0);
         }
       });
+      this.processNextQueueItem();
     });
 
     this.readlineInterface.prompt();
   }
 
-  public async stopConnection(): Promise<void> {
+  private async performInternalShutdown(): Promise<void> {
     this.isRunning = false;
     if (this.readlineInterface) {
       this.readlineInterface.removeAllListeners();
@@ -147,9 +215,37 @@ export class ConsoleMessagingAdapter implements MessagingAdapter {
     }
   }
 
+  public async stopConnection(): Promise<void> {
+    if (!this.isRunning && !this.readlineInterface) {
+      return;
+    }
+
+    this.isShuttingDown = true;
+    if (this.readlineInterface) {
+      this.readlineInterface.pause();
+    }
+
+    // Drain all remaining tasks in the queue before terminating
+    while (this.currentTaskPromise !== null || this.pendingTaskQueue.length > 0) {
+      if (this.currentTaskPromise !== null) {
+        await this.currentTaskPromise;
+      } else {
+        this.processNextQueueItem();
+      }
+    }
+
+    await this.performInternalShutdown();
+  }
+
   public async sendTextMessage(_targetChatIdentifier: string, messageText: string): Promise<void> {
     this.outputStream.write(`\n${messageText}\n\n`);
-    if (this.isRunning && this.readlineInterface && !this.isProcessingMessage) {
+    if (
+      this.isRunning &&
+      !this.isShuttingDown &&
+      this.readlineInterface &&
+      this.currentTaskPromise === null &&
+      this.pendingTaskQueue.length === 0
+    ) {
       this.readlineInterface.prompt();
     }
   }

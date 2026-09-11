@@ -1,4 +1,6 @@
+import assert from 'node:assert';
 import { PassThrough } from 'node:stream';
+import test from 'node:test';
 import { ConsoleMessagingAdapter } from '../src/services/messaging/consoleAdapter.js';
 import { MessagingGatewayService } from '../src/services/messaging/messagingGatewayService.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/types.js';
@@ -6,29 +8,6 @@ import {
   validateApplicationConfiguration,
   ApplicationEnvironmentConfiguration,
 } from '../src/config/environmentConfig.js';
-
-interface AssertionStatistics {
-  totalCount: number;
-  passedCount: number;
-  failedCount: number;
-}
-
-const testStatistics: AssertionStatistics = {
-  totalCount: 0,
-  passedCount: 0,
-  failedCount: 0,
-};
-
-function assertCondition(testCaseIdentifier: string, conditionMet: boolean, failureDetail?: string): void {
-  testStatistics.totalCount++;
-  if (conditionMet) {
-    testStatistics.passedCount++;
-    console.log(`  [PASS] ${testCaseIdentifier}`);
-  } else {
-    testStatistics.failedCount++;
-    console.error(`  [FAIL] ${testCaseIdentifier}${failureDetail ? ` -> ${failureDetail}` : ''}`);
-  }
-}
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, milliseconds));
@@ -78,325 +57,413 @@ function createBaseConfiguration(
   };
 }
 
-async function runTestSuite(): Promise<void> {
-  console.log('====================================================');
-  console.log('[INFO] Running Console Messaging Adapter Test Suite (Issue #16)');
-  console.log('====================================================\n');
+// ---------------------------------------------------------------------------
+// TEST GROUP 1: Adapter Initialization and Defaults
+// ---------------------------------------------------------------------------
+test('CMA-1: Adapter Initialization & Defaults', () => {
+  const dummyCallback = async (_event: IncomingUserMessageEvent): Promise<void> => {};
+  const adapter = new ConsoleMessagingAdapter(dummyCallback);
 
-  // ----------------------------------------------------
-  // TEST GROUP 1: Adapter Initialization and Defaults
-  // ----------------------------------------------------
-  console.log('[TEST GROUP 1] Adapter Initialization & Defaults');
-  {
-    const dummyCallback = async (_event: IncomingUserMessageEvent): Promise<void> => {};
-    const adapter = new ConsoleMessagingAdapter(dummyCallback);
+  assert.strictEqual(adapter.channelName, 'console');
+  assert.strictEqual(adapter.getConnectionState(), 'idle');
+  assert.strictEqual(adapter.getSenderIdentifier(), 'console_user');
+  assert.strictEqual(adapter.getChatIdentifier(), 'console');
 
-    assertCondition('CMA-1.1: Channel name is "console"', adapter.channelName === 'console');
-    assertCondition('CMA-1.2: Initial connection state is "idle"', adapter.getConnectionState() === 'idle');
-    assertCondition('CMA-1.3: Default senderIdentifier is "console_user"', adapter.getSenderIdentifier() === 'console_user');
-    assertCondition('CMA-1.4: Default chatIdentifier is "console"', adapter.getChatIdentifier() === 'console');
+  const customAdapter = new ConsoleMessagingAdapter(dummyCallback, {
+    senderIdentifier: 'custom_admin',
+    chatIdentifier: 'custom_terminal',
+    promptPrefix: 'CLI> ',
+  });
+  assert.strictEqual(customAdapter.getSenderIdentifier(), 'custom_admin');
+  assert.strictEqual(customAdapter.getChatIdentifier(), 'custom_terminal');
+});
 
-    const customAdapter = new ConsoleMessagingAdapter(dummyCallback, {
-      senderIdentifier: 'custom_admin',
-      chatIdentifier: 'custom_terminal',
-      promptPrefix: 'CLI> ',
-    });
-    assertCondition('CMA-1.5: Custom senderIdentifier is respected', customAdapter.getSenderIdentifier() === 'custom_admin');
-    assertCondition('CMA-1.6: Custom chatIdentifier is respected', customAdapter.getChatIdentifier() === 'custom_terminal');
+// ---------------------------------------------------------------------------
+// TEST GROUP 2: Lifecycle (startConnection & stopConnection)
+// ---------------------------------------------------------------------------
+test('CMA-2: Adapter Lifecycle', async () => {
+  const inputStream = new PassThrough();
+  const outputStream = new PassThrough();
+  let capturedOutput = '';
+  outputStream.on('data', chunk => {
+    capturedOutput += chunk.toString();
+  });
+
+  const dummyCallback = async (_event: IncomingUserMessageEvent): Promise<void> => {};
+  const adapter = new ConsoleMessagingAdapter(dummyCallback, {
+    inputStream,
+    outputStream,
+  });
+
+  assert.strictEqual(adapter.getConnectionState(), 'idle');
+
+  await adapter.startConnection();
+  assert.strictEqual(adapter.getConnectionState(), 'connected');
+  assert.ok(capturedOutput.includes('Console messaging adapter active'));
+
+  await adapter.stopConnection();
+  assert.strictEqual(adapter.getConnectionState(), 'idle');
+});
+
+// ---------------------------------------------------------------------------
+// TEST GROUP 3: Message Ingestion & Event Dispatching
+// ---------------------------------------------------------------------------
+test('CMA-3: Inbound Message Processing', async () => {
+  const inputStream = new PassThrough();
+  const outputStream = new PassThrough();
+  const receivedEvents: IncomingUserMessageEvent[] = [];
+
+  const onUserMessageReceived = async (event: IncomingUserMessageEvent): Promise<void> => {
+    receivedEvents.push(event);
+  };
+
+  const adapter = new ConsoleMessagingAdapter(onUserMessageReceived, {
+    inputStream,
+    outputStream,
+  });
+
+  await adapter.startConnection();
+
+  // Send valid input line
+  inputStream.write('beli kopi starbucks 50rb\n');
+  await delay(50);
+
+  assert.strictEqual(receivedEvents.length, 1);
+  assert.strictEqual(receivedEvents[0]?.channel, 'console');
+  assert.strictEqual(receivedEvents[0]?.senderIdentifier, 'console_user');
+  assert.strictEqual(receivedEvents[0]?.chatIdentifier, 'console');
+  assert.strictEqual(receivedEvents[0]?.messageType, 'text');
+  assert.strictEqual(receivedEvents[0]?.textPayload, 'beli kopi starbucks 50rb');
+
+  // Empty and whitespace lines should be ignored
+  inputStream.write('\n');
+  inputStream.write('   \t  \n');
+  await delay(50);
+  assert.strictEqual(receivedEvents.length, 1);
+
+  // Send another line with surrounding whitespace
+  inputStream.write('   cek saldo   \n');
+  await delay(50);
+  assert.strictEqual(receivedEvents.length, 2);
+  assert.strictEqual(receivedEvents[1]?.textPayload, 'cek saldo');
+
+  await adapter.stopConnection();
+});
+
+// ---------------------------------------------------------------------------
+// TEST GROUP 4: Outbound Messaging & Presence
+// ---------------------------------------------------------------------------
+test('CMA-4: Outbound Messaging & Presence', async () => {
+  const inputStream = new PassThrough();
+  const outputStream = new PassThrough();
+  let capturedOutput = '';
+  outputStream.on('data', chunk => {
+    capturedOutput += chunk.toString();
+  });
+
+  const dummyCallback = async (_event: IncomingUserMessageEvent): Promise<void> => {};
+  const adapter = new ConsoleMessagingAdapter(dummyCallback, {
+    inputStream,
+    outputStream,
+  });
+
+  await adapter.startConnection();
+  capturedOutput = '';
+
+  await adapter.sendTextMessage('console', 'Transaksi sebesar Rp 50.000 berhasil dicatat.');
+  assert.ok(capturedOutput.includes('Transaksi sebesar Rp 50.000 berhasil dicatat.'));
+
+  capturedOutput = '';
+  await adapter.sendBroadcastNotification('Pengingat sinkronisasi email berhasil.');
+  assert.ok(capturedOutput.includes('Pengingat sinkronisasi email berhasil.'));
+
+  // Typing presence methods should execute cleanly without throwing
+  let presenceFailed = false;
+  try {
+    await adapter.sendTypingPresence('console');
+    await adapter.clearTypingPresence('console');
+  } catch {
+    presenceFailed = true;
   }
+  assert.strictEqual(presenceFailed, false);
 
-  // ----------------------------------------------------
-  // TEST GROUP 2: Lifecycle (startConnection & stopConnection)
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 2] Adapter Lifecycle');
-  {
-    const inputStream = new PassThrough();
-    const outputStream = new PassThrough();
-    let capturedOutput = '';
-    outputStream.on('data', chunk => {
-      capturedOutput += chunk.toString();
+  await adapter.stopConnection();
+});
+
+// ---------------------------------------------------------------------------
+// TEST GROUP 5: Interactive Exit Commands & Stream Termination
+// ---------------------------------------------------------------------------
+test('CMA-5: Interactive Exit Commands & Stream Termination', async () => {
+  const inputStream = new PassThrough();
+  const outputStream = new PassThrough();
+  let exitCallbackCalled = false;
+
+  const dummyCallback = async (_event: IncomingUserMessageEvent): Promise<void> => {};
+  const adapter = new ConsoleMessagingAdapter(dummyCallback, {
+    inputStream,
+    outputStream,
+    onExitRequested: () => {
+      exitCallbackCalled = true;
+    },
+  });
+
+  await adapter.startConnection();
+
+  // Type 'exit'
+  inputStream.write('exit\n');
+  await delay(50);
+
+  assert.strictEqual(exitCallbackCalled, true);
+  assert.strictEqual(adapter.getConnectionState(), 'idle');
+
+  // Test with 'quit' on a second instance
+  const quitInputStream = new PassThrough();
+  const quitOutputStream = new PassThrough();
+  let quitCallbackCalled = false;
+
+  const quitAdapter = new ConsoleMessagingAdapter(dummyCallback, {
+    inputStream: quitInputStream,
+    outputStream: quitOutputStream,
+    onExitRequested: () => {
+      quitCallbackCalled = true;
+    },
+  });
+
+  await quitAdapter.startConnection();
+  quitInputStream.write('QUIT\n');
+  await delay(50);
+
+  assert.strictEqual(quitCallbackCalled, true);
+  assert.strictEqual(quitAdapter.getConnectionState(), 'idle');
+
+  // Test stream EOF/close
+  const closeInputStream = new PassThrough();
+  const closeOutputStream = new PassThrough();
+  let closeCallbackCalled = false;
+
+  const closeAdapter = new ConsoleMessagingAdapter(dummyCallback, {
+    inputStream: closeInputStream,
+    outputStream: closeOutputStream,
+    onExitRequested: () => {
+      closeCallbackCalled = true;
+    },
+  });
+
+  await closeAdapter.startConnection();
+  closeInputStream.end();
+  await delay(50);
+
+  assert.strictEqual(closeCallbackCalled, true);
+  assert.strictEqual(closeAdapter.getConnectionState(), 'idle');
+});
+
+// ---------------------------------------------------------------------------
+// TEST GROUP 6: MessagingGatewayService Integration
+// ---------------------------------------------------------------------------
+test('CMA-6: MessagingGatewayService Integration', async () => {
+  const gateway = new MessagingGatewayService();
+  const inputStream = new PassThrough();
+  const outputStream = new PassThrough();
+  let capturedOutput = '';
+  outputStream.on('data', chunk => {
+    capturedOutput += chunk.toString();
+  });
+
+  const dummyCallback = async (_event: IncomingUserMessageEvent): Promise<void> => {};
+  const adapter = new ConsoleMessagingAdapter(dummyCallback, {
+    inputStream,
+    outputStream,
+  });
+
+  gateway.registerAdapter(adapter);
+
+  assert.ok(gateway.getActiveChannels().includes('console'));
+  assert.strictEqual(gateway.getAdapterState('console'), 'idle');
+
+  await gateway.startAll();
+  assert.strictEqual(gateway.isChannelConnected('console'), true);
+  assert.ok(gateway.getConnectedChannels().includes('console'));
+
+  capturedOutput = '';
+  await gateway.sendMessage('console', 'console', 'Pesan lewat gateway.');
+  assert.ok(capturedOutput.includes('Pesan lewat gateway.'));
+
+  capturedOutput = '';
+  await gateway.broadcastNotification('Notifikasi broadcast lewat gateway.');
+  assert.ok(capturedOutput.includes('Notifikasi broadcast lewat gateway.'));
+
+  await gateway.stopAll();
+  assert.strictEqual(gateway.getAdapterState('console'), 'idle');
+  assert.strictEqual(adapter.getConnectionState(), 'idle');
+});
+
+// ---------------------------------------------------------------------------
+// TEST GROUP 7: Configuration & Startup Validation (Issue #16 AC)
+// ---------------------------------------------------------------------------
+test('CMA-7: Configuration & Startup Validation (Issue #16 AC)', () => {
+  // 7.1 Console-only mode without WhatsApp or Telegram credentials
+  const consoleOnlyConfig = createBaseConfiguration({
+    enabledMessengerChannels: ['console'],
+    allowedPhoneNumber: '',
+    telegramBotToken: '',
+    telegramAllowedUserId: '',
+  });
+
+  const validationResult = validateApplicationConfiguration(consoleOnlyConfig);
+  assert.strictEqual(validationResult.isValid, true);
+  assert.strictEqual(validationResult.errors.length, 0);
+
+  // 7.2 No channels enabled -> must fail validation
+  const noChannelsConfig = createBaseConfiguration({
+    enabledMessengerChannels: [],
+  });
+  const noChannelsResult = validateApplicationConfiguration(noChannelsConfig);
+  assert.strictEqual(noChannelsResult.isValid, false);
+  const hasChannelsError = noChannelsResult.errors.some(error => error.variableName === 'ENABLED_MESSENGER_CHANNELS');
+  assert.strictEqual(hasChannelsError, true);
+
+  // 7.3 WhatsApp enabled without phone number, but console enabled
+  const mixedConfig = createBaseConfiguration({
+    enabledMessengerChannels: ['whatsapp', 'console'],
+    allowedPhoneNumber: '',
+  });
+  const mixedResult = validateApplicationConfiguration(mixedConfig);
+  assert.strictEqual(mixedResult.isValid, false);
+  const hasPhoneError = mixedResult.errors.some(error => error.variableName === 'ALLOWED_PHONE_NUMBER');
+  assert.strictEqual(hasPhoneError, true);
+  const hasAllChannelsError = mixedResult.errors.some(error => error.variableName === 'CHANNELS');
+  assert.strictEqual(hasAllChannelsError, false);
+});
+
+// ---------------------------------------------------------------------------
+// TEST GROUP 8: Inbound Serialization & Drain Before Shutdown (PR #104 Review Finding)
+// ---------------------------------------------------------------------------
+test('CMA-8: Message Serialization & Draining on Exit/Shutdown', async () => {
+  // 8.1 Sequential Non-Overlapping Execution of Multiple Pasted Lines
+  const inputStream = new PassThrough();
+  const outputStream = new PassThrough();
+
+  let activeCallbackCount = 0;
+  let maxConcurrentCallbacks = 0;
+  const executionOrder: string[] = [];
+
+  const onUserMessageReceived = async (event: IncomingUserMessageEvent): Promise<void> => {
+    activeCallbackCount++;
+    maxConcurrentCallbacks = Math.max(maxConcurrentCallbacks, activeCallbackCount);
+
+    // Simulate async AI/MCP processing duration
+    await delay(60);
+
+    executionOrder.push(event.textPayload || '');
+    activeCallbackCount--;
+  };
+
+  const adapter = new ConsoleMessagingAdapter(onUserMessageReceived, {
+    inputStream,
+    outputStream,
+  });
+
+  await adapter.startConnection();
+
+  // Send two lines in rapid succession (simulating pasting multiple lines)
+  inputStream.write('line_1_beli_makan\n');
+  inputStream.write('line_2_beli_minum\n');
+
+  // Allow both tasks to completely drain
+  await delay(180);
+
+  assert.strictEqual(maxConcurrentCallbacks, 1, 'Callbacks must never overlap concurrently');
+  assert.deepStrictEqual(executionOrder, ['line_1_beli_makan', 'line_2_beli_minum']);
+
+  await adapter.stopConnection();
+
+  // 8.2 Deliberately Blocked Callback Followed Immediately By 'exit'
+  const blockedInputStream = new PassThrough();
+  const blockedOutputStream = new PassThrough();
+
+  let resolveBlockedCallback: (() => void) | null = null;
+  let firstCallbackStarted = false;
+  let firstCallbackCompleted = false;
+  let exitRequested = false;
+
+  const onBlockedMessageReceived = async (_event: IncomingUserMessageEvent): Promise<void> => {
+    firstCallbackStarted = true;
+    await new Promise<void>(resolve => {
+      resolveBlockedCallback = resolve;
     });
+    firstCallbackCompleted = true;
+  };
 
-    const dummyCallback = async (_event: IncomingUserMessageEvent): Promise<void> => {};
-    const adapter = new ConsoleMessagingAdapter(dummyCallback, {
-      inputStream,
-      outputStream,
+  const drainAdapter = new ConsoleMessagingAdapter(onBlockedMessageReceived, {
+    inputStream: blockedInputStream,
+    outputStream: blockedOutputStream,
+    onExitRequested: () => {
+      exitRequested = true;
+    },
+  });
+
+  await drainAdapter.startConnection();
+
+  // Send normal message followed immediately by 'exit'
+  blockedInputStream.write('catat_pengeluaran_penting\n');
+  await delay(30);
+
+  assert.strictEqual(firstCallbackStarted, true, 'First callback should be active and blocked');
+
+  // Send 'exit' while callback is still blocked
+  blockedInputStream.write('exit\n');
+  await delay(50);
+
+  // onExitRequested must NOT be called while the first callback is still in progress
+  assert.strictEqual(exitRequested, false, 'onExitRequested must not be called while in-flight task is unresolved');
+  assert.strictEqual(firstCallbackCompleted, false, 'First callback is still in-flight');
+
+  // Now resolve the blocked callback
+  resolveBlockedCallback!();
+  await delay(50);
+
+  // Both should now be finished cleanly in order
+  assert.strictEqual(firstCallbackCompleted, true, 'First callback finished cleanly');
+  assert.strictEqual(exitRequested, true, 'onExitRequested called only after in-flight callback resolved');
+  assert.strictEqual(drainAdapter.getConnectionState(), 'idle', 'Adapter state is idle after exit drain');
+
+  // 8.3 External stopConnection() drains currently in-flight work before completing
+  const stopInputStream = new PassThrough();
+  const stopOutputStream = new PassThrough();
+
+  let resolveStopCallback: (() => void) | null = null;
+  let stopTaskCompleted = false;
+
+  const onStopBlockedMessage = async (_event: IncomingUserMessageEvent): Promise<void> => {
+    await new Promise<void>(resolve => {
+      resolveStopCallback = resolve;
     });
+    stopTaskCompleted = true;
+  };
 
-    assertCondition('CMA-2.1: Before start, state is "idle"', adapter.getConnectionState() === 'idle');
+  const externalStopAdapter = new ConsoleMessagingAdapter(onStopBlockedMessage, {
+    inputStream: stopInputStream,
+    outputStream: stopOutputStream,
+  });
 
-    await adapter.startConnection();
-    assertCondition('CMA-2.2: After start, state is "connected"', adapter.getConnectionState() === 'connected');
-    assertCondition(
-      'CMA-2.3: Start banner is written to output',
-      capturedOutput.includes('Console messaging adapter active')
-    );
+  await externalStopAdapter.startConnection();
+  stopInputStream.write('long_running_financial_op\n');
+  await delay(30);
 
-    await adapter.stopConnection();
-    assertCondition('CMA-2.4: After stop, state returns to "idle"', adapter.getConnectionState() === 'idle');
-  }
+  // Trigger stopConnection while operation is pending
+  let stopConnectionFinished = false;
+  const stopPromise = externalStopAdapter.stopConnection().then(() => {
+    stopConnectionFinished = true;
+  });
 
-  // ----------------------------------------------------
-  // TEST GROUP 3: Message Ingestion & Event Dispatching
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 3] Inbound Message Processing');
-  {
-    const inputStream = new PassThrough();
-    const outputStream = new PassThrough();
-    const receivedEvents: IncomingUserMessageEvent[] = [];
+  await delay(50);
+  assert.strictEqual(stopConnectionFinished, false, 'stopConnection must wait for in-flight operation to finish');
 
-    const onUserMessageReceived = async (event: IncomingUserMessageEvent): Promise<void> => {
-      receivedEvents.push(event);
-    };
+  // Release the pending operation
+  resolveStopCallback!();
+  await stopPromise;
 
-    const adapter = new ConsoleMessagingAdapter(onUserMessageReceived, {
-      inputStream,
-      outputStream,
-    });
-
-    await adapter.startConnection();
-
-    // Send valid input line
-    inputStream.write('beli kopi starbucks 50rb\n');
-    await delay(50);
-
-    assertCondition('CMA-3.1: Exactly 1 event received', receivedEvents.length === 1);
-    assertCondition('CMA-3.2: Event channel is "console"', receivedEvents[0]?.channel === 'console');
-    assertCondition('CMA-3.3: Event senderIdentifier is "console_user"', receivedEvents[0]?.senderIdentifier === 'console_user');
-    assertCondition('CMA-3.4: Event chatIdentifier is "console"', receivedEvents[0]?.chatIdentifier === 'console');
-    assertCondition('CMA-3.5: Event messageType is "text"', receivedEvents[0]?.messageType === 'text');
-    assertCondition(
-      'CMA-3.6: Event textPayload matches input text',
-      receivedEvents[0]?.textPayload === 'beli kopi starbucks 50rb'
-    );
-
-    // Empty and whitespace lines should be ignored
-    inputStream.write('\n');
-    inputStream.write('   \t  \n');
-    await delay(50);
-    assertCondition('CMA-3.7: Blank lines are ignored (event count remains 1)', receivedEvents.length === 1);
-
-    // Send another line with surrounding whitespace
-    inputStream.write('   cek saldo   \n');
-    await delay(50);
-    assertCondition('CMA-3.8: Second message received', receivedEvents.length === 2);
-    assertCondition('CMA-3.9: Text payload is trimmed', receivedEvents[1]?.textPayload === 'cek saldo');
-
-    await adapter.stopConnection();
-  }
-
-  // ----------------------------------------------------
-  // TEST GROUP 4: Outbound Messaging & Presence
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 4] Outbound Messaging & Presence');
-  {
-    const inputStream = new PassThrough();
-    const outputStream = new PassThrough();
-    let capturedOutput = '';
-    outputStream.on('data', chunk => {
-      capturedOutput += chunk.toString();
-    });
-
-    const dummyCallback = async (_event: IncomingUserMessageEvent): Promise<void> => {};
-    const adapter = new ConsoleMessagingAdapter(dummyCallback, {
-      inputStream,
-      outputStream,
-    });
-
-    await adapter.startConnection();
-    capturedOutput = '';
-
-    await adapter.sendTextMessage('console', 'Transaksi sebesar Rp 50.000 berhasil dicatat.');
-    assertCondition(
-      'CMA-4.1: sendTextMessage writes text to outputStream',
-      capturedOutput.includes('Transaksi sebesar Rp 50.000 berhasil dicatat.')
-    );
-
-    capturedOutput = '';
-    await adapter.sendBroadcastNotification('Pengingat sinkronisasi email berhasil.');
-    assertCondition(
-      'CMA-4.2: sendBroadcastNotification writes notification to outputStream',
-      capturedOutput.includes('Pengingat sinkronisasi email berhasil.')
-    );
-
-    // Typing presence methods should execute cleanly without throwing
-    let presenceFailed = false;
-    try {
-      await adapter.sendTypingPresence('console');
-      await adapter.clearTypingPresence('console');
-    } catch {
-      presenceFailed = true;
-    }
-    assertCondition('CMA-4.3: sendTypingPresence and clearTypingPresence complete cleanly', !presenceFailed);
-
-    await adapter.stopConnection();
-  }
-
-  // ----------------------------------------------------
-  // TEST GROUP 5: Interactive Exit & Stream Termination
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 5] Interactive Exit Commands & Stream Termination');
-  {
-    const inputStream = new PassThrough();
-    const outputStream = new PassThrough();
-    let exitCallbackCalled = false;
-
-    const dummyCallback = async (_event: IncomingUserMessageEvent): Promise<void> => {};
-    const adapter = new ConsoleMessagingAdapter(dummyCallback, {
-      inputStream,
-      outputStream,
-      onExitRequested: () => {
-        exitCallbackCalled = true;
-      },
-    });
-
-    await adapter.startConnection();
-
-    // Type 'exit'
-    inputStream.write('exit\n');
-    await delay(50);
-
-    assertCondition('CMA-5.1: Typing "exit" triggers onExitRequested', exitCallbackCalled);
-    assertCondition('CMA-5.2: Adapter state transitions to "idle" after exit', adapter.getConnectionState() === 'idle');
-
-    // Test with 'quit' on a second instance
-    const quitInputStream = new PassThrough();
-    const quitOutputStream = new PassThrough();
-    let quitCallbackCalled = false;
-
-    const quitAdapter = new ConsoleMessagingAdapter(dummyCallback, {
-      inputStream: quitInputStream,
-      outputStream: quitOutputStream,
-      onExitRequested: () => {
-        quitCallbackCalled = true;
-      },
-    });
-
-    await quitAdapter.startConnection();
-    quitInputStream.write('QUIT\n');
-    await delay(50);
-
-    assertCondition('CMA-5.3: Typing "QUIT" (case-insensitive) triggers onExitRequested', quitCallbackCalled);
-    assertCondition('CMA-5.4: Adapter state transitions to "idle" after quit', quitAdapter.getConnectionState() === 'idle');
-
-    // Test stream EOF/close
-    const closeInputStream = new PassThrough();
-    const closeOutputStream = new PassThrough();
-    let closeCallbackCalled = false;
-
-    const closeAdapter = new ConsoleMessagingAdapter(dummyCallback, {
-      inputStream: closeInputStream,
-      outputStream: closeOutputStream,
-      onExitRequested: () => {
-        closeCallbackCalled = true;
-      },
-    });
-
-    await closeAdapter.startConnection();
-    closeInputStream.end();
-    await delay(50);
-
-    assertCondition('CMA-5.5: Stream EOF triggers onExitRequested', closeCallbackCalled);
-    assertCondition('CMA-5.6: Adapter state is "idle" after stream close', closeAdapter.getConnectionState() === 'idle');
-  }
-
-  // ----------------------------------------------------
-  // TEST GROUP 6: MessagingGatewayService Integration
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 6] MessagingGatewayService Integration');
-  {
-    const gateway = new MessagingGatewayService();
-    const inputStream = new PassThrough();
-    const outputStream = new PassThrough();
-    let capturedOutput = '';
-    outputStream.on('data', chunk => {
-      capturedOutput += chunk.toString();
-    });
-
-    const dummyCallback = async (_event: IncomingUserMessageEvent): Promise<void> => {};
-    const adapter = new ConsoleMessagingAdapter(dummyCallback, {
-      inputStream,
-      outputStream,
-    });
-
-    gateway.registerAdapter(adapter);
-
-    assertCondition('CMA-6.1: Console adapter is registered in gateway', gateway.getActiveChannels().includes('console'));
-    assertCondition('CMA-6.2: Initial gateway state for console is idle', gateway.getAdapterState('console') === 'idle');
-
-    await gateway.startAll();
-    assertCondition('CMA-6.3: Gateway reports console is connected', gateway.isChannelConnected('console'));
-    assertCondition('CMA-6.4: Console is in getConnectedChannels()', gateway.getConnectedChannels().includes('console'));
-
-    capturedOutput = '';
-    await gateway.sendMessage('console', 'console', 'Pesan lewat gateway.');
-    assertCondition('CMA-6.5: gateway.sendMessage dispatches to console output', capturedOutput.includes('Pesan lewat gateway.'));
-
-    capturedOutput = '';
-    await gateway.broadcastNotification('Notifikasi broadcast lewat gateway.');
-    assertCondition(
-      'CMA-6.6: gateway.broadcastNotification reaches console adapter',
-      capturedOutput.includes('Notifikasi broadcast lewat gateway.')
-    );
-
-    await gateway.stopAll();
-    assertCondition('CMA-6.7: gateway.stopAll marks console as idle', gateway.getAdapterState('console') === 'idle');
-    assertCondition('CMA-6.8: Adapter itself reports idle', adapter.getConnectionState() === 'idle');
-  }
-
-  // ----------------------------------------------------
-  // TEST GROUP 7: Configuration & Startup Validation
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 7] Configuration & Startup Validation (Issue #16 AC)');
-  {
-    // 7.1 Console-only mode without WhatsApp or Telegram credentials
-    const consoleOnlyConfig = createBaseConfiguration({
-      enabledMessengerChannels: ['console'],
-      allowedPhoneNumber: '',
-      telegramBotToken: '',
-      telegramAllowedUserId: '',
-    });
-
-    const validationResult = validateApplicationConfiguration(consoleOnlyConfig);
-    assertCondition('CMA-7.1: Console-only configuration is valid', validationResult.isValid);
-    assertCondition('CMA-7.2: Zero validation errors in console-only mode', validationResult.errors.length === 0);
-
-    // 7.2 No channels enabled -> must fail validation
-    const noChannelsConfig = createBaseConfiguration({
-      enabledMessengerChannels: [],
-    });
-    const noChannelsResult = validateApplicationConfiguration(noChannelsConfig);
-    assertCondition('CMA-7.3: Empty channels list fails validation', !noChannelsResult.isValid);
-    const hasChannelsError = noChannelsResult.errors.some(error => error.variableName === 'ENABLED_MESSENGER_CHANNELS');
-    assertCondition('CMA-7.4: Reports ENABLED_MESSENGER_CHANNELS error', hasChannelsError);
-
-    // 7.3 WhatsApp enabled without phone number, but console enabled
-    const mixedConfig = createBaseConfiguration({
-      enabledMessengerChannels: ['whatsapp', 'console'],
-      allowedPhoneNumber: '',
-    });
-    const mixedResult = validateApplicationConfiguration(mixedConfig);
-    assertCondition('CMA-7.5: WhatsApp without phone still reports ALLOWED_PHONE_NUMBER error', !mixedResult.isValid);
-    const hasPhoneError = mixedResult.errors.some(error => error.variableName === 'ALLOWED_PHONE_NUMBER');
-    assertCondition('CMA-7.6: Specifically complains about ALLOWED_PHONE_NUMBER', hasPhoneError);
-    // But CHANNELS error should NOT be triggered because console is valid
-    const hasAllChannelsError = mixedResult.errors.some(error => error.variableName === 'CHANNELS');
-    assertCondition('CMA-7.7: Does not claim all channels are invalid when console is present', !hasAllChannelsError);
-  }
-
-  // ----------------------------------------------------
-  // TEST SUMMARY
-  // ----------------------------------------------------
-  console.log('\n====================================================');
-  console.log(`[TEST SUMMARY] Total: ${testStatistics.totalCount} | Passed: ${testStatistics.passedCount} | Failed: ${testStatistics.failedCount}`);
-  console.log('====================================================\n');
-
-  if (testStatistics.failedCount > 0) {
-    process.exit(1);
-  }
-}
-
-runTestSuite().catch(unhandledError => {
-  console.error('[FATAL] Unhandled error in test suite:', unhandledError);
-  process.exit(1);
+  assert.strictEqual(stopTaskCompleted, true, 'In-flight operation completed before stopConnection returned');
+  assert.strictEqual(stopConnectionFinished, true, 'stopConnection successfully finished after drain');
+  assert.strictEqual(externalStopAdapter.getConnectionState(), 'idle');
 });
