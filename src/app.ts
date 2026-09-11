@@ -12,6 +12,7 @@ import {
   MessagingGatewayService,
   WhatsappMessagingAdapter,
   TelegramMessagingAdapter,
+  ConsoleMessagingAdapter,
 } from './services/messaging/index.js';
 import { EmailListenerService } from './services/emailListenerService.js';
 import { PendingTransactionService } from './services/pendingTransactionService.js';
@@ -175,6 +176,18 @@ export class Application {
           'Telegram is enabled in configuration but TELEGRAM_BOT_TOKEN or TELEGRAM_ALLOWED_USER_ID is not set. Telegram adapter skipped.'
         );
       }
+    }
+
+    if (this.environmentConfig.enabledMessengerChannels.includes('console')) {
+      const consoleAdapter = new ConsoleMessagingAdapter(
+        event => this.userMessageHandler.handleIncomingUserMessage(event),
+        {
+          onExitRequested: () => {
+            void this.stop().then(() => process.exit(0));
+          },
+        }
+      );
+      this.messagingGateway.registerAdapter(consoleAdapter);
     }
 
     // 3. Start registered messaging adapter connections

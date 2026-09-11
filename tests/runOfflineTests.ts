@@ -33,6 +33,7 @@ const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
   { filePath: 'tests/mediaDownloadLimits.test.ts', description: 'Media buffer size exhaustion safeguards & stream constraints' },
   { filePath: 'tests/messageFormatHelper.test.ts', description: 'WhatsApp-to-Telegram markup conversion & text sanitization' },
   { filePath: 'tests/messagingGatewayResilience.test.ts', description: 'Multi-adapter gateway lifecycle, degraded mode & background reconnection' },
+  { filePath: 'tests/consoleMessagingAdapter.test.ts', description: 'Interactive console messaging adapter lifecycle, input parsing & configuration validation (Issue #16)' },
   { filePath: 'tests/accountClarificationDraft.test.ts', description: 'Pending account clarification drafts and safe finalization (Issue #81)' },
   { filePath: 'tests/accountClarificationUnknownDismissal.test.ts', description: 'UNKNOWN clarification reconciliation and ticket-specific safe dismissal (Issue #81)' },
   { filePath: 'tests/accountClarificationPendingRouting.test.ts', description: 'Ticket-specific standard pending commands bypass unrelated clarification drafts (Issue #81)' },
