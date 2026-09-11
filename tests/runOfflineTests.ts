@@ -31,6 +31,7 @@ const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
   { filePath: 'tests/messageFormatHelper.test.ts', description: 'WhatsApp-to-Telegram markup conversion & text sanitization' },
   { filePath: 'tests/messagingGatewayResilience.test.ts', description: 'Multi-adapter gateway lifecycle, degraded mode & background reconnection' },
   { filePath: 'tests/accountClarificationDraft.test.ts', description: 'Pending account clarification drafts and safe finalization (Issue #81)' },
+  { filePath: 'tests/accountClarificationUnknownDismissal.test.ts', description: 'UNKNOWN clarification reconciliation and ticket-specific safe dismissal (Issue #81)' },
   { filePath: 'tests/pendingActionHandler.test.ts', description: 'Pending transaction data integrity & MCP failure recovery (Issue #72)' },
   { filePath: 'tests/phoneNumberNormalization.test.ts', description: 'International E.164 phone normalization, domestic prefix detection & Indonesian 08 conversion' },
   { filePath: 'tests/receiptOcrPrompt.test.ts', description: 'Receipt vision OCR system instructions, timezone offset & QRIS rules' },
