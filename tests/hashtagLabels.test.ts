@@ -288,7 +288,8 @@ test('3. Label Resolution, Caching & MCP Auto-Creation', async () => {
     mockMcpClient
   );
   assert.deepEqual(unsupportedResult.resolvedLabelIds, [], 'Unsupported label should have no ID');
-  assert.deepEqual(unsupportedResult.resolvedLabelNames, ['unsupported']);
+  assert.deepEqual(unsupportedResult.resolvedLabelNames, [], 'Unsupported label must not be in resolvedLabelNames');
+  assert.deepEqual(unsupportedResult.unresolvedLabelNames, ['unsupported'], 'Unsupported label must be in unresolvedLabelNames');
 
   // D: Graceful fallback when createLabel throws
   const failedResult = await resolveAndEnsureLabels(
@@ -297,7 +298,8 @@ test('3. Label Resolution, Caching & MCP Auto-Creation', async () => {
     mockMcpClient
   );
   assert.deepEqual(failedResult.resolvedLabelIds, [], 'Failed label should have no ID');
-  assert.deepEqual(failedResult.resolvedLabelNames, ['fail-create']);
+  assert.deepEqual(failedResult.resolvedLabelNames, [], 'Failed label must not be in resolvedLabelNames');
+  assert.deepEqual(failedResult.unresolvedLabelNames, ['fail-create'], 'Failed label must be in unresolvedLabelNames');
 
   // E: Cold-start read failure followed by successful refresh reconciling existing label
   // First fetchLabels failed, so cache is empty and not loaded
@@ -360,7 +362,8 @@ test('3. Label Resolution, Caching & MCP Auto-Creation', async () => {
     persistentFailMcpClient
   );
   assert.deepEqual(failResult.resolvedLabelIds, [], 'Unverified label must have no ID');
-  assert.deepEqual(failResult.resolvedLabelNames, ['kantor']);
+  assert.deepEqual(failResult.resolvedLabelNames, [], 'Unverified label must not be in resolvedLabelNames');
+  assert.deepEqual(failResult.unresolvedLabelNames, ['kantor'], 'Unverified label must be in unresolvedLabelNames');
   assert.equal(createLabelCallsF.length, 0, 'Persistent read failure must NEVER trigger createLabel');
 });
 
@@ -903,6 +906,104 @@ test('7. UserMessageHandler Hashtag Fallback & Label Resolution', async () => {
     'Outbound record must include all explicit user hashtags'
   );
   assert.ok(sentMessages[0].includes('🔖 #kantor #reimburse'), 'Confirmation reply must include all user hashtags');
+
+  // Scenario E: createLabel returns null or throws while createRecords succeeds
+  sentMessages.length = 0;
+  dispatchedMcpRecords.length = 0;
+  (mockClient as any).createLabel = async (name: string) => {
+    if (name === 'throwing-tag') {
+      throw new Error('Wallet MCP tool error');
+    }
+    return null;
+  };
+
+  aiRecordOutput = [
+    {
+      accountId: 'acc-bca',
+      amount: -50000,
+      recordDate: '2026-09-11T12:00:00Z',
+      categoryId: 'cat-food',
+      note: 'makan siang',
+      labels: ['reimburse-fail'],
+    },
+  ];
+
+  const failingLabelEvent: IncomingUserMessageEvent = {
+    channel: 'whatsapp',
+    senderIdentifier: '+628123456789',
+    chatIdentifier: '+628123456789',
+    messageType: 'text',
+    textPayload: 'makan siang 50rb #reimburse-fail',
+  };
+
+  await userMessageHandler.handleIncomingUserMessage(failingLabelEvent);
+
+  assert.equal(dispatchedMcpRecords.length, 1);
+  const outboundRecordFailedLabel = dispatchedMcpRecords[0][0];
+  assert.equal(
+    outboundRecordFailedLabel.labelIds,
+    undefined,
+    'Record must not have labelIds when createLabel fails'
+  );
+  assert.equal(
+    outboundRecordFailedLabel.labels,
+    undefined,
+    'Record must not have labels when createLabel fails'
+  );
+  assert.ok(
+    !sentMessages[0].includes('🔖'),
+    'Confirmation reply must not show label marker when label creation failed'
+  );
+  assert.ok(
+    !sentMessages[0].includes('#reimburse-fail'),
+    'Confirmation reply must not show unattached hashtag when label creation failed'
+  );
+
+  // Scenario E2: Mixed labels - one existing succeeds, one auto-creation throws
+  sentMessages.length = 0;
+  dispatchedMcpRecords.length = 0;
+
+  aiRecordOutput = [
+    {
+      accountId: 'acc-bca',
+      amount: -50000,
+      recordDate: '2026-09-11T12:00:00Z',
+      categoryId: 'cat-food',
+      note: 'makan siang',
+      labels: ['kantor', 'throwing-tag'],
+    },
+  ];
+
+  const mixedLabelEvent: IncomingUserMessageEvent = {
+    channel: 'whatsapp',
+    senderIdentifier: '+628123456789',
+    chatIdentifier: '+628123456789',
+    messageType: 'text',
+    textPayload: 'makan siang 50rb #kantor #throwing-tag',
+  };
+
+  await userMessageHandler.handleIncomingUserMessage(mixedLabelEvent);
+
+  assert.equal(dispatchedMcpRecords.length, 1);
+  const outboundMixedRecord = dispatchedMcpRecords[0][0];
+  assert.deepEqual(
+    outboundMixedRecord.labelIds,
+    ['lbl-kantor'],
+    'Only successfully resolved labelId must be attached'
+  );
+  assert.deepEqual(
+    outboundMixedRecord.labels,
+    ['kantor'],
+    'Only successfully resolved label name must be attached'
+  );
+  assert.ok(
+    sentMessages[0].includes('🔖 #kantor'),
+    'Confirmation reply must show successfully attached label'
+  );
+  assert.ok(
+    !sentMessages[0].includes('#throwing-tag'),
+    'Confirmation reply must not show unresolved label'
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -987,6 +1088,50 @@ test('8. AccountClarificationHandler Label Resolution on Draft Finalization', as
   assert.deepEqual(finalizedRecord.labelIds, ['lbl-reimburse', 'lbl-proyek-baru']);
   assert.deepEqual(finalizedRecord.labels, ['reimburse', 'proyek-baru']);
   assert.ok(sentMessages[1].includes('🔖 #reimburse #proyek-baru'));
+
+  // Draft with labels where auto-creation returns null
+  sentMessages.length = 0;
+  dispatchedMcpRecords.length = 0;
+  (mockClient as any).createLabel = async () => null;
+
+  const failedDraftRecord: CreateRecordInputPayload = {
+    accountId: '',
+    amount: -30000,
+    recordDate: '2026-09-11T12:00:00Z',
+    note: 'Kopi',
+    labels: ['uncreatable-tag'],
+  };
+
+  const draftEvent: IncomingUserMessageEvent = {
+    channel: 'whatsapp',
+    senderIdentifier: '+628123456789',
+    chatIdentifier: '+628123456789',
+    messageType: 'text',
+    textPayload: 'Kopi 30rb #uncreatable-tag',
+  };
+
+  await clarificationHandler.createPendingAccountSelectionDraft(
+    draftEvent,
+    [failedDraftRecord],
+    [{ recordIndex: 0, accountHint: '', reason: 'UNRESOLVED', candidates: [] }],
+    mockAccounts,
+    mockCategories
+  );
+
+  const draftHandled = await clarificationHandler.handlePendingAccountSelectionReply(
+    draftEvent,
+    '1',
+    Date.now()
+  );
+
+  assert.equal(draftHandled, true);
+  assert.equal(dispatchedMcpRecords.length, 1);
+  const finalizedFailedRecord = dispatchedMcpRecords[0][0];
+  assert.equal(finalizedFailedRecord.accountId, 'acc-bca');
+  assert.equal(finalizedFailedRecord.labelIds, undefined);
+  assert.equal(finalizedFailedRecord.labels, undefined);
+  assert.ok(!sentMessages[1].includes('🔖'));
+  assert.ok(!sentMessages[1].includes('#uncreatable-tag'));
 });
 
 console.log('[SUCCESS] All Hashtag Parsing & Label Auto-Creation tests passed cleanly!');

@@ -6,6 +6,7 @@ import { applicationLogger } from '../utils/logger.js';
 export interface ResolvedLabelsResult {
   resolvedLabelIds: string[];
   resolvedLabelNames: string[];
+  unresolvedLabelNames: string[];
 }
 
 /**
@@ -19,12 +20,13 @@ export async function resolveAndEnsureLabels(
   walletMcpClient: WalletMcpClientService
 ): Promise<ResolvedLabelsResult> {
   if (!tagNames || tagNames.length === 0) {
-    return { resolvedLabelIds: [], resolvedLabelNames: [] };
+    return { resolvedLabelIds: [], resolvedLabelNames: [], unresolvedLabelNames: [] };
   }
 
   const uniqueNormalizedTags = deduplicateTags(tagNames);
   const resolvedLabelIds: string[] = [];
   const resolvedLabelNames: string[] = [];
+  const unresolvedLabelNames: string[] = [];
 
   for (const tagName of uniqueNormalizedTags) {
     // Check if label exists in cache (case-insensitive)
@@ -67,8 +69,8 @@ export async function resolveAndEnsureLabels(
       applicationLogger.warn(
         `[Label Resolver] Cannot verify absence of label "${tagName}" due to label listing read failure; skipping auto-creation.`
       );
-      if (!resolvedLabelNames.includes(tagName)) {
-        resolvedLabelNames.push(tagName);
+      if (!unresolvedLabelNames.includes(tagName)) {
+        unresolvedLabelNames.push(tagName);
       }
       continue;
     }
@@ -94,9 +96,9 @@ export async function resolveAndEnsureLabels(
         `[Label Resolver] Successfully created and cached new label: "${createdLabel.name}" (${createdLabel.id})`
       );
     } else {
-      // Label creation is unavailable or failed; keep name for presentation but omit unresolved ID
-      if (!resolvedLabelNames.includes(tagName)) {
-        resolvedLabelNames.push(tagName);
+      // Label creation is unavailable or failed; keep in unresolvedLabelNames and omit from resolvedLabelNames
+      if (!unresolvedLabelNames.includes(tagName)) {
+        unresolvedLabelNames.push(tagName);
       }
       applicationLogger.warn(
         `[Label Resolver] Label "${tagName}" could not be created in Wallet MCP; continuing without label ID.`
@@ -107,5 +109,6 @@ export async function resolveAndEnsureLabels(
   return {
     resolvedLabelIds,
     resolvedLabelNames,
+    unresolvedLabelNames,
   };
 }

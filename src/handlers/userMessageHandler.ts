@@ -301,10 +301,8 @@ export class UserMessageHandler {
               this.walletCacheService,
               this.walletMcpClient
             );
-            if (resolvedLabelIds.length > 0) {
-              record.labelIds = resolvedLabelIds;
-            }
-            record.labels = resolvedLabelNames;
+            record.labelIds = resolvedLabelIds.length > 0 ? resolvedLabelIds : undefined;
+            record.labels = resolvedLabelNames.length > 0 ? resolvedLabelNames : undefined;
           }
         }
 
