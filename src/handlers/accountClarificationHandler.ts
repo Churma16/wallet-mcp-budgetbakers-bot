@@ -20,6 +20,8 @@ import {
   formatAccountSelectionProcessing,
   formatAccountSelectionPrompt,
   formatAccountSelectionRetry,
+  formatAccountSelectionUnknownCancellationGuidance,
+  formatAccountSelectionUnknownDismissal,
   formatAccountSelectionUnknownOutcome,
 } from '../utils/accountClarificationFormatter.js';
 import { getDictionary } from '../i18n/index.js';
@@ -78,11 +80,24 @@ export class AccountClarificationHandler {
     userReply: string,
     processingStartTimestamp: number
   ): Promise<boolean> {
-    const pendingDraft = this.pendingTransactionManager.getLatestPendingAccountSelectionDraft(
+    const normalizedReply = userReply.trim();
+    const targetedCancellationTicketId = this.parseTargetedCancellationTicketId(normalizedReply);
+    const latestPendingDraft = this.pendingTransactionManager.getLatestPendingAccountSelectionDraft(
       event.channel,
       event.chatIdentifier,
       event.senderIdentifier
     );
+
+    let pendingDraft = latestPendingDraft;
+    if (targetedCancellationTicketId !== undefined) {
+      const targetedDraft = this.pendingTransactionManager.getPendingAccountSelectionDraft(
+        targetedCancellationTicketId
+      );
+      if (targetedDraft && this.isDraftScopedToEvent(targetedDraft, event)) {
+        pendingDraft = targetedDraft;
+      }
+    }
+
     if (!pendingDraft) {
       return false;
     }
@@ -90,19 +105,61 @@ export class AccountClarificationHandler {
     const draftState = this.pendingTransactionManager.getPendingAccountSelectionDraftState(
       pendingDraft.ticketId
     );
-    const normalizedReply = userReply.trim();
-    const isCancellationRequest = /^(?:batal|cancel)$/i.test(normalizedReply);
+    const isGenericCancellationRequest = /^(?:batal|cancel)$/i.test(normalizedReply);
+    const isTargetedCancellationRequest = targetedCancellationTicketId === pendingDraft.ticketId;
 
-    if (isCancellationRequest) {
-      if (draftState === 'PROCESSING') {
+    // UNKNOWN means the Wallet request was already dispatched and may have committed. It is a
+    // reconciliation state, not a normal cancellable draft. Only an explicit ticket-specific
+    // dismissal may remove it, and that dismissal must never claim the Wallet write did not occur.
+    if (draftState === 'UNKNOWN') {
+      if (isTargetedCancellationRequest) {
+        const dismissedDraft = this.pendingTransactionManager.rejectPendingAccountSelectionDraft(
+          pendingDraft.ticketId
+        );
+        if (dismissedDraft) {
+          await this.messagingGateway.sendMessage(
+            event.channel,
+            event.chatIdentifier,
+            formatAccountSelectionUnknownDismissal(dismissedDraft)
+          );
+          applicationLogger.info(
+            `[Account Clarification] UNKNOWN reconciliation draft #${dismissedDraft.ticketId} dismissed locally; no Wallet retry was sent.`
+          );
+        }
+        return true;
+      }
+
+      if (isGenericCancellationRequest) {
+        // A generic cancellation may belong to a separate standard pending transaction. Let the
+        // normal pending-action router see it whenever one exists. Otherwise explain the explicit
+        // reconciliation dismissal syntax instead of feeding a bare cancellation into AI routing.
+        if (this.pendingTransactionManager.hasPendingTransactions()) {
+          return false;
+        }
+
         await this.messagingGateway.sendMessage(
           event.channel,
           event.chatIdentifier,
-          formatAccountSelectionProcessing(pendingDraft)
+          formatAccountSelectionUnknownCancellationGuidance(pendingDraft)
         );
         return true;
       }
 
+      // UNKNOWN is not claimable for automatic retry. Unrelated text continues through the normal
+      // router so balance/help/new-transaction commands remain usable during reconciliation.
+      return false;
+    }
+
+    if (draftState === 'PROCESSING') {
+      await this.messagingGateway.sendMessage(
+        event.channel,
+        event.chatIdentifier,
+        formatAccountSelectionProcessing(pendingDraft)
+      );
+      return true;
+    }
+
+    if (isGenericCancellationRequest || isTargetedCancellationRequest) {
       const cancelledDraft = this.pendingTransactionManager.rejectPendingAccountSelectionDraft(
         pendingDraft.ticketId
       );
@@ -116,22 +173,6 @@ export class AccountClarificationHandler {
           `[Account Clarification] Draft #${cancelledDraft.ticketId} cancelled before Wallet dispatch.`
         );
       }
-      return true;
-    }
-
-    // UNKNOWN is a manual-reconciliation state, not an account-selection state. The user has
-    // already received the uncertainty warning when the MCP call failed, so unrelated commands
-    // must continue through the normal message router without causing an automatic retry.
-    if (draftState === 'UNKNOWN') {
-      return false;
-    }
-
-    if (draftState === 'PROCESSING') {
-      await this.messagingGateway.sendMessage(
-        event.channel,
-        event.chatIdentifier,
-        formatAccountSelectionProcessing(pendingDraft)
-      );
       return true;
     }
 
@@ -294,6 +335,25 @@ export class AccountClarificationHandler {
       `[Account Clarification] Draft #${claimedDraft.ticketId} recorded after account selection (${processingDurationMs}ms).`
     );
     return true;
+  }
+
+  private parseTargetedCancellationTicketId(userReply: string): number | undefined {
+    const match = userReply.match(/^(?:batal|cancel)\s+#?(\d+)$/i);
+    if (!match) {
+      return undefined;
+    }
+
+    const ticketId = Number.parseInt(match[1], 10);
+    return Number.isSafeInteger(ticketId) && ticketId > 0 ? ticketId : undefined;
+  }
+
+  private isDraftScopedToEvent(
+    draft: PendingAccountSelectionDraft,
+    event: IncomingUserMessageEvent
+  ): boolean {
+    return draft.channel === event.channel &&
+      draft.chatIdentifier === event.chatIdentifier &&
+      draft.senderIdentifier === event.senderIdentifier;
   }
 
   private getFirstAccountResolutionIssue(
