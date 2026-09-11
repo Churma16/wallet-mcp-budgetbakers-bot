@@ -6,6 +6,7 @@ import {
   PendingConfirmationSuccessParams,
   PendingBulkItemParams,
   PendingCancellationParams,
+  type TransactionSortOrder,
 } from '../types.js';
 
 export const indonesianDictionary: ResponseDictionary = {
@@ -86,8 +87,19 @@ export const indonesianDictionary: ResponseDictionary = {
     outOfBounds(totalCount: number): string {
       return `Halaman ini melebihi jumlah transaksi yang tersedia (Total: ${totalCount} transaksi).`;
     },
-    navigationHint(nextPage: number): string {
-      return `_Ketik *riwayat hal ${nextPage}* untuk halaman selanjutnya._`;
+    navigationHint(
+      nextPage: number,
+      options?: { limit?: number; sort?: TransactionSortOrder }
+    ): string {
+      const commandParts = ['riwayat'];
+      if (options?.limit && options.limit !== 10) {
+        commandParts.push(String(options.limit));
+      }
+      commandParts.push(`hal ${nextPage}`);
+      if (options?.sort === 'oldest') {
+        commandParts.push('terlama');
+      }
+      return `_Ketik *${commandParts.join(' ')}* untuk halaman selanjutnya._`;
     },
     sortNewest: 'Terbaru',
     sortOldest: 'Terlama',

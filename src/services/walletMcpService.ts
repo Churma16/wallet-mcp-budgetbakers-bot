@@ -462,10 +462,14 @@ export class WalletMcpClientService {
       }
 
       const rawRecordType = item.recordType;
-      const resolvedRecordType: 'expense' | 'income' =
-        rawRecordType === 'expense' || rawRecordType === 'income'
-          ? rawRecordType
-          : (resolvedAmount < 0 ? 'expense' : 'income');
+      let resolvedRecordType: 'expense' | 'income';
+      if (rawRecordType === 'expense' || rawRecordType === 'income') {
+        resolvedRecordType = rawRecordType;
+      } else if (resolvedAmount < 0) {
+        resolvedRecordType = 'expense';
+      } else {
+        resolvedRecordType = 'income';
+      }
 
       return {
         id: String(item.id || item.recordId || ''),
@@ -491,9 +495,12 @@ export class WalletMcpClientService {
     });
 
     const hasMore = (resolvedOffset + rawRecordArray.length) < totalCount;
-    const nextOffset = hasMore
-      ? (typeof rawResponse?.nextOffset === 'number' ? rawResponse.nextOffset : resolvedOffset + rawRecordArray.length)
-      : null;
+    let nextOffset: number | null = null;
+    if (hasMore) {
+      nextOffset = typeof rawResponse?.nextOffset === 'number'
+        ? rawResponse.nextOffset
+        : resolvedOffset + rawRecordArray.length;
+    }
     const pageNumber = Math.floor(resolvedOffset / resolvedLimit) + 1;
     const totalPagesCount = Math.max(1, Math.ceil(totalCount / resolvedLimit));
 

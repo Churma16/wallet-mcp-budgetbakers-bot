@@ -367,6 +367,47 @@ console.log('\n[Suite 7] Testing Human-Facing Response Formatting (i18n)...');
   setActiveLanguage('en');
   assert.match(formatTransactionHistoryMessage(oldestPage), /\[Oldest\]/);
 
+  // 7.4 Preservation of query options in navigation hints
+  const customQueryPage: TransactionHistoryPage = {
+    ...samplePage,
+    limit: 5,
+    sort: 'oldest',
+  };
+
+  // Indonesian: starts from { limit: 5, sort: 'oldest' }
+  setActiveLanguage('id');
+  const formattedCustomId = formatTransactionHistoryMessage(customQueryPage);
+  const idMatch = formattedCustomId.match(/_Ketik \*(.+?)\* untuk halaman selanjutnya\._/);
+  assert.ok(idMatch, 'Indonesian next-page hint must exist');
+  const idNextCommand = idMatch[1];
+  assert.strictEqual(idNextCommand, 'riwayat 5 hal 2 terlama');
+
+  const parsedIdAction = detectFastPathAction(idNextCommand);
+  assert.strictEqual(typeof parsedIdAction, 'object');
+  assert.strictEqual((parsedIdAction as any)?.type, 'TRANSACTION_HISTORY');
+  assert.deepStrictEqual((parsedIdAction as any)?.options, {
+    limit: 5,
+    page: 2,
+    sort: 'oldest',
+  });
+
+  // English: starts from { limit: 5, sort: 'oldest' }
+  setActiveLanguage('en');
+  const formattedCustomEn = formatTransactionHistoryMessage(customQueryPage);
+  const enMatch = formattedCustomEn.match(/_Type \*(.+?)\* for the next page\._/);
+  assert.ok(enMatch, 'English next-page hint must exist');
+  const enNextCommand = enMatch[1];
+  assert.strictEqual(enNextCommand, 'history 5 page 2 oldest');
+
+  const parsedEnAction = detectFastPathAction(enNextCommand);
+  assert.strictEqual(typeof parsedEnAction, 'object');
+  assert.strictEqual((parsedEnAction as any)?.type, 'TRANSACTION_HISTORY');
+  assert.deepStrictEqual((parsedEnAction as any)?.options, {
+    limit: 5,
+    page: 2,
+    sort: 'oldest',
+  });
+
   console.log('  [PASS] Human-facing response formatters verified in Indonesian and English.');
 }
 
@@ -430,13 +471,34 @@ console.log('\n[Suite 8] Testing Fast-Path Intent Detection...');
   assert.strictEqual((actionSort4 as any)?.options.limit, 10);
   assert.strictEqual((actionSort4 as any)?.options.sort, 'oldest');
 
-  // 8.6 Negative cases: transaction recordings must NOT be intercepted
+  // 8.6 Negative cases: transaction recordings and unsupported trailing text must NOT produce TRANSACTION_HISTORY
   assert.strictEqual(detectFastPathAction('beli kopi 25rb'), null);
   assert.strictEqual(detectFastPathAction('tambah saldo 50k'), null);
   assert.strictEqual(detectFastPathAction('catat riwayat belanja 50rb'), null);
   assert.strictEqual(detectFastPathAction('transfer 100k ke bca'), null);
 
-  // 8.7 Standard fast-path commands must not regress
+  // Exact regressions requested by review:
+  assert.strictEqual(detectFastPathAction('history coffee'), null);
+  assert.strictEqual(detectFastPathAction('riwayat beli kopi 25rb'), null);
+  assert.strictEqual(detectFastPathAction('history 25k'), null);
+  assert.strictEqual(detectFastPathAction('riwayat belanja 50000'), null);
+  assert.strictEqual(detectFastPathAction('history 10 20'), null);
+  assert.strictEqual(detectFastPathAction('5 transaksi terakhir makanan'), null);
+
+  // 8.7 Valid history syntax remains valid:
+  const validHistory25 = detectFastPathAction('history 25');
+  assert.deepStrictEqual((validHistory25 as any)?.options, { limit: 25, page: undefined, sort: 'newest' });
+
+  const validHistoryPage2 = detectFastPathAction('history page 2');
+  assert.deepStrictEqual((validHistoryPage2 as any)?.options, { limit: undefined, page: 2, sort: 'newest' });
+
+  const validHistory25Oldest = detectFastPathAction('history 25 oldest');
+  assert.deepStrictEqual((validHistory25Oldest as any)?.options, { limit: 25, page: undefined, sort: 'oldest' });
+
+  const validRiwayat5Hal2Terlama = detectFastPathAction('riwayat 5 hal 2 terlama');
+  assert.deepStrictEqual((validRiwayat5Hal2Terlama as any)?.options, { limit: 5, page: 2, sort: 'oldest' });
+
+  // 8.8 Standard fast-path commands must not regress
   assert.strictEqual(detectFastPathAction('saldo'), 'CHECK_BALANCE');
   assert.strictEqual(detectFastPathAction('budget'), 'CHECK_BUDGET');
   assert.strictEqual(detectFastPathAction('menu'), 'HELP_MENU');

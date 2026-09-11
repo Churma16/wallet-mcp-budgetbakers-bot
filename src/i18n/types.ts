@@ -1,4 +1,7 @@
+import type { TransactionSortOrder } from '../types/walletTypes.js';
+
 export type SupportedLanguage = 'id' | 'en';
+export type { TransactionSortOrder };
 
 export interface RecordMessageParams {
   transactionTitle: string;
@@ -104,7 +107,10 @@ export interface ResponseDictionary {
     header(page: number, totalPages: number, displayedCount: number, totalCount: number, sortOrderLabel: string): string;
     emptyState: string;
     outOfBounds(totalCount: number): string;
-    navigationHint(nextPage: number): string;
+    navigationHint(
+      nextPage: number,
+      options?: { limit?: number; sort?: TransactionSortOrder }
+    ): string;
     sortNewest: string;
     sortOldest: string;
   };

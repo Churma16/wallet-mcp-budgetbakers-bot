@@ -390,7 +390,12 @@ export function formatTransactionHistoryMessage(
     const globalItemIndex = historyPage.offset + itemIndex + 1;
     const isTransfer = Boolean(recordItem.transfer);
     const isExpense = recordItem.recordType === 'expense' || recordItem.amount < 0;
-    const typeIcon = isTransfer ? '🔄' : (isExpense ? '💸' : '💰');
+    let typeIcon = '💰';
+    if (isTransfer) {
+      typeIcon = '🔄';
+    } else if (isExpense) {
+      typeIcon = '💸';
+    }
     const amountPrefix = isExpense ? '-' : '+';
     const formattedAmount = formatCurrencyAmount(recordItem.amount, recordItem.currency, languageCode);
     const resolvedTitle = recordItem.note || recordItem.counterParty || (isExpense ? dictionary.labels.expense : dictionary.labels.income);
@@ -417,7 +422,12 @@ export function formatTransactionHistoryMessage(
   if (historyPage.hasMore && historyPage.page < historyPage.totalPages) {
     const nextPageIndex = historyPage.page + 1;
     messageParts.push('');
-    messageParts.push(dictionary.history.navigationHint(nextPageIndex));
+    messageParts.push(
+      dictionary.history.navigationHint(nextPageIndex, {
+        limit: historyPage.limit,
+        sort: historyPage.sort,
+      })
+    );
   }
 
   return messageParts.join('\n');

@@ -15,9 +15,13 @@ export type FastPathAction =
 function parseTransactionHistoryIntent(userMessageText: string): FastPathTransactionHistoryAction | null {
   const trimmedLowerText = userMessageText.toLowerCase().trim();
 
-  // Price indicator check: if text has price units (rb, k, jt, ribu, juta) or currency words (rp),
-  // it is almost certainly a transaction recording, not a history query.
-  if (/(?:^|\s)(?:rb|k|jt|ribu|juta|rp)(?:$|\s|\d)/i.test(trimmedLowerText)) {
+  // Price indicator check: if text contains transaction amounts (e.g. 25rb, 50k, 100 ribu, 1jt, 50000rp, rp 50000)
+  // or currency words, it is almost certainly a transaction recording, not a history query.
+  const hasTransactionAmountPattern =
+    /\d+\s*(?:k|rb|jt|ribu|juta)\b|(?:rp|idr)\.?\s*\d+|\d+\s*(?:rp|idr)\b|(?:^|\s)(?:rb|k|jt|ribu|juta|rp|idr)(?:$|\s)/i.test(
+      trimmedLowerText
+    );
+  if (hasTransactionAmountPattern) {
     return null;
   }
 
@@ -28,16 +32,47 @@ function parseTransactionHistoryIntent(userMessageText: string): FastPathTransac
 
   // 1. Pattern matching "X transaksi terakhir" or "X last/recent transactions"
   const leadingCountMatch = trimmedLowerText.match(
-    /^(?:cek|lihat|show|view)?\s*(\d+)\s+(?:transaksi\s+terakhir|last\s+transactions?|recent\s+transactions?)(?:\s+(terlama|oldest|terbaru|newest))?$/i
+    /^(?:cek|lihat|show|view)?\s*(\d+)\s+(?:transaksi\s+terakhir|last\s+transactions?|recent\s+transactions?)(?:\s+(.*))?$/i
   );
   if (leadingCountMatch) {
     const parsedLimit = Number.parseInt(leadingCountMatch[1], 10);
-    const sortKeyword = leadingCountMatch[2]?.toLowerCase();
-    const resolvedSort = (sortKeyword === 'terlama' || sortKeyword === 'oldest') ? 'oldest' : 'newest';
+    if (Number.isNaN(parsedLimit) || parsedLimit <= 0) {
+      return null;
+    }
+
+    let trailingTokens = (leadingCountMatch[2] || '').trim();
+    let resolvedSort: 'newest' | 'oldest' = 'newest';
+    let resolvedPage: number | undefined = undefined;
+
+    if (trailingTokens) {
+      const sortMatch = trailingTokens.match(/\b(terlama|oldest|terbaru|newest)\b/i);
+      if (sortMatch) {
+        const matchedSortWord = sortMatch[1].toLowerCase();
+        resolvedSort = (matchedSortWord === 'terlama' || matchedSortWord === 'oldest') ? 'oldest' : 'newest';
+        trailingTokens = trailingTokens.replace(sortMatch[0], ' ').trim();
+      }
+
+      const pageMatch = trailingTokens.match(/\b(?:hal(?:aman)?|page|p)\s*(\d+)\b/i);
+      if (pageMatch) {
+        const parsedPage = Number.parseInt(pageMatch[1], 10);
+        if (Number.isNaN(parsedPage) || parsedPage <= 0) {
+          return null;
+        }
+        resolvedPage = parsedPage;
+        trailingTokens = trailingTokens.replace(pageMatch[0], ' ').trim();
+      }
+
+      // If unknown trailing tokens remain, reject
+      if (trailingTokens.length > 0) {
+        return null;
+      }
+    }
+
     return {
       type: 'TRANSACTION_HISTORY',
       options: {
-        limit: Number.isNaN(parsedLimit) ? undefined : parsedLimit,
+        limit: parsedLimit,
+        page: resolvedPage,
         sort: resolvedSort,
       },
     };
@@ -52,34 +87,55 @@ function parseTransactionHistoryIntent(userMessageText: string): FastPathTransac
     return null;
   }
 
-  const remainderString = (historyMatch[1] || '').trim();
+  const rawRemainder = historyMatch[1];
+  if (!rawRemainder || !rawRemainder.trim()) {
+    return {
+      type: 'TRANSACTION_HISTORY',
+      options: {
+        sort: 'newest',
+      },
+    };
+  }
+
+  let remainingTokens = rawRemainder.trim();
   let resolvedLimit: number | undefined = undefined;
   let resolvedPage: number | undefined = undefined;
   let resolvedSort: 'newest' | 'oldest' = 'newest';
 
-  if (remainderString) {
-    if (/\b(?:terlama|oldest)\b/i.test(remainderString)) {
-      resolvedSort = 'oldest';
-    } else if (/\b(?:terbaru|newest)\b/i.test(remainderString)) {
-      resolvedSort = 'newest';
-    }
+  // 1. Extract sort token
+  const sortMatch = remainingTokens.match(/\b(terlama|oldest|terbaru|newest)\b/i);
+  if (sortMatch) {
+    const matchedSortWord = sortMatch[1].toLowerCase();
+    resolvedSort = (matchedSortWord === 'terlama' || matchedSortWord === 'oldest') ? 'oldest' : 'newest';
+    remainingTokens = remainingTokens.replace(sortMatch[0], ' ').trim();
+  }
 
-    const pageMatch = remainderString.match(/\b(?:hal(?:aman)?|page|p)\s*(\d+)\b/i);
-    if (pageMatch && pageMatch[1]) {
-      const parsedPage = Number.parseInt(pageMatch[1], 10);
-      if (!Number.isNaN(parsedPage) && parsedPage > 0) {
-        resolvedPage = parsedPage;
-      }
+  // 2. Extract page token (e.g. "hal 2", "halaman 3", "page 4", "p 5")
+  const pageMatch = remainingTokens.match(/\b(?:hal(?:aman)?|page|p)\s*(\d+)\b/i);
+  if (pageMatch) {
+    const parsedPage = Number.parseInt(pageMatch[1], 10);
+    if (Number.isNaN(parsedPage) || parsedPage <= 0) {
+      return null;
     }
+    resolvedPage = parsedPage;
+    remainingTokens = remainingTokens.replace(pageMatch[0], ' ').trim();
+  }
 
-    const remainderWithoutPage = remainderString.replace(/\b(?:hal(?:aman)?|page|p)\s*\d+\b/i, '').trim();
-    const limitMatch = remainderWithoutPage.match(/\b(\d+)\b/);
-    if (limitMatch && limitMatch[1]) {
-      const parsedLimit = Number.parseInt(limitMatch[1], 10);
-      if (!Number.isNaN(parsedLimit) && parsedLimit > 0) {
-        resolvedLimit = parsedLimit;
-      }
+  // 3. Extract limit token (standalone positive integer)
+  const limitMatch = remainingTokens.match(/\b(\d+)\b/);
+  if (limitMatch) {
+    const parsedLimit = Number.parseInt(limitMatch[1], 10);
+    if (Number.isNaN(parsedLimit) || parsedLimit <= 0) {
+      return null;
     }
+    resolvedLimit = parsedLimit;
+    remainingTokens = remainingTokens.replace(limitMatch[0], ' ').trim();
+  }
+
+  // 4. Require the entire remainder to be consumed by the grammar;
+  // return null when unknown tokens remain (e.g. "history coffee", "history 10 20", etc.)
+  if (remainingTokens.length > 0) {
+    return null;
   }
 
   return {
@@ -113,7 +169,10 @@ export function detectFastPathAction(userMessageText: string): FastPathAction {
   // If the message contains numeric digits or common price indicators (e.g. 50k, 25rb, 10000),
   // it is almost certainly a transaction recording (e.g. "tambah saldo 50rb" or "beli bensin 25k").
   // Do NOT intercept as fast-path to prevent suppressing transaction recordings.
-  const hasNumericOrPricePattern = /\d|(?:^|\s)(?:rb|k|jt|ribu|juta)(?:$|\s)/i.test(trimmedLowerText);
+  const hasNumericOrPricePattern =
+    /\d|\d+\s*(?:k|rb|jt|ribu|juta)\b|(?:rp|idr)\.?\s*\d+|\d+\s*(?:rp|idr)\b|(?:^|\s)(?:rb|k|jt|ribu|juta|rp|idr)(?:$|\s)/i.test(
+      trimmedLowerText
+    );
   if (hasNumericOrPricePattern) {
     return null;
   }

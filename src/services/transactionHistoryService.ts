@@ -21,7 +21,7 @@ export class TransactionHistoryService {
     queryOptions?: TransactionHistoryQueryOptions
   ): Promise<TransactionHistoryPage> {
     applicationLogger.fileDetail('mcp', 'Retrieving Transaction History', {
-      queryOptions: queryOptions || {},
+      queryOptions: queryOptions ?? {},
     });
 
     const historyPageResult = await this.walletMcpClient.fetchRecords(queryOptions);
@@ -42,12 +42,10 @@ export class TransactionHistoryService {
         }
 
         let enrichedCategory = recordItem.category;
-        if (
-          (!enrichedCategory || !enrichedCategory.name || enrichedCategory.name === 'Unknown') &&
-          recordItem.category?.id
-        ) {
+        const categoryId = recordItem.category?.id;
+        if ((!enrichedCategory?.name || enrichedCategory.name === 'Unknown') && categoryId) {
           const matchedCategory = cachedCategoryList.find(
-            category => category.id === recordItem.category?.id
+            category => category.id === categoryId
           );
           if (matchedCategory) {
             enrichedCategory = {
@@ -58,7 +56,7 @@ export class TransactionHistoryService {
             };
           } else if (!enrichedCategory?.name) {
             enrichedCategory = {
-              id: recordItem.category.id,
+              id: categoryId,
               name: 'Unknown',
             };
           }

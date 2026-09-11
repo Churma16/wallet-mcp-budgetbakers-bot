@@ -6,6 +6,7 @@ import {
   PendingConfirmationSuccessParams,
   PendingBulkItemParams,
   PendingCancellationParams,
+  type TransactionSortOrder,
 } from '../types.js';
 
 export const englishDictionary: ResponseDictionary = {
@@ -86,8 +87,19 @@ export const englishDictionary: ResponseDictionary = {
     outOfBounds(totalCount: number): string {
       return `This page exceeds available transactions (Total: ${totalCount} transactions).`;
     },
-    navigationHint(nextPage: number): string {
-      return `_Type *history page ${nextPage}* for the next page._`;
+    navigationHint(
+      nextPage: number,
+      options?: { limit?: number; sort?: TransactionSortOrder }
+    ): string {
+      const commandParts = ['history'];
+      if (options?.limit && options.limit !== 10) {
+        commandParts.push(String(options.limit));
+      }
+      commandParts.push(`page ${nextPage}`);
+      if (options?.sort === 'oldest') {
+        commandParts.push('oldest');
+      }
+      return `_Type *${commandParts.join(' ')}* for the next page._`;
     },
     sortNewest: 'Newest',
     sortOldest: 'Oldest',
