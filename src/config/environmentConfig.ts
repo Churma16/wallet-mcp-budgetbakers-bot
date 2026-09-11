@@ -55,6 +55,7 @@ export interface ApplicationEnvironmentConfiguration {
   telegramMaxStartupAttempts: number;
   telegramStartupRetryDelayMs: number;
   maxMediaDownloadMb: number;
+  categoryContextFilePath: string;
 }
 
 
@@ -251,6 +252,12 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     ? 10
     : parsedMaxMediaDownloadMb;
 
+  const categoryContextFilePath = (
+    process.env.CATEGORY_CONTEXT_PATH ||
+    process.env.CUSTOM_CATEGORY_CONTEXT_PATH ||
+    'config/category-context.json'
+  ).trim();
+
   return {
     aiProvider,
     aiProviders,
@@ -287,6 +294,7 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     telegramMaxStartupAttempts,
     telegramStartupRetryDelayMs,
     maxMediaDownloadMb,
+    categoryContextFilePath,
   };
 }
 

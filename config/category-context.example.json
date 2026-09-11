@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": "1.0",
+  "userContext": "Software engineer based in Jakarta. Regularly orders food delivery via GoFood/GrabFood and works remotely from cafes on weekends.",
+  "categories": [
+    {
+      "category": "Makan Nafsu",
+      "scope": "Impulsive snacking, boba, artisan coffee, desserts, and premium snacks that are not regular staple meals.",
+      "examples": [
+        "boba chatime",
+        "kopi kenangan",
+        "croissant pastry",
+        "ice cream gelato"
+      ],
+      "exclusions": [
+        "makan siang kantor harian",
+        "nasi warteg",
+        "groceries supermarket"
+      ]
+    },
+    {
+      "category": "Makan Hangout",
+      "scope": "Social dining, gathering with friends or colleagues, restaurant meals, and cafe hangouts with split bills.",
+      "examples": [
+        "dinner bareng teman",
+        "cafe bill split",
+        "makan keluarga akhir pekan"
+      ],
+      "exclusions": [
+        "makan sendiri di kost",
+        "belanja kebutuhan masak"
+      ]
+    },
+    {
+      "category": "Home & garden",
+      "scope": "Household furnishings, cleaning supplies, kitchen utensils, and home maintenance.",
+      "examples": [
+        "sapu dan pel lantai",
+        "sprei kasur",
+        "rak piring",
+        "lampu tidur"
+      ],
+      "exclusions": [
+        "peralatan kerja laptop",
+        "gadget elektronik kantor"
+      ]
+    }
+  ]
+}

@@ -17,6 +17,7 @@
         "test:budget": "tsx tests/budgetParsing.test.ts",
         "test:email-rules": "tsx tests/bankEmailRules.test.ts",
         "test:ai-fallback": "tsx tests/fallbackAiProvider.test.ts",
+        "test:category-context": "tsx tests/categoryContextService.test.ts",
         "test:whatsapp-safeguards": "tsx tests/whatsappSafeguards.test.ts",
         "test:whatsapp-hardening": "tsx tests/whatsappSocketHardening.test.ts",
         "test:telegram-safeguards": "tsx tests/telegramSafeguards.test.ts",

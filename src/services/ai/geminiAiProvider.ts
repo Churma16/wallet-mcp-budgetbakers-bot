@@ -23,6 +23,7 @@ import {
   resolveEmailExtractedEntities,
   buildFailedEmailTransactionFallback,
 } from './aiPromptBuilder.js';
+import { CategoryContextService } from '../categoryContextService.js';
 
 interface GenerationExecutionResult {
   responseText: string;
@@ -42,7 +43,8 @@ export class GeminiAiProvider implements FinancialAiProvider {
     apiKey: string,
     primaryModelName: string = process.env.GEMINI_MODEL || 'gemini-3.6-flash',
     fallbackModelList: string[] = ['gemini-3.5-flash', 'gemini-3.5-flash-lite'],
-    private readonly requestTimeoutMilliseconds: number = 20000
+    private readonly requestTimeoutMilliseconds: number = 20000,
+    private readonly categoryContextService?: CategoryContextService
   ) {
     this.googleGenAiClient = new GoogleGenAI({ apiKey });
     this.candidateModelList = Array.from(new Set([primaryModelName, ...fallbackModelList]));
@@ -60,18 +62,22 @@ export class GeminiAiProvider implements FinancialAiProvider {
     const currentDateIso = getCurrentLocalDateString(referenceDate, applicationTimezone);
     const timezoneOffsetDetails = getTimezoneOffsetDetails(applicationTimezone, referenceDate);
     const activeLanguage = getActiveLanguage();
-    const cacheKey = `${activeLanguage}|${currentDateIso}|${applicationTimezone}|${timezoneOffsetDetails.formattedOffset}|${availableAccountList.map(account => account.id).join(',')}|${availableCategoryList.map(category => category.id).join(',')}`;
+    const contextFingerprint = this.categoryContextService?.getContextFingerprint() || '';
+    const cacheKey = `${activeLanguage}|${currentDateIso}|${applicationTimezone}|${timezoneOffsetDetails.formattedOffset}|${availableAccountList.map(account => account.id).join(',')}|${availableCategoryList.map(category => category.id).join(',')}|${contextFingerprint}`;
 
     if (this.systemInstructionCacheKey === cacheKey && this.cachedSystemInstruction) {
       return this.cachedSystemInstruction;
     }
+
+    const formattedCategoryContext = this.categoryContextService?.formatCompactContext(availableCategoryList);
 
     this.cachedSystemInstruction = buildCompactSystemInstruction(
       availableAccountList,
       availableCategoryList,
       currentDateIso,
       applicationTimezone,
-      referenceDate
+      referenceDate,
+      formattedCategoryContext
     );
     this.systemInstructionCacheKey = cacheKey;
     return this.cachedSystemInstruction;
@@ -317,12 +323,14 @@ export class GeminiAiProvider implements FinancialAiProvider {
   ): Promise<ExtractedFinancialIntent> {
     const applicationTimezoneIdentifier = getApplicationTimezone();
     const currentDateIso = getCurrentLocalDateString(referenceInstant, applicationTimezoneIdentifier);
+    const formattedCategoryContext = this.categoryContextService?.formatCompactContext(availableCategoryList);
     const systemInstructionContent = buildReceiptSystemInstruction(
       availableAccountList,
       availableCategoryList,
       currentDateIso,
       applicationTimezoneIdentifier,
-      referenceInstant
+      referenceInstant,
+      formattedCategoryContext
     );
     const currentTransactionTimestampIso = referenceInstant.toISOString();
     const promptText = buildReceiptExtractionPrompt(optionalCaption, currentTransactionTimestampIso);
@@ -372,7 +380,12 @@ export class GeminiAiProvider implements FinancialAiProvider {
     availableAccountList: WalletAccountItem[],
     availableCategoryList: WalletCategoryItem[]
   ): Promise<ExtractedEmailTransactionData> {
-    const emailSystemInstruction = buildEmailSystemInstruction(availableAccountList, availableCategoryList);
+    const formattedCategoryContext = this.categoryContextService?.formatCompactContext(availableCategoryList);
+    const emailSystemInstruction = buildEmailSystemInstruction(
+      availableAccountList,
+      availableCategoryList,
+      formattedCategoryContext
+    );
     const promptText = buildEmailEvaluationPrompt(gateResult, emailSubject, emailSender, emailBodyText, emailDate);
 
     const generationResult = await this.executeGenerationWithFallback({

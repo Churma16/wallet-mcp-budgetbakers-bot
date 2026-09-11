@@ -8,13 +8,15 @@ import { FinancialAiProvider } from './financialAiProvider.js';
 import { GeminiAiProvider } from './geminiAiProvider.js';
 import { OpenAiCompatibleAiProvider } from './openAiCompatibleAiProvider.js';
 import { FallbackAiProvider } from './fallbackAiProvider.js';
+import { CategoryContextService } from '../categoryContextService.js';
 
 /**
  * Instantiates a single FinancialAiProvider based on provider type and environment configuration
  */
 export function createSingleFinancialAiProvider(
   providerType: SupportedAiProviderType,
-  environmentConfig: ApplicationEnvironmentConfiguration
+  environmentConfig: ApplicationEnvironmentConfiguration,
+  categoryContextService?: CategoryContextService
 ): FinancialAiProvider {
   if (providerType === 'gemini') {
     if (!environmentConfig.geminiApiKey) {
@@ -25,7 +27,8 @@ export function createSingleFinancialAiProvider(
       environmentConfig.geminiApiKey,
       environmentConfig.geminiModel,
       environmentConfig.geminiFallbackModels,
-      environmentConfig.geminiRequestTimeoutMilliseconds
+      environmentConfig.geminiRequestTimeoutMilliseconds,
+      categoryContextService
     );
   }
 
@@ -53,6 +56,7 @@ export function createSingleFinancialAiProvider(
     primaryModelName,
     fallbackModelList: environmentConfig.aiFallbackModels,
     requestTimeoutMilliseconds: environmentConfig.aiRequestTimeoutMilliseconds,
+    categoryContextService,
   });
 }
 
@@ -62,7 +66,8 @@ export function createSingleFinancialAiProvider(
  * FallbackAiProvider is returned.
  */
 export function createFinancialAiProvider(
-  environmentConfig: ApplicationEnvironmentConfiguration
+  environmentConfig: ApplicationEnvironmentConfiguration,
+  categoryContextService?: CategoryContextService
 ): FinancialAiProvider {
   const providerList = environmentConfig.aiProviders && environmentConfig.aiProviders.length > 0
     ? environmentConfig.aiProviders
@@ -71,7 +76,7 @@ export function createFinancialAiProvider(
   if (providerList.length === 1) {
     const singleProviderType = providerList[0];
     applicationLogger.info(`Initializing AI Provider: '${singleProviderType.toUpperCase()}'...`);
-    return createSingleFinancialAiProvider(singleProviderType, environmentConfig);
+    return createSingleFinancialAiProvider(singleProviderType, environmentConfig, categoryContextService);
   }
 
   applicationLogger.info(
@@ -79,7 +84,7 @@ export function createFinancialAiProvider(
   );
 
   const instantiatedProviders = providerList.map(providerType =>
-    createSingleFinancialAiProvider(providerType, environmentConfig)
+    createSingleFinancialAiProvider(providerType, environmentConfig, categoryContextService)
   );
 
   return new FallbackAiProvider(instantiatedProviders);

@@ -21,6 +21,7 @@ import {
   resolveEmailExtractedEntities,
   buildFailedEmailTransactionFallback,
 } from './aiPromptBuilder.js';
+import { CategoryContextService } from '../categoryContextService.js';
 
 export interface OpenAiCompatibleProviderConfiguration {
   providerName?: string;
@@ -29,6 +30,7 @@ export interface OpenAiCompatibleProviderConfiguration {
   primaryModelName: string;
   fallbackModelList?: string[];
   requestTimeoutMilliseconds?: number;
+  categoryContextService?: CategoryContextService;
 }
 
 /**
@@ -66,10 +68,12 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
   private readonly httpClient: AxiosInstance;
   private readonly candidateModelList: string[];
   private readonly requestTimeoutMilliseconds: number;
+  private readonly categoryContextService?: CategoryContextService;
 
   constructor(configuration: OpenAiCompatibleProviderConfiguration) {
     this.providerName = configuration.providerName || 'openai-compatible';
     this.requestTimeoutMilliseconds = configuration.requestTimeoutMilliseconds || 25000;
+    this.categoryContextService = configuration.categoryContextService;
     this.candidateModelList = Array.from(
       new Set([configuration.primaryModelName, ...(configuration.fallbackModelList || [])])
     );
@@ -247,12 +251,14 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
   ): Promise<ExtractedFinancialIntent> {
     const applicationTimezone = getApplicationTimezone();
     const currentDateIso = getCurrentLocalDateString(referenceInstant, applicationTimezone);
+    const formattedCategoryContext = this.categoryContextService?.formatCompactContext(availableCategoryList);
     const systemInstruction = buildCompactSystemInstruction(
       availableAccountList,
       availableCategoryList,
       currentDateIso,
       applicationTimezone,
-      referenceInstant
+      referenceInstant,
+      formattedCategoryContext
     );
 
     const trimmedUserMessage = userMessageText.trim();
@@ -300,12 +306,14 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
   ): Promise<ExtractedFinancialIntent> {
     const applicationTimezoneIdentifier = getApplicationTimezone();
     const currentDateIso = getCurrentLocalDateString(referenceInstant, applicationTimezoneIdentifier);
+    const formattedCategoryContext = this.categoryContextService?.formatCompactContext(availableCategoryList);
     const systemInstruction = buildReceiptSystemInstruction(
       availableAccountList,
       availableCategoryList,
       currentDateIso,
       applicationTimezoneIdentifier,
-      referenceInstant
+      referenceInstant,
+      formattedCategoryContext
     );
 
     const currentTransactionTimestampIso = referenceInstant.toISOString();
@@ -372,7 +380,12 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     availableAccountList: WalletAccountItem[],
     availableCategoryList: WalletCategoryItem[]
   ): Promise<ExtractedEmailTransactionData> {
-    const emailSystemInstruction = buildEmailSystemInstruction(availableAccountList, availableCategoryList);
+    const formattedCategoryContext = this.categoryContextService?.formatCompactContext(availableCategoryList);
+    const emailSystemInstruction = buildEmailSystemInstruction(
+      availableAccountList,
+      availableCategoryList,
+      formattedCategoryContext
+    );
     const promptText = buildEmailEvaluationPrompt(gateResult, emailSubject, emailSender, emailBodyText, emailDate);
 
     const messages = [
