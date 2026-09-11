@@ -13,6 +13,13 @@ export interface WalletCategoryItem {
   parentCategoryId?: string;
 }
 
+export interface WalletLabelItem {
+  id: string;
+  name: string;
+  color?: string;
+  icon?: string;
+}
+
 export interface CreateRecordInputPayload {
   accountId: string;
   amount: number;
@@ -20,6 +27,8 @@ export interface CreateRecordInputPayload {
   categoryId?: string;
   note?: string;
   counterParty?: string;
+  labelIds?: string[];
+  labels?: string[];
 }
 
 export interface WalletCreateRecordsResponse {

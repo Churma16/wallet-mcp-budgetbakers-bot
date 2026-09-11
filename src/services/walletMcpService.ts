@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import {
   WalletAccountItem,
   WalletCategoryItem,
+  WalletLabelItem,
   CreateRecordInputPayload,
   WalletCreateRecordsResponse,
   WalletBudgetItem,
@@ -32,6 +33,7 @@ export class WalletMcpClientService {
   private readonly httpClient: AxiosInstance;
   private cachedAccountList: WalletAccountItem[] = [];
   private cachedCategoryList: WalletCategoryItem[] = [];
+  private cachedLabelList: WalletLabelItem[] = [];
   private cacheLastUpdatedTimestamp: number = 0;
   private readonly cacheDurationMilliseconds: number = 1000 * 60 * 30; // 30 minutes
 
@@ -237,6 +239,81 @@ export class WalletMcpClientService {
   }
 
   /**
+   * Retrieve all user-defined labels/tags.
+   */
+  public async fetchLabels(forceRefresh: boolean = false): Promise<WalletLabelItem[]> {
+    const isCacheExpired = Date.now() - this.cacheLastUpdatedTimestamp > this.cacheDurationMilliseconds;
+
+    if (!forceRefresh && this.cachedLabelList.length > 0 && !isCacheExpired) {
+      return this.cachedLabelList;
+    }
+
+    try {
+      const fetchedLabelData = await this.callMcpTool<any>('get_labels');
+
+      const rawLabelArray: any[] = Array.isArray(fetchedLabelData)
+        ? fetchedLabelData
+        : (fetchedLabelData?.labels || fetchedLabelData?.items || []);
+
+      this.cachedLabelList = rawLabelArray.map(item => ({
+        id: String(item.id || item.labelId || ''),
+        name: String(item.name || item.labelName || item.title || '').trim(),
+        color: item.color,
+        icon: item.icon,
+      })).filter(item => item.id.length > 0 && item.name.length > 0);
+
+      this.cacheLastUpdatedTimestamp = Date.now();
+      return this.cachedLabelList;
+    } catch (error) {
+      applicationLogger.fileDetail('warn', 'Failed to fetch labels from Wallet MCP', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Creates a new label in Wallet if the MCP server supports it.
+   */
+  public async createLabel(labelName: string): Promise<WalletLabelItem | null> {
+    const sanitizedLabelName = labelName.replace(/^#/, '').trim();
+    if (!sanitizedLabelName) {
+      return null;
+    }
+
+    try {
+      const toolCallResult = await this.callMcpTool<any>('create_label', {
+        name: sanitizedLabelName,
+      });
+
+      const labelPayload = toolCallResult?.label || toolCallResult;
+      if (labelPayload && (labelPayload.id || labelPayload.labelId)) {
+        const createdLabel: WalletLabelItem = {
+          id: String(labelPayload.id || labelPayload.labelId),
+          name: String(labelPayload.name || sanitizedLabelName),
+          color: labelPayload.color,
+          icon: labelPayload.icon,
+        };
+
+        const existingLabelIndex = this.cachedLabelList.findIndex(item => item.id === createdLabel.id);
+        if (existingLabelIndex >= 0) {
+          this.cachedLabelList[existingLabelIndex] = createdLabel;
+        } else {
+          this.cachedLabelList.push(createdLabel);
+        }
+
+        return createdLabel;
+      }
+      return null;
+    } catch (error) {
+      applicationLogger.fileDetail('warn', `Wallet MCP label creation not available or failed for "${sanitizedLabelName}"`, {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /**
    * Retrieve all budgets.
    * @param includeClosed If false (default), archived or closed budgets are filtered out
    */
@@ -347,6 +424,9 @@ export class WalletMcpClientService {
       }
       if (recordItem.counterParty) {
         sanitizedRecordItem.counterParty = recordItem.counterParty;
+      }
+      if (Array.isArray(recordItem.labelIds) && recordItem.labelIds.length > 0) {
+        sanitizedRecordItem.labelIds = recordItem.labelIds;
       }
 
       return sanitizedRecordItem;

@@ -20,6 +20,8 @@ import {
 } from '../utils/humanResponseFormatter.js';
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../utils/logger.js';
+import { extractHashtags } from '../utils/hashtagParser.js';
+import { resolveAndEnsureLabels } from '../services/walletLabelResolver.js';
 
 function formatAccountResolutionIssueMessage(issue: AccountResolutionIssue): string {
   const dictionary = getDictionary();
@@ -224,7 +226,8 @@ export class UserMessageHandler {
         const validationResult = validateAndSanitizeFinancialRecords(
           extractedIntent.records,
           cachedAccounts,
-          cachedCategories
+          cachedCategories,
+          event.textPayload
         );
 
         if (
@@ -277,6 +280,32 @@ export class UserMessageHandler {
         }
 
         const validRecordsToCreate = validationResult.sanitizedRecords;
+
+        // Fallback: if single record has no labels but raw user message contained hashtags, associate them
+        if (
+          validRecordsToCreate.length === 1 &&
+          (!validRecordsToCreate[0].labels || validRecordsToCreate[0].labels.length === 0) &&
+          event.textPayload
+        ) {
+          const userMessageHashtags = extractHashtags(event.textPayload).tags;
+          if (userMessageHashtags.length > 0) {
+            validRecordsToCreate[0].labels = userMessageHashtags;
+          }
+        }
+
+        // Resolve and auto-create labels for all records
+        for (const record of validRecordsToCreate) {
+          if (record.labels && record.labels.length > 0) {
+            const { resolvedLabelIds, resolvedLabelNames } = await resolveAndEnsureLabels(
+              record.labels,
+              this.walletCacheService,
+              this.walletMcpClient
+            );
+            record.labelIds = resolvedLabelIds.length > 0 ? resolvedLabelIds : undefined;
+            record.labels = resolvedLabelNames.length > 0 ? resolvedLabelNames : undefined;
+          }
+        }
+
         applicationLogger.mcp(`Creating ${validRecordsToCreate.length} record(s) in Wallet...`);
 
         applicationLogger.fileDetail('mcp', 'Dispatching Record Creation to Wallet MCP', {

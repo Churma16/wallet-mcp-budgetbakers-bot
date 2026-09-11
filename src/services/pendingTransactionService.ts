@@ -40,6 +40,7 @@ export interface PendingAccountSelectionDraft {
   pendingRecordIndex: number;
   accountHint: string;
   candidateAccounts: PendingAccountSelectionCandidate[];
+  sourceUserText?: string;
   createdAt: Date;
   expiresAt: Date;
 }
@@ -48,7 +49,7 @@ export type PendingTransactionDispatchState = 'PENDING' | 'PROCESSING' | 'UNKNOW
 
 type AccountSelectionDraftUpdate = Partial<Pick<
   PendingAccountSelectionDraft,
-  'records' | 'pendingRecordIndex' | 'accountHint' | 'candidateAccounts'
+  'records' | 'pendingRecordIndex' | 'accountHint' | 'candidateAccounts' | 'sourceUserText'
 >>;
 
 export class PendingTransactionService {

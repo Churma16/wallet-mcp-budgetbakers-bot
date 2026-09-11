@@ -7,6 +7,7 @@ export interface RecordMessageParams {
   categoryName: string;
   recordTimestampDisplay: string;
   transactionTypeIcon: string;
+  labels?: string[];
 }
 
 export interface MultipleRecordsItemParams {
@@ -17,6 +18,7 @@ export interface MultipleRecordsItemParams {
   accountName: string;
   categoryName: string;
   recordTimestampDisplay: string;
+  labels?: string[];
 }
 
 export interface PendingEmailNotificationParams {

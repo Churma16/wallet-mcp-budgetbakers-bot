@@ -1,6 +1,7 @@
 import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload } from '../types/walletTypes.js';
 import { getApplicationTimezone } from './humanResponseFormatter.js';
 import { getTimezoneOffsetDetails } from '../services/ai/aiPromptBuilder.js';
+import { extractHashtags, deduplicateTags, normalizeTagName } from './hashtagParser.js';
 
 export type AccountResolutionIssueReason = 'UNRESOLVED' | 'AMBIGUOUS';
 
@@ -116,7 +117,8 @@ function findAccountResolutionCandidates(
 export function validateAndSanitizeFinancialRecords(
   incomingRecords: CreateRecordInputPayload[],
   availableAccountList: WalletAccountItem[],
-  availableCategoryList: WalletCategoryItem[]
+  availableCategoryList: WalletCategoryItem[],
+  sourceUserText?: string
 ): FinancialRecordValidationResult {
   const validationErrors: string[] = [];
   const sanitizedRecords: CreateRecordInputPayload[] = [];
@@ -140,6 +142,32 @@ export function validateAndSanitizeFinancialRecords(
       ],
       accountResolutionIssues: [],
     };
+  }
+
+  // Deterministically derive allowed explicit hashtags from raw user input.
+  // Raw user input (sourceUserText) is the sole authority for explicit hashtags.
+  // Model-generated fields (like record.note) must never authorize new hashtags absent from user input.
+  const rawSourceHashtags =
+    typeof sourceUserText === 'string'
+      ? extractHashtags(sourceUserText).tags
+      : undefined;
+
+  const allowedExplicitTagSet = new Set<string>();
+
+  if (rawSourceHashtags !== undefined) {
+    for (const tag of rawSourceHashtags) {
+      allowedExplicitTagSet.add(tag.toLowerCase());
+    }
+  } else {
+    // When sourceUserText is not provided (e.g. standalone validator tests), fall back to note hashtags
+    for (const record of incomingRecords) {
+      if (record && record.note && typeof record.note === 'string') {
+        const noteHashtags = extractHashtags(record.note).tags;
+        for (const tag of noteHashtags) {
+          allowedExplicitTagSet.add(tag.toLowerCase());
+        }
+      }
+    }
   }
 
   for (let recordIndex = 0; recordIndex < incomingRecords.length; recordIndex++) {
@@ -248,23 +276,62 @@ export function validateAndSanitizeFinancialRecords(
       resolvedRecordDate = new Date(parsedDateTimestamp).toISOString();
     }
 
-    // 5. Text Sanitization
-    const sanitizedNote = currentRecord.note
-      ? String(currentRecord.note).slice(0, 500).trim()
-      : undefined;
+    // 5. Text Sanitization & Explicit Hashtag Extraction
+    let extractedTagsFromNote: string[] = [];
+    let cleanedNote: string | undefined = undefined;
+
+    if (currentRecord.note) {
+      const rawNoteString = String(currentRecord.note).slice(0, 500);
+      const hashtagResult = extractHashtags(rawNoteString);
+      cleanedNote = hashtagResult.cleanedText.length > 0 ? hashtagResult.cleanedText : undefined;
+      // AI note hashtags are cleaned from note, but only accepted as labels if they also exist
+      // in the authorized explicit hashtag set derived from raw user input
+      extractedTagsFromNote = hashtagResult.tags.filter(tag =>
+        allowedExplicitTagSet.has(tag.toLowerCase())
+      );
+    }
+
+    // Require explicit hashtags before accepting AI-provided labels
+    const incomingLabels = Array.isArray(currentRecord.labels)
+      ? currentRecord.labels
+          .map(normalizeTagName)
+          .filter(tag => allowedExplicitTagSet.has(tag.toLowerCase()))
+      : [];
+
+    // For single-record input, always union all deterministically parsed sourceUserText hashtags
+    // with validated per-record labels so omission by the model never drops user-authored hashtags
+    const fallbackSourceTags: string[] = [];
+    if (incomingRecords.length === 1 && rawSourceHashtags && rawSourceHashtags.length > 0) {
+      fallbackSourceTags.push(...rawSourceHashtags);
+    }
+
+    const combinedLabels = deduplicateTags([
+      ...incomingLabels,
+      ...extractedTagsFromNote,
+      ...fallbackSourceTags,
+    ]);
 
     const sanitizedCounterParty = currentRecord.counterParty
       ? String(currentRecord.counterParty).slice(0, 100).trim()
       : undefined;
 
-    sanitizedRecords.push({
+    const sanitizedRecordItem: CreateRecordInputPayload = {
       accountId: resolvedAccountId,
       categoryId: resolvedCategoryId,
       amount: parsedAmount,
       recordDate: resolvedRecordDate,
-      note: sanitizedNote,
+      note: cleanedNote,
       counterParty: sanitizedCounterParty,
-    });
+    };
+
+    if (combinedLabels.length > 0) {
+      sanitizedRecordItem.labels = combinedLabels;
+    }
+
+    // Incoming labelIds are always discarded at the validation boundary to prevent
+    // untrusted or hallucinated IDs from bypassing name-based label resolution.
+
+    sanitizedRecords.push(sanitizedRecordItem);
   }
 
   return {
