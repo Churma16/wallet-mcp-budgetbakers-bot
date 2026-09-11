@@ -1017,11 +1017,10 @@ console.log('\n[Suite 7] Testing Human-Facing Response Formatting & i18n...');
 
     // 1. Formatter generates navigation command with operator
     const hintId = formatTransactionHistoryMessage(histPage, 'id');
-    const expectedRegex = new RegExp(`riwayat\\s+${testCase.symbol.replace(/[<>=]/g, '\\$&')}\\s+2026-09-11\\s+hal\\s+2`);
-    assert.match(hintId, expectedRegex);
+    const navCommand = `riwayat ${testCase.symbol} 2026-09-11 hal 2`;
+    assert.ok(hintId.includes(navCommand), `Expected hintId to include "${navCommand}"`);
 
     // 2. Parser recovers the operator and page number
-    const navCommand = `riwayat ${testCase.symbol} 2026-09-11 hal 2`;
     const parsedAction = detectFastPathAction(navCommand);
     assert.ok(parsedAction, `Failed to parse ${navCommand}`);
     assert.strictEqual((parsedAction as any).options.page, 2);
