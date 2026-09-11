@@ -56,7 +56,8 @@ export class GeminiAiProvider implements FinancialAiProvider {
   ): string {
     const currentDateIso = new Date().toISOString().split('T')[0];
     const activeLanguage = getActiveLanguage();
-    const cacheKey = `${activeLanguage}|${currentDateIso}|${availableAccountList.map(account => account.id).join(',')}|${availableCategoryList.map(category => category.id).join(',')}`;
+    const applicationTimezone = getApplicationTimezone();
+    const cacheKey = `${activeLanguage}|${currentDateIso}|${applicationTimezone}|${availableAccountList.map(account => account.id).join(',')}|${availableCategoryList.map(category => category.id).join(',')}`;
 
     if (this.systemInstructionCacheKey === cacheKey && this.cachedSystemInstruction) {
       return this.cachedSystemInstruction;
@@ -65,7 +66,8 @@ export class GeminiAiProvider implements FinancialAiProvider {
     this.cachedSystemInstruction = buildCompactSystemInstruction(
       availableAccountList,
       availableCategoryList,
-      currentDateIso
+      currentDateIso,
+      applicationTimezone
     );
     this.systemInstructionCacheKey = cacheKey;
     return this.cachedSystemInstruction;
@@ -257,7 +259,12 @@ export class GeminiAiProvider implements FinancialAiProvider {
 
     const trimmedUserMessage = userMessageText.trim();
     const currentTransactionTimestampIso = new Date().toISOString();
-    const promptTextWithTimestamp = buildTextMessagePrompt(trimmedUserMessage, currentTransactionTimestampIso);
+    const applicationTimezone = getApplicationTimezone();
+    const promptTextWithTimestamp = buildTextMessagePrompt(
+      trimmedUserMessage,
+      currentTransactionTimestampIso,
+      applicationTimezone
+    );
 
     const generationResult = await this.executeGenerationWithFallback({
       contents: [

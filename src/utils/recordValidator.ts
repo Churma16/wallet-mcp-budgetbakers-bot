@@ -1,6 +1,6 @@
 import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload } from '../types/walletTypes.js';
 import { getApplicationTimezone } from './humanResponseFormatter.js';
-import { getTimezoneOffsetDetails } from '../services/ai/aiPromptBuilder.js';
+import { getTimezoneOffsetDetails, parseRelativeTime } from './relativeTimeParser.js';
 
 export type AccountResolutionIssueReason = 'UNRESOLVED' | 'AMBIGUOUS';
 
@@ -116,7 +116,9 @@ function findAccountResolutionCandidates(
 export function validateAndSanitizeFinancialRecords(
   incomingRecords: CreateRecordInputPayload[],
   availableAccountList: WalletAccountItem[],
-  availableCategoryList: WalletCategoryItem[]
+  availableCategoryList: WalletCategoryItem[],
+  contextualUserMessage?: string,
+  referenceDate: Date = new Date()
 ): FinancialRecordValidationResult {
   const validationErrors: string[] = [];
   const sanitizedRecords: CreateRecordInputPayload[] = [];
@@ -228,22 +230,33 @@ export function validateAndSanitizeFinancialRecords(
       // If still not matched, omit categoryId rather than failing the transaction with bad UUID
     }
 
-    // 4. Record Date Validation
+    // 4. Record Date Validation & Relative Time Normalization
     let resolvedRecordDate = currentRecord.recordDate;
-    if (typeof resolvedRecordDate === 'string') {
+
+    // Evaluate natural language relative time expressions from contextual user message or record note
+    const candidateTextForRelativeTime = contextualUserMessage || currentRecord.note || '';
+    const parsedRelativeTime = parseRelativeTime(
+      candidateTextForRelativeTime,
+      referenceDate,
+      getApplicationTimezone()
+    );
+
+    if (parsedRelativeTime) {
+      resolvedRecordDate = parsedRelativeTime.resolvedUtcIso;
+    } else if (typeof resolvedRecordDate === 'string') {
       const trimmedDateString = resolvedRecordDate.trim();
       // If date string has no timezone offset or Z indicator (e.g. 2026-09-08T11:54:00)
       if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(trimmedDateString)) {
         const normalizedIsoDate = trimmedDateString.replace(' ', 'T');
         const applicationTimezone = getApplicationTimezone();
-        const timezoneOffsetDetails = getTimezoneOffsetDetails(applicationTimezone);
+        const timezoneOffsetDetails = getTimezoneOffsetDetails(applicationTimezone, referenceDate);
         resolvedRecordDate = `${normalizedIsoDate}${timezoneOffsetDetails.formattedOffset}`;
       }
     }
 
     const parsedDateTimestamp = Date.parse(resolvedRecordDate);
     if (Number.isNaN(parsedDateTimestamp)) {
-      resolvedRecordDate = new Date().toISOString();
+      resolvedRecordDate = new Date(referenceDate).toISOString();
     } else {
       resolvedRecordDate = new Date(parsedDateTimestamp).toISOString();
     }

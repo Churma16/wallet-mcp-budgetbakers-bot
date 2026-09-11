@@ -244,15 +244,21 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     availableCategoryList: WalletCategoryItem[]
   ): Promise<ExtractedFinancialIntent> {
     const currentDateIso = new Date().toISOString().split('T')[0];
+    const applicationTimezone = getApplicationTimezone();
     const systemInstruction = buildCompactSystemInstruction(
       availableAccountList,
       availableCategoryList,
-      currentDateIso
+      currentDateIso,
+      applicationTimezone
     );
 
     const trimmedUserMessage = userMessageText.trim();
     const currentTransactionTimestampIso = new Date().toISOString();
-    const promptTextWithTimestamp = buildTextMessagePrompt(trimmedUserMessage, currentTransactionTimestampIso);
+    const promptTextWithTimestamp = buildTextMessagePrompt(
+      trimmedUserMessage,
+      currentTransactionTimestampIso,
+      applicationTimezone
+    );
 
     const messages = [
       { role: 'system', content: systemInstruction },
