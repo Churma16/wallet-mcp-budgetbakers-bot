@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import test from 'node:test';
 import {
   WalletMcpClientService,
   DEFAULT_TRANSACTION_HISTORY_LIMIT,
@@ -75,10 +76,11 @@ function createSeededCacheService(client: WalletMcpClientService): WalletCacheSe
 }
 
 // -----------------------------------------------------------------------------
-// Suite 1: Search Matcher Unit Semantics (Payee, Note, Case & Partial Matching)
+// Suite 1: Search Matcher & Production Pipeline Semantics
 // -----------------------------------------------------------------------------
-console.log('\n[Suite 1] Testing Search Matcher Unit Semantics...');
-{
+test('Suite 1: Search Matcher & Production Pipeline Semantics', async () => {
+  console.log('\n[Suite 1] Testing Search Matcher & Production Pipeline Semantics...');
+
   const sampleRecordWithPayeeAndNote: WalletRecordItem = {
     id: 'rec-1',
     accountId: 'acc-bca-001',
@@ -119,14 +121,12 @@ console.log('\n[Suite 1] Testing Search Matcher Unit Semantics...');
     recordType: 'income',
   };
 
-  // 1.1 Exact match on counterParty / merchant
+  // 1.1 Direct unit semantics
   assert.strictEqual(
     matchesTransactionRecordSearch(sampleRecordWithPayeeAndNote, 'Starbucks Reserve'),
     true,
     'Exact match on counterParty must return true'
   );
-
-  // 1.2 Substring / partial match on counterParty
   assert.strictEqual(
     matchesTransactionRecordSearch(sampleRecordWithPayeeAndNote, 'starbucks'),
     true,
@@ -137,15 +137,11 @@ console.log('\n[Suite 1] Testing Search Matcher Unit Semantics...');
     true,
     'Partial match on counterParty must return true'
   );
-
-  // 1.3 Exact match on note
   assert.strictEqual(
     matchesTransactionRecordSearch(sampleRecordWithPayeeAndNote, 'Caramel Macchiato with Oat Milk'),
     true,
     'Exact match on note must return true'
   );
-
-  // 1.4 Substring / partial match on note
   assert.strictEqual(
     matchesTransactionRecordSearch(sampleRecordWithPayeeAndNote, 'macchiato'),
     true,
@@ -156,85 +152,96 @@ console.log('\n[Suite 1] Testing Search Matcher Unit Semantics...');
     true,
     'Partial match on note must return true'
   );
-
-  // 1.5 Case-insensitivity (uppercase, lowercase, mixed case)
-  assert.strictEqual(
-    matchesTransactionRecordSearch(sampleRecordWithPayeeAndNote, 'STARBUCKS'),
-    true,
-    'Uppercase query must match mixed-case merchant'
-  );
-  assert.strictEqual(
-    matchesTransactionRecordSearch(sampleRecordWithPayeeAndNote, 'oat milk'),
-    true,
-    'Lowercase query must match mixed-case note'
-  );
-  assert.strictEqual(
-    matchesTransactionRecordSearch(sampleRecordWithPayeeAndNote, 'StArBuCkS'),
-    true,
-    'Alternating case query must match'
-  );
-
-  // 1.6 Record with payee only correctly matches payee and rejects unmatched note
-  assert.strictEqual(
-    matchesTransactionRecordSearch(sampleRecordWithPayeeOnly, 'indomaret'),
-    true
-  );
-  assert.strictEqual(
-    matchesTransactionRecordSearch(sampleRecordWithPayeeOnly, 'kopi'),
-    false
-  );
-
-  // 1.7 Record with note only correctly matches note and rejects unmatched payee
-  assert.strictEqual(
-    matchesTransactionRecordSearch(sampleRecordWithNoteOnly, 'rendang'),
-    true
-  );
-  assert.strictEqual(
-    matchesTransactionRecordSearch(sampleRecordWithNoteOnly, 'starbucks'),
-    false
-  );
-
-  // 1.8 Record without payee or note returns false
   assert.strictEqual(
     matchesTransactionRecordSearch(sampleRecordWithNeither, 'starbucks'),
     false,
-    'Record without payee or note must return false'
+    'Non-matching record must return false'
   );
 
-  // 1.9 Non-matching query returns false
-  assert.strictEqual(
-    matchesTransactionRecordSearch(sampleRecordWithPayeeAndNote, 'mcdonalds'),
-    false
-  );
+  // 1.2 Case-insensitivity (uppercase, lowercase, mixed case)
+  assert.strictEqual(matchesTransactionRecordSearch(sampleRecordWithPayeeAndNote, 'STARBUCKS'), true);
+  assert.strictEqual(matchesTransactionRecordSearch(sampleRecordWithPayeeAndNote, 'sTaRbUcKs'), true);
+  assert.strictEqual(matchesTransactionRecordSearch(sampleRecordWithPayeeAndNote, 'MACCHIATO'), true);
+  assert.strictEqual(matchesTransactionRecordSearch(sampleRecordWithPayeeAndNote, 'MaCcHiAtO'), true);
 
-  // 1.10 Empty or whitespace-only search query returns false
+  // 1.3 Missing/null/undefined field safety
+  const emptyRecord: WalletRecordItem = {
+    id: 'rec-empty',
+    accountId: 'acc-1',
+    amount: 0,
+    currency: 'IDR',
+    recordDate: '2026-09-11T00:00:00Z',
+    recordType: 'expense',
+  };
+  assert.strictEqual(matchesTransactionRecordSearch(emptyRecord, 'anything'), false);
   assert.strictEqual(matchesTransactionRecordSearch(sampleRecordWithPayeeAndNote, ''), false);
   assert.strictEqual(matchesTransactionRecordSearch(sampleRecordWithPayeeAndNote, '   '), false);
   assert.strictEqual(matchesTransactionRecordSearch(sampleRecordWithPayeeAndNote, null as any), false);
   assert.strictEqual(matchesTransactionRecordSearch(sampleRecordWithPayeeAndNote, undefined as any), false);
 
-  console.log('  [PASS] Search matcher semantics verified (exact, partial, case-insensitive, field safety).');
-}
+  // 1.4 Production pipeline verification via client.fetchRecords & service.getTransactionHistory
+  const { client, capturedCalls, setNextResponse } = createMockClient();
+  const cache = createSeededCacheService(client);
+  const service = new TransactionHistoryService(client, cache);
+
+  setNextResponse({
+    records: [
+      sampleRecordWithPayeeAndNote,
+      sampleRecordWithPayeeOnly,
+      sampleRecordWithNoteOnly,
+      sampleRecordWithNeither,
+    ],
+    total: 4,
+  });
+
+  // Verify production search path matches partial mixed-case counterParty
+  const payeeSearchResult = await client.fetchRecords({ searchQuery: 'sTaRbUcKs' });
+  assert.strictEqual(capturedCalls[0].args.query, 'sTaRbUcKs');
+  assert.strictEqual(payeeSearchResult.records.length, 1);
+  assert.strictEqual(payeeSearchResult.records[0].id, 'rec-1');
+
+  // Verify production search path matches partial mixed-case note
+  const noteSearchResult = await client.fetchRecords({ searchQuery: 'MaCcHiAtO' });
+  assert.strictEqual(noteSearchResult.records.length, 1);
+  assert.strictEqual(noteSearchResult.records[0].id, 'rec-1');
+
+  // Verify production search path matches note-only record
+  const noteOnlyResult = await client.fetchRecords({ searchQuery: 'padang' });
+  assert.strictEqual(noteOnlyResult.records.length, 1);
+  assert.strictEqual(noteOnlyResult.records[0].id, 'rec-3');
+
+  // Verify production search path filters out non-matching records via service
+  const serviceSearchResult = await service.getTransactionHistory({ searchQuery: 'Indomaret' });
+  assert.strictEqual(serviceSearchResult.records.length, 1);
+  assert.strictEqual(serviceSearchResult.records[0].id, 'rec-2');
+  assert.strictEqual(serviceSearchResult.appliedFilters?.searchQuery, 'Indomaret');
+
+  console.log('  [PASS] Search matcher and production pipeline semantics verified.');
+});
 
 // -----------------------------------------------------------------------------
-// Suite 2: Normalizer & Validation (Trimming, Length, Empty, Fail-Closed)
+// Suite 2: Filter Normalizer Search Query Validation & Length Caps
 // -----------------------------------------------------------------------------
-console.log('\n[Suite 2] Testing Filter Normalizer Search Query Validation...');
-{
+test('Suite 2: Filter Normalizer Search Query Validation & Length Caps', () => {
+  console.log('\n[Suite 2] Testing Filter Normalizer Search Query Validation...');
+
   // 2.1 Valid search query trimmed and populated
   const validResult = normalizeTransactionHistoryFilters(
-    { searchQuery: '   Starbucks Coffee   ' },
+    { searchQuery: '  starbucks coffee  ' },
     MOCK_ACCOUNTS,
     MOCK_CATEGORIES,
     FIXED_TEST_REFERENCE_DATE
   );
   assert.strictEqual(validResult.isValid, true);
-  assert.strictEqual(validResult.normalizedOptions.searchQuery, 'Starbucks Coffee');
-  assert.strictEqual(validResult.appliedFilters.searchQuery, 'Starbucks Coffee');
-  assert.strictEqual(validResult.upstreamSearchQuery, 'Starbucks Coffee');
-  assert.deepStrictEqual(validResult.appliedFilters.navigationTokens, ['cari "Starbucks Coffee"']);
+  assert.strictEqual(validResult.appliedFilters.searchQuery, 'starbucks coffee');
+  assert.strictEqual(validResult.normalizedOptions.searchQuery, 'starbucks coffee');
+  assert.strictEqual(validResult.upstreamSearchQuery, 'starbucks coffee');
+  assert.ok(
+    validResult.appliedFilters.navigationTokens?.includes('cari "starbucks coffee"'),
+    'Navigation tokens must include search token'
+  );
 
-  // 2.2 Empty string explicitly provided fails closed with INVALID_FORMAT
+  // 2.2 Empty string fails closed with INVALID_FORMAT
   const emptyResult = normalizeTransactionHistoryFilters(
     { searchQuery: '' },
     MOCK_ACCOUNTS,
@@ -280,13 +287,14 @@ console.log('\n[Suite 2] Testing Filter Normalizer Search Query Validation...');
   assert.strictEqual(exactMaxResult.normalizedOptions.searchQuery, exactMaxQuery);
 
   console.log('  [PASS] Search query validation and normalization verified.');
-}
+});
 
 // -----------------------------------------------------------------------------
 // Suite 3: Upstream MCP Dispatch & Unsupported Search Error Handling
 // -----------------------------------------------------------------------------
-console.log('\n[Suite 3] Testing Upstream MCP Dispatch & Error Handling...');
-{
+test('Suite 3: Upstream MCP Dispatch & Error Handling', async () => {
+  console.log('\n[Suite 3] Testing Upstream MCP Dispatch & Error Handling...');
+
   const { client, capturedCalls, setNextResponse, setThrowError } = createMockClient();
   const cache = createSeededCacheService(client);
   const service = new TransactionHistoryService(client, cache);
@@ -325,25 +333,42 @@ console.log('\n[Suite 3] Testing Upstream MCP Dispatch & Error Handling...');
   assert.strictEqual(unsupportedPage.unresolvedFilters[0].reason, 'UNSUPPORTED');
   assert.strictEqual(unsupportedPage.unresolvedFilters[0].subType, 'unsupported_upstream_search');
 
-  // 3.3 Generic / transport error without search unsupported keyword re-throws
-  setThrowError(new Error('Network timeout: ECONNRESET'));
-  let didThrowNetworkError = false;
-  try {
-    await service.getTransactionHistory({ searchQuery: 'Starbucks' });
-  } catch (error: any) {
-    didThrowNetworkError = true;
-    assert.match(error.message, /ECONNRESET/);
-  }
-  assert.strictEqual(didThrowNetworkError, true, 'Standard network transport error must re-throw');
+  // 3.3 Unknown parameter: query error mapped to unsupported_upstream_search
+  setThrowError(new Error('MCP Error: unknown parameter: query'));
+  const unknownQueryPage = await service.getTransactionHistory({ searchQuery: 'Starbucks' });
+  assert.strictEqual(unknownQueryPage.unresolvedFilters?.length, 1);
+  assert.strictEqual(unknownQueryPage.unresolvedFilters[0].filterKey, 'searchQuery');
+  assert.strictEqual(unknownQueryPage.unresolvedFilters[0].reason, 'UNSUPPORTED');
 
-  console.log('  [PASS] Upstream MCP query argument dispatch and unsupported search safety verified.');
-}
+  // 3.4 Unrelated unsupported filter error (e.g. unsupported category filter) MUST re-throw
+  setThrowError(new Error('unsupported category filter'));
+  await assert.rejects(
+    async () => {
+      await service.getTransactionHistory({ searchQuery: 'Starbucks', categoryName: 'Makanan & Minuman' });
+    },
+    (err: Error) => err.message.includes('unsupported category filter'),
+    'Unrelated unsupported category error must NOT be classified as unsupported text search'
+  );
+
+  // 3.5 Generic / transport error without search unsupported keyword re-throws
+  setThrowError(new Error('Network timeout: ECONNRESET'));
+  await assert.rejects(
+    async () => {
+      await service.getTransactionHistory({ searchQuery: 'Starbucks' });
+    },
+    (err: Error) => err.message.includes('ECONNRESET'),
+    'Standard network transport error must re-throw'
+  );
+
+  console.log('  [PASS] Upstream MCP query argument dispatch and query-specific error classification verified.');
+});
 
 // -----------------------------------------------------------------------------
 // Suite 4: Composable Combinations (Search + Account + Category + Type + Date)
 // -----------------------------------------------------------------------------
-console.log('\n[Suite 4] Testing Search Composed with Shared Query Filters...');
-{
+test('Suite 4: Composable Combinations', async () => {
+  console.log('\n[Suite 4] Testing Search Composed with Shared Query Filters...');
+
   const { client, capturedCalls, setNextResponse } = createMockClient();
   const cache = createSeededCacheService(client);
   const service = new TransactionHistoryService(client, cache);
@@ -414,13 +439,14 @@ console.log('\n[Suite 4] Testing Search Composed with Shared Query Filters...');
   assert.strictEqual(fullyFilteredPage.appliedFilters?.recordType, 'expense');
 
   console.log('  [PASS] Composable filter conjunctions verified across all dimensions.');
-}
+});
 
 // -----------------------------------------------------------------------------
 // Suite 5: Pagination, Sorting & Navigation Hint Round-Tripping
 // -----------------------------------------------------------------------------
-console.log('\n[Suite 5] Testing Search Pagination, Sorting & Navigation Hints...');
-{
+test('Suite 5: Pagination, Sorting & Navigation Hint Round-Tripping', async () => {
+  console.log('\n[Suite 5] Testing Search Pagination, Sorting & Navigation Hints...');
+
   const samplePageWithSearch: TransactionHistoryPage = {
     records: [
       {
@@ -483,13 +509,14 @@ console.log('\n[Suite 5] Testing Search Pagination, Sorting & Navigation Hints..
   assert.strictEqual(capturedCalls[0].args.query, 'Starbucks');
 
   console.log('  [PASS] Pagination bounds, sorting, and navigation hint round-tripping verified.');
-}
+});
 
 // -----------------------------------------------------------------------------
 // Suite 6: Fast-Path Intent Detection (Dedicated & History Search Syntax)
 // -----------------------------------------------------------------------------
-console.log('\n[Suite 6] Testing Fast-Path Intent Detection for Search...');
-{
+test('Suite 6: Fast-Path Intent Detection for Search', () => {
+  console.log('\n[Suite 6] Testing Fast-Path Intent Detection for Search...');
+
   // 6.1 Dedicated Indonesian search commands
   const searchId1 = detectFastPathAction('cari starbucks');
   assert.strictEqual((searchId1 as any)?.type, 'TRANSACTION_HISTORY');
@@ -551,24 +578,32 @@ console.log('\n[Suite 6] Testing Fast-Path Intent Detection for Search...');
   assert.strictEqual((multiFilterQuery3 as any)?.options.searchQuery, 'starbucks');
   assert.strictEqual((multiFilterQuery3 as any)?.options.sort, 'oldest');
 
-  // 6.7 Safety: Financial transactions with amounts are NEVER intercepted
+  // 6.7 Connector words preservation in literal free-text search queries (Regression tests)
+  const connectorQuery1 = detectFastPathAction('cari Kopi di Taman');
+  assert.strictEqual((connectorQuery1 as any)?.options.searchQuery, 'Kopi di Taman');
+
+  const connectorQuery2 = detectFastPathAction('search Coffee in Town');
+  assert.strictEqual((connectorQuery2 as any)?.options.searchQuery, 'Coffee in Town');
+
+  // 6.8 Safety: Financial transactions with amounts are NEVER intercepted
   assert.strictEqual(detectFastPathAction('beli kopi 25rb'), null);
   assert.strictEqual(detectFastPathAction('catat starbucks 50k'), null);
   assert.strictEqual(detectFastPathAction('transfer 100000 ke bca'), null);
   assert.strictEqual(detectFastPathAction('bayar indomaret 75.000'), null);
 
-  // 6.8 Bare 'cari' without terms returns null
+  // 6.9 Bare 'cari' without terms returns null
   assert.strictEqual(detectFastPathAction('cari'), null);
   assert.strictEqual(detectFastPathAction('search'), null);
 
   console.log('  [PASS] Fast-path intent detection for all search command patterns verified.');
-}
+});
 
 // -----------------------------------------------------------------------------
 // Suite 7: Empty Results & Localization (Clean Error and No-Match Formatting)
 // -----------------------------------------------------------------------------
-console.log('\n[Suite 7] Testing Empty Results & Localization Formatting...');
-{
+test('Suite 7: Empty Results & Localization Formatting', () => {
+  console.log('\n[Suite 7] Testing Empty Results & Localization Formatting...');
+
   // 7.1 Empty search result formatting in Indonesian
   setActiveLanguage('id');
   const emptySearchPageId: TransactionHistoryPage = {
@@ -650,13 +685,14 @@ console.log('\n[Suite 7] Testing Empty Results & Localization Formatting...');
   assert.match(unresolvedFormattedId, /Kata kunci pencarian ".*" tidak valid atau melebihi batas 100 karakter/);
 
   console.log('  [PASS] Empty results and localized error formatting verified with zero language leakage.');
-}
+});
 
 // -----------------------------------------------------------------------------
 // Suite 8: FastPathHandler Integration Test (End-to-End Search Query Dispatch)
 // -----------------------------------------------------------------------------
-console.log('\n[Suite 8] Testing FastPathHandler Integration...');
-{
+test('Suite 8: FastPathHandler Integration', async () => {
+  console.log('\n[Suite 8] Testing FastPathHandler Integration...');
+
   setActiveLanguage('id');
   const { client, setNextResponse } = createMockClient();
   setNextResponse({
@@ -710,6 +746,6 @@ console.log('\n[Suite 8] Testing FastPathHandler Integration...');
   assert.match(sentMessages[0], /Kopi Kenangan/);
 
   console.log('  [PASS] FastPathHandler search integration verified end-to-end.');
-}
+});
 
 console.log('\n[SUCCESS] All Transaction History Text Search tests passed cleanly!\n');

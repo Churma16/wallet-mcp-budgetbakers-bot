@@ -68,18 +68,44 @@ export class TransactionHistoryService {
         normalizationResult.normalizedOptions
       );
     } catch (upstreamError: unknown) {
-      const errorMessage = upstreamError instanceof Error
-        ? upstreamError.message.toLowerCase()
-        : String(upstreamError).toLowerCase();
+      const isSearchActive = Boolean(normalizationResult.normalizedOptions.searchQuery);
 
-      const isUnsupportedSearch =
-        Boolean(normalizationResult.normalizedOptions.searchQuery) &&
-        (errorMessage.includes('unsupported') ||
+      const isUnsupportedSearch = isSearchActive && (() => {
+        if (!upstreamError) return false;
+
+        const errorObject = upstreamError as Record<string, unknown>;
+        if (
+          errorObject.parameter === 'query' ||
+          (errorObject.data && typeof errorObject.data === 'object' && (errorObject.data as Record<string, unknown>).parameter === 'query') ||
+          errorObject.field === 'query'
+        ) {
+          return true;
+        }
+
+        const errorMessage = upstreamError instanceof Error
+          ? upstreamError.message.toLowerCase()
+          : String(upstreamError).toLowerCase();
+
+        // Must explicitly reference the query/search parameter
+        const mentionsQueryParameter =
+          errorMessage.includes('query') ||
+          errorMessage.includes('search') ||
+          errorMessage.includes('text search');
+
+        if (!mentionsQueryParameter) {
+          return false;
+        }
+
+        return (
+          errorMessage.includes('unknown parameter') ||
+          errorMessage.includes('unrecognized argument') ||
+          errorMessage.includes('unrecognized parameter') ||
+          errorMessage.includes('unsupported parameter') ||
           errorMessage.includes('not supported') ||
-          errorMessage.includes('unknown parameter: query') ||
-          errorMessage.includes('unrecognized argument: query') ||
-          errorMessage.includes('search not supported') ||
-          errorMessage.includes('query search not available'));
+          errorMessage.includes('unsupported') ||
+          errorMessage.includes('not available')
+        );
+      })();
 
       if (isUnsupportedSearch) {
         applicationLogger.fileDetail('warn', 'Upstream Wallet MCP text search not supported', {

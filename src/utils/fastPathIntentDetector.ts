@@ -192,65 +192,51 @@ function extractHistoryQueryOptionsFromTokens(
     }
   }
 
-  // 6. Extract relative date period
-  const todayMatch = remainingTokens.match(/\b(hari\s+ini|today)\b/i);
-  if (todayMatch) {
-    resolvedDatePeriod = 'today';
-    remainingTokens = remainingTokens.replace(todayMatch[0], ' ').trim();
-  } else {
-    const yesterdayMatch = remainingTokens.match(/\b(kemarin|yesterday|semalam)\b/i);
-    if (yesterdayMatch) {
-      resolvedDatePeriod = 'yesterday';
-      remainingTokens = remainingTokens.replace(yesterdayMatch[0], ' ').trim();
-    } else {
-      const thisWeekMatch = remainingTokens.match(/\b(minggu\s+ini|this\s+week)\b/i);
-      if (thisWeekMatch) {
-        resolvedDatePeriod = 'this_week';
-        remainingTokens = remainingTokens.replace(thisWeekMatch[0], ' ').trim();
-      } else {
-        const lastWeekMatch = remainingTokens.match(/\b(minggu\s+lalu|last\s+week)\b/i);
-        if (lastWeekMatch) {
-          resolvedDatePeriod = 'last_week';
-          remainingTokens = remainingTokens.replace(lastWeekMatch[0], ' ').trim();
-        } else {
-          const thisMonthMatch = remainingTokens.match(/\b(bulan\s+ini|this\s+month)\b/i);
-          if (thisMonthMatch) {
-            resolvedDatePeriod = 'this_month';
-            remainingTokens = remainingTokens.replace(thisMonthMatch[0], ' ').trim();
-          } else {
-            const lastMonthMatch = remainingTokens.match(/\b(bulan\s+lalu|last\s+month)\b/i);
-            if (lastMonthMatch) {
-              resolvedDatePeriod = 'last_month';
-              remainingTokens = remainingTokens.replace(lastMonthMatch[0], ' ').trim();
-            } else {
-              const thisYearMatch = remainingTokens.match(/\b(tahun\s+ini|this\s+year)\b/i);
-              if (thisYearMatch) {
-                resolvedDatePeriod = 'this_year';
-                remainingTokens = remainingTokens.replace(thisYearMatch[0], ' ').trim();
-              }
-            }
-          }
-        }
-      }
-    }
+  // 6. Extract relative date period (optionally preceded by preposition: pada, di, on, in, untuk, for)
+  const datePeriodPattern = /\b(?:pada|di|on|in|untuk|for)?\s*(hari\s+ini|today|kemarin|yesterday|semalam|minggu\s+ini|this\s+week|minggu\s+lalu|last\s+week|bulan\s+ini|this\s+month|bulan\s+lalu|last\s+month|tahun\s+ini|this\s+year)\b/i;
+  const datePeriodMatch = remainingTokens.match(datePeriodPattern);
+  if (datePeriodMatch) {
+    const rawPeriod = datePeriodMatch[1].toLowerCase();
+    if (rawPeriod === 'hari ini' || rawPeriod === 'today') resolvedDatePeriod = 'today';
+    else if (rawPeriod === 'kemarin' || rawPeriod === 'yesterday' || rawPeriod === 'semalam') resolvedDatePeriod = 'yesterday';
+    else if (rawPeriod === 'minggu ini' || rawPeriod === 'this week') resolvedDatePeriod = 'this_week';
+    else if (rawPeriod === 'minggu lalu' || rawPeriod === 'last week') resolvedDatePeriod = 'last_week';
+    else if (rawPeriod === 'bulan ini' || rawPeriod === 'this month') resolvedDatePeriod = 'this_month';
+    else if (rawPeriod === 'bulan lalu' || rawPeriod === 'last month') resolvedDatePeriod = 'last_month';
+    else if (rawPeriod === 'tahun ini' || rawPeriod === 'this year') resolvedDatePeriod = 'this_year';
+    remainingTokens = remainingTokens.replace(datePeriodMatch[0], ' ').trim();
   }
 
   // 7. Extract explicit account and category prefixes (supports unquoted or quoted strings)
-  const explicitAccountMatch = remainingTokens.match(/\b(?:akun|account|rekening)\s+(?:"([^"]+)"|'([^']+)'|([a-zA-Z0-9_-]+)\b)/i);
+  const explicitAccountMatch = remainingTokens.match(/\b(?:dari|di|for|in|pada)?\s*(?:akun|account|rekening)\s+(?:"([^"]+)"|'([^']+)'|([a-zA-Z0-9_-]+)\b)/i);
   if (explicitAccountMatch) {
     resolvedAccountName = (explicitAccountMatch[1] || explicitAccountMatch[2] || explicitAccountMatch[3]).toLowerCase();
     remainingTokens = remainingTokens.replace(explicitAccountMatch[0], ' ').trim();
+  } else {
+    // Connector followed by known account keyword (e.g. "di bca", "dari mandiri", "for jago")
+    const connectorAccountMatch = remainingTokens.match(/\b(?:dari|di|for|in|pada)\s+([a-zA-Z0-9_-]+)\b/i);
+    if (connectorAccountMatch && KNOWN_ACCOUNT_KEYWORDS.has(connectorAccountMatch[1].toLowerCase())) {
+      resolvedAccountName = connectorAccountMatch[1].toLowerCase();
+      remainingTokens = remainingTokens.replace(connectorAccountMatch[0], ' ').trim();
+    }
   }
 
-  const explicitCategoryMatch = remainingTokens.match(/\b(?:kategori|category)\s+(?:"([^"]+)"|'([^']+)'|([a-zA-Z0-9_-]+)\b)/i);
+  const explicitCategoryMatch = remainingTokens.match(/\b(?:untuk|for|pada)?\s*(?:kategori|category)\s+(?:"([^"]+)"|'([^']+)'|([a-zA-Z0-9_-]+)\b)/i);
   if (explicitCategoryMatch) {
     resolvedCategoryName = (explicitCategoryMatch[1] || explicitCategoryMatch[2] || explicitCategoryMatch[3]).toLowerCase();
     remainingTokens = remainingTokens.replace(explicitCategoryMatch[0], ' ').trim();
+  } else {
+    // Connector followed by known category keyword (e.g. "untuk makanan", "for transport")
+    const connectorCategoryMatch = remainingTokens.match(/\b(?:untuk|for|pada)\s+([a-zA-Z0-9_-]+)\b/i);
+    if (connectorCategoryMatch && KNOWN_CATEGORY_KEYWORDS.has(connectorCategoryMatch[1].toLowerCase())) {
+      resolvedCategoryName = connectorCategoryMatch[1].toLowerCase();
+      remainingTokens = remainingTokens.replace(connectorCategoryMatch[0], ' ').trim();
+    }
   }
 
   // 7b. Extract explicit search query (e.g. cari "starbucks", search 'coffee', cari:indomaret, q:starbucks, or cari starbucks)
   const explicitSearchMatch = remainingTokens.match(
-    /\b(?:cari|search|find|keyword|q)\s*(?::|=|\s+)(?:"([^"]+)"|'([^']+)'|([a-zA-Z0-9_-]+)\b)/i
+    /\b(?:cari|search|find|keyword|q)(?::\s*|=\s*|\s+)(?:"([^"]+)"|'([^']+)'|([a-zA-Z0-9_-]+)\b)/i
   );
   if (explicitSearchMatch) {
     resolvedSearchQuery = explicitSearchMatch[1] || explicitSearchMatch[2] || explicitSearchMatch[3];
@@ -265,9 +251,6 @@ function extractHistoryQueryOptionsFromTokens(
       remainingTokens = remainingTokens.replace(standaloneQuotedMatch[0], ' ').trim();
     }
   }
-
-  // 8. Remove grammatical connectors
-  remainingTokens = remainingTokens.replace(/\b(dari|di|untuk|for|in|on|pada)\b/gi, ' ').trim();
 
   // 9. Inspect leftover tokens
   if (remainingTokens.length > 0) {
@@ -437,7 +420,7 @@ function parseTransactionHistoryIntent(userMessageText: string): FastPathTransac
   // 3. Pattern matching dedicated search commands:
   // e.g. "cari starbucks", "cari transaksi indomaret", "search coffee", "search transactions starbucks", "find kopi"
   const searchCommandPattern =
-    /^(?:cari\s+transaksi|search\s+transactions?|cari\s+riwayat|search\s+history|cari|search|find)\s+(.+)$/i;
+    /^(?:cari(?:\s+(?:transaksi|riwayat))?|search(?:\s+(?:transactions?|history))?|find)\s+(.+)$/i;
   const searchMatch = trimmedLowerText.match(searchCommandPattern);
   if (searchMatch) {
     const rawSearchRemainderLower = searchMatch[1].trim();

@@ -12,6 +12,7 @@ import {
   TransactionHistoryPage,
 } from '../types/walletTypes.js';
 import { applicationLogger } from '../utils/logger.js';
+import { matchesTransactionRecordSearch } from '../utils/transactionSearchMatcher.js';
 
 export const DEFAULT_TRANSACTION_HISTORY_LIMIT = 10;
 export const MAX_TRANSACTION_HISTORY_LIMIT = 50;
@@ -527,8 +528,16 @@ export class WalletMcpClientService {
       };
     });
 
+    const filteredRecords = queryOptions?.searchQuery
+      ? normalizedRecords.filter(recordItem =>
+          matchesTransactionRecordSearch(recordItem, queryOptions.searchQuery!)
+        )
+      : normalizedRecords;
+
     const hasExplicitTotal = typeof rawResponse?.total === 'number' && Number.isFinite(rawResponse.total);
-    const resolvedTotalCount = hasExplicitTotal ? Math.max(0, rawResponse.total) : undefined;
+    const resolvedTotalCount = (hasExplicitTotal && (!queryOptions?.searchQuery || filteredRecords.length === normalizedRecords.length))
+      ? Math.max(0, rawResponse.total)
+      : (queryOptions?.searchQuery ? filteredRecords.length : undefined);
 
     const hasExplicitNextOffset = typeof rawResponse?.nextOffset === 'number' && Number.isFinite(rawResponse.nextOffset);
     let hasMore = false;
@@ -541,8 +550,8 @@ export class WalletMcpClientService {
       hasMore = false;
       nextOffset = null;
     } else if (typeof resolvedTotalCount === 'number') {
-      hasMore = (resolvedOffset + rawRecordArray.length) < resolvedTotalCount;
-      nextOffset = hasMore ? (resolvedOffset + rawRecordArray.length) : null;
+      hasMore = (resolvedOffset + filteredRecords.length) < resolvedTotalCount;
+      nextOffset = hasMore ? (resolvedOffset + filteredRecords.length) : null;
     }
 
     const pageNumber = Math.floor(resolvedOffset / resolvedLimit) + 1;
@@ -551,7 +560,7 @@ export class WalletMcpClientService {
       : undefined;
 
     return {
-      records: normalizedRecords,
+      records: filteredRecords,
       total: resolvedTotalCount,
       limit: resolvedLimit,
       offset: resolvedOffset,
