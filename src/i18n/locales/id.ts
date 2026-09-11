@@ -6,6 +6,7 @@ import {
   PendingConfirmationSuccessParams,
   PendingBulkItemParams,
   PendingCancellationParams,
+  type TransactionSortOrder,
 } from '../types.js';
 
 export const indonesianDictionary: ResponseDictionary = {
@@ -75,6 +76,43 @@ export const indonesianDictionary: ResponseDictionary = {
     budgetOverspentItem(name: string, spent: string, limit: string, overspent: string): string {
       return `• *${name}*: ${spent} / ${limit} ⚠️ _(lebih ${overspent})_`;
     },
+  },
+
+  history: {
+    header(
+      page: number,
+      totalPages?: number,
+      displayedCount?: number,
+      totalCount?: number,
+      sortOrderLabel?: string
+    ): string {
+      const sortSuffix = sortOrderLabel ? ` [${sortOrderLabel}]` : '';
+      const pageInfo = typeof totalPages === 'number' ? `Hal. ${page}/${totalPages}` : `Hal. ${page}`;
+      const countInfo = typeof totalCount === 'number'
+        ? ` • ${displayedCount ?? 0} dari ${totalCount}`
+        : (typeof displayedCount === 'number' && displayedCount > 0 ? ` • ${displayedCount} transaksi` : '');
+      return `📋 *Riwayat Transaksi* (${pageInfo}${countInfo})${sortSuffix}`;
+    },
+    emptyState: 'Belum ada transaksi yang tercatat.',
+    outOfBounds(totalCount: number): string {
+      return `Halaman ini melebihi jumlah transaksi yang tersedia (Total: ${totalCount} transaksi).`;
+    },
+    navigationHint(
+      nextPage: number,
+      options?: { limit?: number; sort?: TransactionSortOrder }
+    ): string {
+      const commandParts = ['riwayat'];
+      if (options?.limit && options.limit !== 10) {
+        commandParts.push(String(options.limit));
+      }
+      commandParts.push(`hal ${nextPage}`);
+      if (options?.sort === 'oldest') {
+        commandParts.push('terlama');
+      }
+      return `_Ketik *${commandParts.join(' ')}* untuk halaman selanjutnya._`;
+    },
+    sortNewest: 'Terbaru',
+    sortOldest: 'Terlama',
   },
 
   emailPending: {
@@ -179,6 +217,7 @@ export const indonesianDictionary: ResponseDictionary = {
     quickCommandsTitle: '*Perintah Cepat (0 Token AI):*',
     commandBalance: '• *Saldo* / *Cek Saldo*: Cek saldo semua rekening',
     commandBudget: '• *Budget* / *Cek Budget*: Cek status limit anggaran',
+    commandHistory: '• *Riwayat* / *History*: Cek riwayat transaksi terakhir',
     commandMenu: '• *Menu* / *Bantuan*: Menampilkan petunjuk ini',
   },
 

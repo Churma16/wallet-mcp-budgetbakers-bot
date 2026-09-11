@@ -6,8 +6,15 @@ import {
   CreateRecordInputPayload,
   WalletCreateRecordsResponse,
   WalletBudgetItem,
+  TransactionSortOrder,
+  TransactionHistoryQueryOptions,
+  WalletRecordItem,
+  TransactionHistoryPage,
 } from '../types/walletTypes.js';
 import { applicationLogger } from '../utils/logger.js';
+
+export const DEFAULT_TRANSACTION_HISTORY_LIMIT = 10;
+export const MAX_TRANSACTION_HISTORY_LIMIT = 50;
 
 export type WalletMcpDispatchOutcome = 'DEFINITIVE_FAILURE' | 'UNKNOWN';
 
@@ -370,6 +377,152 @@ export class WalletMcpClientService {
         isOverspent,
       };
     });
+  }
+
+  /**
+   * Retrieve transaction records with pagination and deterministic sorting.
+   * Capped at safe upper bound (MAX_TRANSACTION_HISTORY_LIMIT = 50).
+   */
+  public async fetchRecords(queryOptions?: TransactionHistoryQueryOptions): Promise<TransactionHistoryPage> {
+    const rawLimit = queryOptions?.limit;
+    const resolvedLimit = (typeof rawLimit === 'number' && Number.isFinite(rawLimit) && rawLimit >= 1)
+      ? Math.min(MAX_TRANSACTION_HISTORY_LIMIT, Math.floor(rawLimit))
+      : DEFAULT_TRANSACTION_HISTORY_LIMIT;
+
+    let resolvedOffset = 0;
+    if (typeof queryOptions?.offset === 'number' && Number.isFinite(queryOptions.offset)) {
+      resolvedOffset = Math.max(0, Math.floor(queryOptions.offset));
+    } else if (typeof queryOptions?.page === 'number' && Number.isFinite(queryOptions.page) && queryOptions.page > 1) {
+      resolvedOffset = Math.max(0, (Math.floor(queryOptions.page) - 1) * resolvedLimit);
+    }
+
+    const resolvedSort: TransactionSortOrder = queryOptions?.sort === 'oldest' ? 'oldest' : 'newest';
+    const upstreamSortBy = resolvedSort === 'oldest'
+      ? ['+recordDate', '+createdAt']
+      : ['-recordDate', '-createdAt'];
+
+    applicationLogger.fileDetail('mcp', 'Dispatching fetchRecords to Wallet MCP', {
+      limit: resolvedLimit,
+      offset: resolvedOffset,
+      sort: resolvedSort,
+      sortBy: upstreamSortBy,
+    });
+
+    const rawResponse = await this.callMcpTool<any>('get_records', {
+      limit: resolvedLimit,
+      offset: resolvedOffset,
+      sortBy: upstreamSortBy,
+    });
+
+    const rawRecordArray: any[] = Array.isArray(rawResponse)
+      ? rawResponse
+      : (rawResponse?.records || rawResponse?.items || []);
+
+    const normalizedRecords: WalletRecordItem[] = rawRecordArray.map(item => {
+      let resolvedAmount = 0;
+      let resolvedCurrency = 'IDR';
+
+      if (typeof item.amount === 'number') {
+        resolvedAmount = item.amount;
+      } else if (typeof item.amount === 'object' && item.amount !== null) {
+        resolvedAmount = typeof item.amount.value === 'number' ? item.amount.value : 0;
+        resolvedCurrency = item.amount.currencyCode || resolvedCurrency;
+      }
+
+      resolvedCurrency = item.currencyCode || item.currency || resolvedCurrency;
+
+      let categoryObject: WalletRecordItem['category'] = undefined;
+      if (item.category && typeof item.category === 'object') {
+        categoryObject = {
+          id: String(item.category.id || item.categoryId || ''),
+          name: String(item.category.name || item.categoryName || ''),
+          color: item.category.color,
+          group: item.category.group,
+        };
+      } else if (item.categoryId || item.categoryName) {
+        categoryObject = {
+          id: String(item.categoryId || ''),
+          name: String(item.categoryName || ''),
+        };
+      }
+
+      let labelsArray: WalletRecordItem['labels'] = undefined;
+      if (Array.isArray(item.labels) && item.labels.length > 0) {
+        labelsArray = item.labels.map((labelEntry: any) => ({
+          id: String(labelEntry.id || labelEntry.labelId || ''),
+          name: String(labelEntry.name || labelEntry.labelName || labelEntry.title || '').trim(),
+          color: labelEntry.color,
+          icon: labelEntry.icon,
+        })).filter((labelEntry: any) => labelEntry.name.length > 0);
+      }
+
+      const rawRecordType = item.recordType;
+      let resolvedRecordType: 'expense' | 'income';
+      if (rawRecordType === 'expense' || rawRecordType === 'income') {
+        resolvedRecordType = rawRecordType;
+      } else if (resolvedAmount < 0) {
+        resolvedRecordType = 'expense';
+      } else {
+        resolvedRecordType = 'income';
+      }
+
+      return {
+        id: String(item.id || item.recordId || ''),
+        accountId: String(item.accountId || ''),
+        accountName: item.accountName || undefined,
+        amount: resolvedAmount,
+        currency: resolvedCurrency,
+        recordDate: item.recordDate || item.createdAt || new Date().toISOString(),
+        recordType: resolvedRecordType,
+        category: categoryObject,
+        note: item.note || undefined,
+        counterParty: item.counterParty || item.payee || undefined,
+        labels: labelsArray,
+        recordState: item.recordState || undefined,
+        transfer: item.transfer && typeof item.transfer === 'object'
+          ? {
+              type: String(item.transfer.type || ''),
+              transferId: item.transfer.transferId ? String(item.transfer.transferId) : undefined,
+              mirrorRecord: item.transfer.mirrorRecord,
+            }
+          : null,
+      };
+    });
+
+    const hasExplicitTotal = typeof rawResponse?.total === 'number' && Number.isFinite(rawResponse.total);
+    const resolvedTotalCount = hasExplicitTotal ? Math.max(0, rawResponse.total) : undefined;
+
+    const hasExplicitNextOffset = typeof rawResponse?.nextOffset === 'number' && Number.isFinite(rawResponse.nextOffset);
+    let hasMore = false;
+    let nextOffset: number | null = null;
+
+    if (hasExplicitNextOffset) {
+      hasMore = true;
+      nextOffset = rawResponse.nextOffset;
+    } else if (rawResponse?.nextOffset === null) {
+      hasMore = false;
+      nextOffset = null;
+    } else if (typeof resolvedTotalCount === 'number') {
+      hasMore = (resolvedOffset + rawRecordArray.length) < resolvedTotalCount;
+      nextOffset = hasMore ? (resolvedOffset + rawRecordArray.length) : null;
+    }
+
+    const pageNumber = Math.floor(resolvedOffset / resolvedLimit) + 1;
+    const totalPagesCount = typeof resolvedTotalCount === 'number'
+      ? Math.max(1, Math.ceil(resolvedTotalCount / resolvedLimit))
+      : undefined;
+
+    return {
+      records: normalizedRecords,
+      total: resolvedTotalCount,
+      limit: resolvedLimit,
+      offset: resolvedOffset,
+      page: pageNumber,
+      totalPages: totalPagesCount,
+      nextOffset,
+      hasMore,
+      sort: resolvedSort,
+    };
   }
 
   /**

@@ -1,4 +1,7 @@
+import type { TransactionSortOrder } from '../types/walletTypes.js';
+
 export type SupportedLanguage = 'id' | 'en';
+export type { TransactionSortOrder };
 
 export interface RecordMessageParams {
   transactionTitle: string;
@@ -100,6 +103,24 @@ export interface ResponseDictionary {
     budgetOverspentItem(name: string, spent: string, limit: string, overspent: string): string;
   };
 
+  history: {
+    header(
+      page: number,
+      totalPages?: number,
+      displayedCount?: number,
+      totalCount?: number,
+      sortOrderLabel?: string
+    ): string;
+    emptyState: string;
+    outOfBounds(totalCount: number): string;
+    navigationHint(
+      nextPage: number,
+      options?: { limit?: number; sort?: TransactionSortOrder }
+    ): string;
+    sortNewest: string;
+    sortOldest: string;
+  };
+
   emailPending: {
     formatNotification(params: PendingEmailNotificationParams): string;
   };
@@ -115,6 +136,7 @@ export interface ResponseDictionary {
     quickCommandsTitle: string;
     commandBalance: string;
     commandBudget: string;
+    commandHistory: string;
     commandMenu: string;
   };
 

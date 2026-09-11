@@ -1,4 +1,11 @@
-import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload, WalletBudgetItem } from '../types/walletTypes.js';
+import {
+  WalletAccountItem,
+  WalletCategoryItem,
+  CreateRecordInputPayload,
+  WalletBudgetItem,
+  TransactionHistoryPage,
+  WalletRecordItem,
+} from '../types/walletTypes.js';
 import { PendingTransactionItem } from '../services/pendingTransactionService.js';
 import { getDictionary, SupportedLanguage } from '../i18n/index.js';
 
@@ -348,6 +355,82 @@ export function formatBudgetSummaryMessage(
     '',
     budgetLines.join('\n'),
   ].join('\n');
+}
+
+/**
+ * Formats a paginated transaction history result into a mobile-friendly list with navigation hints.
+ */
+export function formatTransactionHistoryMessage(
+  historyPage: TransactionHistoryPage,
+  languageCode?: SupportedLanguage
+): string {
+  const dictionary = getDictionary(languageCode);
+
+  const sortOrderLabel = historyPage.sort === 'oldest'
+    ? dictionary.history.sortOldest
+    : '';
+
+  const headerText = dictionary.history.header(
+    historyPage.page,
+    historyPage.totalPages,
+    historyPage.records.length,
+    historyPage.total,
+    sortOrderLabel
+  );
+
+  if (historyPage.total === 0 || (historyPage.total === undefined && historyPage.records.length === 0 && historyPage.offset === 0)) {
+    return `${headerText}\n\n${dictionary.history.emptyState}`;
+  }
+
+  if (typeof historyPage.total === 'number' && historyPage.records.length === 0 && historyPage.offset >= historyPage.total) {
+    return `${headerText}\n\n${dictionary.history.outOfBounds(historyPage.total)}`;
+  }
+
+  const recordLines = historyPage.records.map((recordItem, itemIndex) => {
+    const globalItemIndex = historyPage.offset + itemIndex + 1;
+    const isTransfer = Boolean(recordItem.transfer);
+    const isExpense = recordItem.recordType === 'expense' || recordItem.amount < 0;
+    let typeIcon = '💰';
+    if (isTransfer) {
+      typeIcon = '🔄';
+    } else if (isExpense) {
+      typeIcon = '💸';
+    }
+    const amountPrefix = isExpense ? '-' : '+';
+    const formattedAmount = formatCurrencyAmount(recordItem.amount, recordItem.currency, languageCode);
+    const resolvedTitle = recordItem.note || recordItem.counterParty || (isExpense ? dictionary.labels.expense : dictionary.labels.income);
+    const accountDisplay = recordItem.accountName || dictionary.labels.defaultAccount;
+    const categoryDisplay = recordItem.category?.name || dictionary.labels.defaultCategory;
+    const timestampDisplay = formatTransactionDate(recordItem.recordDate, languageCode);
+
+    const labelSuffix = recordItem.labels && recordItem.labels.length > 0
+      ? `  •  🔖 ${recordItem.labels.map(labelItem => `#${labelItem.name}`).join(' ')}`
+      : '';
+
+    return [
+      `${globalItemIndex}. ${typeIcon} *${resolvedTitle}* — *${amountPrefix}${formattedAmount}* (${accountDisplay})`,
+      `   🏷️ ${categoryDisplay}  •  ${timestampDisplay}${labelSuffix}`,
+    ].join('\n');
+  });
+
+  const messageParts = [
+    headerText,
+    '',
+    recordLines.join('\n\n'),
+  ];
+
+  if (historyPage.hasMore) {
+    const nextPageIndex = historyPage.page + 1;
+    messageParts.push('');
+    messageParts.push(
+      dictionary.history.navigationHint(nextPageIndex, {
+        limit: historyPage.limit,
+        sort: historyPage.sort,
+      })
+    );
+  }
+
+  return messageParts.join('\n');
 }
 
 /**

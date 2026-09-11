@@ -6,6 +6,7 @@ import {
   PendingConfirmationSuccessParams,
   PendingBulkItemParams,
   PendingCancellationParams,
+  type TransactionSortOrder,
 } from '../types.js';
 
 export const englishDictionary: ResponseDictionary = {
@@ -75,6 +76,43 @@ export const englishDictionary: ResponseDictionary = {
     budgetOverspentItem(name: string, spent: string, limit: string, overspent: string): string {
       return `• *${name}*: ${spent} / ${limit} ⚠️ _(${overspent} over)_`;
     },
+  },
+
+  history: {
+    header(
+      page: number,
+      totalPages?: number,
+      displayedCount?: number,
+      totalCount?: number,
+      sortOrderLabel?: string
+    ): string {
+      const sortSuffix = sortOrderLabel ? ` [${sortOrderLabel}]` : '';
+      const pageInfo = typeof totalPages === 'number' ? `Page ${page}/${totalPages}` : `Page ${page}`;
+      const countInfo = typeof totalCount === 'number'
+        ? ` • ${displayedCount ?? 0} of ${totalCount}`
+        : (typeof displayedCount === 'number' && displayedCount > 0 ? ` • ${displayedCount} transactions` : '');
+      return `📋 *Transaction History* (${pageInfo}${countInfo})${sortSuffix}`;
+    },
+    emptyState: 'No transactions recorded yet.',
+    outOfBounds(totalCount: number): string {
+      return `This page exceeds available transactions (Total: ${totalCount} transactions).`;
+    },
+    navigationHint(
+      nextPage: number,
+      options?: { limit?: number; sort?: TransactionSortOrder }
+    ): string {
+      const commandParts = ['history'];
+      if (options?.limit && options.limit !== 10) {
+        commandParts.push(String(options.limit));
+      }
+      commandParts.push(`page ${nextPage}`);
+      if (options?.sort === 'oldest') {
+        commandParts.push('oldest');
+      }
+      return `_Type *${commandParts.join(' ')}* for the next page._`;
+    },
+    sortNewest: 'Newest',
+    sortOldest: 'Oldest',
   },
 
   emailPending: {
@@ -179,6 +217,7 @@ export const englishDictionary: ResponseDictionary = {
     quickCommandsTitle: '*Quick Commands (0 AI Tokens):*',
     commandBalance: '• *Balance* / *Check Balance*: Check all account balances',
     commandBudget: '• *Budget* / *Check Budget*: Check budget limit status',
+    commandHistory: '• *History*: Check recent transaction history',
     commandMenu: '• *Menu* / *Help*: Show this guidance',
   },
 

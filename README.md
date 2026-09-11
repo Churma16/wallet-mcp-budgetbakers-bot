@@ -103,8 +103,9 @@ flowchart TD
   - **Gate 1**: Header, sender domain, regex validation, security keyword blacklist (OTP, login alerts, promos), and in-memory deduplication (zero AI tokens spent).
   - **Gate 2**: AI structured schema extraction for verified financial notifications.
 - **Interactive Multi-Channel Confirmation Queue**: Bank email transactions generate numbered interactive tickets (`#1`, `#2`) broadcasted to WhatsApp and Telegram. Confirm individually (`Ya 1` / `Yes 1`), in bulk (`Ya semua` / `Yes all`), or cancel (`Batal 1` / `Cancel 1`).
+- **Transaction History & Pagination**: View recent transactions with configurable limits and deterministic sorting (*"riwayat"*, *"history 5"*, *"riwayat hal 2"*, *"history oldest"*). Automatically bounded with safety caps (default 10, max 50) and navigation hints.
 - **Budget & Balance Inquiries**: Check balances across accounts (*"Cek saldo rekening"*, *"Check balance"*, *"Berapa sisa BCA?"*) or inspect budget limits (*"Status budget bulan ini"*, *"Budget status"*).
-- **Zero-Token Fast-Path Processor**: Bilingual confirmation commands and simple keywords bypass LLM processing entirely for instant response times and token savings.
+- **Zero-Token Fast-Path Processor**: Bilingual confirmation commands, history queries, and simple keywords bypass LLM processing entirely for instant response times and token savings.
 - **Channel Security Whitelist**: Strict WhatsApp phone number and Telegram User ID whitelist restrictions ensure only authorized users can interact with the bot.
 
 ---

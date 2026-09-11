@@ -22,6 +22,7 @@ import {
   FastPathHandler,
   UserMessageHandler,
 } from './handlers/index.js';
+import { TransactionHistoryService } from './services/transactionHistoryService.js';
 import { applicationLogger, installConsoleInterceptors, purgeExpiredLogFiles } from './utils/logger.js';
 import { setActiveLanguage } from './i18n/index.js';
 
@@ -29,6 +30,7 @@ export class Application {
   private readonly environmentConfig: ApplicationEnvironmentConfiguration;
   private readonly walletMcpClient: WalletMcpClientService;
   private readonly walletCacheService: WalletCacheService;
+  private readonly transactionHistoryService: TransactionHistoryService;
   private readonly categoryContextService: CategoryContextService;
   private readonly financialAiProvider: FinancialAiProvider;
   private readonly pendingTransactionManager: PendingTransactionService;
@@ -75,10 +77,16 @@ export class Application {
       () => this.emailListenerService
     );
 
+    this.transactionHistoryService = new TransactionHistoryService(
+      this.walletMcpClient,
+      this.walletCacheService
+    );
+
     this.fastPathHandler = new FastPathHandler(
       this.walletMcpClient,
       this.walletCacheService,
-      this.messagingGateway
+      this.messagingGateway,
+      this.transactionHistoryService
     );
 
     this.userMessageHandler = new UserMessageHandler(
