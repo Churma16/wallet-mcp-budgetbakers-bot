@@ -1,4 +1,4 @@
-﻿import { WalletAccountItem, WalletCategoryItem } from '../../types/walletTypes.js';
+import { WalletAccountItem, WalletCategoryItem } from '../../types/walletTypes.js';
 import { GateEvaluationResult } from '../../utils/emailGateEvaluator.js';
 
 export interface TokenUsageStatistics {
@@ -16,6 +16,8 @@ export interface ExtractedFinancialRecordItem {
   recordDate: string;
   note: string;
   counterParty?: string;
+  labels?: string[];
+  labelIds?: string[];
 }
 
 export interface ExtractedFinancialIntent {

@@ -1,6 +1,7 @@
 import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload } from '../types/walletTypes.js';
 import { getApplicationTimezone } from './humanResponseFormatter.js';
 import { getTimezoneOffsetDetails } from '../services/ai/aiPromptBuilder.js';
+import { extractHashtags, deduplicateTags, normalizeTagName } from './hashtagParser.js';
 
 export type AccountResolutionIssueReason = 'UNRESOLVED' | 'AMBIGUOUS';
 
@@ -248,23 +249,44 @@ export function validateAndSanitizeFinancialRecords(
       resolvedRecordDate = new Date(parsedDateTimestamp).toISOString();
     }
 
-    // 5. Text Sanitization
-    const sanitizedNote = currentRecord.note
-      ? String(currentRecord.note).slice(0, 500).trim()
-      : undefined;
+    // 5. Text Sanitization & Explicit Hashtag Extraction
+    let extractedTagsFromNote: string[] = [];
+    let cleanedNote: string | undefined = undefined;
+
+    if (currentRecord.note) {
+      const rawNoteString = String(currentRecord.note).slice(0, 500);
+      const hashtagResult = extractHashtags(rawNoteString);
+      extractedTagsFromNote = hashtagResult.tags;
+      cleanedNote = hashtagResult.cleanedText.length > 0 ? hashtagResult.cleanedText : undefined;
+    }
+
+    const incomingLabels = Array.isArray(currentRecord.labels)
+      ? currentRecord.labels.map(normalizeTagName)
+      : [];
+
+    const combinedLabels = deduplicateTags([...incomingLabels, ...extractedTagsFromNote]);
 
     const sanitizedCounterParty = currentRecord.counterParty
       ? String(currentRecord.counterParty).slice(0, 100).trim()
       : undefined;
 
-    sanitizedRecords.push({
+    const sanitizedRecordItem: CreateRecordInputPayload = {
       accountId: resolvedAccountId,
       categoryId: resolvedCategoryId,
       amount: parsedAmount,
       recordDate: resolvedRecordDate,
-      note: sanitizedNote,
+      note: cleanedNote,
       counterParty: sanitizedCounterParty,
-    });
+    };
+
+    if (combinedLabels.length > 0) {
+      sanitizedRecordItem.labels = combinedLabels;
+    }
+    if (Array.isArray(currentRecord.labelIds) && currentRecord.labelIds.length > 0) {
+      sanitizedRecordItem.labelIds = currentRecord.labelIds;
+    }
+
+    sanitizedRecords.push(sanitizedRecordItem);
   }
 
   return {
