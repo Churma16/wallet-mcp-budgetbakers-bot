@@ -67,11 +67,19 @@ export class AccountClarificationHandler {
       `[Account Clarification] Draft #${pendingDraft.ticketId} created for record ${firstIssue.recordIndex + 1}/${originalRecords.length}.`
     );
 
-    await this.messagingGateway.sendMessage(
-      event.channel,
-      event.chatIdentifier,
-      formatAccountSelectionPrompt(pendingDraft, availableCategories)
-    );
+    try {
+      await this.messagingGateway.sendMessage(
+        event.channel,
+        event.chatIdentifier,
+        formatAccountSelectionPrompt(pendingDraft, availableCategories)
+      );
+    } catch (messagingError) {
+      this.pendingTransactionManager.rejectPendingAccountSelectionDraft(pendingDraft.ticketId);
+      applicationLogger.error(
+        `[Account Clarification] Draft #${pendingDraft.ticketId} discarded because the initial prompt could not be delivered: ${formatConciseErrorMessage(messagingError)}`
+      );
+      throw messagingError;
+    }
     return true;
   }
 
@@ -297,11 +305,17 @@ export class AccountClarificationHandler {
         );
       } else {
         this.pendingTransactionManager.markPendingAccountSelectionDraftUnknown(claimedDraft.ticketId);
-        await this.messagingGateway.sendMessage(
-          event.channel,
-          event.chatIdentifier,
-          formatAccountSelectionUnknownOutcome(claimedDraft)
-        );
+        try {
+          await this.messagingGateway.sendMessage(
+            event.channel,
+            event.chatIdentifier,
+            formatAccountSelectionUnknownOutcome(claimedDraft)
+          );
+        } catch (messagingError) {
+          applicationLogger.error(
+            `[Account Clarification] Draft #${claimedDraft.ticketId} remains UNKNOWN, but the reconciliation warning could not be delivered: ${formatConciseErrorMessage(messagingError)}`
+          );
+        }
         applicationLogger.warn(
           `[Account Clarification] Draft #${claimedDraft.ticketId} has an unknown dispatch outcome; automatic retry disabled.`
         );
