@@ -84,24 +84,40 @@ export const indonesianDictionary: ResponseDictionary = {
       totalPages?: number,
       displayedCount?: number,
       totalCount?: number,
-      sortOrderLabel?: string
+      sortOrderLabel?: string,
+      filterSummary?: string
     ): string {
       const sortSuffix = sortOrderLabel ? ` [${sortOrderLabel}]` : '';
+      const filterSuffix = filterSummary ? ` [${filterSummary}]` : '';
       const pageInfo = typeof totalPages === 'number' ? `Hal. ${page}/${totalPages}` : `Hal. ${page}`;
       const countInfo = typeof totalCount === 'number'
         ? ` • ${displayedCount ?? 0} dari ${totalCount}`
         : (typeof displayedCount === 'number' && displayedCount > 0 ? ` • ${displayedCount} transaksi` : '');
-      return `📋 *Riwayat Transaksi* (${pageInfo}${countInfo})${sortSuffix}`;
+      return `📋 *Riwayat Transaksi* (${pageInfo}${countInfo})${filterSuffix}${sortSuffix}`;
     },
     emptyState: 'Belum ada transaksi yang tercatat.',
+    emptyFilteredState(filterSummary: string): string {
+      return `Belum ada transaksi yang cocok dengan filter [${filterSummary}].`;
+    },
+    unresolvedFilters(issues: Array<{ filterKey: string; message: string }>): string {
+      const issueLines = issues.map(issue => `• ${issue.message}`);
+      return [
+        '⚠️ *Filter Riwayat Tidak Ditemukan:*',
+        ...issueLines,
+        '_Pastikan nama akun atau kategori sudah sesuai dengan data Wallet Anda._',
+      ].join('\n');
+    },
     outOfBounds(totalCount: number): string {
       return `Halaman ini melebihi jumlah transaksi yang tersedia (Total: ${totalCount} transaksi).`;
     },
     navigationHint(
       nextPage: number,
-      options?: { limit?: number; sort?: TransactionSortOrder }
+      options?: { limit?: number; sort?: TransactionSortOrder; filterTokens?: string[] }
     ): string {
       const commandParts = ['riwayat'];
+      if (options?.filterTokens && options.filterTokens.length > 0) {
+        commandParts.push(...options.filterTokens);
+      }
       if (options?.limit && options.limit !== 10) {
         commandParts.push(String(options.limit));
       }
@@ -113,6 +129,8 @@ export const indonesianDictionary: ResponseDictionary = {
     },
     sortNewest: 'Terbaru',
     sortOldest: 'Terlama',
+    typeExpense: 'Pengeluaran',
+    typeIncome: 'Pemasukan',
   },
 
   emailPending: {

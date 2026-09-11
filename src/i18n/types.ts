@@ -109,16 +109,25 @@ export interface ResponseDictionary {
       totalPages?: number,
       displayedCount?: number,
       totalCount?: number,
-      sortOrderLabel?: string
+      sortOrderLabel?: string,
+      filterSummary?: string
     ): string;
     emptyState: string;
+    emptyFilteredState(filterSummary: string): string;
+    unresolvedFilters(issues: Array<{ filterKey: string; message: string }>): string;
     outOfBounds(totalCount: number): string;
     navigationHint(
       nextPage: number,
-      options?: { limit?: number; sort?: TransactionSortOrder }
+      options?: {
+        limit?: number;
+        sort?: TransactionSortOrder;
+        filterTokens?: string[];
+      }
     ): string;
     sortNewest: string;
     sortOldest: string;
+    typeExpense: string;
+    typeIncome: string;
   };
 
   emailPending: {

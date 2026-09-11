@@ -103,7 +103,7 @@ flowchart TD
   - **Gate 1**: Header, sender domain, regex validation, security keyword blacklist (OTP, login alerts, promos), and in-memory deduplication (zero AI tokens spent).
   - **Gate 2**: AI structured schema extraction for verified financial notifications.
 - **Interactive Multi-Channel Confirmation Queue**: Bank email transactions generate numbered interactive tickets (`#1`, `#2`) broadcasted to WhatsApp and Telegram. Confirm individually (`Ya 1` / `Yes 1`), in bulk (`Ya semua` / `Yes all`), or cancel (`Batal 1` / `Cancel 1`).
-- **Transaction History & Pagination**: View recent transactions with configurable limits and deterministic sorting (*"riwayat"*, *"history 5"*, *"riwayat hal 2"*, *"history oldest"*). Automatically bounded with safety caps (default 10, max 50) and navigation hints.
+- **Composable Transaction History & Filters**: Query transaction history with composable filters across category, account, transaction type (`expense` vs `income`), and date range (`today`, `yesterday`, `this_week`, `this_month`, or explicit dates). Features fail-closed validation, bounded pagination (default 10, max 50), deterministic sorting (*"newest"* / *"oldest"*), and filter-preserving navigation hints (*"riwayat bca"*, *"riwayat pengeluaran makanan bulan ini"*, *"history food expense this month"*).
 - **Budget & Balance Inquiries**: Check balances across accounts (*"Cek saldo rekening"*, *"Check balance"*, *"Berapa sisa BCA?"*) or inspect budget limits (*"Status budget bulan ini"*, *"Budget status"*).
 - **Zero-Token Fast-Path Processor**: Bilingual confirmation commands, history queries, and simple keywords bypass LLM processing entirely for instant response times and token savings.
 - **Channel Security Whitelist**: Strict WhatsApp phone number and Telegram User ID whitelist restrictions ensure only authorized users can interact with the bot.
@@ -371,6 +371,12 @@ npm run test:formatter
 
 # Verify response dictionary & multi-language localization (i18n)
 npm run test:i18n
+
+# Verify transaction history pagination and sorting (Issue #100)
+npm run test:history
+
+# Verify composable transaction history filters (Issue #101)
+npm run test:history-filters
 ```
 
 ### 4. Start the Application
@@ -412,6 +418,9 @@ Send messages from your whitelisted WhatsApp or Telegram account to the bot:
 | **Cancel Ticket** | *"Batal 1"* / *"Batal semua"* or *"Cancel 1"* / *"Cancel all"* | Dismisses transaction tickets from the pending queue. |
 | **Check Balances** | *"Cek saldo rekening"* or *"Check balance BCA"* | Queries Wallet MCP and lists current balances for specified or all accounts. |
 | **Check Budgets** | *"Status budget bulan ini"* or *"Budget status"* | Queries Wallet MCP and summarizes spending limits vs remaining amounts. |
+| **Transaction History** | *"Riwayat"* / *"History"* or *"5 transaksi terakhir"* | Retrieves the latest transaction records bounded by safety limits. |
+| **Filtered History** | *"Riwayat pengeluaran makanan bulan ini"* or *"history bca yesterday"* | Composes filters across category, account, type, and date range in a single zero-token query. |
+| **Paginated History** | *"Riwayat bca hal 2"* or *"history 5 oldest"* | Supports page-based navigation and deterministic sorting while preserving active filters. |
 
 ---
 

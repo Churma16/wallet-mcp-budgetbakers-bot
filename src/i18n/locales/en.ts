@@ -84,24 +84,40 @@ export const englishDictionary: ResponseDictionary = {
       totalPages?: number,
       displayedCount?: number,
       totalCount?: number,
-      sortOrderLabel?: string
+      sortOrderLabel?: string,
+      filterSummary?: string
     ): string {
       const sortSuffix = sortOrderLabel ? ` [${sortOrderLabel}]` : '';
+      const filterSuffix = filterSummary ? ` [${filterSummary}]` : '';
       const pageInfo = typeof totalPages === 'number' ? `Page ${page}/${totalPages}` : `Page ${page}`;
       const countInfo = typeof totalCount === 'number'
         ? ` • ${displayedCount ?? 0} of ${totalCount}`
         : (typeof displayedCount === 'number' && displayedCount > 0 ? ` • ${displayedCount} transactions` : '');
-      return `📋 *Transaction History* (${pageInfo}${countInfo})${sortSuffix}`;
+      return `📋 *Transaction History* (${pageInfo}${countInfo})${filterSuffix}${sortSuffix}`;
     },
     emptyState: 'No transactions recorded yet.',
+    emptyFilteredState(filterSummary: string): string {
+      return `No transactions match the filter [${filterSummary}].`;
+    },
+    unresolvedFilters(issues: Array<{ filterKey: string; message: string }>): string {
+      const issueLines = issues.map(issue => `• ${issue.message}`);
+      return [
+        '⚠️ *Transaction History Filter Not Found:*',
+        ...issueLines,
+        '_Please ensure the account or category name matches your Wallet data._',
+      ].join('\n');
+    },
     outOfBounds(totalCount: number): string {
       return `This page exceeds available transactions (Total: ${totalCount} transactions).`;
     },
     navigationHint(
       nextPage: number,
-      options?: { limit?: number; sort?: TransactionSortOrder }
+      options?: { limit?: number; sort?: TransactionSortOrder; filterTokens?: string[] }
     ): string {
       const commandParts = ['history'];
+      if (options?.filterTokens && options.filterTokens.length > 0) {
+        commandParts.push(...options.filterTokens);
+      }
       if (options?.limit && options.limit !== 10) {
         commandParts.push(String(options.limit));
       }
@@ -113,6 +129,8 @@ export const englishDictionary: ResponseDictionary = {
     },
     sortNewest: 'Newest',
     sortOldest: 'Oldest',
+    typeExpense: 'Expense',
+    typeIncome: 'Income',
   },
 
   emailPending: {
