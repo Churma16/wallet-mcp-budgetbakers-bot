@@ -15,6 +15,7 @@ import {
   validateAndSanitizeFinancialRecords,
 } from '../utils/recordValidator.js';
 import { formatRecordSuccessMessage } from '../utils/humanResponseFormatter.js';
+import { detectPendingConfirmationAction } from '../utils/fastPathIntentDetector.js';
 import {
   formatAccountSelectionCancellation,
   formatAccountSelectionProcessing,
@@ -84,7 +85,13 @@ export class AccountClarificationHandler {
     }
 
     const normalizedReply = userReply.trim();
-    const targetedCancellationTicketId = this.parseTargetedCancellationTicketId(normalizedReply);
+    const pendingConfirmationIntent = detectPendingConfirmationAction(normalizedReply);
+    const targetedPendingTicketId = typeof pendingConfirmationIntent?.targetScope === 'number'
+      ? pendingConfirmationIntent.targetScope
+      : undefined;
+    const targetedCancellationTicketId = pendingConfirmationIntent?.actionType === 'REJECT'
+      ? targetedPendingTicketId
+      : undefined;
     const latestPendingDraft = this.pendingTransactionManager.getLatestPendingAccountSelectionDraft(
       event.channel,
       event.chatIdentifier,
@@ -92,13 +99,19 @@ export class AccountClarificationHandler {
     );
 
     let pendingDraft = latestPendingDraft;
-    if (targetedCancellationTicketId !== undefined) {
+    if (targetedPendingTicketId !== undefined) {
       const targetedDraft = this.pendingTransactionManager.getPendingAccountSelectionDraft(
-        targetedCancellationTicketId
+        targetedPendingTicketId
       );
-      if (targetedDraft && this.isDraftScopedToEvent(targetedDraft, event)) {
-        pendingDraft = targetedDraft;
+
+      // Explicit ticket commands such as `batal #5`, `ya #5`, or `confirm #5` belong to the
+      // standard pending-action router when the referenced ticket is not this user's account
+      // clarification draft. Do not let an unrelated latest clarification draft swallow them as
+      // an invalid account choice.
+      if (!targetedDraft || !this.isDraftScopedToEvent(targetedDraft, event)) {
+        return false;
       }
+      pendingDraft = targetedDraft;
     }
 
     if (!pendingDraft) {
@@ -350,16 +363,6 @@ export class AccountClarificationHandler {
     applicationLogger.info(
       `[Account Clarification] UNKNOWN reconciliation draft #${dismissedDraft.ticketId} dismissed locally; no Wallet retry was sent.`
     );
-  }
-
-  private parseTargetedCancellationTicketId(userReply: string): number | undefined {
-    const match = userReply.match(/^(?:batal|cancel)\s+#?(\d+)$/i);
-    if (!match) {
-      return undefined;
-    }
-
-    const ticketId = Number.parseInt(match[1], 10);
-    return Number.isSafeInteger(ticketId) && ticketId > 0 ? ticketId : undefined;
   }
 
   private isDraftScopedToEvent(
