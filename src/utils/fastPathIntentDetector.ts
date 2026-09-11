@@ -419,15 +419,12 @@ function parseTransactionHistoryIntent(userMessageText: string): FastPathTransac
 
   // 3. Pattern matching dedicated search commands:
   // e.g. "cari starbucks", "cari transaksi indomaret", "search coffee", "search transactions starbucks", "find kopi"
-  const searchCommandPattern =
-    /^(?:cari(?:\s+(?:transaksi|riwayat))?|search(?:\s+(?:transactions?|history))?|find)\s+(.+)$/i;
-  const searchMatch = trimmedLowerText.match(searchCommandPattern);
-  if (searchMatch) {
-    const rawSearchRemainderLower = searchMatch[1].trim();
-    if (rawSearchRemainderLower) {
-      const matchPrefixLength = trimmedText.length - searchMatch[1].length;
-      const rawSearchRemainder = trimmedText.slice(matchPrefixLength).trim();
-
+  const searchPrefixPattern =
+    /^(?:cari\s+(?:transaksi|riwayat)|search\s+(?:transactions?|history)|cari|search|find)\s+/i;
+  const searchPrefixMatch = trimmedLowerText.match(searchPrefixPattern);
+  if (searchPrefixMatch) {
+    const rawSearchRemainder = trimmedText.slice(searchPrefixMatch[0].length).trim();
+    if (rawSearchRemainder) {
       const parsedSearchOptions = extractHistoryQueryOptionsFromTokens(
         rawSearchRemainder,
         {
