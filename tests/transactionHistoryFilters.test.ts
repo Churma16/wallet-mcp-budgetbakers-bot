@@ -661,6 +661,243 @@ console.log('\n[Suite 4] Testing Date & Date Range Filtering...');
     'lt.2026-09-11T17:00:00.000Z',
   ]);
 
+  // 4.28 Duplicate upper bounds in both orders preserve conjunction AND semantics
+  const duplicateUpperOrderA = normalizeTransactionHistoryFilters(
+    { dateRange: ['lte.2026-09-15', 'lte.2026-09-30'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  const duplicateUpperOrderB = normalizeTransactionHistoryFilters(
+    { dateRange: ['lte.2026-09-30', 'lte.2026-09-15'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(duplicateUpperOrderA.isValid, true);
+  assert.strictEqual(duplicateUpperOrderB.isValid, true);
+  assert.deepStrictEqual(duplicateUpperOrderA.upstreamRecordDate, ['lt.2026-09-15T17:00:00.000Z']);
+  assert.deepStrictEqual(duplicateUpperOrderA.upstreamRecordDate, duplicateUpperOrderB.upstreamRecordDate);
+  assert.strictEqual(duplicateUpperOrderA.appliedFilters.dateRange?.to, '2026-09-15');
+  assert.strictEqual(duplicateUpperOrderA.appliedFilters.dateRange?.selector, '<= 2026-09-15');
+  assert.deepStrictEqual(duplicateUpperOrderA.appliedFilters.dateRange, duplicateUpperOrderB.appliedFilters.dateRange);
+
+  // Duplicate upper bounds with ISO datetime in both orders
+  const duplicateUpperDatetimeOrderA = normalizeTransactionHistoryFilters(
+    { dateRange: ['lte.2026-09-15T12:00:00Z', 'lte.2026-09-15T18:00:00Z'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  const duplicateUpperDatetimeOrderB = normalizeTransactionHistoryFilters(
+    { dateRange: ['lte.2026-09-15T18:00:00Z', 'lte.2026-09-15T12:00:00Z'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(duplicateUpperDatetimeOrderA.isValid, true);
+  assert.strictEqual(duplicateUpperDatetimeOrderB.isValid, true);
+  assert.deepStrictEqual(duplicateUpperDatetimeOrderA.upstreamRecordDate, ['lte.2026-09-15T12:00:00.000Z']);
+  assert.deepStrictEqual(duplicateUpperDatetimeOrderA.upstreamRecordDate, duplicateUpperDatetimeOrderB.upstreamRecordDate);
+  assert.deepStrictEqual(duplicateUpperDatetimeOrderA.appliedFilters.dateRange, duplicateUpperDatetimeOrderB.appliedFilters.dateRange);
+
+  // 4.29 Duplicate lower bounds in both orders preserve conjunction AND semantics
+  const duplicateLowerOrderA = normalizeTransactionHistoryFilters(
+    { dateRange: ['gte.2026-09-01', 'gte.2026-09-10'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  const duplicateLowerOrderB = normalizeTransactionHistoryFilters(
+    { dateRange: ['gte.2026-09-10', 'gte.2026-09-01'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(duplicateLowerOrderA.isValid, true);
+  assert.strictEqual(duplicateLowerOrderB.isValid, true);
+  assert.deepStrictEqual(duplicateLowerOrderA.upstreamRecordDate, ['gte.2026-09-09T17:00:00.000Z']);
+  assert.deepStrictEqual(duplicateLowerOrderA.upstreamRecordDate, duplicateLowerOrderB.upstreamRecordDate);
+  assert.strictEqual(duplicateLowerOrderA.appliedFilters.dateRange?.from, '2026-09-10');
+  assert.strictEqual(duplicateLowerOrderA.appliedFilters.dateRange?.selector, '>= 2026-09-10');
+  assert.deepStrictEqual(duplicateLowerOrderA.appliedFilters.dateRange, duplicateLowerOrderB.appliedFilters.dateRange);
+
+  // Duplicate lower bounds with ISO datetime in both orders
+  const duplicateLowerDatetimeOrderA = normalizeTransactionHistoryFilters(
+    { dateRange: ['gte.2026-09-10T08:00:00Z', 'gte.2026-09-10T14:00:00Z'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  const duplicateLowerDatetimeOrderB = normalizeTransactionHistoryFilters(
+    { dateRange: ['gte.2026-09-10T14:00:00Z', 'gte.2026-09-10T08:00:00Z'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(duplicateLowerDatetimeOrderA.isValid, true);
+  assert.strictEqual(duplicateLowerDatetimeOrderB.isValid, true);
+  assert.deepStrictEqual(duplicateLowerDatetimeOrderA.upstreamRecordDate, ['gte.2026-09-10T14:00:00.000Z']);
+  assert.deepStrictEqual(duplicateLowerDatetimeOrderA.upstreamRecordDate, duplicateLowerDatetimeOrderB.upstreamRecordDate);
+  assert.deepStrictEqual(duplicateLowerDatetimeOrderA.appliedFilters.dateRange, duplicateLowerDatetimeOrderB.appliedFilters.dateRange);
+
+  // 4.30 eq + compatible bound in both orders resolves to deterministic intersection
+  const eqCompatibleLowerOrderA = normalizeTransactionHistoryFilters(
+    { dateRange: ['eq.2026-09-20', 'gte.2026-09-15'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  const eqCompatibleLowerOrderB = normalizeTransactionHistoryFilters(
+    { dateRange: ['gte.2026-09-15', 'eq.2026-09-20'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(eqCompatibleLowerOrderA.isValid, true);
+  assert.strictEqual(eqCompatibleLowerOrderB.isValid, true);
+  assert.deepStrictEqual(eqCompatibleLowerOrderA.upstreamRecordDate, [
+    'gte.2026-09-19T17:00:00.000Z',
+    'lt.2026-09-20T17:00:00.000Z',
+  ]);
+  assert.deepStrictEqual(eqCompatibleLowerOrderA.upstreamRecordDate, eqCompatibleLowerOrderB.upstreamRecordDate);
+  assert.strictEqual(eqCompatibleLowerOrderA.appliedFilters.dateRange?.selector, '2026-09-20');
+  assert.deepStrictEqual(eqCompatibleLowerOrderA.appliedFilters.dateRange, eqCompatibleLowerOrderB.appliedFilters.dateRange);
+
+  // eq + compatible upper bound in both orders
+  const eqCompatibleUpperOrderA = normalizeTransactionHistoryFilters(
+    { dateRange: ['eq.2026-09-20', 'lte.2026-09-25'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  const eqCompatibleUpperOrderB = normalizeTransactionHistoryFilters(
+    { dateRange: ['lte.2026-09-25', 'eq.2026-09-20'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(eqCompatibleUpperOrderA.isValid, true);
+  assert.strictEqual(eqCompatibleUpperOrderB.isValid, true);
+  assert.deepStrictEqual(eqCompatibleUpperOrderA.upstreamRecordDate, eqCompatibleUpperOrderB.upstreamRecordDate);
+  assert.deepStrictEqual(eqCompatibleUpperOrderA.appliedFilters.dateRange, eqCompatibleUpperOrderB.appliedFilters.dateRange);
+
+  // eq + compatible datetime bound in both orders
+  const eqCompatibleDatetimeOrderA = normalizeTransactionHistoryFilters(
+    { dateRange: ['eq.2026-09-20T12:00:00Z', 'gte.2026-09-20T10:00:00Z'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  const eqCompatibleDatetimeOrderB = normalizeTransactionHistoryFilters(
+    { dateRange: ['gte.2026-09-20T10:00:00Z', 'eq.2026-09-20T12:00:00Z'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(eqCompatibleDatetimeOrderA.isValid, true);
+  assert.strictEqual(eqCompatibleDatetimeOrderB.isValid, true);
+  assert.deepStrictEqual(eqCompatibleDatetimeOrderA.upstreamRecordDate, [
+    'gte.2026-09-20T12:00:00.000Z',
+    'lte.2026-09-20T12:00:00.000Z',
+  ]);
+  assert.deepStrictEqual(eqCompatibleDatetimeOrderA.upstreamRecordDate, eqCompatibleDatetimeOrderB.upstreamRecordDate);
+  assert.deepStrictEqual(eqCompatibleDatetimeOrderA.appliedFilters.dateRange, eqCompatibleDatetimeOrderB.appliedFilters.dateRange);
+
+  // 4.31 eq + contradictory bound in both orders fails closed
+  const eqContradictoryOrderA = normalizeTransactionHistoryFilters(
+    { dateRange: ['eq.2026-09-20', 'lt.2026-09-15'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  const eqContradictoryOrderB = normalizeTransactionHistoryFilters(
+    { dateRange: ['lt.2026-09-15', 'eq.2026-09-20'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(eqContradictoryOrderA.isValid, false);
+  assert.strictEqual(eqContradictoryOrderB.isValid, false);
+  assert.strictEqual(eqContradictoryOrderA.unresolvedFilters?.[0].filterKey, 'dateRange');
+  assert.strictEqual(eqContradictoryOrderA.unresolvedFilters?.[0].reason, 'INVALID_RANGE');
+  assert.strictEqual(eqContradictoryOrderA.unresolvedFilters?.[0].subType, 'start_after_end');
+  assert.strictEqual(eqContradictoryOrderB.unresolvedFilters?.[0].filterKey, 'dateRange');
+  assert.strictEqual(eqContradictoryOrderB.unresolvedFilters?.[0].reason, 'INVALID_RANGE');
+  assert.strictEqual(eqContradictoryOrderB.unresolvedFilters?.[0].subType, 'start_after_end');
+
+  // eq + contradictory future bound in both orders
+  const eqContradictoryFutureOrderA = normalizeTransactionHistoryFilters(
+    { dateRange: ['eq.2026-09-20', 'gt.2026-09-25'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  const eqContradictoryFutureOrderB = normalizeTransactionHistoryFilters(
+    { dateRange: ['gt.2026-09-25', 'eq.2026-09-20'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(eqContradictoryFutureOrderA.isValid, false);
+  assert.strictEqual(eqContradictoryFutureOrderB.isValid, false);
+  assert.strictEqual(eqContradictoryFutureOrderA.unresolvedFilters?.[0].reason, 'INVALID_RANGE');
+  assert.strictEqual(eqContradictoryFutureOrderB.unresolvedFilters?.[0].reason, 'INVALID_RANGE');
+
+  // eq + contradictory strict bound on same day in both orders
+  const eqContradictorySameDayStrictA = normalizeTransactionHistoryFilters(
+    { dateRange: ['eq.2026-09-20', 'lt.2026-09-20'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  const eqContradictorySameDayStrictB = normalizeTransactionHistoryFilters(
+    { dateRange: ['lt.2026-09-20', 'eq.2026-09-20'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(eqContradictorySameDayStrictA.isValid, false);
+  assert.strictEqual(eqContradictorySameDayStrictB.isValid, false);
+  assert.strictEqual(eqContradictorySameDayStrictA.unresolvedFilters?.[0].reason, 'INVALID_RANGE');
+  assert.strictEqual(eqContradictorySameDayStrictB.unresolvedFilters?.[0].reason, 'INVALID_RANGE');
+
+  // Two different eq conditions fail closed as contradictory in both orders
+  const eqDifferentDatesOrderA = normalizeTransactionHistoryFilters(
+    { dateRange: ['eq.2026-09-20', 'eq.2026-09-25'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  const eqDifferentDatesOrderB = normalizeTransactionHistoryFilters(
+    { dateRange: ['eq.2026-09-25', 'eq.2026-09-20'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(eqDifferentDatesOrderA.isValid, false);
+  assert.strictEqual(eqDifferentDatesOrderB.isValid, false);
+  assert.strictEqual(eqDifferentDatesOrderA.unresolvedFilters?.[0].reason, 'INVALID_RANGE');
+  assert.strictEqual(eqDifferentDatesOrderB.unresolvedFilters?.[0].reason, 'INVALID_RANGE');
+
+  // 4.32 Reordered standard bounds produce 100% identical outputs
+  const standardReorderedA = normalizeTransactionHistoryFilters(
+    { dateRange: ['gte.2026-09-10', 'lte.2026-09-20'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  const standardReorderedB = normalizeTransactionHistoryFilters(
+    { dateRange: ['lte.2026-09-20', 'gte.2026-09-10'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(standardReorderedA.isValid, true);
+  assert.strictEqual(standardReorderedB.isValid, true);
+  assert.deepStrictEqual(standardReorderedA.upstreamRecordDate, standardReorderedB.upstreamRecordDate);
+  assert.deepStrictEqual(standardReorderedA.appliedFilters.dateRange, standardReorderedB.appliedFilters.dateRange);
+
   console.log('  [PASS] Timezone UTC boundaries, strict calendar validation, and reversed bounds verified.');
 }
 

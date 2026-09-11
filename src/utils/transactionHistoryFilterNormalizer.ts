@@ -830,106 +830,207 @@ export function normalizeTransactionHistoryFilters(
     }
 
     if (unresolvedFilterIssues.every(issue => issue.filterKey !== 'dateRange') && validatedTokens.length > 0) {
-      let lowerToken: { rawDate: string; operator: 'gte' | 'gt' } | undefined = undefined;
-      let upperToken: { rawDate: string; operator: 'lte' | 'lt' } | undefined = undefined;
-      let eqToken: { rawDate: string; operator: 'eq' } | undefined = undefined;
+      interface BoundaryConstraint {
+        timestamp: number;
+        isInclusive: boolean;
+        recordDateToken: string;
+        isoInstant: string;
+        rawDate: string;
+        isDateOnly: boolean;
+        operator: 'gte' | 'gt' | 'lte' | 'lt' | 'eq';
+        isFromEq?: boolean;
+      }
 
-      for (const item of validatedTokens) {
-        if (item.operator === 'eq') {
-          eqToken = { rawDate: item.rawDate, operator: 'eq' };
-        } else if (item.operator === 'gte' || item.operator === 'gt') {
-          lowerToken = { rawDate: item.rawDate, operator: item.operator };
-        } else if (item.operator === 'lte' || item.operator === 'lt') {
-          upperToken = { rawDate: item.rawDate, operator: item.operator };
+      const lowerConstraintList: BoundaryConstraint[] = [];
+      const upperConstraintList: BoundaryConstraint[] = [];
+
+      for (const validatedTokenItem of validatedTokens) {
+        if (validatedTokenItem.operator === 'eq') {
+          if (isDateOnlyString(validatedTokenItem.rawDate)) {
+            const lowerBoundaryResult = normalizeDateBoundary(validatedTokenItem.rawDate, 'start', 'gte', timezoneIdentifier);
+            const upperBoundaryResult = normalizeDateBoundary(validatedTokenItem.rawDate, 'end', 'lte', timezoneIdentifier);
+            lowerConstraintList.push({
+              timestamp: Date.parse(lowerBoundaryResult.isoInstant),
+              isInclusive: true,
+              recordDateToken: lowerBoundaryResult.recordDateToken,
+              isoInstant: lowerBoundaryResult.isoInstant,
+              rawDate: validatedTokenItem.rawDate,
+              isDateOnly: true,
+              operator: 'eq',
+              isFromEq: true,
+            });
+            upperConstraintList.push({
+              timestamp: Date.parse(upperBoundaryResult.isoInstant),
+              isInclusive: false,
+              recordDateToken: upperBoundaryResult.recordDateToken,
+              isoInstant: upperBoundaryResult.isoInstant,
+              rawDate: validatedTokenItem.rawDate,
+              isDateOnly: true,
+              operator: 'eq',
+              isFromEq: true,
+            });
+          } else {
+            const exactUtcIsoString = new Date(validatedTokenItem.rawDate).toISOString();
+            const exactInstantTimestamp = Date.parse(exactUtcIsoString);
+            lowerConstraintList.push({
+              timestamp: exactInstantTimestamp,
+              isInclusive: true,
+              recordDateToken: `gte.${exactUtcIsoString}`,
+              isoInstant: exactUtcIsoString,
+              rawDate: exactUtcIsoString,
+              isDateOnly: false,
+              operator: 'eq',
+              isFromEq: true,
+            });
+            upperConstraintList.push({
+              timestamp: exactInstantTimestamp,
+              isInclusive: true,
+              recordDateToken: `lte.${exactUtcIsoString}`,
+              isoInstant: exactUtcIsoString,
+              rawDate: exactUtcIsoString,
+              isDateOnly: false,
+              operator: 'eq',
+              isFromEq: true,
+            });
+          }
+        } else if (validatedTokenItem.operator === 'gte' || validatedTokenItem.operator === 'gt') {
+          const lowerBoundaryResult = normalizeDateBoundary(validatedTokenItem.rawDate, 'start', validatedTokenItem.operator, timezoneIdentifier);
+          const isInclusive = lowerBoundaryResult.isDateOnly ? true : validatedTokenItem.operator === 'gte';
+          lowerConstraintList.push({
+            timestamp: Date.parse(lowerBoundaryResult.isoInstant),
+            isInclusive,
+            recordDateToken: lowerBoundaryResult.recordDateToken,
+            isoInstant: lowerBoundaryResult.isoInstant,
+            rawDate: validatedTokenItem.rawDate,
+            isDateOnly: lowerBoundaryResult.isDateOnly,
+            operator: validatedTokenItem.operator,
+          });
+        } else if (validatedTokenItem.operator === 'lte' || validatedTokenItem.operator === 'lt') {
+          const upperBoundaryResult = normalizeDateBoundary(validatedTokenItem.rawDate, 'end', validatedTokenItem.operator, timezoneIdentifier);
+          const isInclusive = upperBoundaryResult.isDateOnly ? false : validatedTokenItem.operator === 'lte';
+          upperConstraintList.push({
+            timestamp: Date.parse(upperBoundaryResult.isoInstant),
+            isInclusive,
+            recordDateToken: upperBoundaryResult.recordDateToken,
+            isoInstant: upperBoundaryResult.isoInstant,
+            rawDate: validatedTokenItem.rawDate,
+            isDateOnly: upperBoundaryResult.isDateOnly,
+            operator: validatedTokenItem.operator,
+          });
         }
       }
 
-      if (eqToken) {
-        const eqResult = normalizeDateBoundary(eqToken.rawDate, 'start', 'eq', timezoneIdentifier);
-        if (eqResult.isDateOnly) {
-          upstreamRecordDate = resolveLocalCalendarDayRange(eqToken.rawDate, timezoneIdentifier);
-          appliedFilters.dateRange = {
-            from: eqToken.rawDate,
-            to: eqToken.rawDate,
-            selector: eqToken.rawDate,
-            label: eqToken.rawDate,
-            rawRange: upstreamRecordDate,
-          };
-        } else {
-          const utcIso = new Date(eqToken.rawDate).toISOString();
-          upstreamRecordDate = [`gte.${utcIso}`, `lte.${utcIso}`];
-          appliedFilters.dateRange = {
-            from: utcIso,
-            to: utcIso,
-            selector: `${utcIso} ${utcIso}`,
-            label: utcIso,
-            rawRange: upstreamRecordDate,
-          };
-        }
-      } else if (lowerToken && upperToken) {
-        const lowerResult = normalizeDateBoundary(lowerToken.rawDate, 'start', lowerToken.operator, timezoneIdentifier);
-        const upperResult = normalizeDateBoundary(upperToken.rawDate, 'end', upperToken.operator, timezoneIdentifier);
-
-        const lowerTimestamp = Date.parse(lowerResult.isoInstant);
-        const upperTimestamp = Date.parse(upperResult.isoInstant);
-        const isStrict = lowerToken.operator === 'gt' || upperToken.operator === 'lt';
-        const isInvalid = isStrict ? lowerTimestamp >= upperTimestamp : lowerTimestamp > upperTimestamp;
-
-        if (isInvalid) {
-          unresolvedFilterIssues.push({
-            filterKey: 'dateRange',
-            rawValue: rawArray.join(' '),
-            reason: 'INVALID_RANGE',
-            subType: 'start_after_end',
-            message: `Rentang tanggal tidak valid: batas awal tidak boleh lebih besar dari batas akhir.`,
-          });
-        } else {
-          upstreamRecordDate = [lowerResult.recordDateToken, upperResult.recordDateToken];
-          const isStandardRange = lowerToken.operator === 'gte' && upperToken.operator === 'lte';
-          const lowerSymbol = lowerToken.operator === 'gt' ? '>' : '>=';
-          const upperSymbol = upperToken.operator === 'lt' ? '<' : '<=';
-
-          const canonicalFrom = lowerResult.isDateOnly ? lowerToken.rawDate : lowerResult.isoInstant;
-          const canonicalTo = upperResult.isDateOnly ? upperToken.rawDate : upperResult.isoInstant;
-
-          if (lowerResult.isDateOnly && upperResult.isDateOnly && lowerToken.rawDate === upperToken.rawDate && isStandardRange) {
-            appliedFilters.dateRange = {
-              from: canonicalFrom,
-              to: canonicalTo,
-              selector: canonicalFrom,
-              label: canonicalFrom,
-              rawRange: upstreamRecordDate,
-            };
-          } else {
-            appliedFilters.dateRange = {
-              from: canonicalFrom,
-              to: canonicalTo,
-              selector: isStandardRange
-                ? `${canonicalFrom} ${canonicalTo}`
-                : `${lowerSymbol} ${canonicalFrom} ${upperSymbol} ${canonicalTo}`,
-              label: isStandardRange
-                ? `${canonicalFrom} - ${canonicalTo}`
-                : `${lowerSymbol} ${canonicalFrom} - ${upperSymbol} ${canonicalTo}`,
-              rawRange: upstreamRecordDate,
-            };
+      let effectiveLowerConstraint: BoundaryConstraint | undefined = undefined;
+      for (const candidateLower of lowerConstraintList) {
+        if (!effectiveLowerConstraint) {
+          effectiveLowerConstraint = candidateLower;
+        } else if (candidateLower.timestamp > effectiveLowerConstraint.timestamp) {
+          effectiveLowerConstraint = candidateLower;
+        } else if (candidateLower.timestamp === effectiveLowerConstraint.timestamp) {
+          if (!candidateLower.isInclusive && effectiveLowerConstraint.isInclusive) {
+            effectiveLowerConstraint = candidateLower;
           }
         }
-      } else if (lowerToken) {
-        const lowerResult = normalizeDateBoundary(lowerToken.rawDate, 'start', lowerToken.operator, timezoneIdentifier);
-        upstreamRecordDate = [lowerResult.recordDateToken];
-        const lowerSymbol = lowerToken.operator === 'gt' ? '>' : '>=';
-        const canonicalFrom = lowerResult.isDateOnly ? lowerToken.rawDate : lowerResult.isoInstant;
+      }
+
+      let effectiveUpperConstraint: BoundaryConstraint | undefined = undefined;
+      for (const candidateUpper of upperConstraintList) {
+        if (!effectiveUpperConstraint) {
+          effectiveUpperConstraint = candidateUpper;
+        } else if (candidateUpper.timestamp < effectiveUpperConstraint.timestamp) {
+          effectiveUpperConstraint = candidateUpper;
+        } else if (candidateUpper.timestamp === effectiveUpperConstraint.timestamp) {
+          if (!candidateUpper.isInclusive && effectiveUpperConstraint.isInclusive) {
+            effectiveUpperConstraint = candidateUpper;
+          }
+        }
+      }
+
+      let isContradictoryInterval = false;
+      if (effectiveLowerConstraint && effectiveUpperConstraint) {
+        if (effectiveLowerConstraint.timestamp > effectiveUpperConstraint.timestamp) {
+          isContradictoryInterval = true;
+        } else if (effectiveLowerConstraint.timestamp === effectiveUpperConstraint.timestamp) {
+          isContradictoryInterval = !(effectiveLowerConstraint.isInclusive && effectiveUpperConstraint.isInclusive);
+        }
+      }
+
+      if (isContradictoryInterval) {
+        unresolvedFilterIssues.push({
+          filterKey: 'dateRange',
+          rawValue: rawArray.join(' '),
+          reason: 'INVALID_RANGE',
+          subType: 'start_after_end',
+          message: `Rentang tanggal tidak valid: batas awal tidak boleh lebih besar dari batas akhir.`,
+        });
+      } else if (effectiveLowerConstraint && effectiveUpperConstraint) {
+        const isStandardRange =
+          (effectiveLowerConstraint.operator === 'gte' || effectiveLowerConstraint.operator === 'eq') &&
+          (effectiveUpperConstraint.operator === 'lte' || effectiveUpperConstraint.operator === 'eq');
+        const lowerSymbol = effectiveLowerConstraint.operator === 'gt' ? '>' : '>=';
+        const upperSymbol = effectiveUpperConstraint.operator === 'lt' ? '<' : '<=';
+
+        const canonicalFrom = effectiveLowerConstraint.isDateOnly ? effectiveLowerConstraint.rawDate : effectiveLowerConstraint.isoInstant;
+        const canonicalTo = effectiveUpperConstraint.isDateOnly ? effectiveUpperConstraint.rawDate : effectiveUpperConstraint.isoInstant;
+
+        if (
+          effectiveLowerConstraint.isDateOnly &&
+          effectiveUpperConstraint.isDateOnly &&
+          effectiveLowerConstraint.rawDate === effectiveUpperConstraint.rawDate &&
+          isStandardRange
+        ) {
+          upstreamRecordDate = resolveLocalCalendarDayRange(effectiveLowerConstraint.rawDate, timezoneIdentifier);
+          appliedFilters.dateRange = {
+            from: canonicalFrom,
+            to: canonicalTo,
+            selector: canonicalFrom,
+            label: canonicalFrom,
+            rawRange: upstreamRecordDate,
+          };
+        } else if (
+          !effectiveLowerConstraint.isDateOnly &&
+          !effectiveUpperConstraint.isDateOnly &&
+          effectiveLowerConstraint.timestamp === effectiveUpperConstraint.timestamp &&
+          effectiveLowerConstraint.isInclusive &&
+          effectiveUpperConstraint.isInclusive
+        ) {
+          const exactUtcIso = effectiveLowerConstraint.isoInstant;
+          upstreamRecordDate = [`gte.${exactUtcIso}`, `lte.${exactUtcIso}`];
+          appliedFilters.dateRange = {
+            from: exactUtcIso,
+            to: exactUtcIso,
+            selector: `${exactUtcIso} ${exactUtcIso}`,
+            label: exactUtcIso,
+            rawRange: upstreamRecordDate,
+          };
+        } else {
+          upstreamRecordDate = [effectiveLowerConstraint.recordDateToken, effectiveUpperConstraint.recordDateToken];
+          appliedFilters.dateRange = {
+            from: canonicalFrom,
+            to: canonicalTo,
+            selector: isStandardRange
+              ? `${canonicalFrom} ${canonicalTo}`
+              : `${lowerSymbol} ${canonicalFrom} ${upperSymbol} ${canonicalTo}`,
+            label: isStandardRange
+              ? `${canonicalFrom} - ${canonicalTo}`
+              : `${lowerSymbol} ${canonicalFrom} - ${upperSymbol} ${canonicalTo}`,
+            rawRange: upstreamRecordDate,
+          };
+        }
+      } else if (effectiveLowerConstraint) {
+        upstreamRecordDate = [effectiveLowerConstraint.recordDateToken];
+        const lowerSymbol = effectiveLowerConstraint.operator === 'gt' ? '>' : '>=';
+        const canonicalFrom = effectiveLowerConstraint.isDateOnly ? effectiveLowerConstraint.rawDate : effectiveLowerConstraint.isoInstant;
         appliedFilters.dateRange = {
           from: canonicalFrom,
           selector: `${lowerSymbol} ${canonicalFrom}`,
           label: `${lowerSymbol} ${canonicalFrom}`,
           rawRange: upstreamRecordDate,
         };
-      } else if (upperToken) {
-        const upperResult = normalizeDateBoundary(upperToken.rawDate, 'end', upperToken.operator, timezoneIdentifier);
-        upstreamRecordDate = [upperResult.recordDateToken];
-        const upperSymbol = upperToken.operator === 'lt' ? '<' : '<=';
-        const canonicalTo = upperResult.isDateOnly ? upperToken.rawDate : upperResult.isoInstant;
+      } else if (effectiveUpperConstraint) {
+        upstreamRecordDate = [effectiveUpperConstraint.recordDateToken];
+        const upperSymbol = effectiveUpperConstraint.operator === 'lt' ? '<' : '<=';
+        const canonicalTo = effectiveUpperConstraint.isDateOnly ? effectiveUpperConstraint.rawDate : effectiveUpperConstraint.isoInstant;
         appliedFilters.dateRange = {
           to: canonicalTo,
           selector: `${upperSymbol} ${canonicalTo}`,
@@ -988,8 +1089,14 @@ export function normalizeTransactionHistoryFilters(
         if (lowerResult && upperResult && trimmedFrom && trimmedTo) {
           const lowerTimestamp = Date.parse(lowerResult.isoInstant);
           const upperTimestamp = Date.parse(upperResult.isoInstant);
+          const isLowerInclusive = true;
+          const isUpperInclusive = upperResult.isDateOnly ? false : true;
 
-          if (lowerTimestamp > upperTimestamp) {
+          const isContradictory =
+            lowerTimestamp > upperTimestamp ||
+            (lowerTimestamp === upperTimestamp && !(isLowerInclusive && isUpperInclusive));
+
+          if (isContradictory) {
             unresolvedFilterIssues.push({
               filterKey: 'dateRange',
               rawValue: `${trimmedFrom} - ${trimmedTo}`,
