@@ -378,11 +378,11 @@ export function formatTransactionHistoryMessage(
     sortOrderLabel
   );
 
-  if (historyPage.total === 0) {
+  if (historyPage.total === 0 || (historyPage.total === undefined && historyPage.records.length === 0 && historyPage.offset === 0)) {
     return `${headerText}\n\n${dictionary.history.emptyState}`;
   }
 
-  if (historyPage.records.length === 0 && historyPage.offset >= historyPage.total) {
+  if (typeof historyPage.total === 'number' && historyPage.records.length === 0 && historyPage.offset >= historyPage.total) {
     return `${headerText}\n\n${dictionary.history.outOfBounds(historyPage.total)}`;
   }
 
@@ -419,7 +419,7 @@ export function formatTransactionHistoryMessage(
     recordLines.join('\n\n'),
   ];
 
-  if (historyPage.hasMore && historyPage.page < historyPage.totalPages) {
+  if (historyPage.hasMore) {
     const nextPageIndex = historyPage.page + 1;
     messageParts.push('');
     messageParts.push(

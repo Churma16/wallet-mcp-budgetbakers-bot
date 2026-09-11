@@ -98,11 +98,11 @@ export interface WalletRecordItem {
 
 export interface TransactionHistoryPage {
   records: WalletRecordItem[];
-  total: number;
+  total?: number;
   limit: number;
   offset: number;
   page: number;
-  totalPages: number;
+  totalPages?: number;
   nextOffset: number | null;
   hasMore: boolean;
   sort: TransactionSortOrder;

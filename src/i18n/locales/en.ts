@@ -79,9 +79,19 @@ export const englishDictionary: ResponseDictionary = {
   },
 
   history: {
-    header(page: number, totalPages: number, displayedCount: number, totalCount: number, sortOrderLabel: string): string {
+    header(
+      page: number,
+      totalPages?: number,
+      displayedCount?: number,
+      totalCount?: number,
+      sortOrderLabel?: string
+    ): string {
       const sortSuffix = sortOrderLabel ? ` [${sortOrderLabel}]` : '';
-      return `📋 *Transaction History* (Page ${page}/${totalPages} • ${displayedCount} of ${totalCount})${sortSuffix}`;
+      const pageInfo = typeof totalPages === 'number' ? `Page ${page}/${totalPages}` : `Page ${page}`;
+      const countInfo = typeof totalCount === 'number'
+        ? ` • ${displayedCount ?? 0} of ${totalCount}`
+        : (typeof displayedCount === 'number' && displayedCount > 0 ? ` • ${displayedCount} transactions` : '');
+      return `📋 *Transaction History* (${pageInfo}${countInfo})${sortSuffix}`;
     },
     emptyState: 'No transactions recorded yet.',
     outOfBounds(totalCount: number): string {

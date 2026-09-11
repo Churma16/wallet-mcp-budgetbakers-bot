@@ -79,9 +79,19 @@ export const indonesianDictionary: ResponseDictionary = {
   },
 
   history: {
-    header(page: number, totalPages: number, displayedCount: number, totalCount: number, sortOrderLabel: string): string {
+    header(
+      page: number,
+      totalPages?: number,
+      displayedCount?: number,
+      totalCount?: number,
+      sortOrderLabel?: string
+    ): string {
       const sortSuffix = sortOrderLabel ? ` [${sortOrderLabel}]` : '';
-      return `📋 *Riwayat Transaksi* (Hal. ${page}/${totalPages} • ${displayedCount} dari ${totalCount})${sortSuffix}`;
+      const pageInfo = typeof totalPages === 'number' ? `Hal. ${page}/${totalPages}` : `Hal. ${page}`;
+      const countInfo = typeof totalCount === 'number'
+        ? ` • ${displayedCount ?? 0} dari ${totalCount}`
+        : (typeof displayedCount === 'number' && displayedCount > 0 ? ` • ${displayedCount} transaksi` : '');
+      return `📋 *Riwayat Transaksi* (${pageInfo}${countInfo})${sortSuffix}`;
     },
     emptyState: 'Belum ada transaksi yang tercatat.',
     outOfBounds(totalCount: number): string {

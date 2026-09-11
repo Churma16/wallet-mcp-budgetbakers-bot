@@ -104,7 +104,13 @@ export interface ResponseDictionary {
   };
 
   history: {
-    header(page: number, totalPages: number, displayedCount: number, totalCount: number, sortOrderLabel: string): string;
+    header(
+      page: number,
+      totalPages?: number,
+      displayedCount?: number,
+      totalCount?: number,
+      sortOrderLabel?: string
+    ): string;
     emptyState: string;
     outOfBounds(totalCount: number): string;
     navigationHint(

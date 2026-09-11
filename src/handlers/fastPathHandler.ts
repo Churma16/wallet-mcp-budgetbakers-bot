@@ -137,8 +137,9 @@ export class FastPathHandler {
 
     await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
     const processingDurationMs = Date.now() - processingStartTimestamp;
+    const totalCountSuffix = typeof historyPage.total === 'number' ? ` of ${historyPage.total}` : '';
     applicationLogger.success(
-      `[${event.channel.toUpperCase()}] Sent transaction history (${historyPage.records.length} of ${historyPage.total}) via Fast-path (${processingDurationMs}ms).`
+      `[${event.channel.toUpperCase()}] Sent transaction history (${historyPage.records.length}${totalCountSuffix}) via Fast-path (${processingDurationMs}ms).`
     );
 
     return true;

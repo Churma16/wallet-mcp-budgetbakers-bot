@@ -418,11 +418,6 @@ export class WalletMcpClientService {
       ? rawResponse
       : (rawResponse?.records || rawResponse?.items || []);
 
-    const reportedTotal = typeof rawResponse?.total === 'number'
-      ? rawResponse.total
-      : (resolvedOffset + rawRecordArray.length);
-    const totalCount = Math.max(0, reportedTotal);
-
     const normalizedRecords: WalletRecordItem[] = rawRecordArray.map(item => {
       let resolvedAmount = 0;
       let resolvedCurrency = 'IDR';
@@ -494,19 +489,32 @@ export class WalletMcpClientService {
       };
     });
 
-    const hasMore = (resolvedOffset + rawRecordArray.length) < totalCount;
+    const hasExplicitTotal = typeof rawResponse?.total === 'number' && Number.isFinite(rawResponse.total);
+    const resolvedTotalCount = hasExplicitTotal ? Math.max(0, rawResponse.total) : undefined;
+
+    const hasExplicitNextOffset = typeof rawResponse?.nextOffset === 'number' && Number.isFinite(rawResponse.nextOffset);
+    let hasMore = false;
     let nextOffset: number | null = null;
-    if (hasMore) {
-      nextOffset = typeof rawResponse?.nextOffset === 'number'
-        ? rawResponse.nextOffset
-        : resolvedOffset + rawRecordArray.length;
+
+    if (hasExplicitNextOffset) {
+      hasMore = true;
+      nextOffset = rawResponse.nextOffset;
+    } else if (rawResponse?.nextOffset === null) {
+      hasMore = false;
+      nextOffset = null;
+    } else if (typeof resolvedTotalCount === 'number') {
+      hasMore = (resolvedOffset + rawRecordArray.length) < resolvedTotalCount;
+      nextOffset = hasMore ? (resolvedOffset + rawRecordArray.length) : null;
     }
+
     const pageNumber = Math.floor(resolvedOffset / resolvedLimit) + 1;
-    const totalPagesCount = Math.max(1, Math.ceil(totalCount / resolvedLimit));
+    const totalPagesCount = typeof resolvedTotalCount === 'number'
+      ? Math.max(1, Math.ceil(resolvedTotalCount / resolvedLimit))
+      : undefined;
 
     return {
       records: normalizedRecords,
-      total: totalCount,
+      total: resolvedTotalCount,
       limit: resolvedLimit,
       offset: resolvedOffset,
       page: pageNumber,

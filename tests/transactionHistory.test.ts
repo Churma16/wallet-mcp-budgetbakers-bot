@@ -200,6 +200,44 @@ console.log('\n[Suite 4] Testing Pagination Metadata & Multi-Page Navigation...'
   assert.strictEqual(lastPage.hasMore, false);
   assert.strictEqual(lastPage.nextOffset, null);
 
+  // 4.4 Response with records + nextOffset but no total (Issue #105 review)
+  setNextResponse({
+    records: sampleRawRecords,
+    nextOffset: 10,
+  });
+
+  const pageWithoutTotal = await client.fetchRecords({ limit: 10, offset: 0 });
+  assert.strictEqual(pageWithoutTotal.records.length, 10);
+  assert.strictEqual(pageWithoutTotal.total, undefined);
+  assert.strictEqual(pageWithoutTotal.totalPages, undefined);
+  assert.strictEqual(pageWithoutTotal.hasMore, true);
+  assert.strictEqual(pageWithoutTotal.nextOffset, 10);
+
+  // Formatter displays navigation hint based on hasMore
+  setActiveLanguage('id');
+  const formattedWithoutTotalId = formatTransactionHistoryMessage(pageWithoutTotal);
+  assert.match(formattedWithoutTotalId, /riwayat hal 2/);
+
+  setActiveLanguage('en');
+  const formattedWithoutTotalEn = formatTransactionHistoryMessage(pageWithoutTotal);
+  assert.match(formattedWithoutTotalEn, /history page 2/);
+
+  // 4.5 Last-page case with no nextOffset and no total
+  setNextResponse({
+    records: sampleRawRecords.slice(0, 5),
+  });
+
+  const lastPageWithoutTotal = await client.fetchRecords({ limit: 10, offset: 10 });
+  assert.strictEqual(lastPageWithoutTotal.records.length, 5);
+  assert.strictEqual(lastPageWithoutTotal.total, undefined);
+  assert.strictEqual(lastPageWithoutTotal.totalPages, undefined);
+  assert.strictEqual(lastPageWithoutTotal.hasMore, false);
+  assert.strictEqual(lastPageWithoutTotal.nextOffset, null);
+
+  // Formatter omits navigation hint when hasMore is false
+  const formattedLastPageWithoutTotal = formatTransactionHistoryMessage(lastPageWithoutTotal);
+  assert.doesNotMatch(formattedLastPageWithoutTotal, /riwayat hal/);
+
   console.log('  [PASS] Pagination navigation and metadata calculations verified.');
 }
 
