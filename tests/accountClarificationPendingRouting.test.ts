@@ -241,15 +241,15 @@ async function main(): Promise<void> {
   assertClarificationUntouched('Reject-all', rejectAllHarness);
 
   const latestRejectHarness = createHarness();
-  await latestRejectHarness.handler.handleIncomingUserMessage(createEvent('batal'));
+  await latestRejectHarness.handler.handleIncomingUserMessage(createEvent('tolak'));
 
   assertCondition(
-    'Generic latest rejection reaches the standard pending handler when one exists',
+    'Unambiguous generic latest rejection reaches the standard pending handler',
     latestRejectHarness.pendingActionHandler.calls.length === 1 &&
       latestRejectHarness.pendingActionHandler.calls[0].actionType === 'REJECT' &&
       latestRejectHarness.pendingActionHandler.calls[0].targetScope === 'LATEST'
   );
-  assertClarificationUntouched('Generic latest rejection', latestRejectHarness);
+  assertClarificationUntouched('Unambiguous generic latest rejection', latestRejectHarness);
 
   console.log(`\n[SUCCESS] ${assertionCount} assertions passed.`);
 }
