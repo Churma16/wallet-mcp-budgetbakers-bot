@@ -733,7 +733,4 @@ async function runCategoryContextTestSuite(): Promise<void> {
   }
 }
 
-runCategoryContextTestSuite().catch(error => {
-  console.error('\n[ERROR] Test suite failed with exception:\n', error);
-  process.exit(1);
-});
+await runCategoryContextTestSuite();
