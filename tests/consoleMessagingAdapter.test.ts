@@ -466,4 +466,64 @@ test('CMA-8: Message Serialization & Draining on Exit/Shutdown', async () => {
   assert.strictEqual(stopTaskCompleted, true, 'In-flight operation completed before stopConnection returned');
   assert.strictEqual(stopConnectionFinished, true, 'stopConnection successfully finished after drain');
   assert.strictEqual(externalStopAdapter.getConnectionState(), 'idle');
+
+  // 8.4 Gateway-level draining: channel remains routable for sendMessage during gateway.stopAll()
+  const gateway = new MessagingGatewayService();
+  const gwInputStream = new PassThrough();
+  const gwOutputStream = new PassThrough();
+  let gwCapturedOutput = '';
+  gwOutputStream.on('data', chunk => {
+    gwCapturedOutput += chunk.toString();
+  });
+
+  let resolveGatewayCallback: (() => void) | null = null;
+  let gatewayCallbackStarted = false;
+  let gatewayReplyDelivered = false;
+
+  const onGatewayBlockedMessage = async (_event: IncomingUserMessageEvent): Promise<void> => {
+    gatewayCallbackStarted = true;
+    await new Promise<void>(resolve => {
+      resolveGatewayCallback = resolve;
+    });
+
+    // Send final response via gateway while shutdown is in-flight
+    await gateway.sendMessage('console', 'console', 'Transaksi berhasil disimpan: ID #12345');
+    gatewayReplyDelivered = true;
+  };
+
+  const gwAdapter = new ConsoleMessagingAdapter(onGatewayBlockedMessage, {
+    inputStream: gwInputStream,
+    outputStream: gwOutputStream,
+  });
+
+  gateway.registerAdapter(gwAdapter);
+  await gateway.startAll();
+
+  // Start in-flight request
+  gwInputStream.write('simpan_transaksi_terakhir\n');
+  await delay(30);
+  assert.strictEqual(gatewayCallbackStarted, true, 'Gateway callback should be active');
+
+  // Trigger gateway.stopAll() while callback is in progress
+  let gatewayStopFinished = false;
+  const gatewayStopPromise = gateway.stopAll().then(() => {
+    gatewayStopFinished = true;
+  });
+
+  await delay(50);
+  assert.strictEqual(gatewayStopFinished, false, 'gateway.stopAll() must wait for in-flight tasks to complete');
+  assert.strictEqual(gatewayReplyDelivered, false, 'Reply not yet sent while callback is blocked');
+
+  // Now release callback, allowing it to call gateway.sendMessage()
+  resolveGatewayCallback!();
+  await gatewayStopPromise;
+
+  assert.strictEqual(gatewayStopFinished, true, 'gateway.stopAll() completed successfully after task drained');
+  assert.strictEqual(gatewayReplyDelivered, true, 'gateway.sendMessage() succeeded during shutdown drain');
+  assert.ok(
+    gwCapturedOutput.includes('Transaksi berhasil disimpan: ID #12345'),
+    'Output contains message dispatched during shutdown drain'
+  );
+  assert.strictEqual(gateway.getAdapterState('console'), 'idle', 'Gateway adapter state is idle after stopAll() finishes');
 });
+

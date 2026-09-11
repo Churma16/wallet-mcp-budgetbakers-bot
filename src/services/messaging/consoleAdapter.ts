@@ -45,6 +45,9 @@ export class ConsoleMessagingAdapter implements MessagingAdapter {
   }
 
   public getConnectionState(): AdapterConnectionState {
+    if (this.isShuttingDown && this.isRunning) {
+      return 'stopping';
+    }
     return this.isRunning ? 'connected' : 'idle';
   }
 

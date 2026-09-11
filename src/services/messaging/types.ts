@@ -1,6 +1,6 @@
 export type SupportedMessengerChannel = 'whatsapp' | 'telegram' | 'console';
 
-export type AdapterConnectionState = 'idle' | 'connected' | 'reconnecting' | 'failed';
+export type AdapterConnectionState = 'idle' | 'connected' | 'reconnecting' | 'failed' | 'stopping';
 
 export interface IncomingUserMessageEvent {
   channel: SupportedMessengerChannel;

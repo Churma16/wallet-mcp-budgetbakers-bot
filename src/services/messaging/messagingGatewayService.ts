@@ -46,7 +46,8 @@ export class MessagingGatewayService {
   }
 
   public isChannelConnected(channel: SupportedMessengerChannel): boolean {
-    return this.getAdapterState(channel) === 'connected';
+    const channelState = this.getAdapterState(channel);
+    return channelState === 'connected' || channelState === 'stopping';
   }
 
   public getActiveChannels(): SupportedMessengerChannel[] {
@@ -213,13 +214,15 @@ export class MessagingGatewayService {
     this.reconnectAttemptCounters.clear();
 
     const shutdownPromises = Array.from(this.adapterMap.entries()).map(async ([channel, adapter]) => {
-      this.adapterStateMap.set(channel, 'idle');
-      if (adapter.stopConnection) {
-        try {
+      this.adapterStateMap.set(channel, 'stopping');
+      try {
+        if (adapter.stopConnection) {
           await adapter.stopConnection();
-        } catch (stopError: unknown) {
-          applicationLogger.warn(`[WARN] Error stopping adapter [${channel.toUpperCase()}]: ${stopError}`);
         }
+      } catch (stopError: unknown) {
+        applicationLogger.warn(`[WARN] Error stopping adapter [${channel.toUpperCase()}]: ${stopError}`);
+      } finally {
+        this.adapterStateMap.set(channel, 'idle');
       }
     });
 
@@ -237,7 +240,7 @@ export class MessagingGatewayService {
     }
 
     const channelState = this.getAdapterState(channel);
-    if (channelState !== 'connected') {
+    if (channelState !== 'connected' && channelState !== 'stopping') {
       applicationLogger.warn(
         `[WARN] Cannot send message via [${channel.toUpperCase()}]: channel is currently '${channelState}'.`
       );
