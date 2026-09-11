@@ -27,11 +27,14 @@ export const englishDictionary: ResponseDictionary = {
 
   records: {
     singleSuccess(params: RecordMessageParams): string {
+      const labelLine = params.labels && params.labels.length > 0
+        ? `\n🔖 ${params.labels.map(label => `#${label}`).join(' ')}`
+        : '';
       return [
         `✅ *${params.transactionTitle}* recorded successfully!`,
         '',
         `${params.transactionTypeIcon} ${params.formattedAmount}  •  ${params.accountName}`,
-        `🏷️ ${params.categoryName}  •  ${params.recordTimestampDisplay}`,
+        `🏷️ ${params.categoryName}  •  ${params.recordTimestampDisplay}${labelLine}`,
       ].join('\n');
     },
 
@@ -40,9 +43,12 @@ export const englishDictionary: ResponseDictionary = {
     },
 
     multipleRecordItem(params: MultipleRecordsItemParams): string {
+      const labelSuffix = params.labels && params.labels.length > 0
+        ? `  •  🔖 ${params.labels.map(label => `#${label}`).join(' ')}`
+        : '';
       return [
         `${params.itemIndex + 1}. ${params.transactionTypeIcon} ${params.transactionDescription} — *${params.formattedAmount}* from ${params.accountName}`,
-        `   🏷️ ${params.categoryName}  •  ${params.recordTimestampDisplay}`,
+        `   🏷️ ${params.categoryName}  •  ${params.recordTimestampDisplay}${labelSuffix}`,
       ].join('\n');
     },
   },

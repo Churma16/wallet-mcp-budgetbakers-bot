@@ -503,30 +503,23 @@ function createParsedRelativeTimeResult(
   const targetHour = explicitClock ? explicitClock.hour : defaultHour;
   const targetMinute = explicitClock ? explicitClock.minute : defaultMinute;
 
-  try {
-    const resolvedUtcIso = resolveTargetLocalToUtcIso(
-      targetDateString,
-      targetHour,
-      targetMinute,
-      targetTimezoneIdentifier
-    );
+  const resolvedUtcIso = resolveTargetLocalToUtcIso(
+    targetDateString,
+    targetHour,
+    targetMinute,
+    targetTimezoneIdentifier
+  );
 
-    return {
-      resolvedUtcIso,
-      matchedExpression: explicitClock ? `${matchedKeyword} ${explicitClock.matchedClockSubstring}` : matchedKeyword,
-      hasExplicitTime: Boolean(explicitClock),
-      targetDateString,
-      targetHour,
-      targetMinute,
-      periodName,
-      dayReference,
-    };
-  } catch (error) {
-    if (error instanceof RangeError) {
-      return null;
-    }
-    throw error;
-  }
+  return {
+    resolvedUtcIso,
+    matchedExpression: explicitClock ? `${matchedKeyword} ${explicitClock.matchedClockSubstring}` : matchedKeyword,
+    hasExplicitTime: Boolean(explicitClock),
+    targetDateString,
+    targetHour,
+    targetMinute,
+    periodName,
+    dayReference,
+  };
 }
 
 /**
@@ -666,29 +659,22 @@ export function parseRelativeTime(
   if (bareTadiMatch) {
     const explicitClock = extractExplicitClockTime(inputText);
     if (explicitClock) {
-      try {
-        const resolvedUtcIso = resolveTargetLocalToUtcIso(
-          todayDateString,
-          explicitClock.hour,
-          explicitClock.minute,
-          targetTimezoneIdentifier
-        );
+      const resolvedUtcIso = resolveTargetLocalToUtcIso(
+        todayDateString,
+        explicitClock.hour,
+        explicitClock.minute,
+        targetTimezoneIdentifier
+      );
 
-        return {
-          resolvedUtcIso,
-          matchedExpression: `${bareTadiMatch[0]} ${explicitClock.matchedClockSubstring}`,
-          hasExplicitTime: true,
-          targetDateString: todayDateString,
-          targetHour: explicitClock.hour,
-          targetMinute: explicitClock.minute,
-          dayReference: 'today',
-        };
-      } catch (error) {
-        if (error instanceof RangeError) {
-          return null;
-        }
-        throw error;
-      }
+      return {
+        resolvedUtcIso,
+        matchedExpression: `${bareTadiMatch[0]} ${explicitClock.matchedClockSubstring}`,
+        hasExplicitTime: true,
+        targetDateString: todayDateString,
+        targetHour: explicitClock.hour,
+        targetMinute: explicitClock.minute,
+        dayReference: 'today',
+      };
     }
   }
 

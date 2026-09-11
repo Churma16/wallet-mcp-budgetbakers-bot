@@ -1,6 +1,12 @@
 import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload } from '../types/walletTypes.js';
 import { getApplicationTimezone } from './humanResponseFormatter.js';
-import { getTimezoneOffsetDetails, parseRelativeTime, resolveTargetLocalToUtcIso } from './relativeTimeParser.js';
+import {
+  getTimezoneOffsetDetails,
+  parseRelativeTime,
+  resolveTargetLocalToUtcIso,
+  ParsedRelativeTimeResult,
+} from './relativeTimeParser.js';
+import { extractHashtags, deduplicateTags, normalizeTagName } from './hashtagParser.js';
 
 export type AccountResolutionIssueReason = 'UNRESOLVED' | 'AMBIGUOUS';
 
@@ -146,6 +152,32 @@ export function validateAndSanitizeFinancialRecords(
 
   const applicationTimezone = getApplicationTimezone();
 
+  // Deterministically derive allowed explicit hashtags from raw user input.
+  // Raw user input (contextualUserMessage) is the sole authority for explicit hashtags.
+  // Model-generated fields (like record.note) must never authorize new hashtags absent from user input.
+  const rawSourceHashtags =
+    typeof contextualUserMessage === 'string'
+      ? extractHashtags(contextualUserMessage).tags
+      : undefined;
+
+  const allowedExplicitTagSet = new Set<string>();
+
+  if (rawSourceHashtags !== undefined) {
+    for (const tag of rawSourceHashtags) {
+      allowedExplicitTagSet.add(tag.toLowerCase());
+    }
+  } else {
+    // When contextualUserMessage is not provided (e.g. standalone validator tests), fall back to note hashtags
+    for (const record of incomingRecords) {
+      if (record && record.note && typeof record.note === 'string') {
+        const noteHashtags = extractHashtags(record.note).tags;
+        for (const tag of noteHashtags) {
+          allowedExplicitTagSet.add(tag.toLowerCase());
+        }
+      }
+    }
+  }
+
   const invalidRecordIndices = new Set<number>();
 
   // Pre-normalize recordDate upfront for all records into an immutable UTC ISO string
@@ -169,9 +201,25 @@ export function validateAndSanitizeFinancialRecords(
       candidateTextForRelativeTime = currentRecord.note || '';
     }
 
-    const parsedRelativeTime = candidateTextForRelativeTime
-      ? parseRelativeTime(candidateTextForRelativeTime, referenceDate, applicationTimezone)
-      : null;
+    let parsedRelativeTime: ParsedRelativeTimeResult | null = null;
+    if (candidateTextForRelativeTime) {
+      try {
+        parsedRelativeTime = parseRelativeTime(
+          candidateTextForRelativeTime,
+          referenceDate,
+          applicationTimezone
+        );
+      } catch (error) {
+        if (error instanceof RangeError) {
+          validationErrors.push(
+            `Transaksi #${recordIndex + 1}: Waktu transaksi tidak valid pada timezone ${applicationTimezone} (${error.message}).`
+          );
+          invalidRecordIndices.add(recordIndex);
+          continue;
+        }
+        throw error;
+      }
+    }
 
     let normalizedRecordDate = currentRecord.recordDate;
 
@@ -179,7 +227,10 @@ export function validateAndSanitizeFinancialRecords(
       normalizedRecordDate = parsedRelativeTime.resolvedUtcIso;
     } else if (typeof normalizedRecordDate === 'string') {
       const trimmedDateString = normalizedRecordDate.trim();
-      // 1. Local ISO format without timezone offset or Z indicator (e.g. 2026-07-15T11:54:00 or 2026-07-15 11:54)
+      // Only apply application-IANA target-date resolution to local timestamps that do not contain an offset
+      // (e.g. 2026-07-15T11:54:00 or 2026-07-15 11:54).
+      // Explicit ISO offsets (e.g. 2026-07-15T11:54:00-05:00) are treated as authoritative source information
+      // and are preserved without being overwritten.
       const localIsoWithoutOffsetMatch = trimmedDateString.match(
         /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?$/
       );
@@ -201,45 +252,6 @@ export function validateAndSanitizeFinancialRecords(
             continue;
           }
           throw error;
-        }
-      } else {
-        // 2. Format with explicit timezone offset (e.g. 2026-07-15T11:54:00-05:00)
-        const offsetDateMatch = trimmedDateString.match(
-          /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?([+-]\d{2}:\d{2})$/
-        );
-        if (offsetDateMatch) {
-          const [, datePart, hourPart, minutePart, , explicitOffset] = offsetDateMatch;
-          const requestOffsetDetails = getTimezoneOffsetDetails(applicationTimezone, referenceDate);
-          const targetDateMiddayEstimate = new Date(`${datePart}T12:00:00.000Z`);
-          const targetOffsetDetails = getTimezoneOffsetDetails(
-            applicationTimezone,
-            targetDateMiddayEstimate
-          );
-
-          // If the explicit offset matches the request instant's offset but differs from the target date's offset in applicationTimezone,
-          // re-resolve using the target date's accurate offset to correct request-scoped offset pollution.
-          if (
-            explicitOffset === requestOffsetDetails.formattedOffset &&
-            explicitOffset !== targetOffsetDetails.formattedOffset
-          ) {
-            try {
-              normalizedRecordDate = resolveTargetLocalToUtcIso(
-                datePart,
-                Number.parseInt(hourPart, 10),
-                Number.parseInt(minutePart, 10),
-                applicationTimezone
-              );
-            } catch (error) {
-              if (error instanceof RangeError) {
-                validationErrors.push(
-                  `Transaksi #${recordIndex + 1}: Waktu transaksi tidak valid pada timezone ${applicationTimezone} (${trimmedDateString}).`
-                );
-                invalidRecordIndices.add(recordIndex);
-                continue;
-              }
-              throw error;
-            }
-          }
         }
       }
     }
@@ -353,23 +365,62 @@ export function validateAndSanitizeFinancialRecords(
       resolvedRecordDate = new Date(parsedDateTimestamp).toISOString();
     }
 
-    // 5. Text Sanitization
-    const sanitizedNote = currentRecord.note
-      ? String(currentRecord.note).slice(0, 500).trim()
-      : undefined;
+    // 5. Text Sanitization & Explicit Hashtag Extraction
+    let extractedTagsFromNote: string[] = [];
+    let cleanedNote: string | undefined = undefined;
+
+    if (currentRecord.note) {
+      const rawNoteString = String(currentRecord.note).slice(0, 500);
+      const hashtagResult = extractHashtags(rawNoteString);
+      cleanedNote = hashtagResult.cleanedText.length > 0 ? hashtagResult.cleanedText : undefined;
+      // AI note hashtags are cleaned from note, but only accepted as labels if they also exist
+      // in the authorized explicit hashtag set derived from raw user input
+      extractedTagsFromNote = hashtagResult.tags.filter(tag =>
+        allowedExplicitTagSet.has(tag.toLowerCase())
+      );
+    }
+
+    // Require explicit hashtags before accepting AI-provided labels
+    const incomingLabels = Array.isArray(currentRecord.labels)
+      ? currentRecord.labels
+          .map(normalizeTagName)
+          .filter(tag => allowedExplicitTagSet.has(tag.toLowerCase()))
+      : [];
+
+    // For single-record input, always union all deterministically parsed sourceUserText hashtags
+    // with validated per-record labels so omission by the model never drops user-authored hashtags
+    const fallbackSourceTags: string[] = [];
+    if (incomingRecords.length === 1 && rawSourceHashtags && rawSourceHashtags.length > 0) {
+      fallbackSourceTags.push(...rawSourceHashtags);
+    }
+
+    const combinedLabels = deduplicateTags([
+      ...incomingLabels,
+      ...extractedTagsFromNote,
+      ...fallbackSourceTags,
+    ]);
 
     const sanitizedCounterParty = currentRecord.counterParty
       ? String(currentRecord.counterParty).slice(0, 100).trim()
       : undefined;
 
-    sanitizedRecords.push({
+    const sanitizedRecordItem: CreateRecordInputPayload = {
       accountId: resolvedAccountId,
       categoryId: resolvedCategoryId,
       amount: parsedAmount,
       recordDate: resolvedRecordDate,
-      note: sanitizedNote,
+      note: cleanedNote,
       counterParty: sanitizedCounterParty,
-    });
+    };
+
+    if (combinedLabels.length > 0) {
+      sanitizedRecordItem.labels = combinedLabels;
+    }
+
+    // Incoming labelIds are always discarded at the validation boundary to prevent
+    // untrusted or hallucinated IDs from bypassing name-based label resolution.
+
+    sanitizedRecords.push(sanitizedRecordItem);
   }
 
   return {

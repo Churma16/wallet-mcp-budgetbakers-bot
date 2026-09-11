@@ -16,6 +16,7 @@ export interface ExtractedFinancialRecordItem {
   recordDate: string;
   note: string;
   counterParty?: string;
+  labels?: string[];
 }
 
 export interface ExtractedFinancialIntent {

@@ -192,6 +192,7 @@ function formatSingleRecordSuccess(
     categoryName,
     recordTimestampDisplay,
     transactionTypeIcon,
+    labels: recordItem.labels,
   });
 }
 
@@ -229,6 +230,7 @@ function formatMultipleRecordsSuccess(
       accountName,
       categoryName,
       recordTimestampDisplay,
+      labels: recordItem.labels,
     });
   });
 

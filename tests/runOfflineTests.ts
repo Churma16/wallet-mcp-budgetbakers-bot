@@ -46,6 +46,7 @@ const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
   { filePath: 'tests/telegramSafeguards.test.ts', description: 'Telegram rate limiting & unauthorized user whitelist gates' },
   { filePath: 'tests/whatsappSafeguards.test.ts', description: 'WhatsApp exponential backoff, circuit breaker & ban safeguards' },
   { filePath: 'tests/whatsappSocketHardening.test.ts', description: 'WhatsApp Baileys socket options & typing presence debouncing' },
+  { filePath: 'tests/hashtagLabels.test.ts', description: 'Hashtag parsing, note cleaning, label resolution & auto-creation (Issue #20)' },
 ];
 
 const isVerboseMode = process.argv.includes('--verbose') || process.argv.includes('-v');

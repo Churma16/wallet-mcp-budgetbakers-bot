@@ -26,6 +26,7 @@ import {
 } from '../utils/accountClarificationFormatter.js';
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger, formatConciseErrorMessage } from '../utils/logger.js';
+import { resolveAndEnsureLabels } from '../services/walletLabelResolver.js';
 
 export class AccountClarificationHandler {
   constructor(
@@ -61,6 +62,7 @@ export class AccountClarificationHandler {
       pendingRecordIndex: firstIssue.recordIndex,
       accountHint: firstIssue.accountHint,
       candidateAccounts,
+      sourceUserText: event.textPayload,
     });
 
     applicationLogger.info(
@@ -231,7 +233,7 @@ export class AccountClarificationHandler {
       updatedRecords,
       availableAccounts,
       availableCategories,
-      undefined,
+      claimedDraft.sourceUserText,
       new Date(claimedDraft.createdAt)
     );
 
@@ -303,6 +305,18 @@ export class AccountClarificationHandler {
         getDictionary().errors.validationRejected(getDictionary().errors.accountResolutionFallback)
       );
       return true;
+    }
+
+    for (const record of validationResult.sanitizedRecords) {
+      if (record.labels && record.labels.length > 0) {
+        const { resolvedLabelIds, resolvedLabelNames } = await resolveAndEnsureLabels(
+          record.labels,
+          this.walletCacheService,
+          this.walletMcpClient
+        );
+        record.labelIds = resolvedLabelIds.length > 0 ? resolvedLabelIds : undefined;
+        record.labels = resolvedLabelNames.length > 0 ? resolvedLabelNames : undefined;
+      }
     }
 
     try {

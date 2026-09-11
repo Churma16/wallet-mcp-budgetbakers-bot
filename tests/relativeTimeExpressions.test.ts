@@ -1285,23 +1285,37 @@ async function runRelativeTimeExpressionsTestSuite(): Promise<void> {
       'Changing request date between EDT and EST does not alter November transaction UTC timestamp'
     );
 
-    // 3. Request-scoped offset pollution correction:
-    // If an incoming record has an explicit offset matching the request instant (-05:00 EST) but the transaction
-    // is in July (EDT, -04:00), validator corrects the offset using target date resolver
-    const pollutedOffsetRecordValidation = validateAndSanitizeFinancialRecords(
+    // 3. Authoritative Explicit Offset Preservation:
+    // When a record has an explicit offset (e.g. 2026-07-15T11:54:00-05:00 from a receipt in Bogotá / UTC-05:00),
+    // the validator must preserve the explicit offset (-05:00 -> 16:54:00.000Z), even when APP_TIMEZONE
+    // is America/New_York where the July offset is -04:00 (which would otherwise resolve to 15:54:00.000Z).
+    const explicitOffsetRecordValidation = validateAndSanitizeFinancialRecords(
       [{ accountId: 'acc-cash', amount: -15, recordDate: '2026-07-15T11:54:00-05:00' }],
       mockAccounts,
       mockCategories,
-      'Coffee',
+      'Coffee in Bogotá',
       requestInstantInEst
     );
     assertCondition(
-      pollutedOffsetRecordValidation.isValid === true,
-      'Record with request-scoped offset pollution validates successfully'
+      explicitOffsetRecordValidation.isValid === true,
+      'Record with authoritative explicit offset validates successfully'
     );
     assertCondition(
-      pollutedOffsetRecordValidation.sanitizedRecords[0].recordDate === '2026-07-15T15:54:00.000Z',
-      `Request-scoped offset pollution is corrected to July EDT UTC 15:54:00.000Z (got: ${pollutedOffsetRecordValidation.sanitizedRecords[0].recordDate})`
+      explicitOffsetRecordValidation.sanitizedRecords[0].recordDate === '2026-07-15T16:54:00.000Z',
+      `Authoritative explicit offset -05:00 is preserved as UTC 16:54:00.000Z (got: ${explicitOffsetRecordValidation.sanitizedRecords[0].recordDate})`
+    );
+
+    // Conversely, local timestamp without offset (2026-07-15T11:54:00) resolves through APP_TIMEZONE (EDT -04:00 -> 15:54:00.000Z)
+    const localTimestampValidation = validateAndSanitizeFinancialRecords(
+      [{ accountId: 'acc-cash', amount: -15, recordDate: '2026-07-15T11:54:00' }],
+      mockAccounts,
+      mockCategories,
+      'Coffee in New York',
+      requestInstantInEst
+    );
+    assertCondition(
+      localTimestampValidation.sanitizedRecords[0].recordDate === '2026-07-15T15:54:00.000Z',
+      `Local timestamp without offset resolves through application IANA timezone as EDT UTC 15:54:00.000Z (got: ${localTimestampValidation.sanitizedRecords[0].recordDate})`
     );
 
     // 4. Direct resolveTargetLocalToUtcIso verification
@@ -1345,19 +1359,50 @@ async function runRelativeTimeExpressionsTestSuite(): Promise<void> {
       'RangeError message explicitly identifies nonexistent wall-clock time in DST gap'
     );
 
-    // 2. parseRelativeTime fails closed (returns null) for nonexistent wall-clock time
-    const nonexistentRelativeParseResult = parseRelativeTime(
-      '02:30',
-      new Date('2026-03-08T12:00:00.000Z'),
-      'America/New_York'
-    );
-    assertCondition(
-      nonexistentRelativeParseResult === null,
-      'parseRelativeTime returns null for nonexistent wall-clock time 02:30 during DST spring-forward'
+    // 2. parseRelativeTime propagates RangeError for nonexistent wall-clock time
+    assert.throws(
+      () =>
+        parseRelativeTime(
+          'this morning at 2:30am',
+          new Date('2026-03-08T12:00:00.000Z'),
+          'America/New_York'
+        ),
+      (error: unknown) => error instanceof RangeError,
+      'parseRelativeTime propagates RangeError for nonexistent wall-clock time 02:30 during DST spring-forward'
     );
 
-    // 3. validateAndSanitizeFinancialRecords rejects record with nonexistent local clock time (fail-closed)
-    const nonexistentValidationResult = validateAndSanitizeFinancialRecords(
+    // 3. validateAndSanitizeFinancialRecords with contextual text 'this morning at 2:30am coffee'
+    // rejects record even when AI supplies a valid-looking UTC timestamp (fails closed, cannot be bypassed)
+    const nonexistentContextualValidationResult = validateAndSanitizeFinancialRecords(
+      [
+        {
+          accountId: 'acc-cash',
+          amount: -10,
+          recordDate: '2026-03-08T07:30:00.000Z', // AI supplied 07:30Z (which corresponds to 03:30 local)
+        },
+      ],
+      mockAccounts,
+      mockCategories,
+      'this morning at 2:30am coffee',
+      new Date('2026-03-08T12:00:00.000Z')
+    );
+    assertCondition(
+      nonexistentContextualValidationResult.isValid === false,
+      'validateAndSanitizeFinancialRecords fails for contextual text with nonexistent local wall-clock time despite valid-looking AI timestamp'
+    );
+    assertCondition(
+      nonexistentContextualValidationResult.validationErrors.some(error =>
+        error.includes('Waktu transaksi tidak valid pada timezone America/New_York')
+      ),
+      'Validation errors contain explicit invalid transaction time error for nonexistent contextual clock'
+    );
+    assertCondition(
+      nonexistentContextualValidationResult.sanitizedRecords.length === 0,
+      'Zero sanitized records produced for nonexistent contextual wall-clock time'
+    );
+
+    // 4. validateAndSanitizeFinancialRecords also rejects direct recordDate with nonexistent local clock time
+    const nonexistentDirectValidationResult = validateAndSanitizeFinancialRecords(
       [{ accountId: 'acc-cash', amount: -10, recordDate: '2026-03-08T02:30:00' }],
       mockAccounts,
       mockCategories,
@@ -1365,21 +1410,43 @@ async function runRelativeTimeExpressionsTestSuite(): Promise<void> {
       new Date('2026-03-08T12:00:00.000Z')
     );
     assertCondition(
-      nonexistentValidationResult.isValid === false,
-      'validateAndSanitizeFinancialRecords fails for nonexistent local wall-clock time'
+      nonexistentDirectValidationResult.isValid === false,
+      'validateAndSanitizeFinancialRecords fails for direct recordDate with nonexistent local wall-clock time'
     );
     assertCondition(
-      nonexistentValidationResult.validationErrors.some(error =>
-        error.includes('Waktu transaksi tidak valid pada timezone America/New_York')
-      ),
-      'Validation errors contain explicit invalid transaction time error for nonexistent DST clock'
-    );
-    assertCondition(
-      nonexistentValidationResult.sanitizedRecords.length === 0,
-      'No sanitized records produced for nonexistent wall-clock time'
+      nonexistentDirectValidationResult.sanitizedRecords.length === 0,
+      'No sanitized records produced for nonexistent direct wall-clock time'
     );
 
-    // 4. Valid neighboring times on same spring-forward date pass cleanly:
+    // 5. Valid neighboring times (01:30 and 03:30) pass cleanly:
+    // Contextual relative expressions:
+    const validPreTransitionContextual = validateAndSanitizeFinancialRecords(
+      [{ accountId: 'acc-cash', amount: -10 }],
+      mockAccounts,
+      mockCategories,
+      'this morning at 1:30am coffee',
+      new Date('2026-03-08T12:00:00.000Z')
+    );
+    assertCondition(
+      validPreTransitionContextual.isValid === true &&
+        validPreTransitionContextual.sanitizedRecords[0].recordDate === '2026-03-08T06:30:00.000Z',
+      'Valid pre-transition contextual 1:30am resolves to EST UTC 06:30:00.000Z'
+    );
+
+    const validPostTransitionContextual = validateAndSanitizeFinancialRecords(
+      [{ accountId: 'acc-cash', amount: -10 }],
+      mockAccounts,
+      mockCategories,
+      'this morning at 3:30am coffee',
+      new Date('2026-03-08T12:00:00.000Z')
+    );
+    assertCondition(
+      validPostTransitionContextual.isValid === true &&
+        validPostTransitionContextual.sanitizedRecords[0].recordDate === '2026-03-08T07:30:00.000Z',
+      'Valid post-transition contextual 3:30am resolves to EDT UTC 07:30:00.000Z'
+    );
+
+    // Direct resolveTargetLocalToUtcIso:
     // 01:30 EST (pre-transition, UTC-05:00) -> UTC 06:30:00.000Z
     const validPreTransitionUtc = resolveTargetLocalToUtcIso('2026-03-08', 1, 30, 'America/New_York');
     assertCondition(
@@ -1394,7 +1461,7 @@ async function runRelativeTimeExpressionsTestSuite(): Promise<void> {
       `Valid post-transition 2026-03-08 03:30 in NY resolves to 2026-03-08T07:30:00.000Z (got: ${validPostTransitionUtc})`
     );
 
-    // 5. Ambiguous fall-back overlap:
+    // 6. Ambiguous fall-back overlap:
     // On Sunday, Nov 1, 2026 in America/New_York, clocks rewind 02:00:00 -> 01:00:00.
     // 01:30 occurs twice. Policy deterministically resolves to post-transition standard time (EST, UTC-05:00).
     const ambiguousFallBackUtc = resolveTargetLocalToUtcIso('2026-11-01', 1, 30, 'America/New_York');
