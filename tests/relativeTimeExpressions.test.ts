@@ -3,6 +3,7 @@ import {
   parseRelativeTime,
   getLocalTimeParts,
   getPreviousLocalDateString,
+  getCurrentLocalDateString,
   formatLocalToUtcIso,
   resolveTargetLocalToUtcIso,
   formatLocalTimeAnchor,
@@ -12,6 +13,7 @@ import {
   buildCompactSystemInstruction,
   buildTextMessagePrompt,
 } from '../src/services/ai/aiPromptBuilder.js';
+import { GeminiAiProvider } from '../src/services/ai/geminiAiProvider.js';
 import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
 import { WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
@@ -628,6 +630,219 @@ async function runRelativeTimeExpressionsTestSuite(): Promise<void> {
       mixedTimeAndAmount.targetMinute === 30,
     'Correctly extracts 15.30 while ignoring 50.000'
   );
+
+  // Test 13: Decimal Currency Exclusion Around Bare Clocks (PR Review Comment A)
+  applicationLogger.info('\nTEST 13: Decimal Currency Exclusion Around Bare Clocks');
+  // Currency code prefix with whitespace: "USD 15.30"
+  const usdPrefixInput = parseRelativeTime(
+    'yesterday spent USD 15.30 on lunch',
+    fixedReferenceUtc,
+    defaultTimezone
+  );
+  assertCondition(
+    usdPrefixInput !== null && usdPrefixInput.hasExplicitTime === false,
+    'USD 15.30 is not parsed as explicit clock time'
+  );
+  assertCondition(
+    usdPrefixInput?.targetHour !== 15,
+    'USD 15.30 does not override target hour to 15'
+  );
+
+  // Currency symbol prefix with whitespace: "$ 15.30"
+  const dollarPrefixInput = parseRelativeTime(
+    'kemarin bayar $ 15.30',
+    fixedReferenceUtc,
+    defaultTimezone
+  );
+  assertCondition(
+    dollarPrefixInput !== null && dollarPrefixInput.hasExplicitTime === false,
+    '$ 15.30 is not parsed as explicit clock time'
+  );
+  assertCondition(
+    dollarPrefixInput?.targetHour !== 15,
+    '$ 15.30 does not override target hour to 15'
+  );
+
+  // Currency code suffix: "15.30 EUR"
+  const eurSuffixInput = parseRelativeTime(
+    'yesterday spent 15.30 EUR',
+    fixedReferenceUtc,
+    defaultTimezone
+  );
+  assertCondition(
+    eurSuffixInput !== null && eurSuffixInput.hasExplicitTime === false,
+    '15.30 EUR is not parsed as explicit clock time'
+  );
+  assertCondition(
+    eurSuffixInput?.targetHour !== 15,
+    '15.30 EUR does not override target hour to 15'
+  );
+
+  // Currency word suffix: "15.30 dollars"
+  const dollarsSuffixInput = parseRelativeTime(
+    'yesterday spent 15.30 dollars on lunch',
+    fixedReferenceUtc,
+    defaultTimezone
+  );
+  assertCondition(
+    dollarsSuffixInput !== null && dollarsSuffixInput.hasExplicitTime === false,
+    '15.30 dollars is not parsed as explicit clock time'
+  );
+  assertCondition(
+    dollarsSuffixInput?.targetHour !== 15,
+    '15.30 dollars does not override target hour to 15'
+  );
+
+  // Bare clock without currency: "yesterday 15.30 bought lunch"
+  const bareClockLunch = parseRelativeTime(
+    'yesterday 15.30 bought lunch',
+    fixedReferenceUtc,
+    defaultTimezone
+  );
+  assertCondition(
+    bareClockLunch?.hasExplicitTime === true &&
+      bareClockLunch.targetHour === 15 &&
+      bareClockLunch.targetMinute === 30,
+    'yesterday 15.30 bought lunch is preserved as explicit clock 15:30'
+  );
+  assertCondition(
+    bareClockLunch?.resolvedUtcIso === '2026-09-10T08:30:00.000Z',
+    `yesterday 15.30 bought lunch resolves to 2026-09-10T08:30:00.000Z (got: ${bareClockLunch?.resolvedUtcIso})`
+  );
+
+  // Explicit colon clock with "at": "yesterday at 15:30 groceries"
+  const atColonClock = parseRelativeTime(
+    'yesterday at 15:30 groceries',
+    fixedReferenceUtc,
+    defaultTimezone
+  );
+  assertCondition(
+    atColonClock?.hasExplicitTime === true &&
+      atColonClock.targetHour === 15 &&
+      atColonClock.targetMinute === 30,
+    'yesterday at 15:30 groceries is preserved as explicit clock 15:30'
+  );
+  assertCondition(
+    atColonClock?.resolvedUtcIso === '2026-09-10T08:30:00.000Z',
+    `yesterday at 15:30 groceries resolves to 2026-09-10T08:30:00.000Z (got: ${atColonClock?.resolvedUtcIso})`
+  );
+
+  // Indonesian bare clock: "kemarin 15.30 beli makan"
+  const indonesianBareClock = parseRelativeTime(
+    'kemarin 15.30 beli makan',
+    fixedReferenceUtc,
+    defaultTimezone
+  );
+  assertCondition(
+    indonesianBareClock?.hasExplicitTime === true &&
+      indonesianBareClock.targetHour === 15 &&
+      indonesianBareClock.targetMinute === 30,
+    'kemarin 15.30 beli makan is preserved as explicit clock 15:30'
+  );
+  assertCondition(
+    indonesianBareClock?.resolvedUtcIso === '2026-09-10T08:30:00.000Z',
+    `kemarin 15.30 beli makan resolves to 2026-09-10T08:30:00.000Z (got: ${indonesianBareClock?.resolvedUtcIso})`
+  );
+
+  // Test 14: Derive Current Date from Local Timezone & Midnight Cache Rollover (PR Review Comment B)
+  applicationLogger.info('\nTEST 14: Local Timezone Date Derivation and Midnight Cache Rollover');
+
+  // Positive offset timezone: Asia/Jakarta (UTC+7)
+  // At UTC 2026-09-11 18:00:00Z, local time in Jakarta is 2026-09-12 01:00:00 WIB
+  const positiveOffsetInstant = new Date('2026-09-11T18:00:00.000Z');
+  const jakartaLocalDate = getCurrentLocalDateString(positiveOffsetInstant, 'Asia/Jakarta');
+  assertCondition(
+    jakartaLocalDate === '2026-09-12',
+    `Positive offset (Asia/Jakarta): local date resolves to 2026-09-12 while UTC date is 2026-09-11 (got: ${jakartaLocalDate})`
+  );
+  const jakartaInstruction = buildCompactSystemInstruction(
+    mockAccounts,
+    mockCategories,
+    jakartaLocalDate,
+    'Asia/Jakarta'
+  );
+  assertCondition(
+    jakartaInstruction.includes('Current Date: 2026-09-12'),
+    'System instruction uses local calendar date 2026-09-12 for Asia/Jakarta'
+  );
+
+  // Negative offset timezone: America/New_York (EDT, UTC-4)
+  // At UTC 2026-09-12 02:00:00Z, local time in New York is 2026-09-11 22:00:00 EDT
+  const negativeOffsetInstant = new Date('2026-09-12T02:00:00.000Z');
+  const newYorkLocalDate = getCurrentLocalDateString(negativeOffsetInstant, 'America/New_York');
+  assertCondition(
+    newYorkLocalDate === '2026-09-11',
+    `Negative offset (America/New_York): local date resolves to 2026-09-11 while UTC date is 2026-09-12 (got: ${newYorkLocalDate})`
+  );
+  const newYorkInstruction = buildCompactSystemInstruction(
+    mockAccounts,
+    mockCategories,
+    newYorkLocalDate,
+    'America/New_York'
+  );
+  assertCondition(
+    newYorkInstruction.includes('Current Date: 2026-09-11'),
+    'System instruction uses local calendar date 2026-09-11 for America/New_York'
+  );
+
+  // Cache rollover across local midnight in GeminiAiProvider
+  const originalAppTimezone = process.env.APP_TIMEZONE;
+  process.env.APP_TIMEZONE = 'Asia/Jakarta';
+  try {
+    const testGeminiProvider = new GeminiAiProvider('mock-gemini-key');
+
+    // 1. Before local midnight: 2026-09-11 23:59:00 WIB (UTC: 2026-09-11 16:59:00Z)
+    const instantBeforeMidnight = new Date('2026-09-11T16:59:00.000Z');
+    const instructionBeforeMidnight = testGeminiProvider.getSystemInstruction(
+      mockAccounts,
+      mockCategories,
+      instantBeforeMidnight
+    );
+    const keyBeforeMidnight = testGeminiProvider.getSystemInstructionCacheKey();
+    assertCondition(
+      keyBeforeMidnight.includes('2026-09-11'),
+      `Cache key before midnight contains local date 2026-09-11 (got: ${keyBeforeMidnight})`
+    );
+    assertCondition(
+      instructionBeforeMidnight.includes('Current Date: 2026-09-11'),
+      'Instruction before midnight contains Current Date: 2026-09-11'
+    );
+
+    // 2. Cache hit within the same local date: 2026-09-11 23:59:30 WIB
+    const instantSameDay = new Date('2026-09-11T16:59:30.000Z');
+    const instructionSameDay = testGeminiProvider.getSystemInstruction(
+      mockAccounts,
+      mockCategories,
+      instantSameDay
+    );
+    assertCondition(
+      instructionSameDay === instructionBeforeMidnight,
+      'Same local date returns cached system instruction instance'
+    );
+
+    // 3. After local midnight: 2026-09-12 00:01:00 WIB (UTC: 2026-09-11 17:01:00Z)
+    const instantAfterMidnight = new Date('2026-09-11T17:01:00.000Z');
+    const instructionAfterMidnight = testGeminiProvider.getSystemInstruction(
+      mockAccounts,
+      mockCategories,
+      instantAfterMidnight
+    );
+    const keyAfterMidnight = testGeminiProvider.getSystemInstructionCacheKey();
+    assertCondition(
+      keyAfterMidnight.includes('2026-09-12'),
+      `Cache key rolls over at local midnight to 2026-09-12 (got: ${keyAfterMidnight})`
+    );
+    assertCondition(
+      instructionAfterMidnight.includes('Current Date: 2026-09-12'),
+      'Instruction after midnight contains Current Date: 2026-09-12'
+    );
+    assertCondition(
+      instructionAfterMidnight !== instructionBeforeMidnight,
+      'Instruction recompiled across local midnight boundary'
+    );
+  } finally {
+    process.env.APP_TIMEZONE = originalAppTimezone;
+  }
 
   console.log('\n======================================================');
   applicationLogger.success('ALL NATURAL LANGUAGE RELATIVE TIME TESTS PASSED!');

@@ -241,6 +241,25 @@ export function resolveTargetLocalToUtcIso(
   return new Date(refinedTimestamp).toISOString();
 }
 
+const CURRENCY_PREFIX_REGEX =
+  /(?:[\$€£¥₹₩฿₫₱]|\b(?:USD|EUR|GBP|IDR|SGD|AUD|CAD|CHF|JPY|CNY|MYR|THB|PHP|KRW|INR|NZD|HKD|Rp\.?|dollars?|dolar|euros?|pounds?|rupiah))\s*$/i;
+const CURRENCY_SUFFIX_REGEX =
+  /^\s*(?:[\$€£¥₹₩฿₫₱]|(?:USD|EUR|GBP|IDR|SGD|AUD|CAD|CHF|JPY|CNY|MYR|THB|PHP|KRW|INR|NZD|HKD|dollars?|dolar|euros?|pounds?|rupiah|bucks|cents?|yen|yuan|ringgit|pesos?|rupees?)\b)/i;
+const SPENDING_VERB_PREFIX_REGEX =
+  /\b(?:spent|costs?|paying|bayar|sebesar|habis|seharga|total)\s*$/i;
+
+/**
+ * Retrieves the current calendar date string (YYYY-MM-DD) in the specified or application timezone.
+ * Guarantees that system prompts, time anchors, and instruction cache keys use the user's local date
+ * rather than UTC midnight rollover.
+ */
+export function getCurrentLocalDateString(
+  referenceDate: Date = new Date(),
+  targetTimezoneIdentifier: string = 'Asia/Jakarta'
+): string {
+  return getLocalTimeParts(referenceDate, targetTimezoneIdentifier).dateString;
+}
+
 /**
  * Adjusts an hour (1-12) based on an explicit or inferred period (siang, sore, malam, subuh).
  */
@@ -324,18 +343,34 @@ function extractExplicitClockTime(
   // Pattern 3: Bare or prefixed 24-hour clock e.g. "at 14:30", "15.30", "15:30", "07:30"
   // Negative lookahead (?!\d|[.,]\d|[a-zA-Z%]) and lookbehind (?<![A-Za-z0-9$€£¥]) ensure
   // currency and monetary numbers (e.g. 50.000, 20.000, $15.30, 15.30k) are not falsely matched as times.
-  const bare24HourRegex = /(?:at\s+)?(?<![A-Za-z0-9$€£¥])([01]?\d|2[0-3])[.:]([0-5]\d)(?!\d|[.,]\d|[a-zA-Z%])/i;
-  const bareMatch = inputText.match(bare24HourRegex);
-  if (bareMatch) {
+  // In addition, CURRENCY_PREFIX_REGEX and CURRENCY_SUFFIX_REGEX verify that preceding or trailing
+  // currency codes/symbols/words (e.g. "USD 15.30", "$ 15.30", "15.30 EUR") are strictly rejected as money amounts.
+  const bare24HourRegex = /(?:at\s+)?(?<![A-Za-z0-9$€£¥])([01]?\d|2[0-3])([.:])([0-5]\d)(?!\d|[.,]\d|[a-zA-Z%])/gi;
+  let bareMatch: RegExpExecArray | null;
+  while ((bareMatch = bare24HourRegex.exec(inputText)) !== null) {
+    const fullMatch = bareMatch[0];
     const rawHour = Number.parseInt(bareMatch[1], 10);
-    const rawMinute = Number.parseInt(bareMatch[2], 10);
+    const rawMinute = Number.parseInt(bareMatch[3], 10);
+    const startIndex = bareMatch.index;
+    const endIndex = startIndex + fullMatch.length;
+    const textBefore = inputText.slice(0, startIndex);
+    const textAfter = inputText.slice(endIndex);
+    const hasAtPrefix = /^at\s+/i.test(fullMatch);
+
+    if (
+      CURRENCY_PREFIX_REGEX.test(textBefore) ||
+      CURRENCY_SUFFIX_REGEX.test(textAfter) ||
+      (!hasAtPrefix && SPENDING_VERB_PREFIX_REGEX.test(textBefore))
+    ) {
+      continue;
+    }
 
     if (rawHour >= 0 && rawHour < 24 && rawMinute >= 0 && rawMinute < 60) {
       const adjustedHour = adjustHourForPeriod(rawHour, inferredPeriod);
       return {
         hour: adjustedHour % 24,
         minute: rawMinute,
-        matchedClockSubstring: bareMatch[0],
+        matchedClockSubstring: fullMatch,
       };
     }
   }

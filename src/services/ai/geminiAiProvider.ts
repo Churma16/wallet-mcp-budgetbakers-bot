@@ -12,6 +12,7 @@ import { extractAndParseJsonObject } from './jsonExtractionHelper.js';
 import { getActiveLanguage } from '../../i18n/index.js';
 
 import { getApplicationTimezone } from '../../utils/humanResponseFormatter.js';
+import { getCurrentLocalDateString } from '../../utils/relativeTimeParser.js';
 import {
   buildCompactSystemInstruction,
   buildReceiptSystemInstruction,
@@ -52,11 +53,12 @@ export class GeminiAiProvider implements FinancialAiProvider {
    */
   public getSystemInstruction(
     availableAccountList: WalletAccountItem[],
-    availableCategoryList: WalletCategoryItem[]
+    availableCategoryList: WalletCategoryItem[],
+    referenceDate: Date = new Date()
   ): string {
-    const currentDateIso = new Date().toISOString().split('T')[0];
-    const activeLanguage = getActiveLanguage();
     const applicationTimezone = getApplicationTimezone();
+    const currentDateIso = getCurrentLocalDateString(referenceDate, applicationTimezone);
+    const activeLanguage = getActiveLanguage();
     const cacheKey = `${activeLanguage}|${currentDateIso}|${applicationTimezone}|${availableAccountList.map(account => account.id).join(',')}|${availableCategoryList.map(category => category.id).join(',')}`;
 
     if (this.systemInstructionCacheKey === cacheKey && this.cachedSystemInstruction) {
@@ -71,6 +73,10 @@ export class GeminiAiProvider implements FinancialAiProvider {
     );
     this.systemInstructionCacheKey = cacheKey;
     return this.cachedSystemInstruction;
+  }
+
+  public getSystemInstructionCacheKey(): string {
+    return this.systemInstructionCacheKey;
   }
 
   /**
@@ -301,8 +307,8 @@ export class GeminiAiProvider implements FinancialAiProvider {
     availableAccountList: WalletAccountItem[],
     availableCategoryList: WalletCategoryItem[]
   ): Promise<ExtractedFinancialIntent> {
-    const currentDateIso = new Date().toISOString().split('T')[0];
     const applicationTimezoneIdentifier = getApplicationTimezone();
+    const currentDateIso = getCurrentLocalDateString(new Date(), applicationTimezoneIdentifier);
     const systemInstructionContent = buildReceiptSystemInstruction(
       availableAccountList,
       availableCategoryList,

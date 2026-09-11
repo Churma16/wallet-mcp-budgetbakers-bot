@@ -10,6 +10,7 @@ import {
 } from './financialAiProvider.js';
 import { extractAndParseJsonObject } from './jsonExtractionHelper.js';
 import { getApplicationTimezone } from '../../utils/humanResponseFormatter.js';
+import { getCurrentLocalDateString } from '../../utils/relativeTimeParser.js';
 import {
   buildCompactSystemInstruction,
   buildReceiptSystemInstruction,
@@ -243,8 +244,8 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     availableAccountList: WalletAccountItem[],
     availableCategoryList: WalletCategoryItem[]
   ): Promise<ExtractedFinancialIntent> {
-    const currentDateIso = new Date().toISOString().split('T')[0];
     const applicationTimezone = getApplicationTimezone();
+    const currentDateIso = getCurrentLocalDateString(new Date(), applicationTimezone);
     const systemInstruction = buildCompactSystemInstruction(
       availableAccountList,
       availableCategoryList,
@@ -294,8 +295,8 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     availableAccountList: WalletAccountItem[],
     availableCategoryList: WalletCategoryItem[]
   ): Promise<ExtractedFinancialIntent> {
-    const currentDateIso = new Date().toISOString().split('T')[0];
     const applicationTimezoneIdentifier = getApplicationTimezone();
+    const currentDateIso = getCurrentLocalDateString(new Date(), applicationTimezoneIdentifier);
     const systemInstruction = buildReceiptSystemInstruction(
       availableAccountList,
       availableCategoryList,
