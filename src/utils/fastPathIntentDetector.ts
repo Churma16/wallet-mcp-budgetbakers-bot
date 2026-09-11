@@ -82,7 +82,8 @@ const KNOWN_CATEGORY_KEYWORDS = new Set([
 
 function extractHistoryQueryOptionsFromTokens(
   rawTokens: string,
-  baseOptions: Partial<TransactionHistoryQueryOptions> = {}
+  baseOptions: Partial<TransactionHistoryQueryOptions> = {},
+  isDedicatedSearchCommand: boolean = false
 ): TransactionHistoryQueryOptions | null {
   let remainingTokens = rawTokens.trim();
   let resolvedLimit: number | undefined = baseOptions.limit;
@@ -93,6 +94,7 @@ function extractHistoryQueryOptionsFromTokens(
   let resolvedDateRange: string[] | undefined = undefined;
   let resolvedAccountName: string | undefined = undefined;
   let resolvedCategoryName: string | undefined = undefined;
+  let resolvedSearchQuery: string | undefined = undefined;
 
   // 1. Extract sort token
   const sortMatch = remainingTokens.match(/\b(terlama|oldest|terbaru|newest)\b/i);
@@ -236,14 +238,32 @@ function extractHistoryQueryOptionsFromTokens(
   // 7. Extract explicit account and category prefixes (supports unquoted or quoted strings)
   const explicitAccountMatch = remainingTokens.match(/\b(?:akun|account|rekening)\s+(?:"([^"]+)"|'([^']+)'|([a-zA-Z0-9_-]+)\b)/i);
   if (explicitAccountMatch) {
-    resolvedAccountName = explicitAccountMatch[1] || explicitAccountMatch[2] || explicitAccountMatch[3];
+    resolvedAccountName = (explicitAccountMatch[1] || explicitAccountMatch[2] || explicitAccountMatch[3]).toLowerCase();
     remainingTokens = remainingTokens.replace(explicitAccountMatch[0], ' ').trim();
   }
 
   const explicitCategoryMatch = remainingTokens.match(/\b(?:kategori|category)\s+(?:"([^"]+)"|'([^']+)'|([a-zA-Z0-9_-]+)\b)/i);
   if (explicitCategoryMatch) {
-    resolvedCategoryName = explicitCategoryMatch[1] || explicitCategoryMatch[2] || explicitCategoryMatch[3];
+    resolvedCategoryName = (explicitCategoryMatch[1] || explicitCategoryMatch[2] || explicitCategoryMatch[3]).toLowerCase();
     remainingTokens = remainingTokens.replace(explicitCategoryMatch[0], ' ').trim();
+  }
+
+  // 7b. Extract explicit search query (e.g. cari "starbucks", search 'coffee', cari:indomaret, q:starbucks, or cari starbucks)
+  const explicitSearchMatch = remainingTokens.match(
+    /\b(?:cari|search|find|keyword|q)\s*(?::|=|\s+)(?:"([^"]+)"|'([^']+)'|([a-zA-Z0-9_-]+)\b)/i
+  );
+  if (explicitSearchMatch) {
+    resolvedSearchQuery = explicitSearchMatch[1] || explicitSearchMatch[2] || explicitSearchMatch[3];
+    remainingTokens = remainingTokens.replace(explicitSearchMatch[0], ' ').trim();
+  }
+
+  // 7c. Extract standalone quoted string if not already set (e.g. "kopi kenangan" or 'starbucks')
+  if (!resolvedSearchQuery) {
+    const standaloneQuotedMatch = remainingTokens.match(/(?:"([^"]+)"|'([^']+)')/);
+    if (standaloneQuotedMatch) {
+      resolvedSearchQuery = standaloneQuotedMatch[1] || standaloneQuotedMatch[2];
+      remainingTokens = remainingTokens.replace(standaloneQuotedMatch[0], ' ').trim();
+    }
   }
 
   // 8. Remove grammatical connectors
@@ -252,6 +272,7 @@ function extractHistoryQueryOptionsFromTokens(
   // 9. Inspect leftover tokens
   if (remainingTokens.length > 0) {
     const leftoverWords = remainingTokens.split(/\s+/).filter(word => word.length > 0);
+    const searchWords: string[] = [];
 
     for (const rawWord of leftoverWords) {
       const cleanWord = rawWord.toLowerCase();
@@ -260,10 +281,27 @@ function extractHistoryQueryOptionsFromTokens(
       } else if (KNOWN_CATEGORY_KEYWORDS.has(cleanWord) && !resolvedCategoryName) {
         resolvedCategoryName = cleanWord;
       } else {
-        // Unknown token; fail safe to LLM intent analysis
+        searchWords.push(rawWord);
+      }
+    }
+
+    if (searchWords.length > 0) {
+      if (isDedicatedSearchCommand) {
+        if (!resolvedSearchQuery) {
+          resolvedSearchQuery = searchWords.join(' ');
+        } else {
+          // Unknown token when search query is already set; fail safe to LLM intent analysis
+          return null;
+        }
+      } else {
+        // Unknown token in general history command without search prefix or quotes; fail safe to LLM intent analysis
         return null;
       }
     }
+  }
+
+  if (isDedicatedSearchCommand && !resolvedSearchQuery) {
+    return null;
   }
 
   const resultOptions: TransactionHistoryQueryOptions = {
@@ -287,12 +325,16 @@ function extractHistoryQueryOptionsFromTokens(
   if (resolvedCategoryName !== undefined) {
     resultOptions.categoryName = resolvedCategoryName;
   }
+  if (resolvedSearchQuery !== undefined) {
+    resultOptions.searchQuery = resolvedSearchQuery;
+  }
 
   return resultOptions;
 }
 
 function parseTransactionHistoryIntent(userMessageText: string): FastPathTransactionHistoryAction | null {
-  const trimmedLowerText = userMessageText.toLowerCase().trim();
+  const trimmedText = userMessageText.trim();
+  const trimmedLowerText = trimmedText.toLowerCase();
 
   // Price indicator check: if text contains transaction amounts (e.g. 25rb, 50k, 100 ribu, 1jt, 50000rp, rp 50000)
   // or currency words, it is almost certainly a transaction recording, not a history query.
@@ -362,32 +404,64 @@ function parseTransactionHistoryIntent(userMessageText: string): FastPathTransac
   const historyCommandPattern =
     /^(?:cek|lihat|info|daftar|show|view|check|get|my)?\s*(?:riwayat\s+transaksi|transaction\s+history|daftar\s+transaksi|transaksi\s+terakhir|last\s+transactions?|recent\s+transactions?|riwayat|history)(?:\s+(.*))?$/i;
   const historyMatch = trimmedLowerText.match(historyCommandPattern);
-  if (!historyMatch) {
-    return null;
-  }
+  if (historyMatch) {
+    const rawRemainderLower = historyMatch[1];
+    if (!rawRemainderLower || !rawRemainderLower.trim()) {
+      return {
+        type: 'TRANSACTION_HISTORY',
+        options: {
+          sort: 'newest',
+        },
+      };
+    }
 
-  const rawRemainder = historyMatch[1];
-  if (!rawRemainder || !rawRemainder.trim()) {
-    return {
-      type: 'TRANSACTION_HISTORY',
-      options: {
+    const matchPrefixLength = trimmedText.length - rawRemainderLower.length;
+    const rawRemainder = trimmedText.slice(matchPrefixLength);
+
+    const parsedOptions = extractHistoryQueryOptionsFromTokens(
+      rawRemainder,
+      {
         sort: 'newest',
       },
-    };
+      false
+    );
+
+    if (parsedOptions) {
+      return {
+        type: 'TRANSACTION_HISTORY',
+        options: parsedOptions,
+      };
+    }
   }
 
-  const parsedOptions = extractHistoryQueryOptionsFromTokens(rawRemainder, {
-    sort: 'newest',
-  });
+  // 3. Pattern matching dedicated search commands:
+  // e.g. "cari starbucks", "cari transaksi indomaret", "search coffee", "search transactions starbucks", "find kopi"
+  const searchCommandPattern =
+    /^(?:cari\s+transaksi|search\s+transactions?|cari\s+riwayat|search\s+history|cari|search|find)\s+(.+)$/i;
+  const searchMatch = trimmedLowerText.match(searchCommandPattern);
+  if (searchMatch) {
+    const rawSearchRemainderLower = searchMatch[1].trim();
+    if (rawSearchRemainderLower) {
+      const matchPrefixLength = trimmedText.length - searchMatch[1].length;
+      const rawSearchRemainder = trimmedText.slice(matchPrefixLength).trim();
 
-  if (!parsedOptions) {
-    return null;
+      const parsedSearchOptions = extractHistoryQueryOptionsFromTokens(
+        rawSearchRemainder,
+        {
+          sort: 'newest',
+        },
+        true
+      );
+      if (parsedSearchOptions) {
+        return {
+          type: 'TRANSACTION_HISTORY',
+          options: parsedSearchOptions,
+        };
+      }
+    }
   }
 
-  return {
-    type: 'TRANSACTION_HISTORY',
-    options: parsedOptions,
-  };
+  return null;
 }
 
 /**

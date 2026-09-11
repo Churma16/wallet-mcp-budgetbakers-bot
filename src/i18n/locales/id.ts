@@ -144,6 +144,18 @@ export const indonesianDictionary: ResponseDictionary = {
             return `• Tanggal "${issue.rawValue}" tidak valid atau bukan tanggal kalender yang valid.`;
           }
         }
+        if (issue.filterKey === 'searchQuery') {
+          if (issue.reason === 'UNSUPPORTED') {
+            return `• Pencarian teks tidak didukung oleh sumber data upstream.`;
+          }
+          if (issue.reason === 'INVALID_FORMAT') {
+            if (!issue.rawValue || issue.rawValue.trim().length === 0) {
+              return `• Kata kunci pencarian tidak boleh kosong.`;
+            }
+            return `• Kata kunci pencarian "${issue.rawValue}" tidak valid atau melebihi batas 100 karakter.`;
+          }
+          return `• Kata kunci pencarian "${issue.rawValue}" tidak dapat diproses.`;
+        }
         return `• ${issue.message}`;
       });
       return [
@@ -176,6 +188,9 @@ export const indonesianDictionary: ResponseDictionary = {
     sortOldest: 'Terlama',
     typeExpense: 'Pengeluaran',
     typeIncome: 'Pemasukan',
+    searchBadge(keyword: string): string {
+      return `Cari: "${keyword}"`;
+    },
   },
 
   emailPending: {

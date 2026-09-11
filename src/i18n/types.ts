@@ -128,6 +128,7 @@ export interface ResponseDictionary {
     sortOldest: string;
     typeExpense: string;
     typeIncome: string;
+    searchBadge(keyword: string): string;
   };
 
   emailPending: {

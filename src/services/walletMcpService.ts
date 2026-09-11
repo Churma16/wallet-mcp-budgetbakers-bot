@@ -431,6 +431,10 @@ export class WalletMcpClientService {
       mcpCallPayload.recordDate = queryOptions.dateRange;
     }
 
+    if (queryOptions?.searchQuery) {
+      mcpCallPayload.query = queryOptions.searchQuery;
+    }
+
     applicationLogger.fileDetail('mcp', 'Dispatching fetchRecords to Wallet MCP', {
       limit: resolvedLimit,
       offset: resolvedOffset,
@@ -442,6 +446,7 @@ export class WalletMcpClientService {
         categoryGroup: mcpCallPayload.categoryGroup,
         recordType: mcpCallPayload.recordType,
         recordDate: mcpCallPayload.recordDate,
+        query: mcpCallPayload.query,
       },
     });
 

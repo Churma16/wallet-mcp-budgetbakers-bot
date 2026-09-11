@@ -62,9 +62,61 @@ export class TransactionHistoryService {
       };
     }
 
-    const historyPageResult = await this.walletMcpClient.fetchRecords(
-      normalizationResult.normalizedOptions
-    );
+    let historyPageResult: TransactionHistoryPage;
+    try {
+      historyPageResult = await this.walletMcpClient.fetchRecords(
+        normalizationResult.normalizedOptions
+      );
+    } catch (upstreamError: unknown) {
+      const errorMessage = upstreamError instanceof Error
+        ? upstreamError.message.toLowerCase()
+        : String(upstreamError).toLowerCase();
+
+      const isUnsupportedSearch =
+        Boolean(normalizationResult.normalizedOptions.searchQuery) &&
+        (errorMessage.includes('unsupported') ||
+          errorMessage.includes('not supported') ||
+          errorMessage.includes('unknown parameter: query') ||
+          errorMessage.includes('unrecognized argument: query') ||
+          errorMessage.includes('search not supported') ||
+          errorMessage.includes('query search not available'));
+
+      if (isUnsupportedSearch) {
+        applicationLogger.fileDetail('warn', 'Upstream Wallet MCP text search not supported', {
+          searchQuery: normalizationResult.normalizedOptions.searchQuery,
+          error: upstreamError instanceof Error ? upstreamError.message : String(upstreamError),
+        });
+
+        const fallbackLimit = (typeof queryOptions?.limit === 'number' && queryOptions.limit > 0)
+          ? queryOptions.limit
+          : 10;
+        const fallbackSort = queryOptions?.sort === 'oldest' ? 'oldest' : 'newest';
+
+        return {
+          records: [],
+          total: 0,
+          limit: fallbackLimit,
+          offset: 0,
+          page: 1,
+          totalPages: 0,
+          nextOffset: null,
+          hasMore: false,
+          sort: fallbackSort,
+          appliedFilters: normalizationResult.appliedFilters,
+          unresolvedFilters: [
+            {
+              filterKey: 'searchQuery',
+              rawValue: normalizationResult.normalizedOptions.searchQuery || '',
+              reason: 'UNSUPPORTED',
+              subType: 'unsupported_upstream_search',
+              message: 'Pencarian teks tidak didukung oleh sumber data upstream.',
+            },
+          ],
+        };
+      }
+
+      throw upstreamError;
+    }
 
     const enrichedRecordList: WalletRecordItem[] = historyPageResult.records.map(recordItem => {
       let enrichedAccountName = recordItem.accountName;

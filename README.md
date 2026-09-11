@@ -104,6 +104,7 @@ flowchart TD
   - **Gate 2**: AI structured schema extraction for verified financial notifications.
 - **Interactive Multi-Channel Confirmation Queue**: Bank email transactions generate numbered interactive tickets (`#1`, `#2`) broadcasted to WhatsApp and Telegram. Confirm individually (`Ya 1` / `Yes 1`), in bulk (`Ya semua` / `Yes all`), or cancel (`Batal 1` / `Cancel 1`).
 - **Composable Transaction History & Filters**: Query transaction history with composable filters across category, account, transaction type (`expense` vs `income`), and date range (`today`, `yesterday`, `this_week`, `this_month`, or explicit dates). Features fail-closed validation, bounded pagination (default 10, max 50), deterministic sorting (*"newest"* / *"oldest"*), and filter-preserving navigation hints (*"riwayat bca"*, *"riwayat pengeluaran makanan bulan ini"*, *"history food expense this month"*).
+- **Free-Text Transaction Search**: Search transaction history across merchant/payee and notes (*"cari starbucks"*, *"search coffee"*, *"cari indomaret di bca bulan ini"*). Features partial, case-insensitive keyword matching composable with category, account, type, and date filters.
 - **Budget & Balance Inquiries**: Check balances across accounts (*"Cek saldo rekening"*, *"Check balance"*, *"Berapa sisa BCA?"*) or inspect budget limits (*"Status budget bulan ini"*, *"Budget status"*).
 - **Zero-Token Fast-Path Processor**: Bilingual confirmation commands, history queries, and simple keywords bypass LLM processing entirely for instant response times and token savings.
 - **Channel Security Whitelist**: Strict WhatsApp phone number and Telegram User ID whitelist restrictions ensure only authorized users can interact with the bot.
@@ -377,6 +378,9 @@ npm run test:history
 
 # Verify composable transaction history filters (Issue #101)
 npm run test:history-filters
+
+# Verify free-text transaction search (Issue #102)
+npm run test:history-search
 ```
 
 ### 4. Start the Application
@@ -421,6 +425,7 @@ Send messages from your whitelisted WhatsApp or Telegram account to the bot:
 | **Transaction History** | *"Riwayat"* / *"History"* or *"5 transaksi terakhir"* | Retrieves the latest transaction records bounded by safety limits. |
 | **Filtered History** | *"Riwayat pengeluaran makanan bulan ini"* or *"history bca yesterday"* | Composes filters across category, account, type, and date range in a single zero-token query. |
 | **Paginated History** | *"Riwayat bca hal 2"* or *"history 5 oldest"* | Supports page-based navigation and deterministic sorting while preserving active filters. |
+| **Search Transactions** | *"Cari kopi"* or *"search starbucks"* or *"cari indomaret di bca bulan ini"* | Searches transaction notes and merchants/payees with partial, case-insensitive keyword matching composable with filters. |
 
 ---
 

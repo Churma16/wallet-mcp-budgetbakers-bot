@@ -144,6 +144,18 @@ export const englishDictionary: ResponseDictionary = {
             return `• Date "${issue.rawValue}" is invalid or not a valid calendar date.`;
           }
         }
+        if (issue.filterKey === 'searchQuery') {
+          if (issue.reason === 'UNSUPPORTED') {
+            return `• Text search is not supported by the upstream data source.`;
+          }
+          if (issue.reason === 'INVALID_FORMAT') {
+            if (!issue.rawValue || issue.rawValue.trim().length === 0) {
+              return `• Search keyword cannot be empty.`;
+            }
+            return `• Search keyword "${issue.rawValue}" is invalid or exceeds the maximum length of 100 characters.`;
+          }
+          return `• Search query "${issue.rawValue}" could not be processed.`;
+        }
         return `• ${issue.message}`;
       });
       return [
@@ -177,6 +189,9 @@ export const englishDictionary: ResponseDictionary = {
     sortOldest: 'Oldest',
     typeExpense: 'Expense',
     typeIncome: 'Income',
+    searchBadge(keyword: string): string {
+      return `Search: "${keyword}"`;
+    },
   },
 
   emailPending: {
