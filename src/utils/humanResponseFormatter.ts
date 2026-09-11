@@ -478,6 +478,10 @@ export function formatTransactionHistoryMessage(
           if (token === 'bulan ini') return 'this month';
           if (token === 'bulan lalu') return 'last month';
           if (token === 'tahun ini') return 'this year';
+          if (token === 'makanan') return 'food';
+          if (token === 'minuman') return 'drink';
+          if (token.startsWith('akun ')) return `account ${token.slice(5)}`;
+          if (token.startsWith('kategori ')) return `category ${token.slice(9)}`;
           return token;
         });
         filterTokens.push(...localizedTokens);

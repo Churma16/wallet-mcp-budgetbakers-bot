@@ -137,6 +137,95 @@ function formatIsoDateParts(year: number, month: number, day: number): string {
   return `${paddedYear}-${paddedMonth}-${paddedDay}`;
 }
 
+export function isDateOnlyString(dateString: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(dateString.trim());
+}
+
+export function getNextCalendarDayString(dateOnlyString: string): string {
+  const [yearStr, monthStr, dayStr] = dateOnlyString.trim().split('-');
+  const year = Number.parseInt(yearStr, 10);
+  const month = Number.parseInt(monthStr, 10);
+  const day = Number.parseInt(dayStr, 10);
+  const nextDay = new Date(Date.UTC(year, month - 1, day + 1));
+  return formatIsoDateParts(
+    nextDay.getUTCFullYear(),
+    nextDay.getUTCMonth() + 1,
+    nextDay.getUTCDate()
+  );
+}
+
+const CANONICAL_SIMPLE_KEYWORD_REGEX = /^[a-zA-Z0-9_-]+$/;
+
+const KNOWN_CANONICAL_ACCOUNT_KEYWORDS = new Set([
+  'bca',
+  'mandiri',
+  'bri',
+  'bni',
+  'cimb',
+  'jago',
+  'jenius',
+  'dana',
+  'gopay',
+  'ovo',
+  'shopeepay',
+  'linkaja',
+  'cash',
+  'tunai',
+  'dompet',
+  'bank',
+  'rekening',
+  'wallet',
+]);
+
+const KNOWN_CANONICAL_CATEGORY_KEYWORDS = new Set([
+  'makanan',
+  'minuman',
+  'food',
+  'drink',
+  'drinks',
+  'makan',
+  'minum',
+  'transport',
+  'transportasi',
+  'belanja',
+  'shopping',
+  'hiburan',
+  'entertainment',
+  'tagihan',
+  'bills',
+  'investasi',
+  'investment',
+  'gaji',
+  'salary',
+  'kesehatan',
+  'health',
+  'pulsa',
+  'listrik',
+  'kendaraan',
+  'rumah',
+  'housing',
+  'pendidikan',
+  'education',
+]);
+
+export function buildCanonicalAccountSelector(accountName: string): string {
+  const trimmed = accountName.trim();
+  const lower = trimmed.toLowerCase();
+  if (KNOWN_CANONICAL_ACCOUNT_KEYWORDS.has(lower) && CANONICAL_SIMPLE_KEYWORD_REGEX.test(lower)) {
+    return lower;
+  }
+  return `akun "${trimmed.replace(/"/g, '')}"`;
+}
+
+export function buildCanonicalCategorySelector(categoryNameOrGroup: string): string {
+  const trimmed = categoryNameOrGroup.trim();
+  const lower = trimmed.toLowerCase();
+  if (KNOWN_CANONICAL_CATEGORY_KEYWORDS.has(lower) && CANONICAL_SIMPLE_KEYWORD_REGEX.test(lower)) {
+    return lower;
+  }
+  return `kategori "${trimmed.replace(/"/g, '')}"`;
+}
+
 export function calculateRelativeDateRange(
   period: RelativeDatePeriod,
   referenceDate: Date = new Date(),
@@ -385,7 +474,7 @@ export function normalizeTransactionHistoryFilters(
     } else {
       upstreamAccountId = rawAccountId;
       const matchedAccount = availableAccountList.find(account => account.id === rawAccountId);
-      const accountSelector = matchedAccount?.name?.toLowerCase();
+      const accountSelector = matchedAccount ? buildCanonicalAccountSelector(matchedAccount.name) : undefined;
       appliedFilters.account = {
         id: rawAccountId,
         name: matchedAccount ? matchedAccount.name : rawAccountId,
@@ -395,13 +484,17 @@ export function normalizeTransactionHistoryFilters(
   } else if (rawAccountName && rawAccountName.trim().length > 0) {
     const trimmedAccountHint = rawAccountName.trim();
     const normalizedAccountHint = trimmedAccountHint.toLowerCase();
-    const accountSelector = normalizedAccountHint;
+    const accountSelector = buildCanonicalAccountSelector(trimmedAccountHint);
 
     // Strategy A: Exact ID match
     const exactIdMatch = availableAccountList.find(account => account.id === trimmedAccountHint);
     if (exactIdMatch) {
       upstreamAccountId = exactIdMatch.id;
-      appliedFilters.account = { id: exactIdMatch.id, name: exactIdMatch.name, selector: accountSelector };
+      appliedFilters.account = {
+        id: exactIdMatch.id,
+        name: exactIdMatch.name,
+        selector: buildCanonicalAccountSelector(exactIdMatch.name),
+      };
     } else {
       // Strategy B: Exact Name match (case-insensitive)
       const exactNameMatches = availableAccountList.filter(
@@ -410,7 +503,11 @@ export function normalizeTransactionHistoryFilters(
 
       if (exactNameMatches.length === 1) {
         upstreamAccountId = exactNameMatches[0].id;
-        appliedFilters.account = { id: exactNameMatches[0].id, name: exactNameMatches[0].name, selector: accountSelector };
+        appliedFilters.account = {
+          id: exactNameMatches[0].id,
+          name: exactNameMatches[0].name,
+          selector: accountSelector,
+        };
       } else if (exactNameMatches.length > 1) {
         unresolvedFilterIssues.push({
           filterKey: 'account',
@@ -428,7 +525,11 @@ export function normalizeTransactionHistoryFilters(
 
         if (substringMatches.length === 1) {
           upstreamAccountId = substringMatches[0].id;
-          appliedFilters.account = { id: substringMatches[0].id, name: substringMatches[0].name, selector: accountSelector };
+          appliedFilters.account = {
+            id: substringMatches[0].id,
+            name: substringMatches[0].name,
+            selector: accountSelector,
+          };
         } else if (substringMatches.length > 1) {
           const candidateNames = substringMatches.map(account => account.name);
           unresolvedFilterIssues.push({
@@ -453,7 +554,11 @@ export function normalizeTransactionHistoryFilters(
 
           if (bankAccountMatches.length === 1) {
             upstreamAccountId = bankAccountMatches[0].id;
-            appliedFilters.account = { id: bankAccountMatches[0].id, name: bankAccountMatches[0].name, selector: accountSelector };
+            appliedFilters.account = {
+              id: bankAccountMatches[0].id,
+              name: bankAccountMatches[0].name,
+              selector: buildCanonicalAccountSelector(bankAccountMatches[0].name),
+            };
           } else if (bankAccountMatches.length > 1) {
             const candidateNames = bankAccountMatches.map(account => account.name);
             unresolvedFilterIssues.push({
@@ -487,7 +592,11 @@ export function normalizeTransactionHistoryFilters(
     if (SUPPORTED_BUDGETBAKERS_CATEGORY_GROUPS.includes(normalizedGroup)) {
       upstreamCategoryGroup = normalizedGroup;
       appliedFilters.categoryGroup = normalizedGroup;
-      appliedFilters.category = { id: normalizedGroup, name: normalizedGroup, selector: normalizedGroup };
+      appliedFilters.category = {
+        id: normalizedGroup,
+        name: normalizedGroup,
+        selector: buildCanonicalCategorySelector(normalizedGroup),
+      };
     } else {
       unresolvedFilterIssues.push({
         filterKey: 'category',
@@ -506,7 +615,9 @@ export function normalizeTransactionHistoryFilters(
     } else {
       upstreamCategoryId = [rawCategoryId];
       const matchedCategory = availableCategoryList.find(category => category.id === rawCategoryId);
-      const categorySelector = matchedCategory?.name?.toLowerCase();
+      const categorySelector = matchedCategory
+        ? buildCanonicalCategorySelector(matchedCategory.name)
+        : undefined;
       appliedFilters.category = {
         id: rawCategoryId,
         name: matchedCategory ? matchedCategory.name : rawCategoryId,
@@ -516,7 +627,7 @@ export function normalizeTransactionHistoryFilters(
   } else if (rawCategoryName && rawCategoryName.trim().length > 0) {
     const trimmedCategoryHint = rawCategoryName.trim();
     const normalizedCategoryHint = trimmedCategoryHint.toLowerCase();
-    const categorySelector = normalizedCategoryHint;
+    const categorySelector = buildCanonicalCategorySelector(trimmedCategoryHint);
 
     // Strategy A: Check 'unknown' / uncategorized
     if (normalizedCategoryHint === 'unknown' || normalizedCategoryHint === 'uncategorized' || normalizedCategoryHint === 'tanpa kategori') {
@@ -527,7 +638,11 @@ export function normalizeTransactionHistoryFilters(
       const exactIdMatch = availableCategoryList.find(category => category.id === trimmedCategoryHint);
       if (exactIdMatch) {
         upstreamCategoryId = [exactIdMatch.id];
-        appliedFilters.category = { id: exactIdMatch.id, name: exactIdMatch.name, selector: categorySelector };
+        appliedFilters.category = {
+          id: exactIdMatch.id,
+          name: exactIdMatch.name,
+          selector: buildCanonicalCategorySelector(exactIdMatch.name),
+        };
       } else {
         // Strategy C: Exact Name match (case-insensitive)
         const exactNameMatches = availableCategoryList.filter(
@@ -536,7 +651,11 @@ export function normalizeTransactionHistoryFilters(
 
         if (exactNameMatches.length > 0) {
           upstreamCategoryId = [exactNameMatches[0].id];
-          appliedFilters.category = { id: exactNameMatches[0].id, name: exactNameMatches[0].name, selector: categorySelector };
+          appliedFilters.category = {
+            id: exactNameMatches[0].id,
+            name: exactNameMatches[0].name,
+            selector: categorySelector,
+          };
         } else {
           // Strategy D: Substring match on category name
           const substringMatches = availableCategoryList.filter(
@@ -547,18 +666,30 @@ export function normalizeTransactionHistoryFilters(
 
           if (substringMatches.length > 0) {
             upstreamCategoryId = [substringMatches[0].id];
-            appliedFilters.category = { id: substringMatches[0].id, name: substringMatches[0].name, selector: categorySelector };
+            appliedFilters.category = {
+              id: substringMatches[0].id,
+              name: substringMatches[0].name,
+              selector: categorySelector,
+            };
           } else {
             // Strategy E: Known category group slug or alias
             const aliasGroupSlug = CATEGORY_GROUP_ALIASES[normalizedCategoryHint];
             if (aliasGroupSlug && SUPPORTED_BUDGETBAKERS_CATEGORY_GROUPS.includes(aliasGroupSlug)) {
               upstreamCategoryGroup = aliasGroupSlug;
               appliedFilters.categoryGroup = aliasGroupSlug;
-              appliedFilters.category = { id: aliasGroupSlug, name: aliasGroupSlug, selector: categorySelector };
+              appliedFilters.category = {
+                id: aliasGroupSlug,
+                name: aliasGroupSlug,
+                selector: buildCanonicalCategorySelector(aliasGroupSlug),
+              };
             } else if (SUPPORTED_BUDGETBAKERS_CATEGORY_GROUPS.includes(normalizedCategoryHint)) {
               upstreamCategoryGroup = normalizedCategoryHint;
               appliedFilters.categoryGroup = normalizedCategoryHint;
-              appliedFilters.category = { id: normalizedCategoryHint, name: normalizedCategoryHint, selector: categorySelector };
+              appliedFilters.category = {
+                id: normalizedCategoryHint,
+                name: normalizedCategoryHint,
+                selector: buildCanonicalCategorySelector(normalizedCategoryHint),
+              };
             } else {
               unresolvedFilterIssues.push({
                 filterKey: 'category',
@@ -692,10 +823,76 @@ export function normalizeTransactionHistoryFilters(
     }
 
     if (unresolvedFilterIssues.every(issue => issue.filterKey !== 'dateRange') && validatedTokens.length > 0) {
-      upstreamRecordDate = validatedTokens;
-      appliedFilters.dateRange = {
-        rawRange: validatedTokens,
-      };
+      let fromDateString: string | undefined = undefined;
+      let toDateString: string | undefined = undefined;
+      let isAllDateOnly = true;
+
+      for (const token of validatedTokens) {
+        const matchedOp = validOperators.find(op => token.startsWith(op))!;
+        const rawPart = token.slice(matchedOp.length);
+        if (!isDateOnlyString(rawPart)) {
+          isAllDateOnly = false;
+          break;
+        }
+        const opName = matchedOp.replace('.', '');
+        if (opName === 'eq') {
+          fromDateString = rawPart;
+          toDateString = rawPart;
+        } else if (opName === 'gte' || opName === 'gt') {
+          fromDateString = rawPart;
+        } else if (opName === 'lte' || opName === 'lt') {
+          toDateString = rawPart;
+        }
+      }
+
+      if (isAllDateOnly && (fromDateString || toDateString)) {
+        if (fromDateString && toDateString && fromDateString === toDateString) {
+          const startUtcIso = resolveTargetLocalToUtcIso(fromDateString, 0, 0, timezoneIdentifier);
+          const nextUtcIso = resolveTargetLocalToUtcIso(getNextCalendarDayString(fromDateString), 0, 0, timezoneIdentifier);
+          upstreamRecordDate = [`gte.${startUtcIso}`, `lt.${nextUtcIso}`];
+          appliedFilters.dateRange = {
+            from: fromDateString,
+            to: toDateString,
+            selector: fromDateString,
+            label: fromDateString,
+            rawRange: upstreamRecordDate,
+          };
+        } else if (fromDateString && toDateString) {
+          const startUtcIso = resolveTargetLocalToUtcIso(fromDateString, 0, 0, timezoneIdentifier);
+          const endNextUtcIso = resolveTargetLocalToUtcIso(getNextCalendarDayString(toDateString), 0, 0, timezoneIdentifier);
+          upstreamRecordDate = [`gte.${startUtcIso}`, `lt.${endNextUtcIso}`];
+          appliedFilters.dateRange = {
+            from: fromDateString,
+            to: toDateString,
+            selector: `${fromDateString} ${toDateString}`,
+            label: `${fromDateString} - ${toDateString}`,
+            rawRange: upstreamRecordDate,
+          };
+        } else if (fromDateString) {
+          const startUtcIso = resolveTargetLocalToUtcIso(fromDateString, 0, 0, timezoneIdentifier);
+          upstreamRecordDate = [`gte.${startUtcIso}`];
+          appliedFilters.dateRange = {
+            from: fromDateString,
+            selector: fromDateString,
+            label: `>= ${fromDateString}`,
+            rawRange: upstreamRecordDate,
+          };
+        } else if (toDateString) {
+          const endNextUtcIso = resolveTargetLocalToUtcIso(getNextCalendarDayString(toDateString), 0, 0, timezoneIdentifier);
+          upstreamRecordDate = [`lt.${endNextUtcIso}`];
+          appliedFilters.dateRange = {
+            to: toDateString,
+            selector: toDateString,
+            label: `<= ${toDateString}`,
+            rawRange: upstreamRecordDate,
+          };
+        }
+      } else {
+        upstreamRecordDate = validatedTokens;
+        appliedFilters.dateRange = {
+          rawRange: validatedTokens,
+        };
+      }
     }
   } else {
     let rawFrom: string | undefined = undefined;
@@ -751,21 +948,64 @@ export function normalizeTransactionHistoryFilters(
           message: `Rentang tanggal tidak valid: tanggal mulai (${rawFrom}) tidak boleh lebih besar dari tanggal akhir (${rawTo}).`,
         });
       } else if (unresolvedFilterIssues.every(issue => issue.filterKey !== 'dateRange')) {
-        const tokens: string[] = [];
-        if (rawFrom) {
-          const fromString = rawFrom.trim().slice(0, 10);
-          tokens.push(`gte.${fromString}`);
+        const fromDateString = rawFrom ? rawFrom.trim().slice(0, 10) : undefined;
+        const toDateString = rawTo ? rawTo.trim().slice(0, 10) : undefined;
+
+        if (fromDateString && toDateString && fromDateString === toDateString && isDateOnlyString(fromDateString)) {
+          const startUtcIso = resolveTargetLocalToUtcIso(fromDateString, 0, 0, timezoneIdentifier);
+          const nextUtcIso = resolveTargetLocalToUtcIso(getNextCalendarDayString(fromDateString), 0, 0, timezoneIdentifier);
+          upstreamRecordDate = [`gte.${startUtcIso}`, `lt.${nextUtcIso}`];
+          appliedFilters.dateRange = {
+            from: fromDateString,
+            to: toDateString,
+            selector: fromDateString,
+            label: fromDateString,
+            rawRange: upstreamRecordDate,
+          };
+        } else if (fromDateString && toDateString && isDateOnlyString(fromDateString) && isDateOnlyString(toDateString)) {
+          const startUtcIso = resolveTargetLocalToUtcIso(fromDateString, 0, 0, timezoneIdentifier);
+          const endNextUtcIso = resolveTargetLocalToUtcIso(getNextCalendarDayString(toDateString), 0, 0, timezoneIdentifier);
+          upstreamRecordDate = [`gte.${startUtcIso}`, `lt.${endNextUtcIso}`];
+          appliedFilters.dateRange = {
+            from: fromDateString,
+            to: toDateString,
+            selector: `${fromDateString} ${toDateString}`,
+            label: `${fromDateString} - ${toDateString}`,
+            rawRange: upstreamRecordDate,
+          };
+        } else if (fromDateString && isDateOnlyString(fromDateString)) {
+          const startUtcIso = resolveTargetLocalToUtcIso(fromDateString, 0, 0, timezoneIdentifier);
+          upstreamRecordDate = [`gte.${startUtcIso}`];
+          appliedFilters.dateRange = {
+            from: fromDateString,
+            selector: fromDateString,
+            label: `>= ${fromDateString}`,
+            rawRange: upstreamRecordDate,
+          };
+        } else if (toDateString && isDateOnlyString(toDateString)) {
+          const endNextUtcIso = resolveTargetLocalToUtcIso(getNextCalendarDayString(toDateString), 0, 0, timezoneIdentifier);
+          upstreamRecordDate = [`lt.${endNextUtcIso}`];
+          appliedFilters.dateRange = {
+            to: toDateString,
+            selector: toDateString,
+            label: `<= ${toDateString}`,
+            rawRange: upstreamRecordDate,
+          };
+        } else {
+          const tokens: string[] = [];
+          if (rawFrom) {
+            tokens.push(`gte.${rawFrom}`);
+          }
+          if (rawTo) {
+            tokens.push(`lte.${rawTo}`);
+          }
+          upstreamRecordDate = tokens;
+          appliedFilters.dateRange = {
+            from: rawFrom,
+            to: rawTo,
+            rawRange: tokens,
+          };
         }
-        if (rawTo) {
-          const toString = rawTo.trim().slice(0, 10);
-          tokens.push(`lte.${toString}`);
-        }
-        upstreamRecordDate = tokens;
-        appliedFilters.dateRange = {
-          from: rawFrom,
-          to: rawTo,
-          rawRange: tokens,
-        };
       }
     }
   }
@@ -780,7 +1020,7 @@ export function normalizeTransactionHistoryFilters(
     if (appliedFilters.category?.selector) {
       navigationTokens.push(appliedFilters.category.selector);
     } else if (appliedFilters.categoryGroup) {
-      navigationTokens.push(appliedFilters.categoryGroup);
+      navigationTokens.push(buildCanonicalCategorySelector(appliedFilters.categoryGroup));
     }
     if (appliedFilters.recordType) {
       navigationTokens.push(appliedFilters.recordType === 'expense' ? 'pengeluaran' : 'pemasukan');

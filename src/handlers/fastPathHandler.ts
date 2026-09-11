@@ -122,7 +122,11 @@ export class FastPathHandler {
     applicationLogger.info('Fast-path matched: TRANSACTION_HISTORY (0 AI tokens consumed)');
     applicationLogger.mcp('Fetching transaction history...');
 
-    const historyPage = await this.transactionHistoryService.getTransactionHistory(options);
+    const requestReferenceInstant = new Date(processingStartTimestamp);
+    const historyPage = await this.transactionHistoryService.getTransactionHistory(
+      options,
+      requestReferenceInstant
+    );
     const replyMessage = formatTransactionHistoryMessage(historyPage);
 
     applicationLogger.fileDetail('mcp', 'Dispatched Transaction History Reply (Fast-path)', {

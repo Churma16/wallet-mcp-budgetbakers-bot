@@ -19,10 +19,12 @@ export class TransactionHistoryService {
    * Enforces fail-closed validation on invalid filters and enriches missing entity names from cache.
    */
   public async getTransactionHistory(
-    queryOptions?: TransactionHistoryQueryOptions
+    queryOptions?: TransactionHistoryQueryOptions,
+    referenceDate: Date = new Date()
   ): Promise<TransactionHistoryPage> {
     applicationLogger.fileDetail('mcp', 'Retrieving Transaction History', {
       queryOptions: queryOptions ?? {},
+      referenceDate: referenceDate.toISOString(),
     });
 
     const cachedAccountList = this.walletCacheService?.getAccounts() || [];
@@ -31,7 +33,8 @@ export class TransactionHistoryService {
     const normalizationResult = normalizeTransactionHistoryFilters(
       queryOptions,
       cachedAccountList,
-      cachedCategoryList
+      cachedCategoryList,
+      referenceDate
     );
 
     if (!normalizationResult.isValid) {

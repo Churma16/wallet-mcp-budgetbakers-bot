@@ -66,6 +66,18 @@ const KNOWN_CATEGORY_KEYWORDS = new Set([
   'housing',
   'pendidikan',
   'education',
+  'communication_pc',
+  'financial_expenses',
+  'food_and_drinks',
+  'income',
+  'investments',
+  'life_entertainment',
+  'others',
+  'shopping',
+  'system_categories',
+  'transportation',
+  'unknown_records',
+  'vehicle',
 ]);
 
 function extractHistoryQueryOptionsFromTokens(
@@ -183,13 +195,13 @@ function extractHistoryQueryOptionsFromTokens(
   }
 
   // 7. Extract explicit account and category prefixes (supports unquoted or quoted strings)
-  const explicitAccountMatch = remainingTokens.match(/\b(?:akun|account|rekening)\s+(?:"([^"]+)"|'([^']+)'|([a-zA-Z0-9_-]+))\b/i);
+  const explicitAccountMatch = remainingTokens.match(/\b(?:akun|account|rekening)\s+(?:"([^"]+)"|'([^']+)'|([a-zA-Z0-9_-]+)\b)/i);
   if (explicitAccountMatch) {
     resolvedAccountName = explicitAccountMatch[1] || explicitAccountMatch[2] || explicitAccountMatch[3];
     remainingTokens = remainingTokens.replace(explicitAccountMatch[0], ' ').trim();
   }
 
-  const explicitCategoryMatch = remainingTokens.match(/\b(?:kategori|category)\s+(?:"([^"]+)"|'([^']+)'|([a-zA-Z0-9_-]+))\b/i);
+  const explicitCategoryMatch = remainingTokens.match(/\b(?:kategori|category)\s+(?:"([^"]+)"|'([^']+)'|([a-zA-Z0-9_-]+)\b)/i);
   if (explicitCategoryMatch) {
     resolvedCategoryName = explicitCategoryMatch[1] || explicitCategoryMatch[2] || explicitCategoryMatch[3];
     remainingTokens = remainingTokens.replace(explicitCategoryMatch[0], ' ').trim();

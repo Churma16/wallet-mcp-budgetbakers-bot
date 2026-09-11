@@ -200,13 +200,19 @@ console.log('\n[Suite 4] Testing Date & Date Range Filtering...');
 
   setNextResponse({ records: [], total: 0 });
 
-  // 4.1 Explicit dateRange array with operator prefixes
+  // 4.1 Explicit dateRange array with operator prefixes (resolved to local timezone half-open UTC boundaries)
   await service.getTransactionHistory({ dateRange: ['gte.2024-01-01', 'lte.2024-06-30'] });
-  assert.deepStrictEqual(capturedCalls[0].args.recordDate, ['gte.2024-01-01', 'lte.2024-06-30']);
+  assert.deepStrictEqual(capturedCalls[0].args.recordDate, [
+    'gte.2023-12-31T17:00:00.000Z',
+    'lt.2024-06-30T17:00:00.000Z',
+  ]);
 
-  // 4.2 Start date and end date normalization
+  // 4.2 Start date and end date normalization (resolved to local timezone half-open UTC boundaries)
   await service.getTransactionHistory({ startDate: '2024-03-01', endDate: '2024-03-31' });
-  assert.deepStrictEqual(capturedCalls[1].args.recordDate, ['gte.2024-03-01', 'lte.2024-03-31']);
+  assert.deepStrictEqual(capturedCalls[1].args.recordDate, [
+    'gte.2024-02-29T17:00:00.000Z',
+    'lt.2024-03-31T17:00:00.000Z',
+  ]);
 
   // 4.3 Relative date periods: this_month with timezone-aware half-open UTC ISO boundaries
   // Sep 11, 2026 12:00:00 UTC = Sep 11, 2026 19:00:00 WIB
@@ -253,6 +259,35 @@ console.log('\n[Suite 4] Testing Date & Date Range Filtering...');
   assert.strictEqual(isIncludedInToday('2026-09-11T17:05:00.000Z'), false);
   // Transaction 4: 23:55 WIB on Sep 10 (2026-09-10T16:55:00.000Z) -> EXCLUDED (before local midnight)
   assert.strictEqual(isIncludedInToday('2026-09-10T16:55:00.000Z'), false);
+
+  // 4.6.1 Explicit single date vs 'today' equivalence regression test (Item 1)
+  // Explicit 2026-09-11 must resolve to the EXACT SAME half-open interval as 'today' on 2026-09-11 WIB
+  const explicitSingleDateNormal = normalizeTransactionHistoryFilters(
+    { dateRange: ['eq.2026-09-11'] },
+    [],
+    [],
+    fixedRefDate
+  );
+  assert.strictEqual(explicitSingleDateNormal.isValid, true);
+  assert.deepStrictEqual(explicitSingleDateNormal.upstreamRecordDate, todayNormal.upstreamRecordDate);
+  assert.deepStrictEqual(explicitSingleDateNormal.upstreamRecordDate, [
+    'gte.2026-09-10T17:00:00.000Z',
+    'lt.2026-09-11T17:00:00.000Z',
+  ]);
+  assert.strictEqual(explicitSingleDateNormal.appliedFilters.dateRange?.selector, '2026-09-11');
+  assert.strictEqual(explicitSingleDateNormal.appliedFilters.dateRange?.label, '2026-09-11');
+
+  // Verify explicit date also includes 00:30 and 23:30 WIB and excludes next day
+  const [explicitLower, explicitUpper] = explicitSingleDateNormal.upstreamRecordDate!;
+  const explicitLowerTs = Date.parse(explicitLower.replace('gte.', ''));
+  const explicitUpperTs = Date.parse(explicitUpper.replace('lt.', ''));
+  const isIncludedInExplicitDate = (utcIso: string): boolean => {
+    const ts = Date.parse(utcIso);
+    return ts >= explicitLowerTs && ts < explicitUpperTs;
+  };
+  assert.strictEqual(isIncludedInExplicitDate('2026-09-10T17:30:00.000Z'), true); // 00:30 WIB
+  assert.strictEqual(isIncludedInExplicitDate('2026-09-11T16:30:00.000Z'), true); // 23:30 WIB
+  assert.strictEqual(isIncludedInExplicitDate('2026-09-11T17:05:00.000Z'), false); // 00:05 WIB next day
 
   // 4.7 Date boundary: startDate > endDate fails closed before MCP
   const callsBeforeReversedDates = capturedCalls.length;
@@ -334,10 +369,14 @@ console.log('\n[Suite 4] Testing Date & Date Range Filtering...');
   assert.strictEqual(thisYearResult.appliedFilters.dateRange?.selector, 'tahun ini');
   assert.strictEqual(thisYearResult.upstreamRecordDate?.length, 2);
 
-  // 4.14 Object dateRange { from, to } valid normalization
+  // 4.14 Object dateRange { from, to } valid normalization (timezone-aware UTC boundaries)
   const validObjRange = normalizeTransactionHistoryFilters({ dateRange: { from: '2026-05-01', to: '2026-05-31' } });
   assert.strictEqual(validObjRange.isValid, true);
-  assert.deepStrictEqual(validObjRange.upstreamRecordDate, ['gte.2026-05-01', 'lte.2026-05-31']);
+  assert.deepStrictEqual(validObjRange.upstreamRecordDate, [
+    'gte.2026-04-30T17:00:00.000Z',
+    'lt.2026-05-31T17:00:00.000Z',
+  ]);
+  assert.strictEqual(validObjRange.appliedFilters.dateRange?.selector, '2026-05-01 2026-05-31');
 
   // 4.15 Object dateRange { from, to } with invalid 'to' fails closed before MCP
   const callsBeforeObjInvalidTo = capturedCalls.length;
@@ -364,10 +403,10 @@ console.log('\n[Suite 4] Testing Date & Date Range Filtering...');
   assert.strictEqual(isValidCalendarDateString('2026-09-10T25:00:00.000Z'), false);
   assert.strictEqual(isValidCalendarDateString('2026-09-10T12:60:00.000Z'), false);
 
-  // 4.17 Category group navigation token propagation
+  // 4.17 Category group navigation token propagation (grammar-safe canonical selector)
   const categoryGroupNorm = normalizeTransactionHistoryFilters({ categoryGroup: 'food_and_drinks' });
   assert.strictEqual(categoryGroupNorm.isValid, true);
-  assert.strictEqual(categoryGroupNorm.appliedFilters.navigationTokens?.[0], 'food_and_drinks');
+  assert.strictEqual(categoryGroupNorm.appliedFilters.navigationTokens?.[0], 'kategori "food_and_drinks"');
 
   console.log('  [PASS] Timezone UTC boundaries, strict calendar validation, and reversed bounds verified.');
 }
@@ -413,7 +452,10 @@ console.log('\n[Suite 5] Testing Composable Multi-Filter Queries...');
   assert.strictEqual(mcpArgs.accountId, 'acc-bca-001');
   assert.deepStrictEqual(mcpArgs.categoryId, ['cat-food-001']);
   assert.strictEqual(mcpArgs.recordType, 'expense');
-  assert.deepStrictEqual(mcpArgs.recordDate, ['gte.2026-09-01', 'lte.2026-09-30']);
+  assert.deepStrictEqual(mcpArgs.recordDate, [
+    'gte.2026-08-31T17:00:00.000Z',
+    'lt.2026-09-30T17:00:00.000Z',
+  ]);
   assert.strictEqual(mcpArgs.limit, 5);
   assert.deepStrictEqual(mcpArgs.sortBy, ['+recordDate', '+createdAt']);
 
@@ -617,7 +659,7 @@ console.log('\n[Suite 7] Testing Human-Facing Response Formatting & i18n...');
   const fullComboMatchEn = fullComboFormattedEn.match(/_Type \*(history .+?)\* for the next page\._/);
   assert.ok(fullComboMatchEn);
   const fullExtractedCommandEn = fullComboMatchEn[1];
-  assert.strictEqual(fullExtractedCommandEn, 'history bca makanan expense this month 5 page 2 oldest');
+  assert.strictEqual(fullExtractedCommandEn, 'history bca food expense this month 5 page 2 oldest');
 
   const parsedFullEn = detectFastPathAction(fullExtractedCommandEn);
   assert.ok(parsedFullEn);
@@ -626,9 +668,244 @@ console.log('\n[Suite 7] Testing Human-Facing Response Formatting & i18n...');
   assert.strictEqual((parsedFullEn as any).options.limit, 5);
   assert.strictEqual((parsedFullEn as any).options.sort, 'oldest');
   assert.strictEqual((parsedFullEn as any).options.accountName, 'bca');
-  assert.strictEqual((parsedFullEn as any).options.categoryName, 'makanan');
+  assert.strictEqual((parsedFullEn as any).options.categoryName, 'food');
   assert.strictEqual((parsedFullEn as any).options.recordType, 'expense');
   assert.strictEqual((parsedFullEn as any).options.datePeriod, 'this_month');
+
+  // 7.6 Explicit single-date pagination round-trip regression test (Item 2)
+  const singleDatePageNormalized = normalizeTransactionHistoryFilters(
+    { dateRange: ['eq.2026-09-11'] },
+    MOCK_ACCOUNTS,
+    MOCK_CATEGORIES
+  );
+  assert.strictEqual(singleDatePageNormalized.appliedFilters.dateRange?.selector, '2026-09-11');
+  const singleDateHistPage: any = {
+    records: samplePage.records,
+    total: 20,
+    limit: 10,
+    offset: 0,
+    page: 1,
+    totalPages: 2,
+    nextOffset: 10,
+    hasMore: true,
+    sort: 'newest',
+    appliedFilters: singleDatePageNormalized.appliedFilters,
+  };
+  const singleDateHintId = formatTransactionHistoryMessage(singleDateHistPage, 'id');
+  assert.match(singleDateHintId, /riwayat 2026-09-11 hal 2/);
+  const parsedSingleDateActionId = detectFastPathAction('riwayat 2026-09-11 hal 2');
+  assert.ok(parsedSingleDateActionId);
+  assert.strictEqual((parsedSingleDateActionId as any).options.page, 2);
+  assert.deepStrictEqual((parsedSingleDateActionId as any).options.dateRange, ['eq.2026-09-11']);
+
+  const singleDateHintEn = formatTransactionHistoryMessage(singleDateHistPage, 'en');
+  assert.match(singleDateHintEn, /history 2026-09-11 page 2/);
+  const parsedSingleDateActionEn = detectFastPathAction('history 2026-09-11 page 2');
+  assert.ok(parsedSingleDateActionEn);
+  assert.strictEqual((parsedSingleDateActionEn as any).options.page, 2);
+  assert.deepStrictEqual((parsedSingleDateActionEn as any).options.dateRange, ['eq.2026-09-11']);
+
+  // 7.7 Explicit date-range pagination round-trip regression test (Item 2)
+  const rangeDatePageNormalized = normalizeTransactionHistoryFilters(
+    { startDate: '2026-09-01', endDate: '2026-09-30' },
+    MOCK_ACCOUNTS,
+    MOCK_CATEGORIES
+  );
+  assert.strictEqual(rangeDatePageNormalized.appliedFilters.dateRange?.selector, '2026-09-01 2026-09-30');
+  const rangeDateHistPage: any = {
+    records: samplePage.records,
+    total: 30,
+    limit: 10,
+    offset: 0,
+    page: 1,
+    totalPages: 3,
+    nextOffset: 10,
+    hasMore: true,
+    sort: 'newest',
+    appliedFilters: rangeDatePageNormalized.appliedFilters,
+  };
+  const rangeDateHintId = formatTransactionHistoryMessage(rangeDateHistPage, 'id');
+  assert.match(rangeDateHintId, /riwayat 2026-09-01 2026-09-30 hal 2/);
+  const parsedRangeActionId = detectFastPathAction('riwayat 2026-09-01 2026-09-30 hal 2');
+  assert.ok(parsedRangeActionId);
+  assert.strictEqual((parsedRangeActionId as any).options.page, 2);
+  assert.deepStrictEqual((parsedRangeActionId as any).options.dateRange, [
+    'gte.2026-09-01',
+    'lte.2026-09-30',
+  ]);
+
+  // 7.8 Quoted multiword navigation round-trip for accountId, categoryId, and categoryGroup (Item 3)
+  // Account ID -> BCA Tabungan -> akun "BCA Tabungan"
+  const accountIdNormalized = normalizeTransactionHistoryFilters(
+    { accountId: 'acc-bca-001' },
+    MOCK_ACCOUNTS,
+    MOCK_CATEGORIES
+  );
+  assert.strictEqual(accountIdNormalized.appliedFilters.account?.name, 'BCA Tabungan');
+  assert.strictEqual(accountIdNormalized.appliedFilters.account?.selector, 'akun "BCA Tabungan"');
+
+  const accountIdHistPage: any = {
+    records: samplePage.records,
+    total: 20,
+    limit: 10,
+    offset: 0,
+    page: 1,
+    totalPages: 2,
+    hasMore: true,
+    sort: 'newest',
+    appliedFilters: accountIdNormalized.appliedFilters,
+  };
+  const accountIdHintId = formatTransactionHistoryMessage(accountIdHistPage, 'id');
+  assert.match(accountIdHintId, /riwayat akun "BCA Tabungan" hal 2/);
+  const parsedAccountIdAction = detectFastPathAction('riwayat akun "BCA Tabungan" hal 2');
+  assert.ok(parsedAccountIdAction);
+  assert.strictEqual((parsedAccountIdAction as any).options.page, 2);
+  assert.strictEqual((parsedAccountIdAction as any).options.accountName, 'bca tabungan');
+  // Re-normalizing parsed options resolves to the exact same accountId
+  const reNormalizedAccount = normalizeTransactionHistoryFilters(
+    (parsedAccountIdAction as any).options,
+    MOCK_ACCOUNTS,
+    MOCK_CATEGORIES
+  );
+  assert.strictEqual(reNormalizedAccount.upstreamAccountId, 'acc-bca-001');
+
+  // Category ID -> Makanan & Minuman -> kategori "Makanan & Minuman"
+  const categoryIdNormalized = normalizeTransactionHistoryFilters(
+    { categoryId: 'cat-food-001' },
+    MOCK_ACCOUNTS,
+    MOCK_CATEGORIES
+  );
+  assert.strictEqual(categoryIdNormalized.appliedFilters.category?.name, 'Makanan & Minuman');
+  assert.strictEqual(categoryIdNormalized.appliedFilters.category?.selector, 'kategori "Makanan & Minuman"');
+
+  const categoryIdHistPage: any = {
+    records: samplePage.records,
+    total: 20,
+    limit: 10,
+    offset: 0,
+    page: 1,
+    totalPages: 2,
+    hasMore: true,
+    sort: 'newest',
+    appliedFilters: categoryIdNormalized.appliedFilters,
+  };
+  const categoryIdHintId = formatTransactionHistoryMessage(categoryIdHistPage, 'id');
+  assert.match(categoryIdHintId, /riwayat kategori "Makanan & Minuman" hal 2/);
+  const parsedCategoryIdAction = detectFastPathAction('riwayat kategori "Makanan & Minuman" hal 2');
+  assert.ok(parsedCategoryIdAction);
+  assert.strictEqual((parsedCategoryIdAction as any).options.page, 2);
+  assert.strictEqual((parsedCategoryIdAction as any).options.categoryName, 'makanan & minuman');
+  const reNormalizedCategory = normalizeTransactionHistoryFilters(
+    (parsedCategoryIdAction as any).options,
+    MOCK_ACCOUNTS,
+    MOCK_CATEGORIES
+  );
+  assert.deepStrictEqual(reNormalizedCategory.upstreamCategoryId, ['cat-food-001']);
+
+  // Category Group -> food_and_drinks -> kategori "food_and_drinks"
+  const groupNormalized = normalizeTransactionHistoryFilters(
+    { categoryGroup: 'food_and_drinks' },
+    MOCK_ACCOUNTS,
+    MOCK_CATEGORIES
+  );
+  assert.strictEqual(groupNormalized.appliedFilters.categoryGroup, 'food_and_drinks');
+  assert.strictEqual(groupNormalized.appliedFilters.category?.selector, 'kategori "food_and_drinks"');
+
+  const groupHistPage: any = {
+    records: samplePage.records,
+    total: 20,
+    limit: 10,
+    offset: 0,
+    page: 1,
+    totalPages: 2,
+    hasMore: true,
+    sort: 'newest',
+    appliedFilters: groupNormalized.appliedFilters,
+  };
+  const groupHintId = formatTransactionHistoryMessage(groupHistPage, 'id');
+  assert.match(groupHintId, /riwayat kategori "food_and_drinks" hal 2/);
+  const parsedGroupAction = detectFastPathAction('riwayat kategori "food_and_drinks" hal 2');
+  assert.ok(parsedGroupAction);
+  assert.strictEqual((parsedGroupAction as any).options.page, 2);
+  assert.strictEqual((parsedGroupAction as any).options.categoryName, 'food_and_drinks');
+  const reNormalizedGroup = normalizeTransactionHistoryFilters(
+    (parsedGroupAction as any).options,
+    MOCK_ACCOUNTS,
+    MOCK_CATEGORIES
+  );
+  assert.strictEqual(reNormalizedGroup.upstreamCategoryGroup, 'food_and_drinks');
+
+  // Multiword combo in English: history account "BCA Tabungan" category "Makanan & Minuman" page 2
+  const multiwordComboPage: any = {
+    records: samplePage.records,
+    total: 20,
+    limit: 10,
+    offset: 0,
+    page: 1,
+    totalPages: 2,
+    hasMore: true,
+    sort: 'newest',
+    appliedFilters: {
+      account: accountIdNormalized.appliedFilters.account,
+      category: categoryIdNormalized.appliedFilters.category,
+      navigationTokens: [
+        accountIdNormalized.appliedFilters.account!.selector!,
+        categoryIdNormalized.appliedFilters.category!.selector!,
+      ],
+    },
+  };
+  const multiwordEnHint = formatTransactionHistoryMessage(multiwordComboPage, 'en');
+  assert.match(multiwordEnHint, /history account "BCA Tabungan" category "Makanan & Minuman" page 2/);
+  const parsedMultiwordEn = detectFastPathAction(
+    'history account "BCA Tabungan" category "Makanan & Minuman" page 2'
+  );
+  assert.ok(parsedMultiwordEn);
+  assert.strictEqual((parsedMultiwordEn as any).options.page, 2);
+  assert.strictEqual((parsedMultiwordEn as any).options.accountName, 'bca tabungan');
+  assert.strictEqual((parsedMultiwordEn as any).options.categoryName, 'makanan & minuman');
+
+  // 7.9 Request start instant anchoring regression test (Item 4)
+  // Request started at 23:59:55 WIB on Sep 11 (2026-09-11T16:59:55.000Z)
+  const requestStartInstant = new Date('2026-09-11T16:59:55.000Z');
+  // Simulated processing delay crossing into 00:00:05 WIB on Sep 12 (2026-09-11T17:00:05.000Z)
+  const afterMidnightInstant = new Date('2026-09-11T17:00:05.000Z');
+
+  // Anchored request must evaluate 'today' relative to the request start (Sep 11)
+  const anchoredToday = normalizeTransactionHistoryFilters(
+    { datePeriod: 'today' },
+    [],
+    [],
+    requestStartInstant
+  );
+  assert.strictEqual(anchoredToday.appliedFilters.dateRange?.from, '2026-09-11');
+  assert.strictEqual(anchoredToday.appliedFilters.dateRange?.to, '2026-09-11');
+  assert.deepStrictEqual(anchoredToday.upstreamRecordDate, [
+    'gte.2026-09-10T17:00:00.000Z',
+    'lt.2026-09-11T17:00:00.000Z',
+  ]);
+
+  // If unanchored (using after-midnight instant), it would have evaluated to Sep 12
+  const unanchoredToday = normalizeTransactionHistoryFilters(
+    { datePeriod: 'today' },
+    [],
+    [],
+    afterMidnightInstant
+  );
+  assert.strictEqual(unanchoredToday.appliedFilters.dateRange?.from, '2026-09-12');
+  assert.notDeepStrictEqual(anchoredToday.upstreamRecordDate, unanchoredToday.upstreamRecordDate);
+
+  // Verify anchored request 'yesterday' resolves to Sep 10, not Sep 11
+  const anchoredYesterday = normalizeTransactionHistoryFilters(
+    { datePeriod: 'yesterday' },
+    [],
+    [],
+    requestStartInstant
+  );
+  assert.strictEqual(anchoredYesterday.appliedFilters.dateRange?.from, '2026-09-10');
+  assert.deepStrictEqual(anchoredYesterday.upstreamRecordDate, [
+    'gte.2026-09-09T17:00:00.000Z',
+    'lt.2026-09-10T17:00:00.000Z',
+  ]);
 
   console.log('  [PASS] Localized headers, badges, warnings, and navigation hints formatted properly.');
 }
