@@ -267,14 +267,27 @@ export class AccountClarificationHandler {
           candidateAccounts: nextCandidates,
         }
       );
-      this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(claimedDraft.ticketId);
 
-      if (updatedDraft) {
+      if (!updatedDraft) {
+        this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(claimedDraft.ticketId);
+        this.pendingTransactionManager.rejectPendingAccountSelectionDraft(claimedDraft.ticketId);
+        return false;
+      }
+
+      try {
         await this.messagingGateway.sendMessage(
           event.channel,
           event.chatIdentifier,
           formatAccountSelectionPrompt(updatedDraft, availableCategories)
         );
+        this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(claimedDraft.ticketId);
+      } catch (messagingError) {
+        this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(claimedDraft.ticketId);
+        this.pendingTransactionManager.rejectPendingAccountSelectionDraft(claimedDraft.ticketId);
+        applicationLogger.error(
+          `[Account Clarification] Draft #${claimedDraft.ticketId} discarded because the follow-up prompt could not be delivered: ${formatConciseErrorMessage(messagingError)}`
+        );
+        throw messagingError;
       }
       return true;
     }

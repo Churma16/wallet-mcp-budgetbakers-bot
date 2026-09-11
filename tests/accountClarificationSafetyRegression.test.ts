@@ -331,11 +331,126 @@ async function testInitialPromptFailureRollback(): Promise<void> {
   assertCondition('Hidden failed draft does not consume the next message', userHarness.financialAiProvider.textCalls === 0);
 }
 
+async function testFollowUpPromptDeliveryFailure(): Promise<void> {
+  const pendingService = new PendingTransactionService();
+  const messaging = new MockMessagingGateway();
+  const walletMcp = new MockWalletMcpClient();
+  const cache = new MockWalletCacheService(accounts, categories);
+  const handler = new AccountClarificationHandler(
+    pendingService,
+    walletMcp as any,
+    cache as any,
+    messaging as any
+  );
+
+  const twoUnresolvedRecords: CreateRecordInputPayload[] = [
+    { ...unresolvedRecord, note: 'Lunch' },
+    { ...unresolvedRecord, amount: -20000, note: 'Coffee' },
+  ];
+
+  const initialCreated = await handler.createPendingAccountSelectionDraft(
+    createEvent('Lunch and coffee'),
+    twoUnresolvedRecords,
+    [
+      { recordIndex: 0, accountHint: '', reason: 'UNRESOLVED', candidates: [] },
+      { recordIndex: 1, accountHint: '', reason: 'UNRESOLVED', candidates: [] },
+    ],
+    accounts,
+    categories
+  );
+  assertCondition('Initial multi-record prompt is delivered successfully', initialCreated);
+  const draft = pendingService.getAllPendingAccountSelectionDrafts()[0];
+  assertCondition(
+    'First-step draft is PENDING for record 1',
+    Boolean(draft) && pendingService.getPendingAccountSelectionDraftState(draft.ticketId) === 'PENDING'
+  );
+  assertCondition('First prompt delivered to user', messaging.messages.length === 1);
+
+  messaging.failNextSend = true;
+  let secondPromptFailureObserved = false;
+  try {
+    await handler.handlePendingAccountSelectionReply(
+      createEvent('1'),
+      '1',
+      Date.now()
+    );
+  } catch {
+    secondPromptFailureObserved = true;
+  }
+
+  assertCondition('Follow-up prompt delivery failure propagates to caller', secondPromptFailureObserved);
+  assertCondition('Wallet dispatch count remains 0 after follow-up prompt failure', walletMcp.calls.length === 0);
+  assertCondition(
+    'Second-step draft is not left claimable as PENDING',
+    pendingService.getAllPendingAccountSelectionDrafts().length === 0
+  );
+  assertCondition(
+    'Second-step draft state is cleared from tracking',
+    pendingService.getPendingAccountSelectionDraftState(draft.ticketId) === undefined
+  );
+
+  const userHarness = createUserHandlerHarness(pendingService, messaging);
+  await userHarness.handler.handleIncomingUserMessage(createEvent('1'));
+
+  assertCondition('Subsequent numeric reply cannot silently resolve record 2 or call Wallet', walletMcp.calls.length === 0);
+  assertCondition('No draft exists to be resolved by subsequent numeric reply', pendingService.getAllPendingAccountSelectionDrafts().length === 0);
+
+  const successPendingService = new PendingTransactionService();
+  const successMessaging = new MockMessagingGateway();
+  const successWalletMcp = new MockWalletMcpClient();
+  const successHandler = new AccountClarificationHandler(
+    successPendingService,
+    successWalletMcp as any,
+    cache as any,
+    successMessaging as any
+  );
+
+  await successHandler.createPendingAccountSelectionDraft(
+    createEvent('Lunch and coffee'),
+    twoUnresolvedRecords,
+    [
+      { recordIndex: 0, accountHint: '', reason: 'UNRESOLVED', candidates: [] },
+      { recordIndex: 1, accountHint: '', reason: 'UNRESOLVED', candidates: [] },
+    ],
+    accounts,
+    categories
+  );
+  const successDraft = successPendingService.getAllPendingAccountSelectionDrafts()[0];
+  assertCondition('Success multi-record draft created', Boolean(successDraft));
+
+  const firstChoiceHandled = await successHandler.handlePendingAccountSelectionReply(
+    createEvent('1'),
+    '1',
+    Date.now()
+  );
+  assertCondition('First account choice handled successfully', firstChoiceHandled);
+  assertCondition('Wallet dispatch count remains 0 before final account selection', successWalletMcp.calls.length === 0);
+  assertCondition(
+    'Second-step draft becomes PENDING only after successful delivery of second prompt',
+    successPendingService.getPendingAccountSelectionDraftState(successDraft.ticketId) === 'PENDING' &&
+      successPendingService.getPendingAccountSelectionDraft(successDraft.ticketId)?.pendingRecordIndex === 1
+  );
+  assertCondition('Second prompt delivered to user', successMessaging.messages.at(-1)?.includes('Item 2 dari 2') === true);
+
+  const secondChoiceHandled = await successHandler.handlePendingAccountSelectionReply(
+    createEvent('1'),
+    '1',
+    Date.now()
+  );
+  assertCondition('Second account choice completes the batch normally', secondChoiceHandled);
+  assertCondition('Wallet dispatch count is exactly 1 after full batch resolution', successWalletMcp.calls.length === 1);
+  assertCondition('Both records dispatched in the single batch', successWalletMcp.calls[0].length === 2);
+  assertCondition('First record resolved to selected account', successWalletMcp.calls[0][0].accountId === 'acc-cash');
+  assertCondition('Second record resolved to selected account', successWalletMcp.calls[0][1].accountId === 'acc-cash');
+  assertCondition('Completed draft is removed after resolution', successPendingService.getAllPendingAccountSelectionDrafts().length === 0);
+}
+
 async function main(): Promise<void> {
   setActiveLanguage('id');
   await testAmbiguousBareCancellation();
   await testUnknownWarningDeliveryFailure();
   await testInitialPromptFailureRollback();
+  await testFollowUpPromptDeliveryFailure();
   console.log(`\n[SUCCESS] ${assertionCount} assertions passed.`);
 }
 
