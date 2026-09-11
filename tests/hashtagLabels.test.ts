@@ -11,6 +11,10 @@ import {
   WalletLabelItem,
   CreateRecordInputPayload,
 } from '../src/types/walletTypes.js';
+import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
+import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
+import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
+import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
 
 console.log('[TEST] Starting Hashtag Parsing and Label Auto-Creation Tests (Issue #20)...');
 
@@ -349,4 +353,388 @@ const mockCategories: WalletCategoryItem[] = [
   assert.equal(dispatchedRecordsPayload[0].note, 'Kopi kenangan 28rb');
 }
 
+// ---------------------------------------------------------------------------
+// 6. WalletMcpClientService & WalletCacheService Label Integration
+// ---------------------------------------------------------------------------
+{
+  console.log('  [SUITE 6] WalletMcpClientService & WalletCacheService Label Integration');
+
+  const realMcpClient = new WalletMcpClientService('http://localhost:8080');
+
+  // Stub callMcpTool to test fetchLabels parsing varieties
+  let mockToolResponse: unknown = [
+    { id: 'lbl-1', name: 'makan', color: '#ff0000', icon: 'food' },
+    { labelId: 'lbl-2', labelName: 'transport', color: '#00ff00', icon: 'car' },
+    { id: '', name: 'invalid-empty-id' }, // should be filtered out
+  ];
+
+  realMcpClient.callMcpTool = async (toolName: string, _args: Record<string, unknown> = {}) => {
+    if (toolName === 'get_labels') {
+      return mockToolResponse as any;
+    }
+    if (toolName === 'create_label') {
+      return mockToolResponse as any;
+    }
+    if (toolName === 'create_records') {
+      return { summary: { total: 1, succeeded: 1, failed: 0 } } as any;
+    }
+    return {} as any;
+  };
+
+  // Test fetchLabels with raw array
+  const fetchedLabels = await realMcpClient.fetchLabels(true);
+  assert.equal(fetchedLabels.length, 2);
+  assert.equal(fetchedLabels[0].id, 'lbl-1');
+  assert.equal(fetchedLabels[0].name, 'makan');
+  assert.equal(fetchedLabels[0].color, '#ff0000');
+  assert.equal(fetchedLabels[1].id, 'lbl-2');
+  assert.equal(fetchedLabels[1].name, 'transport');
+
+  // Test fetchLabels cache hit
+  let callToolInvoked = false;
+  const originalCallMcp = realMcpClient.callMcpTool;
+  realMcpClient.callMcpTool = async (toolName: string, args: Record<string, unknown> = {}) => {
+    callToolInvoked = true;
+    return originalCallMcp(toolName, args);
+  };
+  const cachedLabels = await realMcpClient.fetchLabels(false);
+  assert.equal(callToolInvoked, false, 'Should return cached labels without calling MCP');
+  assert.equal(cachedLabels.length, 2);
+  realMcpClient.callMcpTool = originalCallMcp;
+
+  // Test fetchLabels with wrapped object response ({ labels: [...] })
+  mockToolResponse = {
+    labels: [
+      { id: 'lbl-3', title: 'proyek' },
+    ],
+  };
+  const wrappedLabels = await realMcpClient.fetchLabels(true);
+  assert.equal(wrappedLabels.length, 1);
+  assert.equal(wrappedLabels[0].id, 'lbl-3');
+  assert.equal(wrappedLabels[0].name, 'proyek');
+
+  // Test fetchLabels error handling (graceful fallback to cached list)
+  realMcpClient.callMcpTool = async (toolName: string) => {
+    if (toolName === 'get_labels') {
+      throw new Error('Network timeout');
+    }
+    return {} as any;
+  };
+  const fallbackLabels = await realMcpClient.fetchLabels(true);
+  assert.equal(fallbackLabels.length, 1, 'Should return existing cached labels when error occurs');
+
+  // Test createLabel with empty name
+  const emptyResult = await realMcpClient.createLabel('  #   ');
+  assert.equal(emptyResult, null, 'Empty label name should return null');
+
+  // Test createLabel with valid response
+  mockToolResponse = { id: 'lbl-new', name: 'investasi' };
+  realMcpClient.callMcpTool = async () => mockToolResponse as any;
+  const createdLabel = await realMcpClient.createLabel('#investasi');
+  assert.ok(createdLabel);
+  assert.equal(createdLabel?.id, 'lbl-new');
+  assert.equal(createdLabel?.name, 'investasi');
+
+  // Test createLabel with wrapped response ({ label: { id, name } })
+  mockToolResponse = { label: { labelId: 'lbl-wrap', name: 'wrapped' } };
+  const wrappedCreatedLabel = await realMcpClient.createLabel('wrapped');
+  assert.ok(wrappedCreatedLabel);
+  assert.equal(wrappedCreatedLabel?.id, 'lbl-wrap');
+
+  // Test createLabel updates existing entry in cachedLabelList
+  mockToolResponse = { id: 'lbl-wrap', name: 'wrapped-updated', color: '#123456' };
+  const updatedCreatedLabel = await realMcpClient.createLabel('wrapped');
+  assert.ok(updatedCreatedLabel);
+  assert.equal(updatedCreatedLabel?.name, 'wrapped-updated');
+
+  // Test createLabel when tool returns invalid payload (no id)
+  mockToolResponse = { success: true };
+  const invalidResult = await realMcpClient.createLabel('invalid');
+  assert.equal(invalidResult, null);
+
+  // Test createLabel when tool throws
+  realMcpClient.callMcpTool = async () => {
+    throw new Error('Not implemented');
+  };
+  const throwingResult = await realMcpClient.createLabel('throwing');
+  assert.equal(throwingResult, null);
+
+  // Test createRecords preserving labelIds
+  let capturedRecordsPayload: any[] = [];
+  realMcpClient.callMcpTool = async (toolName: string, args: Record<string, unknown> = {}) => {
+    if (toolName === 'create_records') {
+      capturedRecordsPayload = args.records as any[];
+      return { summary: { total: 1, succeeded: 1, failed: 0 } };
+    }
+    return {};
+  };
+  await realMcpClient.createRecords([
+    {
+      accountId: 'acc-bca',
+      amount: -10000,
+      recordDate: '2026-09-11T10:00:00Z',
+      labelIds: ['lbl-1', 'lbl-2'],
+      note: 'test note',
+    },
+  ]);
+  assert.equal(capturedRecordsPayload.length, 1);
+  assert.deepEqual(capturedRecordsPayload[0].labelIds, ['lbl-1', 'lbl-2']);
+
+  // Test WalletCacheService label methods
+  mockToolResponse = [
+    { id: 'lbl-cache-1', name: 'Keluarga' },
+    { id: 'lbl-cache-2', name: 'Gadget' },
+  ];
+  realMcpClient.callMcpTool = async (toolName: string) => {
+    if (toolName === 'get_labels') return mockToolResponse;
+    if (toolName === 'get_accounts') return mockAccounts;
+    if (toolName === 'get_categories') return mockCategories;
+    return {};
+  };
+
+  const realCacheService = new WalletCacheService(realMcpClient);
+  await realCacheService.initialize();
+
+  assert.equal(realCacheService.getLabels().length, 2);
+  const foundById = realCacheService.findLabelById('lbl-cache-1');
+  assert.equal(foundById?.name, 'Keluarga');
+  const notFoundById = realCacheService.findLabelById('lbl-nonexistent');
+  assert.equal(notFoundById, undefined);
+
+  const foundByName = realCacheService.findLabelByName('keluarga');
+  assert.equal(foundByName?.id, 'lbl-cache-1');
+  const foundByHashName = realCacheService.findLabelByName('#GADGET');
+  assert.equal(foundByHashName?.id, 'lbl-cache-2');
+
+  // Test addLabelToCache (new & update)
+  realCacheService.addLabelToCache({ id: 'lbl-cache-3', name: 'Hiburan' });
+  assert.equal(realCacheService.findLabelByName('hiburan')?.id, 'lbl-cache-3');
+  realCacheService.addLabelToCache({ id: 'lbl-cache-3', name: 'Hiburan-Updated' });
+  assert.equal(realCacheService.findLabelById('lbl-cache-3')?.name, 'Hiburan-Updated');
+
+  // Test refreshLabels
+  mockToolResponse = [{ id: 'lbl-refreshed', name: 'Refreshed' }];
+  const refreshedList = await realCacheService.refreshLabels();
+  assert.equal(refreshedList.length, 1);
+  assert.equal(refreshedList[0].id, 'lbl-refreshed');
+}
+
+// ---------------------------------------------------------------------------
+// 7. UserMessageHandler Hashtag Fallback & Label Resolution
+// ---------------------------------------------------------------------------
+{
+  console.log('  [SUITE 7] UserMessageHandler Hashtag Fallback & Label Resolution');
+
+  const dispatchedMcpRecords: CreateRecordInputPayload[][] = [];
+  const sentMessages: string[] = [];
+
+  const mockMessagingGateway = {
+    sendTypingPresence: async () => {},
+    clearTypingPresence: async () => {},
+    sendMessage: async (_channel: string, _chatId: string, content: string) => {
+      sentMessages.push(content);
+    },
+  };
+
+  const mockPendingService = new PendingTransactionService();
+  const mockPendingActionHandler = {
+    handlePendingAction: async () => false,
+  };
+  const mockFastPathHandler = {
+    handleFastPath: async () => false,
+  };
+
+  let aiRecordOutput: CreateRecordInputPayload[] = [];
+  const mockAiProvider = {
+    providerName: 'mock',
+    processTextMessage: async () => ({
+      action: 'CREATE_RECORD',
+      explanation: 'Expense parsed',
+      records: aiRecordOutput,
+    }),
+  };
+
+  const testLabels: WalletLabelItem[] = [
+    { id: 'lbl-kantor', name: 'kantor' },
+  ];
+
+  const mockClient = {
+    fetchAccounts: async () => mockAccounts,
+    fetchCategories: async () => mockCategories,
+    fetchLabels: async () => testLabels,
+    createLabel: async (name: string) => ({ id: `lbl-${name}`, name }),
+    createRecords: async (records: CreateRecordInputPayload[]) => {
+      dispatchedMcpRecords.push(records);
+      return { summary: { total: records.length, succeeded: records.length, failed: 0 } };
+    },
+    fetchBudgets: async () => [],
+  } as unknown as WalletMcpClientService;
+
+  const testCache = new WalletCacheService(mockClient);
+  await testCache.initialize();
+
+  const userMessageHandler = new UserMessageHandler(
+    mockMessagingGateway as any,
+    mockPendingService as any,
+    mockPendingActionHandler as any,
+    mockFastPathHandler as any,
+    mockAiProvider as any,
+    testCache,
+    mockClient
+  );
+
+  // Scenario A: Single record where AI didn't include labels, but user message has hashtag
+  aiRecordOutput = [
+    {
+      accountId: 'acc-bca',
+      amount: -25000,
+      recordDate: '2026-09-11T12:00:00Z',
+      categoryId: 'cat-food',
+      note: 'Kopi siang',
+      // labels intentionally omitted to trigger user message fallback
+    },
+  ];
+
+  const incomingEvent: IncomingUserMessageEvent = {
+    channel: 'whatsapp',
+    senderIdentifier: '+628123456789',
+    chatIdentifier: '+628123456789',
+    messageType: 'text',
+    textPayload: 'Kopi siang 25rb #kantor',
+  };
+
+  await userMessageHandler.handleIncomingUserMessage(incomingEvent);
+
+  assert.equal(dispatchedMcpRecords.length, 1);
+  const createdRecord = dispatchedMcpRecords[0][0];
+  assert.deepEqual(createdRecord.labelIds, ['lbl-kantor']);
+  assert.deepEqual(createdRecord.labels, ['kantor']);
+  assert.ok(sentMessages[0].includes('🔖 #kantor'));
+
+  // Scenario B: Multi-record with existing and newly created labels
+  sentMessages.length = 0;
+  dispatchedMcpRecords.length = 0;
+  aiRecordOutput = [
+    {
+      accountId: 'acc-bca',
+      amount: -15000,
+      recordDate: '2026-09-11T12:00:00Z',
+      categoryId: 'cat-food',
+      note: 'Snack #kantor',
+      labels: ['kantor'],
+    },
+    {
+      accountId: 'acc-cash',
+      amount: -30000,
+      recordDate: '2026-09-11T12:00:00Z',
+      categoryId: 'cat-food',
+      note: 'Makan #liburan',
+      labels: ['liburan'], // 'liburan' is not in cache yet, will be auto-created
+    },
+  ];
+
+  const multiEvent: IncomingUserMessageEvent = {
+    channel: 'whatsapp',
+    senderIdentifier: '+628123456789',
+    chatIdentifier: '+628123456789',
+    messageType: 'text',
+    textPayload: 'Snack 15rb #kantor, Makan 30rb #liburan',
+  };
+
+  await userMessageHandler.handleIncomingUserMessage(multiEvent);
+
+  assert.equal(dispatchedMcpRecords.length, 1);
+  const multiRecords = dispatchedMcpRecords[0];
+  assert.equal(multiRecords.length, 2);
+  assert.deepEqual(multiRecords[0].labelIds, ['lbl-kantor']);
+  assert.deepEqual(multiRecords[1].labelIds, ['lbl-liburan']);
+  assert.ok(sentMessages[0].includes('🔖 #kantor'));
+  assert.ok(sentMessages[0].includes('🔖 #liburan'));
+}
+
+// ---------------------------------------------------------------------------
+// 8. AccountClarificationHandler Label Resolution on Draft Finalization
+// ---------------------------------------------------------------------------
+{
+  console.log('  [SUITE 8] AccountClarificationHandler Label Resolution on Draft Finalization');
+
+  const dispatchedMcpRecords: CreateRecordInputPayload[][] = [];
+  const sentMessages: string[] = [];
+
+  const mockMessagingGateway = {
+    sendTypingPresence: async () => {},
+    clearTypingPresence: async () => {},
+    sendMessage: async (_channel: string, _chatId: string, content: string) => {
+      sentMessages.push(content);
+    },
+  };
+
+  const mockPendingService = new PendingTransactionService();
+
+  const mockClient = {
+    fetchAccounts: async () => mockAccounts,
+    fetchCategories: async () => mockCategories,
+    fetchLabels: async () => [{ id: 'lbl-reimburse', name: 'reimburse' }],
+    createLabel: async (name: string) => ({ id: `lbl-${name}`, name }),
+    createRecords: async (records: CreateRecordInputPayload[]) => {
+      dispatchedMcpRecords.push(records);
+      return { summary: { total: records.length, succeeded: records.length, failed: 0 } };
+    },
+    fetchBudgets: async () => [],
+  } as unknown as WalletMcpClientService;
+
+  const testCache = new WalletCacheService(mockClient);
+  await testCache.initialize();
+
+  const clarificationHandler = new AccountClarificationHandler(
+    mockPendingService,
+    mockClient,
+    testCache,
+    mockMessagingGateway as any
+  );
+
+  // Draft with missing account but having labels
+  const unresolvedRecord: CreateRecordInputPayload = {
+    accountId: '', // missing, requires clarification
+    amount: -50000,
+    recordDate: '2026-09-11T12:00:00Z',
+    note: 'Bensin',
+    labels: ['reimburse', 'proyek-baru'], // 'reimburse' in cache, 'proyek-baru' to auto-create
+  };
+
+  const incomingEvent: IncomingUserMessageEvent = {
+    channel: 'whatsapp',
+    senderIdentifier: '+628123456789',
+    chatIdentifier: '+628123456789',
+    messageType: 'text',
+    textPayload: 'Bensin 50rb #reimburse #proyek-baru',
+  };
+
+  await clarificationHandler.createPendingAccountSelectionDraft(
+    incomingEvent,
+    [unresolvedRecord],
+    [{ recordIndex: 0, accountHint: '', reason: 'UNRESOLVED', candidates: [] }],
+    mockAccounts,
+    mockCategories
+  );
+
+  assert.equal(mockPendingService.getAllPendingAccountSelectionDrafts().length, 1);
+
+  // User selects option 1 (BCA)
+  const handled = await clarificationHandler.handlePendingAccountSelectionReply(
+    incomingEvent,
+    '1',
+    Date.now()
+  );
+
+  assert.equal(handled, true);
+  assert.equal(dispatchedMcpRecords.length, 1);
+  const finalizedRecord = dispatchedMcpRecords[0][0];
+  assert.equal(finalizedRecord.accountId, 'acc-bca');
+  assert.deepEqual(finalizedRecord.labelIds, ['lbl-reimburse', 'lbl-proyek-baru']);
+  assert.deepEqual(finalizedRecord.labels, ['reimburse', 'proyek-baru']);
+  assert.ok(sentMessages[1].includes('🔖 #reimburse #proyek-baru'));
+}
+
 console.log('[SUCCESS] All Hashtag Parsing & Label Auto-Creation tests passed cleanly!');
+

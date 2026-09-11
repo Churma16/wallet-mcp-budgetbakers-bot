@@ -262,6 +262,7 @@ export class WalletMcpClientService {
         icon: item.icon,
       })).filter(item => item.id.length > 0 && item.name.length > 0);
 
+      this.cacheLastUpdatedTimestamp = Date.now();
       return this.cachedLabelList;
     } catch (error) {
       applicationLogger.fileDetail('warn', 'Failed to fetch labels from Wallet MCP', {
