@@ -739,7 +739,7 @@ async function runTestSuite(): Promise<void> {
   }
 }
 
-runTestSuite().catch(suiteError => {
-  console.error(`[ERROR] Test suite execution failed: ${suiteError}`);
+runTestSuite().catch(() => {
+  console.error('[ERROR] Test suite execution failed unexpectedly.');
   process.exit(1);
 });
