@@ -164,6 +164,85 @@ export function getPreviousLocalDateString(currentLocalDateString: string): stri
 }
 
 /**
+ * Computes the next calendar date string (YYYY-MM-DD) from a given local date string.
+ * Handles month rollovers, leap years, and year transitions cleanly.
+ */
+export function getNextLocalDateString(currentLocalDateString: string): string {
+  const [yearString, monthString, dayString] = currentLocalDateString.split('-');
+  const currentYear = Number.parseInt(yearString, 10);
+  const currentMonth = Number.parseInt(monthString, 10);
+  const currentDay = Number.parseInt(dayString, 10);
+
+  const nextDate = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay + 1));
+  const nextYear = nextDate.getUTCFullYear();
+  const nextMonth = String(nextDate.getUTCMonth() + 1).padStart(2, '0');
+  const nextDay = String(nextDate.getUTCDate()).padStart(2, '0');
+
+  return `${nextYear}-${nextMonth}-${nextDay}`;
+}
+
+/**
+ * Normalizes a Date object or YYYY-MM-DD string into a local calendar date string (YYYY-MM-DD).
+ */
+function normalizeToLocalDateString(
+  dateInput: Date | string,
+  targetTimezoneIdentifier: string = 'Asia/Jakarta'
+): string {
+  if (typeof dateInput === 'string') {
+    const trimmedInput = dateInput.trim();
+    if (trimmedInput.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(trimmedInput)) {
+      return trimmedInput.slice(0, 10);
+    }
+    const parsedDate = new Date(trimmedInput);
+    if (!Number.isNaN(parsedDate.getTime())) {
+      return getLocalTimeParts(parsedDate, targetTimezoneIdentifier).dateString;
+    }
+    return trimmedInput;
+  }
+  return getLocalTimeParts(dateInput, targetTimezoneIdentifier).dateString;
+}
+
+/**
+ * Resolves an explicit or reference calendar date to half-open UTC boundaries [gte.<startUtcIso>, lt.<nextBoundaryUtcIso>]
+ * covering the full 24-hour day in the target local timezone.
+ *
+ * Invariant: On local date D, resolveLocalCalendarDayRange(D) and
+ * resolveLocalCalendarDayRange(referenceInstantOnD) produce the exact same UTC boundaries.
+ */
+export function resolveLocalCalendarDayRange(
+  dateInput: Date | string,
+  targetTimezoneIdentifier: string = 'Asia/Jakarta'
+): [string, string] {
+  const localDateString = normalizeToLocalDateString(dateInput, targetTimezoneIdentifier);
+  const nextDayDateString = getNextLocalDateString(localDateString);
+
+  const startUtcIso = resolveTargetLocalToUtcIso(localDateString, 0, 0, targetTimezoneIdentifier);
+  const nextBoundaryUtcIso = resolveTargetLocalToUtcIso(nextDayDateString, 0, 0, targetTimezoneIdentifier);
+
+  return [`gte.${startUtcIso}`, `lt.${nextBoundaryUtcIso}`];
+}
+
+/**
+ * Resolves a local calendar date range [fromDate, toDate] (inclusive of toDate in local time)
+ * to half-open UTC boundaries [gte.<startUtcIso>, lt.<nextBoundaryUtcIso>]
+ * where nextBoundaryUtcIso is the start of the calendar day after toDate in the target local timezone.
+ */
+export function resolveLocalCalendarRange(
+  fromDateInput: Date | string,
+  toDateInput: Date | string,
+  targetTimezoneIdentifier: string = 'Asia/Jakarta'
+): [string, string] {
+  const fromDateString = normalizeToLocalDateString(fromDateInput, targetTimezoneIdentifier);
+  const toDateString = normalizeToLocalDateString(toDateInput, targetTimezoneIdentifier);
+  const dayAfterToDateString = getNextLocalDateString(toDateString);
+
+  const startUtcIso = resolveTargetLocalToUtcIso(fromDateString, 0, 0, targetTimezoneIdentifier);
+  const nextBoundaryUtcIso = resolveTargetLocalToUtcIso(dayAfterToDateString, 0, 0, targetTimezoneIdentifier);
+
+  return [`gte.${startUtcIso}`, `lt.${nextBoundaryUtcIso}`];
+}
+
+/**
  * Formats a local date and time in the specified timezone into a valid ISO 8601 UTC timestamp.
  */
 export function formatLocalToUtcIso(

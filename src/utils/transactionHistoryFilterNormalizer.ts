@@ -8,7 +8,13 @@ import {
   WalletCategoryItem,
 } from '../types/walletTypes.js';
 import { getApplicationTimezone } from './humanResponseFormatter.js';
-import { getLocalTimeParts, resolveTargetLocalToUtcIso } from './relativeTimeParser.js';
+import {
+  getLocalTimeParts,
+  getNextLocalDateString,
+  getPreviousLocalDateString,
+  resolveLocalCalendarDayRange,
+  resolveLocalCalendarRange,
+} from './relativeTimeParser.js';
 
 export const SUPPORTED_BUDGETBAKERS_CATEGORY_GROUPS: readonly string[] = [
   'communication_pc',
@@ -142,16 +148,7 @@ export function isDateOnlyString(dateString: string): boolean {
 }
 
 export function getNextCalendarDayString(dateOnlyString: string): string {
-  const [yearStr, monthStr, dayStr] = dateOnlyString.trim().split('-');
-  const year = Number.parseInt(yearStr, 10);
-  const month = Number.parseInt(monthStr, 10);
-  const day = Number.parseInt(dayStr, 10);
-  const nextDay = new Date(Date.UTC(year, month - 1, day + 1));
-  return formatIsoDateParts(
-    nextDay.getUTCFullYear(),
-    nextDay.getUTCMonth() + 1,
-    nextDay.getUTCDate()
-  );
+  return getNextLocalDateString(dateOnlyString);
 }
 
 const CANONICAL_SIMPLE_KEYWORD_REGEX = /^[a-zA-Z0-9_-]+$/;
@@ -239,18 +236,8 @@ export function calculateRelativeDateRange(
   switch (period) {
     case 'today': {
       const todayDateString = formatIsoDateParts(currentYear, currentMonth, currentDay);
-      const nextDayDate = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay + 1));
-      const nextDayDateString = formatIsoDateParts(
-        nextDayDate.getUTCFullYear(),
-        nextDayDate.getUTCMonth() + 1,
-        nextDayDate.getUTCDate()
-      );
-
-      const startUtcIso = resolveTargetLocalToUtcIso(todayDateString, 0, 0, timezoneIdentifier);
-      const nextBoundaryUtcIso = resolveTargetLocalToUtcIso(nextDayDateString, 0, 0, timezoneIdentifier);
-
       return {
-        recordDate: [`gte.${startUtcIso}`, `lt.${nextBoundaryUtcIso}`],
+        recordDate: resolveLocalCalendarDayRange(todayDateString, timezoneIdentifier),
         from: todayDateString,
         to: todayDateString,
         label: 'Hari ini',
@@ -259,19 +246,10 @@ export function calculateRelativeDateRange(
     }
 
     case 'yesterday': {
-      const yesterdayDate = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay - 1));
-      const yesterdayDateString = formatIsoDateParts(
-        yesterdayDate.getUTCFullYear(),
-        yesterdayDate.getUTCMonth() + 1,
-        yesterdayDate.getUTCDate()
-      );
       const todayDateString = formatIsoDateParts(currentYear, currentMonth, currentDay);
-
-      const startUtcIso = resolveTargetLocalToUtcIso(yesterdayDateString, 0, 0, timezoneIdentifier);
-      const nextBoundaryUtcIso = resolveTargetLocalToUtcIso(todayDateString, 0, 0, timezoneIdentifier);
-
+      const yesterdayDateString = getPreviousLocalDateString(todayDateString);
       return {
-        recordDate: [`gte.${startUtcIso}`, `lt.${nextBoundaryUtcIso}`],
+        recordDate: resolveLocalCalendarDayRange(yesterdayDateString, timezoneIdentifier),
         from: yesterdayDateString,
         to: yesterdayDateString,
         label: 'Kemarin',
@@ -286,7 +264,6 @@ export function calculateRelativeDateRange(
 
       const mondayDate = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay - daysSinceMonday));
       const sundayDate = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay - daysSinceMonday + 6));
-      const nextMondayDate = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay - daysSinceMonday + 7));
 
       const mondayDateString = formatIsoDateParts(
         mondayDate.getUTCFullYear(),
@@ -298,17 +275,9 @@ export function calculateRelativeDateRange(
         sundayDate.getUTCMonth() + 1,
         sundayDate.getUTCDate()
       );
-      const nextMondayDateString = formatIsoDateParts(
-        nextMondayDate.getUTCFullYear(),
-        nextMondayDate.getUTCMonth() + 1,
-        nextMondayDate.getUTCDate()
-      );
-
-      const startUtcIso = resolveTargetLocalToUtcIso(mondayDateString, 0, 0, timezoneIdentifier);
-      const nextBoundaryUtcIso = resolveTargetLocalToUtcIso(nextMondayDateString, 0, 0, timezoneIdentifier);
 
       return {
-        recordDate: [`gte.${startUtcIso}`, `lt.${nextBoundaryUtcIso}`],
+        recordDate: resolveLocalCalendarRange(mondayDateString, sundayDateString, timezoneIdentifier),
         from: mondayDateString,
         to: sundayDateString,
         label: 'Minggu ini',
@@ -323,7 +292,6 @@ export function calculateRelativeDateRange(
 
       const previousMondayDate = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay - daysSinceMonday - 7));
       const previousSundayDate = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay - daysSinceMonday - 1));
-      const currentMondayDate = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay - daysSinceMonday));
 
       const previousMondayDateString = formatIsoDateParts(
         previousMondayDate.getUTCFullYear(),
@@ -335,17 +303,9 @@ export function calculateRelativeDateRange(
         previousSundayDate.getUTCMonth() + 1,
         previousSundayDate.getUTCDate()
       );
-      const currentMondayDateString = formatIsoDateParts(
-        currentMondayDate.getUTCFullYear(),
-        currentMondayDate.getUTCMonth() + 1,
-        currentMondayDate.getUTCDate()
-      );
-
-      const startUtcIso = resolveTargetLocalToUtcIso(previousMondayDateString, 0, 0, timezoneIdentifier);
-      const nextBoundaryUtcIso = resolveTargetLocalToUtcIso(currentMondayDateString, 0, 0, timezoneIdentifier);
 
       return {
-        recordDate: [`gte.${startUtcIso}`, `lt.${nextBoundaryUtcIso}`],
+        recordDate: resolveLocalCalendarRange(previousMondayDateString, previousSundayDateString, timezoneIdentifier),
         from: previousMondayDateString,
         to: previousSundayDateString,
         label: 'Minggu lalu',
@@ -356,7 +316,6 @@ export function calculateRelativeDateRange(
     case 'this_month': {
       const firstDayOfMonthDate = new Date(Date.UTC(currentYear, currentMonth - 1, 1));
       const lastDayOfMonthDate = new Date(Date.UTC(currentYear, currentMonth, 0));
-      const nextMonthFirstDayDate = new Date(Date.UTC(currentYear, currentMonth, 1));
 
       const firstDayOfMonthString = formatIsoDateParts(
         firstDayOfMonthDate.getUTCFullYear(),
@@ -368,17 +327,9 @@ export function calculateRelativeDateRange(
         lastDayOfMonthDate.getUTCMonth() + 1,
         lastDayOfMonthDate.getUTCDate()
       );
-      const nextMonthFirstDayString = formatIsoDateParts(
-        nextMonthFirstDayDate.getUTCFullYear(),
-        nextMonthFirstDayDate.getUTCMonth() + 1,
-        nextMonthFirstDayDate.getUTCDate()
-      );
-
-      const startUtcIso = resolveTargetLocalToUtcIso(firstDayOfMonthString, 0, 0, timezoneIdentifier);
-      const nextBoundaryUtcIso = resolveTargetLocalToUtcIso(nextMonthFirstDayString, 0, 0, timezoneIdentifier);
 
       return {
-        recordDate: [`gte.${startUtcIso}`, `lt.${nextBoundaryUtcIso}`],
+        recordDate: resolveLocalCalendarRange(firstDayOfMonthString, lastDayOfMonthString, timezoneIdentifier),
         from: firstDayOfMonthString,
         to: lastDayOfMonthString,
         label: 'Bulan ini',
@@ -389,7 +340,6 @@ export function calculateRelativeDateRange(
     case 'last_month': {
       const firstDayOfLastMonthDate = new Date(Date.UTC(currentYear, currentMonth - 2, 1));
       const lastDayOfLastMonthDate = new Date(Date.UTC(currentYear, currentMonth - 1, 0));
-      const firstDayOfCurrentMonthDate = new Date(Date.UTC(currentYear, currentMonth - 1, 1));
 
       const firstDayOfLastMonthString = formatIsoDateParts(
         firstDayOfLastMonthDate.getUTCFullYear(),
@@ -401,17 +351,9 @@ export function calculateRelativeDateRange(
         lastDayOfLastMonthDate.getUTCMonth() + 1,
         lastDayOfLastMonthDate.getUTCDate()
       );
-      const firstDayOfCurrentMonthString = formatIsoDateParts(
-        firstDayOfCurrentMonthDate.getUTCFullYear(),
-        firstDayOfCurrentMonthDate.getUTCMonth() + 1,
-        firstDayOfCurrentMonthDate.getUTCDate()
-      );
-
-      const startUtcIso = resolveTargetLocalToUtcIso(firstDayOfLastMonthString, 0, 0, timezoneIdentifier);
-      const nextBoundaryUtcIso = resolveTargetLocalToUtcIso(firstDayOfCurrentMonthString, 0, 0, timezoneIdentifier);
 
       return {
-        recordDate: [`gte.${startUtcIso}`, `lt.${nextBoundaryUtcIso}`],
+        recordDate: resolveLocalCalendarRange(firstDayOfLastMonthString, lastDayOfLastMonthString, timezoneIdentifier),
         from: firstDayOfLastMonthString,
         to: lastDayOfLastMonthString,
         label: 'Bulan lalu',
@@ -422,13 +364,9 @@ export function calculateRelativeDateRange(
     case 'this_year': {
       const firstDayOfYearString = formatIsoDateParts(currentYear, 1, 1);
       const lastDayOfYearString = formatIsoDateParts(currentYear, 12, 31);
-      const nextYearFirstDayString = formatIsoDateParts(currentYear + 1, 1, 1);
-
-      const startUtcIso = resolveTargetLocalToUtcIso(firstDayOfYearString, 0, 0, timezoneIdentifier);
-      const nextBoundaryUtcIso = resolveTargetLocalToUtcIso(nextYearFirstDayString, 0, 0, timezoneIdentifier);
 
       return {
-        recordDate: [`gte.${startUtcIso}`, `lt.${nextBoundaryUtcIso}`],
+        recordDate: resolveLocalCalendarRange(firstDayOfYearString, lastDayOfYearString, timezoneIdentifier),
         from: firstDayOfYearString,
         to: lastDayOfYearString,
         label: 'Tahun ini',
@@ -847,9 +785,7 @@ export function normalizeTransactionHistoryFilters(
 
       if (isAllDateOnly && (fromDateString || toDateString)) {
         if (fromDateString && toDateString && fromDateString === toDateString) {
-          const startUtcIso = resolveTargetLocalToUtcIso(fromDateString, 0, 0, timezoneIdentifier);
-          const nextUtcIso = resolveTargetLocalToUtcIso(getNextCalendarDayString(fromDateString), 0, 0, timezoneIdentifier);
-          upstreamRecordDate = [`gte.${startUtcIso}`, `lt.${nextUtcIso}`];
+          upstreamRecordDate = resolveLocalCalendarDayRange(fromDateString, timezoneIdentifier);
           appliedFilters.dateRange = {
             from: fromDateString,
             to: toDateString,
@@ -858,9 +794,7 @@ export function normalizeTransactionHistoryFilters(
             rawRange: upstreamRecordDate,
           };
         } else if (fromDateString && toDateString) {
-          const startUtcIso = resolveTargetLocalToUtcIso(fromDateString, 0, 0, timezoneIdentifier);
-          const endNextUtcIso = resolveTargetLocalToUtcIso(getNextCalendarDayString(toDateString), 0, 0, timezoneIdentifier);
-          upstreamRecordDate = [`gte.${startUtcIso}`, `lt.${endNextUtcIso}`];
+          upstreamRecordDate = resolveLocalCalendarRange(fromDateString, toDateString, timezoneIdentifier);
           appliedFilters.dateRange = {
             from: fromDateString,
             to: toDateString,
@@ -869,8 +803,8 @@ export function normalizeTransactionHistoryFilters(
             rawRange: upstreamRecordDate,
           };
         } else if (fromDateString) {
-          const startUtcIso = resolveTargetLocalToUtcIso(fromDateString, 0, 0, timezoneIdentifier);
-          upstreamRecordDate = [`gte.${startUtcIso}`];
+          const [gteStartBoundary] = resolveLocalCalendarDayRange(fromDateString, timezoneIdentifier);
+          upstreamRecordDate = [gteStartBoundary];
           appliedFilters.dateRange = {
             from: fromDateString,
             selector: fromDateString,
@@ -878,8 +812,8 @@ export function normalizeTransactionHistoryFilters(
             rawRange: upstreamRecordDate,
           };
         } else if (toDateString) {
-          const endNextUtcIso = resolveTargetLocalToUtcIso(getNextCalendarDayString(toDateString), 0, 0, timezoneIdentifier);
-          upstreamRecordDate = [`lt.${endNextUtcIso}`];
+          const [, ltEndBoundary] = resolveLocalCalendarDayRange(toDateString, timezoneIdentifier);
+          upstreamRecordDate = [ltEndBoundary];
           appliedFilters.dateRange = {
             to: toDateString,
             selector: toDateString,
@@ -952,9 +886,7 @@ export function normalizeTransactionHistoryFilters(
         const toDateString = rawTo ? rawTo.trim().slice(0, 10) : undefined;
 
         if (fromDateString && toDateString && fromDateString === toDateString && isDateOnlyString(fromDateString)) {
-          const startUtcIso = resolveTargetLocalToUtcIso(fromDateString, 0, 0, timezoneIdentifier);
-          const nextUtcIso = resolveTargetLocalToUtcIso(getNextCalendarDayString(fromDateString), 0, 0, timezoneIdentifier);
-          upstreamRecordDate = [`gte.${startUtcIso}`, `lt.${nextUtcIso}`];
+          upstreamRecordDate = resolveLocalCalendarDayRange(fromDateString, timezoneIdentifier);
           appliedFilters.dateRange = {
             from: fromDateString,
             to: toDateString,
@@ -963,9 +895,7 @@ export function normalizeTransactionHistoryFilters(
             rawRange: upstreamRecordDate,
           };
         } else if (fromDateString && toDateString && isDateOnlyString(fromDateString) && isDateOnlyString(toDateString)) {
-          const startUtcIso = resolveTargetLocalToUtcIso(fromDateString, 0, 0, timezoneIdentifier);
-          const endNextUtcIso = resolveTargetLocalToUtcIso(getNextCalendarDayString(toDateString), 0, 0, timezoneIdentifier);
-          upstreamRecordDate = [`gte.${startUtcIso}`, `lt.${endNextUtcIso}`];
+          upstreamRecordDate = resolveLocalCalendarRange(fromDateString, toDateString, timezoneIdentifier);
           appliedFilters.dateRange = {
             from: fromDateString,
             to: toDateString,
@@ -974,8 +904,8 @@ export function normalizeTransactionHistoryFilters(
             rawRange: upstreamRecordDate,
           };
         } else if (fromDateString && isDateOnlyString(fromDateString)) {
-          const startUtcIso = resolveTargetLocalToUtcIso(fromDateString, 0, 0, timezoneIdentifier);
-          upstreamRecordDate = [`gte.${startUtcIso}`];
+          const [gteStartBoundary] = resolveLocalCalendarDayRange(fromDateString, timezoneIdentifier);
+          upstreamRecordDate = [gteStartBoundary];
           appliedFilters.dateRange = {
             from: fromDateString,
             selector: fromDateString,
@@ -983,8 +913,8 @@ export function normalizeTransactionHistoryFilters(
             rawRange: upstreamRecordDate,
           };
         } else if (toDateString && isDateOnlyString(toDateString)) {
-          const endNextUtcIso = resolveTargetLocalToUtcIso(getNextCalendarDayString(toDateString), 0, 0, timezoneIdentifier);
-          upstreamRecordDate = [`lt.${endNextUtcIso}`];
+          const [, ltEndBoundary] = resolveLocalCalendarDayRange(toDateString, timezoneIdentifier);
+          upstreamRecordDate = [ltEndBoundary];
           appliedFilters.dateRange = {
             to: toDateString,
             selector: toDateString,
