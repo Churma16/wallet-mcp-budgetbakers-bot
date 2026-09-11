@@ -9,6 +9,13 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - '.github/workflows/container.yml'
   workflow_dispatch:
 
 permissions:
