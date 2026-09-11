@@ -23,7 +23,7 @@ import {
   formatAccountSelectionUnknownOutcome,
 } from '../utils/accountClarificationFormatter.js';
 import { getDictionary } from '../i18n/index.js';
-import { applicationLogger } from '../utils/logger.js';
+import { applicationLogger, formatConciseErrorMessage } from '../utils/logger.js';
 
 export class AccountClarificationHandler {
   constructor(
@@ -90,26 +90,19 @@ export class AccountClarificationHandler {
     const draftState = this.pendingTransactionManager.getPendingAccountSelectionDraftState(
       pendingDraft.ticketId
     );
-    if (draftState === 'UNKNOWN') {
-      await this.messagingGateway.sendMessage(
-        event.channel,
-        event.chatIdentifier,
-        formatAccountSelectionUnknownOutcome(pendingDraft)
-      );
-      return true;
-    }
-
-    if (draftState === 'PROCESSING') {
-      await this.messagingGateway.sendMessage(
-        event.channel,
-        event.chatIdentifier,
-        formatAccountSelectionProcessing(pendingDraft)
-      );
-      return true;
-    }
-
     const normalizedReply = userReply.trim();
-    if (/^(?:batal|cancel)$/i.test(normalizedReply)) {
+    const isCancellationRequest = /^(?:batal|cancel)$/i.test(normalizedReply);
+
+    if (isCancellationRequest) {
+      if (draftState === 'PROCESSING') {
+        await this.messagingGateway.sendMessage(
+          event.channel,
+          event.chatIdentifier,
+          formatAccountSelectionProcessing(pendingDraft)
+        );
+        return true;
+      }
+
       const cancelledDraft = this.pendingTransactionManager.rejectPendingAccountSelectionDraft(
         pendingDraft.ticketId
       );
@@ -123,6 +116,22 @@ export class AccountClarificationHandler {
           `[Account Clarification] Draft #${cancelledDraft.ticketId} cancelled before Wallet dispatch.`
         );
       }
+      return true;
+    }
+
+    // UNKNOWN is a manual-reconciliation state, not an account-selection state. The user has
+    // already received the uncertainty warning when the MCP call failed, so unrelated commands
+    // must continue through the normal message router without causing an automatic retry.
+    if (draftState === 'UNKNOWN') {
+      return false;
+    }
+
+    if (draftState === 'PROCESSING') {
+      await this.messagingGateway.sendMessage(
+        event.channel,
+        event.chatIdentifier,
+        formatAccountSelectionProcessing(pendingDraft)
+      );
       return true;
     }
 
@@ -159,10 +168,12 @@ export class AccountClarificationHandler {
       accountId: selectedAccount.id,
     };
 
+    // Keep the original candidate mapping for this unresolved record. A definitive MCP failure
+    // returns the draft to PENDING, so replying with the same numeric option must resolve to the
+    // same account on retry.
     this.pendingTransactionManager.updatePendingAccountSelectionDraft(claimedDraft.ticketId, {
       records: updatedRecords,
       accountHint: selectedAccount.name,
-      candidateAccounts: [selectedAccount],
     });
 
     const availableAccounts = this.walletCacheService.getAccounts();
@@ -232,23 +243,6 @@ export class AccountClarificationHandler {
 
     try {
       await this.walletMcpClient.createRecords(validationResult.sanitizedRecords);
-      this.pendingTransactionManager.resolvePendingAccountSelectionDraft(claimedDraft.ticketId);
-
-      await this.messagingGateway.sendMessage(
-        event.channel,
-        event.chatIdentifier,
-        formatRecordSuccessMessage(
-          validationResult.sanitizedRecords,
-          availableAccounts,
-          availableCategories
-        ).trim()
-      );
-
-      const processingDurationMs = Date.now() - processingStartTimestamp;
-      applicationLogger.success(
-        `[Account Clarification] Draft #${claimedDraft.ticketId} recorded after account selection (${processingDurationMs}ms).`
-      );
-      return true;
     } catch (error) {
       if (isWalletMcpDefinitiveFailure(error)) {
         this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(claimedDraft.ticketId);
@@ -273,6 +267,33 @@ export class AccountClarificationHandler {
       }
       return true;
     }
+
+    // The Wallet write is now known to have succeeded. Resolve the draft before attempting the
+    // acknowledgement so a downstream messaging failure cannot turn a committed write into an
+    // UNKNOWN/retryable transaction state.
+    this.pendingTransactionManager.resolvePendingAccountSelectionDraft(claimedDraft.ticketId);
+
+    try {
+      await this.messagingGateway.sendMessage(
+        event.channel,
+        event.chatIdentifier,
+        formatRecordSuccessMessage(
+          validationResult.sanitizedRecords,
+          availableAccounts,
+          availableCategories
+        ).trim()
+      );
+    } catch (messagingError) {
+      applicationLogger.error(
+        `[Account Clarification] Draft #${claimedDraft.ticketId} was recorded, but the success acknowledgement failed: ${formatConciseErrorMessage(messagingError)}`
+      );
+    }
+
+    const processingDurationMs = Date.now() - processingStartTimestamp;
+    applicationLogger.success(
+      `[Account Clarification] Draft #${claimedDraft.ticketId} recorded after account selection (${processingDurationMs}ms).`
+    );
+    return true;
   }
 
   private getFirstAccountResolutionIssue(
