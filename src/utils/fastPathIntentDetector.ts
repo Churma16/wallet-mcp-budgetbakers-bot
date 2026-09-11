@@ -96,6 +96,22 @@ function extractHistoryQueryOptionsFromTokens(
   let resolvedCategoryName: string | undefined = undefined;
   let resolvedSearchQuery: string | undefined = undefined;
 
+  // Protect quoted search literals before structured-token parsing so reserved
+  // filter words inside quotes remain part of the literal search query.
+  const explicitQuotedSearchMatch = remainingTokens.match(
+    /\b(?:cari|search|find|keyword|q)(?::\s*|=\s*|\s+)(?:"([^"]+)"|'([^']+)')/i
+  );
+  if (explicitQuotedSearchMatch) {
+    resolvedSearchQuery = explicitQuotedSearchMatch[1] || explicitQuotedSearchMatch[2];
+    remainingTokens = remainingTokens.replace(explicitQuotedSearchMatch[0], ' ').trim();
+  } else {
+    const leadingQuotedSearchMatch = remainingTokens.match(/^(?:"([^"]+)"|'([^']+)')(?:\s+|$)/);
+    if (leadingQuotedSearchMatch) {
+      resolvedSearchQuery = leadingQuotedSearchMatch[1] || leadingQuotedSearchMatch[2];
+      remainingTokens = remainingTokens.slice(leadingQuotedSearchMatch[0].length).trim();
+    }
+  }
+
   // 1. Extract sort token
   const sortMatch = remainingTokens.match(/\b(terlama|oldest|terbaru|newest)\b/i);
   if (sortMatch) {
