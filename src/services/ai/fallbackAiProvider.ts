@@ -73,12 +73,18 @@ export class FallbackAiProvider implements FinancialAiProvider {
   public async processTextMessage(
     userMessageText: string,
     availableAccountList: WalletAccountItem[],
-    availableCategoryList: WalletCategoryItem[]
+    availableCategoryList: WalletCategoryItem[],
+    referenceInstant?: Date
   ): Promise<ExtractedFinancialIntent> {
     return this.executeWithFallback(
       'processTextMessage',
       async (currentProvider: FinancialAiProvider) =>
-        currentProvider.processTextMessage(userMessageText, availableAccountList, availableCategoryList)
+        currentProvider.processTextMessage(
+          userMessageText,
+          availableAccountList,
+          availableCategoryList,
+          referenceInstant
+        )
     );
   }
 
@@ -90,7 +96,8 @@ export class FallbackAiProvider implements FinancialAiProvider {
     mimeType: string,
     optionalCaption: string,
     availableAccountList: WalletAccountItem[],
-    availableCategoryList: WalletCategoryItem[]
+    availableCategoryList: WalletCategoryItem[],
+    referenceInstant?: Date
   ): Promise<ExtractedFinancialIntent> {
     return this.executeWithFallback(
       'processImageMessage',
@@ -100,7 +107,8 @@ export class FallbackAiProvider implements FinancialAiProvider {
           mimeType,
           optionalCaption,
           availableAccountList,
-          availableCategoryList
+          availableCategoryList,
+          referenceInstant
         )
     );
   }

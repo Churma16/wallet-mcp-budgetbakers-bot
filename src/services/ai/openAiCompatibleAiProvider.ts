@@ -242,10 +242,11 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
   public async processTextMessage(
     userMessageText: string,
     availableAccountList: WalletAccountItem[],
-    availableCategoryList: WalletCategoryItem[]
+    availableCategoryList: WalletCategoryItem[],
+    referenceInstant: Date = new Date()
   ): Promise<ExtractedFinancialIntent> {
     const applicationTimezone = getApplicationTimezone();
-    const currentDateIso = getCurrentLocalDateString(new Date(), applicationTimezone);
+    const currentDateIso = getCurrentLocalDateString(referenceInstant, applicationTimezone);
     const systemInstruction = buildCompactSystemInstruction(
       availableAccountList,
       availableCategoryList,
@@ -254,7 +255,7 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     );
 
     const trimmedUserMessage = userMessageText.trim();
-    const currentTransactionTimestampIso = new Date().toISOString();
+    const currentTransactionTimestampIso = referenceInstant.toISOString();
     const promptTextWithTimestamp = buildTextMessagePrompt(
       trimmedUserMessage,
       currentTransactionTimestampIso,
@@ -293,10 +294,11 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     mimeType: string,
     optionalCaption: string,
     availableAccountList: WalletAccountItem[],
-    availableCategoryList: WalletCategoryItem[]
+    availableCategoryList: WalletCategoryItem[],
+    referenceInstant: Date = new Date()
   ): Promise<ExtractedFinancialIntent> {
     const applicationTimezoneIdentifier = getApplicationTimezone();
-    const currentDateIso = getCurrentLocalDateString(new Date(), applicationTimezoneIdentifier);
+    const currentDateIso = getCurrentLocalDateString(referenceInstant, applicationTimezoneIdentifier);
     const systemInstruction = buildReceiptSystemInstruction(
       availableAccountList,
       availableCategoryList,
@@ -304,7 +306,7 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
       applicationTimezoneIdentifier
     );
 
-    const currentTransactionTimestampIso = new Date().toISOString();
+    const currentTransactionTimestampIso = referenceInstant.toISOString();
     const promptText = buildReceiptExtractionPrompt(optionalCaption, currentTransactionTimestampIso);
 
     const base64ImageUrl = `data:${mimeType};base64,${imageBuffer.toString('base64')}`;

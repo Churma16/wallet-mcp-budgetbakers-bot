@@ -106,12 +106,13 @@ async function runRelativeTimeExpressionsTestSuite(): Promise<void> {
     `semalem resolves to yesterday malam (got: ${semalemColloquial?.resolvedUtcIso})`
   );
 
-  // tadi malam / tadi malem -> yesterday 20:00 WIB
+  // tadi malam / tadi malem -> today 20:00 WIB (aligned with Issue #4 tadi + period contract)
   const tadiMalam = parseRelativeTime('tadi malam nonton bioskop 60rb', fixedReferenceUtc, defaultTimezone);
   assertCondition(
-    tadiMalam?.resolvedUtcIso === '2026-09-10T13:00:00.000Z',
-    `tadi malam resolves to yesterday malam 2026-09-10T13:00:00.000Z (got: ${tadiMalam?.resolvedUtcIso})`
+    tadiMalam?.resolvedUtcIso === '2026-09-11T13:00:00.000Z',
+    `tadi malam resolves to today malam 2026-09-11T13:00:00.000Z (got: ${tadiMalam?.resolvedUtcIso})`
   );
+  assertCondition(tadiMalam?.dayReference === 'today', 'tadi malam references today');
 
   // kemarin malam / kemarin malem -> yesterday 20:00 WIB
   const kemarinMalam = parseRelativeTime('kemarin malem makan sate 50rb pake cash', fixedReferenceUtc, defaultTimezone);
@@ -693,6 +694,51 @@ async function runRelativeTimeExpressionsTestSuite(): Promise<void> {
     '15.30 dollars does not override target hour to 15'
   );
 
+  // Common transaction verbs without positive temporal context: "yesterday paid 15.30 for lunch"
+  const paidInput = parseRelativeTime(
+    'yesterday paid 15.30 for lunch',
+    fixedReferenceUtc,
+    defaultTimezone
+  );
+  assertCondition(
+    paidInput !== null && paidInput.hasExplicitTime === false,
+    'yesterday paid 15.30 for lunch is not parsed as explicit clock time'
+  );
+  assertCondition(
+    paidInput?.targetHour !== 15,
+    'paid 15.30 does not override target hour to 15'
+  );
+
+  // Transaction verb "pay": "yesterday pay 15.30"
+  const payInput = parseRelativeTime(
+    'yesterday pay 15.30',
+    fixedReferenceUtc,
+    defaultTimezone
+  );
+  assertCondition(
+    payInput !== null && payInput.hasExplicitTime === false,
+    'yesterday pay 15.30 is not parsed as explicit clock time'
+  );
+  assertCondition(
+    payInput?.targetHour !== 15,
+    'pay 15.30 does not override target hour to 15'
+  );
+
+  // Indonesian transaction verb "beli": "kemarin beli 15.30 roti"
+  const beliInput = parseRelativeTime(
+    'kemarin beli 15.30 roti',
+    fixedReferenceUtc,
+    defaultTimezone
+  );
+  assertCondition(
+    beliInput !== null && beliInput.hasExplicitTime === false,
+    'kemarin beli 15.30 roti is not parsed as explicit clock time'
+  );
+  assertCondition(
+    beliInput?.targetHour !== 15,
+    'beli 15.30 does not override target hour to 15'
+  );
+
   // Bare clock without currency: "yesterday 15.30 bought lunch"
   const bareClockLunch = parseRelativeTime(
     'yesterday 15.30 bought lunch',
@@ -843,6 +889,115 @@ async function runRelativeTimeExpressionsTestSuite(): Promise<void> {
   } finally {
     process.env.APP_TIMEZONE = originalAppTimezone;
   }
+
+  // Test 15: Tadi Malam Alignment with Issue #4 Contract (PR Review Comment 1)
+  applicationLogger.info('\nTEST 15: Tadi Malam Alignment with Issue #4 Contract (Current Local Date)');
+  // Reference at 22:30 WIB (UTC: 2026-09-11 15:30:00Z)
+  const eveningReferenceUtc = new Date('2026-09-11T15:30:00.000Z');
+  const eveningTadiMalam = parseRelativeTime(
+    'tadi malam makan 50rb',
+    eveningReferenceUtc,
+    defaultTimezone
+  );
+  assertCondition(
+    eveningTadiMalam !== null,
+    'tadi malam at 22:30 WIB matches relative time parser'
+  );
+  assertCondition(
+    eveningTadiMalam?.dayReference === 'today',
+    `tadi malam references today (got: ${eveningTadiMalam?.dayReference})`
+  );
+  assertCondition(
+    eveningTadiMalam?.targetDateString === '2026-09-11',
+    `tadi malam at 22:30 WIB resolves to current local date 2026-09-11 (got: ${eveningTadiMalam?.targetDateString})`
+  );
+  assertCondition(
+    eveningTadiMalam?.targetHour === 20 && eveningTadiMalam?.targetMinute === 0,
+    'tadi malam resolves to representative night hour 20:00'
+  );
+  assertCondition(
+    eveningTadiMalam?.resolvedUtcIso === '2026-09-11T13:00:00.000Z',
+    `tadi malam at 22:30 WIB converts to UTC 2026-09-11T13:00:00.000Z (got: ${eveningTadiMalam?.resolvedUtcIso})`
+  );
+
+  // Contrast with "semalam makan sate 50rb" at the same 22:30 reference
+  const eveningSemalam = parseRelativeTime(
+    'semalam makan sate 50rb',
+    eveningReferenceUtc,
+    defaultTimezone
+  );
+  assertCondition(
+    eveningSemalam?.dayReference === 'yesterday',
+    'semalam references yesterday'
+  );
+  assertCondition(
+    eveningSemalam?.targetDateString === '2026-09-10',
+    `semalam resolves to previous local date 2026-09-10 (got: ${eveningSemalam?.targetDateString})`
+  );
+  assertCondition(
+    eveningSemalam?.resolvedUtcIso === '2026-09-10T13:00:00.000Z',
+    `semalam converts to UTC 2026-09-10T13:00:00.000Z (got: ${eveningSemalam?.resolvedUtcIso})`
+  );
+
+  // Test 16: Request-Scoped Reference Instant Propagation Across AI and Validation (PR Review Comment 2)
+  applicationLogger.info('\nTEST 16: Request-Scoped Reference Instant Propagation Across AI and Validation');
+  // Scenario: Request starts 5 seconds before local midnight (23:59:55 WIB on Sept 11, UTC: 2026-09-11 16:59:55Z)
+  const requestStartInstant = new Date('2026-09-11T16:59:55.000Z');
+  // Simulated AI response returns after crossing midnight (00:00:05 WIB on Sept 12, UTC: 2026-09-11 17:00:05Z)
+  const validationCompletedInstant = new Date('2026-09-11T17:00:05.000Z');
+
+  const incomingNightRecords = [
+    {
+      accountId: 'acc-cash',
+      amount: -50000,
+      recordDate: requestStartInstant.toISOString(),
+      note: 'makan sate',
+    },
+  ];
+
+  // When requestStartInstant is properly passed as referenceDate:
+  const anchoredValidationResult = validateAndSanitizeFinancialRecords(
+    incomingNightRecords,
+    mockAccounts,
+    mockCategories,
+    'kemarin malam makan sate 50rb',
+    requestStartInstant
+  );
+
+  // When request completed instantaneously before midnight:
+  const fastValidationResult = validateAndSanitizeFinancialRecords(
+    incomingNightRecords,
+    mockAccounts,
+    mockCategories,
+    'kemarin malam makan sate 50rb',
+    new Date('2026-09-11T16:59:58.000Z')
+  );
+
+  assertCondition(
+    anchoredValidationResult.sanitizedRecords[0].recordDate === '2026-09-10T13:00:00.000Z',
+    `Anchored request resolves 'kemarin malam' to 2026-09-10T13:00:00.000Z even when AI finishes after midnight (got: ${anchoredValidationResult.sanitizedRecords[0].recordDate})`
+  );
+  assertCondition(
+    anchoredValidationResult.sanitizedRecords[0].recordDate === fastValidationResult.sanitizedRecords[0].recordDate,
+    'Anchored request produces identical timestamp to fast request completing before midnight'
+  );
+
+  // Negative demonstration: if unanchored validation ran after midnight with fresh new Date()
+  const unanchoredDriftedResult = validateAndSanitizeFinancialRecords(
+    incomingNightRecords,
+    mockAccounts,
+    mockCategories,
+    'kemarin malam makan sate 50rb',
+    validationCompletedInstant
+  );
+  assertCondition(
+    unanchoredDriftedResult.sanitizedRecords[0].recordDate === '2026-09-11T13:00:00.000Z',
+    'Unanchored validation after midnight would erroneously drift to 2026-09-11'
+  );
+  assertCondition(
+    anchoredValidationResult.sanitizedRecords[0].recordDate !== unanchoredDriftedResult.sanitizedRecords[0].recordDate,
+    'Request-scoped reference instant successfully eliminates 1-day drift across midnight'
+  );
 
   console.log('\n======================================================');
   applicationLogger.success('ALL NATURAL LANGUAGE RELATIVE TIME TESTS PASSED!');

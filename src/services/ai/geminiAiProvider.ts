@@ -259,12 +259,17 @@ export class GeminiAiProvider implements FinancialAiProvider {
   public async processTextMessage(
     userMessageText: string,
     availableAccountList: WalletAccountItem[],
-    availableCategoryList: WalletCategoryItem[]
+    availableCategoryList: WalletCategoryItem[],
+    referenceInstant: Date = new Date()
   ): Promise<ExtractedFinancialIntent> {
-    const systemInstructionContent = this.getSystemInstruction(availableAccountList, availableCategoryList);
+    const systemInstructionContent = this.getSystemInstruction(
+      availableAccountList,
+      availableCategoryList,
+      referenceInstant
+    );
 
     const trimmedUserMessage = userMessageText.trim();
-    const currentTransactionTimestampIso = new Date().toISOString();
+    const currentTransactionTimestampIso = referenceInstant.toISOString();
     const applicationTimezone = getApplicationTimezone();
     const promptTextWithTimestamp = buildTextMessagePrompt(
       trimmedUserMessage,
@@ -305,17 +310,18 @@ export class GeminiAiProvider implements FinancialAiProvider {
     mimeType: string,
     optionalCaption: string,
     availableAccountList: WalletAccountItem[],
-    availableCategoryList: WalletCategoryItem[]
+    availableCategoryList: WalletCategoryItem[],
+    referenceInstant: Date = new Date()
   ): Promise<ExtractedFinancialIntent> {
     const applicationTimezoneIdentifier = getApplicationTimezone();
-    const currentDateIso = getCurrentLocalDateString(new Date(), applicationTimezoneIdentifier);
+    const currentDateIso = getCurrentLocalDateString(referenceInstant, applicationTimezoneIdentifier);
     const systemInstructionContent = buildReceiptSystemInstruction(
       availableAccountList,
       availableCategoryList,
       currentDateIso,
       applicationTimezoneIdentifier
     );
-    const currentTransactionTimestampIso = new Date().toISOString();
+    const currentTransactionTimestampIso = referenceInstant.toISOString();
     const promptText = buildReceiptExtractionPrompt(optionalCaption, currentTransactionTimestampIso);
 
     const generationResult = await this.executeGenerationWithFallback({

@@ -230,7 +230,9 @@ export class AccountClarificationHandler {
     const validationResult = validateAndSanitizeFinancialRecords(
       updatedRecords,
       availableAccounts,
-      availableCategories
+      availableCategories,
+      undefined,
+      new Date(claimedDraft.createdAt)
     );
 
     if (validationResult.validationErrors.length > 0) {

@@ -59,6 +59,7 @@ export class UserMessageHandler {
    */
   public async handleIncomingUserMessage(event: IncomingUserMessageEvent): Promise<void> {
     const processingStartTimestamp = Date.now();
+    const requestReferenceInstant = new Date(processingStartTimestamp);
     applicationLogger.chat(
       `[${event.channel.toUpperCase()}] ${event.messageType} message received.`
     );
@@ -201,14 +202,16 @@ export class UserMessageHandler {
           event.imageMimeType || 'image/jpeg',
           event.textPayload || '',
           cachedAccounts,
-          cachedCategories
+          cachedCategories,
+          requestReferenceInstant
         );
       } else {
         applicationLogger.ai(`Analyzing message intent with ${this.financialAiProvider.providerName.toUpperCase()}...`);
         extractedIntent = await this.financialAiProvider.processTextMessage(
           event.textPayload || '',
           cachedAccounts,
-          cachedCategories
+          cachedCategories,
+          requestReferenceInstant
         );
       }
 
@@ -225,7 +228,8 @@ export class UserMessageHandler {
           extractedIntent.records,
           cachedAccounts,
           cachedCategories,
-          event.textPayload || undefined
+          event.textPayload || undefined,
+          requestReferenceInstant
         );
 
         if (

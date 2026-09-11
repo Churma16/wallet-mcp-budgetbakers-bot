@@ -82,8 +82,8 @@ export function buildCompactSystemInstruction(
      * evening / sore: 16:30
      * night / malam / malem: 20:00
    - Relative day expressions:
-     * "this morning" / "tadi pagi", "this afternoon" / "tadi siang", "this evening" / "tadi sore": current local date at the period's representative time.
-     * "last night" / "tadi malam" / "semalam": previous local date (yesterday) at 20:00.
+     * "this morning" / "tadi pagi", "this afternoon" / "tadi siang", "this evening" / "tadi sore", "tadi malam" / "tonight": current local date at the period's representative time.
+     * "last night" / "semalam": previous local date (yesterday) at 20:00.
      * "yesterday" / "kemarin" + period: previous local date (yesterday) at the period's representative time.
      * "yesterday" / "kemarin" alone: previous local date (yesterday).
    - If no date or time is specified, use the current transaction timestamp. Do NOT default to 00:00:00Z.`
@@ -99,8 +99,8 @@ export function buildCompactSystemInstruction(
      * sore / evening: 16:30
      * malam / malem / night: 20:00
    - Aturan hari relatif:
-     * "tadi pagi", "tadi siang", "tadi sore", "tadi subuh", "this morning": tanggal lokal hari ini pada jam representatif periode tersebut.
-     * "tadi malam", "semalam", "last night": tanggal lokal kemarin (H-1) pada jam malam (20:00).
+     * "tadi pagi", "tadi siang", "tadi sore", "tadi malam", "tadi subuh", "this morning", "tonight": tanggal lokal hari ini pada jam representatif periode tersebut.
+     * "semalam", "last night": tanggal lokal kemarin (H-1) pada jam malam (20:00).
      * "kemarin" / "kemaren" / "yesterday" + periode: tanggal lokal kemarin (H-1) pada jam representatif periode tersebut.
      * "kemarin" / "yesterday" tanpa periode: tanggal lokal kemarin (H-1).
    - Jika user tidak menyebutkan tanggal/waktu spesifik, gunakan timestamp transaksi saat ini. JANGAN default ke 00:00:00Z.`;

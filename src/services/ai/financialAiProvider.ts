@@ -1,4 +1,4 @@
-﻿import { WalletAccountItem, WalletCategoryItem } from '../../types/walletTypes.js';
+import { WalletAccountItem, WalletCategoryItem } from '../../types/walletTypes.js';
 import { GateEvaluationResult } from '../../utils/emailGateEvaluator.js';
 
 export interface TokenUsageStatistics {
@@ -52,7 +52,8 @@ export interface FinancialAiProvider {
   processTextMessage(
     userMessageText: string,
     availableAccountList: WalletAccountItem[],
-    availableCategoryList: WalletCategoryItem[]
+    availableCategoryList: WalletCategoryItem[],
+    referenceInstant?: Date
   ): Promise<ExtractedFinancialIntent>;
 
   /**
@@ -63,7 +64,8 @@ export interface FinancialAiProvider {
     mimeType: string,
     optionalCaption: string,
     availableAccountList: WalletAccountItem[],
-    availableCategoryList: WalletCategoryItem[]
+    availableCategoryList: WalletCategoryItem[],
+    referenceInstant?: Date
   ): Promise<ExtractedFinancialIntent>;
 
   /**

@@ -245,8 +245,10 @@ const CURRENCY_PREFIX_REGEX =
   /(?:[\$€£¥₹₩฿₫₱]|\b(?:USD|EUR|GBP|IDR|SGD|AUD|CAD|CHF|JPY|CNY|MYR|THB|PHP|KRW|INR|NZD|HKD|Rp\.?|dollars?|dolar|euros?|pounds?|rupiah))\s*$/i;
 const CURRENCY_SUFFIX_REGEX =
   /^\s*(?:[\$€£¥₹₩฿₫₱]|(?:USD|EUR|GBP|IDR|SGD|AUD|CAD|CHF|JPY|CNY|MYR|THB|PHP|KRW|INR|NZD|HKD|dollars?|dolar|euros?|pounds?|rupiah|bucks|cents?|yen|yuan|ringgit|pesos?|rupees?)\b)/i;
-const SPENDING_VERB_PREFIX_REGEX =
-  /\b(?:spent|costs?|paying|bayar|sebesar|habis|seharga|total)\s*$/i;
+const TEMPORAL_PRECEDING_TOKEN_REGEX =
+  /(?:\b(?:yesterday|kemarin|kemaren|today|tadi|semalam|semalem|last\s+night|pagi|siang|sore|malam|malem|subuh|morning|afternoon|evening|night))\s*$/i;
+const TEMPORAL_FOLLOWING_TOKEN_REGEX =
+  /^\s*(?:\b(?:wib|wita|wit|gmt|utc|yesterday|kemarin|kemaren|today|tadi|semalam|semalem|pagi|siang|sore|malam|malem|subuh|morning|afternoon|evening|night)\b)/i;
 
 /**
  * Retrieves the current calendar date string (YYYY-MM-DD) in the specified or application timezone.
@@ -350,6 +352,7 @@ function extractExplicitClockTime(
   while ((bareMatch = bare24HourRegex.exec(inputText)) !== null) {
     const fullMatch = bareMatch[0];
     const rawHour = Number.parseInt(bareMatch[1], 10);
+    const separator = bareMatch[2];
     const rawMinute = Number.parseInt(bareMatch[3], 10);
     const startIndex = bareMatch.index;
     const endIndex = startIndex + fullMatch.length;
@@ -357,12 +360,19 @@ function extractExplicitClockTime(
     const textAfter = inputText.slice(endIndex);
     const hasAtPrefix = /^at\s+/i.test(fullMatch);
 
-    if (
-      CURRENCY_PREFIX_REGEX.test(textBefore) ||
-      CURRENCY_SUFFIX_REGEX.test(textAfter) ||
-      (!hasAtPrefix && SPENDING_VERB_PREFIX_REGEX.test(textBefore))
-    ) {
+    if (CURRENCY_PREFIX_REGEX.test(textBefore) || CURRENCY_SUFFIX_REGEX.test(textAfter)) {
       continue;
+    }
+
+    if (separator === '.') {
+      const hasPositiveTemporalContext =
+        hasAtPrefix ||
+        TEMPORAL_PRECEDING_TOKEN_REGEX.test(textBefore) ||
+        TEMPORAL_FOLLOWING_TOKEN_REGEX.test(textAfter);
+
+      if (!hasPositiveTemporalContext) {
+        continue;
+      }
     }
 
     if (rawHour >= 0 && rawHour < 24 && rawMinute >= 0 && rawMinute < 60) {
@@ -483,20 +493,7 @@ export function parseRelativeTime(
     );
   }
 
-  // Group 3: Tadi malam / Tadi malem (Indonesian last night -> yesterday at malam 20:00)
-  const tadiMalamMatch = normalizedInput.match(/\btadi\s+(malam|malem)\b/i);
-  if (tadiMalamMatch) {
-    return createParsedRelativeTimeResult(
-      inputText,
-      tadiMalamMatch[0],
-      yesterdayDateString,
-      'yesterday',
-      targetTimezoneIdentifier,
-      'malam'
-    );
-  }
-
-  // Group 4: Kemarin / Kemaren + Period (e.g. kemarin pagi, kemaren sore, kemarin siang, kemarin subuh, kemarin malam)
+  // Group 3: Kemarin / Kemaren + Period (e.g. kemarin pagi, kemaren sore, kemarin siang, kemarin subuh, kemarin malam)
   const kemarinPeriodMatch = normalizedInput.match(/\b(kemarin|kemaren)\s+(subuh|pagi|siang|sore|malam|malem)\b/i);
   if (kemarinPeriodMatch) {
     const periodName = normalizePeriodName(kemarinPeriodMatch[2]) || 'pagi';
@@ -510,7 +507,7 @@ export function parseRelativeTime(
     );
   }
 
-  // Group 5: Yesterday + Period (English: yesterday morning, yesterday afternoon, yesterday evening, yesterday night)
+  // Group 4: Yesterday + Period (English: yesterday morning, yesterday afternoon, yesterday evening, yesterday night)
   const yesterdayPeriodMatch = normalizedInput.match(/\byesterday\s+(morning|afternoon|evening|night|dawn)\b/i);
   if (yesterdayPeriodMatch) {
     const periodName = normalizePeriodName(yesterdayPeriodMatch[1]) || 'pagi';
@@ -524,8 +521,9 @@ export function parseRelativeTime(
     );
   }
 
-  // Group 6: Tadi + Period (Indonesian: tadi subuh, tadi pagi, tadi siang, tadi sore)
-  const tadiPeriodMatch = normalizedInput.match(/\btadi\s+(subuh|pagi|siang|sore)\b/i);
+  // Group 5: Tadi + Period (Indonesian: tadi subuh, tadi pagi, tadi siang, tadi sore, tadi malam)
+  // Aligned with Issue #4 contract: all "tadi" + period expressions resolve to current local date
+  const tadiPeriodMatch = normalizedInput.match(/\btadi\s+(subuh|pagi|siang|sore|malam|malem)\b/i);
   if (tadiPeriodMatch) {
     const periodName = normalizePeriodName(tadiPeriodMatch[1]) || 'pagi';
     return createParsedRelativeTimeResult(
