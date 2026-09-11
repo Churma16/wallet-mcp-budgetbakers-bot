@@ -101,7 +101,19 @@ function extractHistoryQueryOptionsFromTokens(
     remainingTokens = remainingTokens.replace(pageMatch[0], ' ').trim();
   }
 
-  // 3. Extract limit token (standalone positive integer) if not already set
+  // 3. Extract explicit ISO dates (e.g. 2024-01-01) before standalone limit numbers
+  const isoDateMatches = remainingTokens.match(/\b(\d{4}-\d{2}-\d{2})\b/g);
+  if (isoDateMatches) {
+    if (isoDateMatches.length === 1) {
+      resolvedDateRange = [`eq.${isoDateMatches[0]}`];
+      remainingTokens = remainingTokens.replace(isoDateMatches[0], ' ').trim();
+    } else if (isoDateMatches.length >= 2) {
+      resolvedDateRange = [`gte.${isoDateMatches[0]}`, `lte.${isoDateMatches[1]}`];
+      remainingTokens = remainingTokens.replace(isoDateMatches[0], ' ').replace(isoDateMatches[1], ' ').trim();
+    }
+  }
+
+  // 4. Extract limit token (standalone positive integer) if not already set
   if (!resolvedLimit) {
     const limitMatch = remainingTokens.match(/\b(\d+)\b/);
     if (limitMatch) {
@@ -114,7 +126,7 @@ function extractHistoryQueryOptionsFromTokens(
     }
   }
 
-  // 4. Extract record type (expense / income)
+  // 5. Extract record type (expense / income)
   const expenseMatch = remainingTokens.match(/\b(pengeluaran|keluar|expenses?|spending)\b/i);
   if (expenseMatch) {
     resolvedRecordType = 'expense';
@@ -127,7 +139,7 @@ function extractHistoryQueryOptionsFromTokens(
     }
   }
 
-  // 5. Extract relative date period
+  // 6. Extract relative date period
   const todayMatch = remainingTokens.match(/\b(hari\s+ini|today)\b/i);
   if (todayMatch) {
     resolvedDatePeriod = 'today';
@@ -170,28 +182,16 @@ function extractHistoryQueryOptionsFromTokens(
     }
   }
 
-  // 6. Extract explicit ISO dates (e.g. 2024-01-01)
-  const isoDateMatches = remainingTokens.match(/\b(\d{4}-\d{2}-\d{2})\b/g);
-  if (isoDateMatches) {
-    if (isoDateMatches.length === 1) {
-      resolvedDateRange = [`eq.${isoDateMatches[0]}`];
-      remainingTokens = remainingTokens.replace(isoDateMatches[0], ' ').trim();
-    } else if (isoDateMatches.length >= 2) {
-      resolvedDateRange = [`gte.${isoDateMatches[0]}`, `lte.${isoDateMatches[1]}`];
-      remainingTokens = remainingTokens.replace(isoDateMatches[0], ' ').replace(isoDateMatches[1], ' ').trim();
-    }
-  }
-
-  // 7. Extract explicit account and category prefixes
-  const explicitAccountMatch = remainingTokens.match(/\b(?:akun|account|rekening)\s+([a-zA-Z0-9_-]+)\b/i);
+  // 7. Extract explicit account and category prefixes (supports unquoted or quoted strings)
+  const explicitAccountMatch = remainingTokens.match(/\b(?:akun|account|rekening)\s+(?:"([^"]+)"|'([^']+)'|([a-zA-Z0-9_-]+))\b/i);
   if (explicitAccountMatch) {
-    resolvedAccountName = explicitAccountMatch[1];
+    resolvedAccountName = explicitAccountMatch[1] || explicitAccountMatch[2] || explicitAccountMatch[3];
     remainingTokens = remainingTokens.replace(explicitAccountMatch[0], ' ').trim();
   }
 
-  const explicitCategoryMatch = remainingTokens.match(/\b(?:kategori|category)\s+([a-zA-Z0-9_-]+)\b/i);
+  const explicitCategoryMatch = remainingTokens.match(/\b(?:kategori|category)\s+(?:"([^"]+)"|'([^']+)'|([a-zA-Z0-9_-]+))\b/i);
   if (explicitCategoryMatch) {
-    resolvedCategoryName = explicitCategoryMatch[1];
+    resolvedCategoryName = explicitCategoryMatch[1] || explicitCategoryMatch[2] || explicitCategoryMatch[3];
     remainingTokens = remainingTokens.replace(explicitCategoryMatch[0], ' ').trim();
   }
 

@@ -99,11 +99,13 @@ export interface AppliedTransactionHistoryFilters {
   account?: {
     id: string;
     name: string;
+    selector?: string;
   };
   category?: {
     id: string;
     name: string;
     group?: string;
+    selector?: string;
   };
   categoryGroup?: string;
   recordType?: TransactionRecordTypeFilter;
@@ -112,7 +114,9 @@ export interface AppliedTransactionHistoryFilters {
     to?: string;
     rawRange?: string[];
     label?: string;
+    selector?: string;
   };
+  navigationTokens?: string[];
 }
 
 export interface UnresolvedFilterIssue {

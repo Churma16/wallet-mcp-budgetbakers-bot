@@ -8,7 +8,7 @@ import {
   WalletCategoryItem,
 } from '../types/walletTypes.js';
 import { getApplicationTimezone } from './humanResponseFormatter.js';
-import { getLocalTimeParts } from './relativeTimeParser.js';
+import { getLocalTimeParts, resolveTargetLocalToUtcIso } from './relativeTimeParser.js';
 
 export const SUPPORTED_BUDGETBAKERS_CATEGORY_GROUPS: readonly string[] = [
   'communication_pc',
@@ -57,126 +57,293 @@ export interface NormalizedTransactionHistoryFilterResult {
   unresolvedFilters: UnresolvedFilterIssue[];
 }
 
-function formatIsoDateOnly(dateObject: Date): string {
-  const yearString = String(dateObject.getFullYear());
-  const monthString = String(dateObject.getMonth() + 1).padStart(2, '0');
-  const dayString = String(dateObject.getDate()).padStart(2, '0');
-  return `${yearString}-${monthString}-${dayString}`;
+/**
+ * Strict calendar date validator. Verifies that a given string is a valid YYYY-MM-DD or ISO datetime,
+ * and round-trips calendar parts to reject impossible calendar dates like 2024-02-30 or 2026-04-31.
+ */
+export function isValidCalendarDateString(dateString: string): boolean {
+  if (typeof dateString !== 'string') {
+    return false;
+  }
+  const trimmed = dateString.trim();
+
+  // 1. Date-only format YYYY-MM-DD
+  const dateOnlyMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnlyMatch) {
+    const year = Number.parseInt(dateOnlyMatch[1], 10);
+    const month = Number.parseInt(dateOnlyMatch[2], 10);
+    const day = Number.parseInt(dateOnlyMatch[3], 10);
+
+    if (month < 1 || month > 12 || day < 1 || day > 31) {
+      return false;
+    }
+
+    const utcDate = new Date(Date.UTC(year, month - 1, day));
+    return (
+      utcDate.getUTCFullYear() === year &&
+      utcDate.getUTCMonth() === month - 1 &&
+      utcDate.getUTCDate() === day
+    );
+  }
+
+  // 2. Full ISO 8601 datetime format
+  const isoDateTimeMatch = trimmed.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(?:Z|[+-]\d{2}:?\d{2})$/
+  );
+  if (isoDateTimeMatch) {
+    const year = Number.parseInt(isoDateTimeMatch[1], 10);
+    const month = Number.parseInt(isoDateTimeMatch[2], 10);
+    const day = Number.parseInt(isoDateTimeMatch[3], 10);
+    const hour = Number.parseInt(isoDateTimeMatch[4], 10);
+    const minute = Number.parseInt(isoDateTimeMatch[5], 10);
+    const second = Number.parseInt(isoDateTimeMatch[6], 10);
+
+    if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59) {
+      return false;
+    }
+
+    const parsedTimestamp = Date.parse(trimmed);
+    if (Number.isNaN(parsedTimestamp)) {
+      return false;
+    }
+
+    const utcDate = new Date(Date.UTC(year, month - 1, day));
+    return (
+      utcDate.getUTCFullYear() === year &&
+      utcDate.getUTCMonth() === month - 1 &&
+      utcDate.getUTCDate() === day
+    );
+  }
+
+  return false;
 }
 
-function calculateRelativeDateRange(
+export function parseTimestampForDateToken(dateString: string): number {
+  const trimmed = dateString.trim();
+  const dateOnlyMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnlyMatch) {
+    const year = Number.parseInt(dateOnlyMatch[1], 10);
+    const month = Number.parseInt(dateOnlyMatch[2], 10);
+    const day = Number.parseInt(dateOnlyMatch[3], 10);
+    return Date.UTC(year, month - 1, day);
+  }
+  return Date.parse(trimmed);
+}
+
+function formatIsoDateParts(year: number, month: number, day: number): string {
+  const paddedYear = String(year).padStart(4, '0');
+  const paddedMonth = String(month).padStart(2, '0');
+  const paddedDay = String(day).padStart(2, '0');
+  return `${paddedYear}-${paddedMonth}-${paddedDay}`;
+}
+
+export function calculateRelativeDateRange(
   period: RelativeDatePeriod,
   referenceDate: Date = new Date(),
   timezoneIdentifier: string = 'Asia/Jakarta'
-): { recordDate: string[]; from: string; to: string; label: string } {
+): { recordDate: string[]; from: string; to: string; label: string; selector: string } {
   const localTimeParts = getLocalTimeParts(referenceDate, timezoneIdentifier);
   const currentYear = localTimeParts.year;
-  const currentMonth = localTimeParts.month; // 1-indexed
+  const currentMonth = localTimeParts.month; // 1-indexed (1..12)
   const currentDay = localTimeParts.day;
-
-  const localDateAtMidnight = new Date(currentYear, currentMonth - 1, currentDay);
 
   switch (period) {
     case 'today': {
-      const todayDateString = formatIsoDateOnly(localDateAtMidnight);
+      const todayDateString = formatIsoDateParts(currentYear, currentMonth, currentDay);
+      const nextDayDate = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay + 1));
+      const nextDayDateString = formatIsoDateParts(
+        nextDayDate.getUTCFullYear(),
+        nextDayDate.getUTCMonth() + 1,
+        nextDayDate.getUTCDate()
+      );
+
+      const startUtcIso = resolveTargetLocalToUtcIso(todayDateString, 0, 0, timezoneIdentifier);
+      const nextBoundaryUtcIso = resolveTargetLocalToUtcIso(nextDayDateString, 0, 0, timezoneIdentifier);
+
       return {
-        recordDate: [`eq.${todayDateString}`],
+        recordDate: [`gte.${startUtcIso}`, `lt.${nextBoundaryUtcIso}`],
         from: todayDateString,
         to: todayDateString,
         label: 'Hari ini',
+        selector: 'hari ini',
       };
     }
 
     case 'yesterday': {
-      const yesterdayDate = new Date(localDateAtMidnight);
-      yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-      const yesterdayDateString = formatIsoDateOnly(yesterdayDate);
+      const yesterdayDate = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay - 1));
+      const yesterdayDateString = formatIsoDateParts(
+        yesterdayDate.getUTCFullYear(),
+        yesterdayDate.getUTCMonth() + 1,
+        yesterdayDate.getUTCDate()
+      );
+      const todayDateString = formatIsoDateParts(currentYear, currentMonth, currentDay);
+
+      const startUtcIso = resolveTargetLocalToUtcIso(yesterdayDateString, 0, 0, timezoneIdentifier);
+      const nextBoundaryUtcIso = resolveTargetLocalToUtcIso(todayDateString, 0, 0, timezoneIdentifier);
+
       return {
-        recordDate: [`eq.${yesterdayDateString}`],
+        recordDate: [`gte.${startUtcIso}`, `lt.${nextBoundaryUtcIso}`],
         from: yesterdayDateString,
         to: yesterdayDateString,
         label: 'Kemarin',
+        selector: 'kemarin',
       };
     }
 
     case 'this_week': {
-      // Monday as start of week (ISO-8601 standard)
-      const dayOfWeek = localDateAtMidnight.getDay(); // 0 = Sunday, 1 = Monday, ...
+      const localDateAtMidnightUtc = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay));
+      const dayOfWeek = localDateAtMidnightUtc.getUTCDay(); // 0 = Sunday, 1 = Monday, ...
       const daysSinceMonday = (dayOfWeek + 6) % 7;
-      const mondayDate = new Date(localDateAtMidnight);
-      mondayDate.setDate(mondayDate.getDate() - daysSinceMonday);
 
-      const sundayDate = new Date(mondayDate);
-      sundayDate.setDate(sundayDate.getDate() + 6);
+      const mondayDate = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay - daysSinceMonday));
+      const sundayDate = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay - daysSinceMonday + 6));
+      const nextMondayDate = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay - daysSinceMonday + 7));
 
-      const fromString = formatIsoDateOnly(mondayDate);
-      const toString = formatIsoDateOnly(sundayDate);
+      const mondayDateString = formatIsoDateParts(
+        mondayDate.getUTCFullYear(),
+        mondayDate.getUTCMonth() + 1,
+        mondayDate.getUTCDate()
+      );
+      const sundayDateString = formatIsoDateParts(
+        sundayDate.getUTCFullYear(),
+        sundayDate.getUTCMonth() + 1,
+        sundayDate.getUTCDate()
+      );
+      const nextMondayDateString = formatIsoDateParts(
+        nextMondayDate.getUTCFullYear(),
+        nextMondayDate.getUTCMonth() + 1,
+        nextMondayDate.getUTCDate()
+      );
+
+      const startUtcIso = resolveTargetLocalToUtcIso(mondayDateString, 0, 0, timezoneIdentifier);
+      const nextBoundaryUtcIso = resolveTargetLocalToUtcIso(nextMondayDateString, 0, 0, timezoneIdentifier);
+
       return {
-        recordDate: [`gte.${fromString}`, `lte.${toString}`],
-        from: fromString,
-        to: toString,
+        recordDate: [`gte.${startUtcIso}`, `lt.${nextBoundaryUtcIso}`],
+        from: mondayDateString,
+        to: sundayDateString,
         label: 'Minggu ini',
+        selector: 'minggu ini',
       };
     }
 
     case 'last_week': {
-      const dayOfWeek = localDateAtMidnight.getDay();
+      const localDateAtMidnightUtc = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay));
+      const dayOfWeek = localDateAtMidnightUtc.getUTCDay();
       const daysSinceMonday = (dayOfWeek + 6) % 7;
-      const previousMondayDate = new Date(localDateAtMidnight);
-      previousMondayDate.setDate(previousMondayDate.getDate() - daysSinceMonday - 7);
 
-      const previousSundayDate = new Date(previousMondayDate);
-      previousSundayDate.setDate(previousSundayDate.getDate() + 6);
+      const previousMondayDate = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay - daysSinceMonday - 7));
+      const previousSundayDate = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay - daysSinceMonday - 1));
+      const currentMondayDate = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay - daysSinceMonday));
 
-      const fromString = formatIsoDateOnly(previousMondayDate);
-      const toString = formatIsoDateOnly(previousSundayDate);
+      const previousMondayDateString = formatIsoDateParts(
+        previousMondayDate.getUTCFullYear(),
+        previousMondayDate.getUTCMonth() + 1,
+        previousMondayDate.getUTCDate()
+      );
+      const previousSundayDateString = formatIsoDateParts(
+        previousSundayDate.getUTCFullYear(),
+        previousSundayDate.getUTCMonth() + 1,
+        previousSundayDate.getUTCDate()
+      );
+      const currentMondayDateString = formatIsoDateParts(
+        currentMondayDate.getUTCFullYear(),
+        currentMondayDate.getUTCMonth() + 1,
+        currentMondayDate.getUTCDate()
+      );
+
+      const startUtcIso = resolveTargetLocalToUtcIso(previousMondayDateString, 0, 0, timezoneIdentifier);
+      const nextBoundaryUtcIso = resolveTargetLocalToUtcIso(currentMondayDateString, 0, 0, timezoneIdentifier);
+
       return {
-        recordDate: [`gte.${fromString}`, `lte.${toString}`],
-        from: fromString,
-        to: toString,
+        recordDate: [`gte.${startUtcIso}`, `lt.${nextBoundaryUtcIso}`],
+        from: previousMondayDateString,
+        to: previousSundayDateString,
         label: 'Minggu lalu',
+        selector: 'minggu lalu',
       };
     }
 
     case 'this_month': {
-      const firstDayOfMonth = new Date(currentYear, currentMonth - 1, 1);
-      const lastDayOfMonth = new Date(currentYear, currentMonth, 0);
+      const firstDayOfMonthDate = new Date(Date.UTC(currentYear, currentMonth - 1, 1));
+      const lastDayOfMonthDate = new Date(Date.UTC(currentYear, currentMonth, 0));
+      const nextMonthFirstDayDate = new Date(Date.UTC(currentYear, currentMonth, 1));
 
-      const fromString = formatIsoDateOnly(firstDayOfMonth);
-      const toString = formatIsoDateOnly(lastDayOfMonth);
+      const firstDayOfMonthString = formatIsoDateParts(
+        firstDayOfMonthDate.getUTCFullYear(),
+        firstDayOfMonthDate.getUTCMonth() + 1,
+        firstDayOfMonthDate.getUTCDate()
+      );
+      const lastDayOfMonthString = formatIsoDateParts(
+        lastDayOfMonthDate.getUTCFullYear(),
+        lastDayOfMonthDate.getUTCMonth() + 1,
+        lastDayOfMonthDate.getUTCDate()
+      );
+      const nextMonthFirstDayString = formatIsoDateParts(
+        nextMonthFirstDayDate.getUTCFullYear(),
+        nextMonthFirstDayDate.getUTCMonth() + 1,
+        nextMonthFirstDayDate.getUTCDate()
+      );
+
+      const startUtcIso = resolveTargetLocalToUtcIso(firstDayOfMonthString, 0, 0, timezoneIdentifier);
+      const nextBoundaryUtcIso = resolveTargetLocalToUtcIso(nextMonthFirstDayString, 0, 0, timezoneIdentifier);
+
       return {
-        recordDate: [`gte.${fromString}`, `lte.${toString}`],
-        from: fromString,
-        to: toString,
+        recordDate: [`gte.${startUtcIso}`, `lt.${nextBoundaryUtcIso}`],
+        from: firstDayOfMonthString,
+        to: lastDayOfMonthString,
         label: 'Bulan ini',
+        selector: 'bulan ini',
       };
     }
 
     case 'last_month': {
-      const firstDayOfLastMonth = new Date(currentYear, currentMonth - 2, 1);
-      const lastDayOfLastMonth = new Date(currentYear, currentMonth - 1, 0);
+      const firstDayOfLastMonthDate = new Date(Date.UTC(currentYear, currentMonth - 2, 1));
+      const lastDayOfLastMonthDate = new Date(Date.UTC(currentYear, currentMonth - 1, 0));
+      const firstDayOfCurrentMonthDate = new Date(Date.UTC(currentYear, currentMonth - 1, 1));
 
-      const fromString = formatIsoDateOnly(firstDayOfLastMonth);
-      const toString = formatIsoDateOnly(lastDayOfLastMonth);
+      const firstDayOfLastMonthString = formatIsoDateParts(
+        firstDayOfLastMonthDate.getUTCFullYear(),
+        firstDayOfLastMonthDate.getUTCMonth() + 1,
+        firstDayOfLastMonthDate.getUTCDate()
+      );
+      const lastDayOfLastMonthString = formatIsoDateParts(
+        lastDayOfLastMonthDate.getUTCFullYear(),
+        lastDayOfLastMonthDate.getUTCMonth() + 1,
+        lastDayOfLastMonthDate.getUTCDate()
+      );
+      const firstDayOfCurrentMonthString = formatIsoDateParts(
+        firstDayOfCurrentMonthDate.getUTCFullYear(),
+        firstDayOfCurrentMonthDate.getUTCMonth() + 1,
+        firstDayOfCurrentMonthDate.getUTCDate()
+      );
+
+      const startUtcIso = resolveTargetLocalToUtcIso(firstDayOfLastMonthString, 0, 0, timezoneIdentifier);
+      const nextBoundaryUtcIso = resolveTargetLocalToUtcIso(firstDayOfCurrentMonthString, 0, 0, timezoneIdentifier);
+
       return {
-        recordDate: [`gte.${fromString}`, `lte.${toString}`],
-        from: fromString,
-        to: toString,
+        recordDate: [`gte.${startUtcIso}`, `lt.${nextBoundaryUtcIso}`],
+        from: firstDayOfLastMonthString,
+        to: lastDayOfLastMonthString,
         label: 'Bulan lalu',
+        selector: 'bulan lalu',
       };
     }
 
     case 'this_year': {
-      const firstDayOfYear = new Date(currentYear, 0, 1);
-      const lastDayOfYear = new Date(currentYear, 11, 31);
+      const firstDayOfYearString = formatIsoDateParts(currentYear, 1, 1);
+      const lastDayOfYearString = formatIsoDateParts(currentYear, 12, 31);
+      const nextYearFirstDayString = formatIsoDateParts(currentYear + 1, 1, 1);
 
-      const fromString = formatIsoDateOnly(firstDayOfYear);
-      const toString = formatIsoDateOnly(lastDayOfYear);
+      const startUtcIso = resolveTargetLocalToUtcIso(firstDayOfYearString, 0, 0, timezoneIdentifier);
+      const nextBoundaryUtcIso = resolveTargetLocalToUtcIso(nextYearFirstDayString, 0, 0, timezoneIdentifier);
+
       return {
-        recordDate: [`gte.${fromString}`, `lte.${toString}`],
-        from: fromString,
-        to: toString,
+        recordDate: [`gte.${startUtcIso}`, `lt.${nextBoundaryUtcIso}`],
+        from: firstDayOfYearString,
+        to: lastDayOfYearString,
         label: 'Tahun ini',
+        selector: 'tahun ini',
       };
     }
   }
@@ -218,20 +385,23 @@ export function normalizeTransactionHistoryFilters(
     } else {
       upstreamAccountId = rawAccountId;
       const matchedAccount = availableAccountList.find(account => account.id === rawAccountId);
+      const accountSelector = matchedAccount?.name?.toLowerCase();
       appliedFilters.account = {
         id: rawAccountId,
         name: matchedAccount ? matchedAccount.name : rawAccountId,
+        ...(accountSelector ? { selector: accountSelector } : {}),
       };
     }
   } else if (rawAccountName && rawAccountName.trim().length > 0) {
     const trimmedAccountHint = rawAccountName.trim();
     const normalizedAccountHint = trimmedAccountHint.toLowerCase();
+    const accountSelector = normalizedAccountHint;
 
     // Strategy A: Exact ID match
     const exactIdMatch = availableAccountList.find(account => account.id === trimmedAccountHint);
     if (exactIdMatch) {
       upstreamAccountId = exactIdMatch.id;
-      appliedFilters.account = { id: exactIdMatch.id, name: exactIdMatch.name };
+      appliedFilters.account = { id: exactIdMatch.id, name: exactIdMatch.name, selector: accountSelector };
     } else {
       // Strategy B: Exact Name match (case-insensitive)
       const exactNameMatches = availableAccountList.filter(
@@ -240,7 +410,7 @@ export function normalizeTransactionHistoryFilters(
 
       if (exactNameMatches.length === 1) {
         upstreamAccountId = exactNameMatches[0].id;
-        appliedFilters.account = { id: exactNameMatches[0].id, name: exactNameMatches[0].name };
+        appliedFilters.account = { id: exactNameMatches[0].id, name: exactNameMatches[0].name, selector: accountSelector };
       } else if (exactNameMatches.length > 1) {
         unresolvedFilterIssues.push({
           filterKey: 'account',
@@ -258,7 +428,7 @@ export function normalizeTransactionHistoryFilters(
 
         if (substringMatches.length === 1) {
           upstreamAccountId = substringMatches[0].id;
-          appliedFilters.account = { id: substringMatches[0].id, name: substringMatches[0].name };
+          appliedFilters.account = { id: substringMatches[0].id, name: substringMatches[0].name, selector: accountSelector };
         } else if (substringMatches.length > 1) {
           const candidateNames = substringMatches.map(account => account.name);
           unresolvedFilterIssues.push({
@@ -283,7 +453,7 @@ export function normalizeTransactionHistoryFilters(
 
           if (bankAccountMatches.length === 1) {
             upstreamAccountId = bankAccountMatches[0].id;
-            appliedFilters.account = { id: bankAccountMatches[0].id, name: bankAccountMatches[0].name };
+            appliedFilters.account = { id: bankAccountMatches[0].id, name: bankAccountMatches[0].name, selector: accountSelector };
           } else if (bankAccountMatches.length > 1) {
             const candidateNames = bankAccountMatches.map(account => account.name);
             unresolvedFilterIssues.push({
@@ -317,6 +487,7 @@ export function normalizeTransactionHistoryFilters(
     if (SUPPORTED_BUDGETBAKERS_CATEGORY_GROUPS.includes(normalizedGroup)) {
       upstreamCategoryGroup = normalizedGroup;
       appliedFilters.categoryGroup = normalizedGroup;
+      appliedFilters.category = { id: normalizedGroup, name: normalizedGroup, selector: normalizedGroup };
     } else {
       unresolvedFilterIssues.push({
         filterKey: 'category',
@@ -335,25 +506,28 @@ export function normalizeTransactionHistoryFilters(
     } else {
       upstreamCategoryId = [rawCategoryId];
       const matchedCategory = availableCategoryList.find(category => category.id === rawCategoryId);
+      const categorySelector = matchedCategory?.name?.toLowerCase();
       appliedFilters.category = {
         id: rawCategoryId,
         name: matchedCategory ? matchedCategory.name : rawCategoryId,
+        ...(categorySelector ? { selector: categorySelector } : {}),
       };
     }
   } else if (rawCategoryName && rawCategoryName.trim().length > 0) {
     const trimmedCategoryHint = rawCategoryName.trim();
     const normalizedCategoryHint = trimmedCategoryHint.toLowerCase();
+    const categorySelector = normalizedCategoryHint;
 
     // Strategy A: Check 'unknown' / uncategorized
     if (normalizedCategoryHint === 'unknown' || normalizedCategoryHint === 'uncategorized' || normalizedCategoryHint === 'tanpa kategori') {
       upstreamCategoryId = ['unknown'];
-      appliedFilters.category = { id: 'unknown', name: 'Tanpa Kategori' };
+      appliedFilters.category = { id: 'unknown', name: 'Tanpa Kategori', selector: categorySelector };
     } else {
       // Strategy B: Exact ID match
       const exactIdMatch = availableCategoryList.find(category => category.id === trimmedCategoryHint);
       if (exactIdMatch) {
         upstreamCategoryId = [exactIdMatch.id];
-        appliedFilters.category = { id: exactIdMatch.id, name: exactIdMatch.name };
+        appliedFilters.category = { id: exactIdMatch.id, name: exactIdMatch.name, selector: categorySelector };
       } else {
         // Strategy C: Exact Name match (case-insensitive)
         const exactNameMatches = availableCategoryList.filter(
@@ -362,7 +536,7 @@ export function normalizeTransactionHistoryFilters(
 
         if (exactNameMatches.length > 0) {
           upstreamCategoryId = [exactNameMatches[0].id];
-          appliedFilters.category = { id: exactNameMatches[0].id, name: exactNameMatches[0].name };
+          appliedFilters.category = { id: exactNameMatches[0].id, name: exactNameMatches[0].name, selector: categorySelector };
         } else {
           // Strategy D: Substring match on category name
           const substringMatches = availableCategoryList.filter(
@@ -373,16 +547,18 @@ export function normalizeTransactionHistoryFilters(
 
           if (substringMatches.length > 0) {
             upstreamCategoryId = [substringMatches[0].id];
-            appliedFilters.category = { id: substringMatches[0].id, name: substringMatches[0].name };
+            appliedFilters.category = { id: substringMatches[0].id, name: substringMatches[0].name, selector: categorySelector };
           } else {
             // Strategy E: Known category group slug or alias
             const aliasGroupSlug = CATEGORY_GROUP_ALIASES[normalizedCategoryHint];
             if (aliasGroupSlug && SUPPORTED_BUDGETBAKERS_CATEGORY_GROUPS.includes(aliasGroupSlug)) {
               upstreamCategoryGroup = aliasGroupSlug;
               appliedFilters.categoryGroup = aliasGroupSlug;
+              appliedFilters.category = { id: aliasGroupSlug, name: aliasGroupSlug, selector: categorySelector };
             } else if (SUPPORTED_BUDGETBAKERS_CATEGORY_GROUPS.includes(normalizedCategoryHint)) {
               upstreamCategoryGroup = normalizedCategoryHint;
               appliedFilters.categoryGroup = normalizedCategoryHint;
+              appliedFilters.category = { id: normalizedCategoryHint, name: normalizedCategoryHint, selector: categorySelector };
             } else {
               unresolvedFilterIssues.push({
                 filterKey: 'category',
@@ -449,18 +625,23 @@ export function normalizeTransactionHistoryFilters(
       to: relativeRangeResult.to,
       rawRange: relativeRangeResult.recordDate,
       label: relativeRangeResult.label,
+      selector: relativeRangeResult.selector,
     };
   } else if (Array.isArray(queryOptions.dateRange)) {
     const rawArray = queryOptions.dateRange.slice(0, 2);
     const validOperators = ['eq.', 'gt.', 'gte.', 'lt.', 'lte.'];
     const validatedTokens: string[] = [];
+    let lowerBoundTimestamp: number | undefined = undefined;
+    let upperBoundTimestamp: number | undefined = undefined;
+    let lowerBoundIsStrict = false;
+    let upperBoundIsStrict = false;
 
     for (const token of rawArray) {
       if (typeof token !== 'string') {
         continue;
       }
-      const hasValidPrefix = validOperators.some(op => token.startsWith(op));
-      if (!hasValidPrefix) {
+      const matchedOperatorPrefix = validOperators.find(op => token.startsWith(op));
+      if (!matchedOperatorPrefix) {
         unresolvedFilterIssues.push({
           filterKey: 'dateRange',
           rawValue: token,
@@ -469,18 +650,45 @@ export function normalizeTransactionHistoryFilters(
         });
         break;
       }
-      const rawDatePortion = token.replace(/^(eq|gt|gte|lt|lte)\./, '');
-      const parsedTimestamp = Date.parse(rawDatePortion);
-      if (Number.isNaN(parsedTimestamp)) {
+      const rawDatePortion = token.slice(matchedOperatorPrefix.length);
+      if (!isValidCalendarDateString(rawDatePortion)) {
         unresolvedFilterIssues.push({
           filterKey: 'dateRange',
           rawValue: token,
           reason: 'INVALID_FORMAT',
-          message: `Tanggal "${rawDatePortion}" tidak dapat diuraikan sebagai tanggal yang valid.`,
+          message: `Tanggal "${rawDatePortion}" tidak valid atau bukan tanggal kalender yang valid.`,
         });
         break;
       }
+
+      const parsedTimestamp = parseTimestampForDateToken(rawDatePortion);
+      const operatorName = matchedOperatorPrefix.replace('.', '');
+
+      if (operatorName === 'gte' || operatorName === 'gt') {
+        lowerBoundTimestamp = parsedTimestamp;
+        lowerBoundIsStrict = operatorName === 'gt';
+      } else if (operatorName === 'lte' || operatorName === 'lt') {
+        upperBoundTimestamp = parsedTimestamp;
+        upperBoundIsStrict = operatorName === 'lt';
+      }
+
       validatedTokens.push(token);
+    }
+
+    if (unresolvedFilterIssues.every(issue => issue.filterKey !== 'dateRange')) {
+      if (lowerBoundTimestamp !== undefined && upperBoundTimestamp !== undefined) {
+        const isReversed = lowerBoundTimestamp > upperBoundTimestamp;
+        const isEmptyStrictRange = lowerBoundTimestamp === upperBoundTimestamp && (lowerBoundIsStrict || upperBoundIsStrict);
+
+        if (isReversed || isEmptyStrictRange) {
+          unresolvedFilterIssues.push({
+            filterKey: 'dateRange',
+            rawValue: rawArray.join(' '),
+            reason: 'INVALID_RANGE',
+            message: `Rentang tanggal tidak valid: batas awal tidak boleh lebih besar dari batas akhir.`,
+          });
+        }
+      }
     }
 
     if (unresolvedFilterIssues.every(issue => issue.filterKey !== 'dateRange') && validatedTokens.length > 0) {
@@ -502,38 +710,40 @@ export function normalizeTransactionHistoryFilters(
     }
 
     if (rawFrom || rawTo) {
-      let parsedFromDate: Date | undefined = undefined;
-      let parsedToDate: Date | undefined = undefined;
+      let parsedFromTimestamp: number | undefined = undefined;
+      let parsedToTimestamp: number | undefined = undefined;
 
       if (rawFrom) {
-        const fromTimestamp = Date.parse(rawFrom);
-        if (Number.isNaN(fromTimestamp)) {
+        if (!isValidCalendarDateString(rawFrom)) {
           unresolvedFilterIssues.push({
             filterKey: 'dateRange',
             rawValue: rawFrom,
             reason: 'INVALID_FORMAT',
-            message: `Tanggal mulai "${rawFrom}" tidak valid.`,
+            message: `Tanggal mulai "${rawFrom}" tidak valid atau bukan tanggal kalender yang valid.`,
           });
         } else {
-          parsedFromDate = new Date(fromTimestamp);
+          parsedFromTimestamp = parseTimestampForDateToken(rawFrom);
         }
       }
 
       if (rawTo) {
-        const toTimestamp = Date.parse(rawTo);
-        if (Number.isNaN(toTimestamp)) {
+        if (!isValidCalendarDateString(rawTo)) {
           unresolvedFilterIssues.push({
             filterKey: 'dateRange',
             rawValue: rawTo,
             reason: 'INVALID_FORMAT',
-            message: `Tanggal akhir "${rawTo}" tidak valid.`,
+            message: `Tanggal akhir "${rawTo}" tidak valid atau bukan tanggal kalender yang valid.`,
           });
         } else {
-          parsedToDate = new Date(toTimestamp);
+          parsedToTimestamp = parseTimestampForDateToken(rawTo);
         }
       }
 
-      if (parsedFromDate && parsedToDate && parsedFromDate.getTime() > parsedToDate.getTime()) {
+      if (
+        parsedFromTimestamp !== undefined &&
+        parsedToTimestamp !== undefined &&
+        parsedFromTimestamp > parsedToTimestamp
+      ) {
         unresolvedFilterIssues.push({
           filterKey: 'dateRange',
           rawValue: `${rawFrom} - ${rawTo}`,
@@ -542,12 +752,12 @@ export function normalizeTransactionHistoryFilters(
         });
       } else if (unresolvedFilterIssues.every(issue => issue.filterKey !== 'dateRange')) {
         const tokens: string[] = [];
-        if (parsedFromDate) {
-          const fromString = formatIsoDateOnly(parsedFromDate);
+        if (rawFrom) {
+          const fromString = rawFrom.trim().slice(0, 10);
           tokens.push(`gte.${fromString}`);
         }
-        if (parsedToDate) {
-          const toString = formatIsoDateOnly(parsedToDate);
+        if (rawTo) {
+          const toString = rawTo.trim().slice(0, 10);
           tokens.push(`lte.${toString}`);
         }
         upstreamRecordDate = tokens;
@@ -561,6 +771,27 @@ export function normalizeTransactionHistoryFilters(
   }
 
   const isValid = unresolvedFilterIssues.length === 0;
+
+  if (isValid) {
+    const navigationTokens: string[] = [];
+    if (appliedFilters.account?.selector) {
+      navigationTokens.push(appliedFilters.account.selector);
+    }
+    if (appliedFilters.category?.selector) {
+      navigationTokens.push(appliedFilters.category.selector);
+    } else if (appliedFilters.categoryGroup) {
+      navigationTokens.push(appliedFilters.categoryGroup);
+    }
+    if (appliedFilters.recordType) {
+      navigationTokens.push(appliedFilters.recordType === 'expense' ? 'pengeluaran' : 'pemasukan');
+    }
+    if (appliedFilters.dateRange?.selector) {
+      navigationTokens.push(appliedFilters.dateRange.selector);
+    }
+    if (navigationTokens.length > 0) {
+      appliedFilters.navigationTokens = navigationTokens;
+    }
+  }
 
   const normalizedOptions: TransactionHistoryQueryOptions = {
     ...queryOptions,

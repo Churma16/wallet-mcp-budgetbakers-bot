@@ -7,7 +7,10 @@ import { TransactionHistoryService } from '../src/services/transactionHistorySer
 import { WalletCacheService } from '../src/services/walletCacheService.js';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
 import { detectFastPathAction } from '../src/utils/fastPathIntentDetector.js';
-import { normalizeTransactionHistoryFilters } from '../src/utils/transactionHistoryFilterNormalizer.js';
+import {
+  normalizeTransactionHistoryFilters,
+  isValidCalendarDateString,
+} from '../src/utils/transactionHistoryFilterNormalizer.js';
 import { formatTransactionHistoryMessage } from '../src/utils/humanResponseFormatter.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import {
@@ -205,34 +208,168 @@ console.log('\n[Suite 4] Testing Date & Date Range Filtering...');
   await service.getTransactionHistory({ startDate: '2024-03-01', endDate: '2024-03-31' });
   assert.deepStrictEqual(capturedCalls[1].args.recordDate, ['gte.2024-03-01', 'lte.2024-03-31']);
 
-  // 4.3 Relative date periods: this_month
+  // 4.3 Relative date periods: this_month with timezone-aware half-open UTC ISO boundaries
+  // Sep 11, 2026 12:00:00 UTC = Sep 11, 2026 19:00:00 WIB
   const fixedRefDate = new Date('2026-09-11T12:00:00Z');
   const monthNormal = normalizeTransactionHistoryFilters({ datePeriod: 'this_month' }, [], [], fixedRefDate);
   assert.strictEqual(monthNormal.isValid, true);
-  assert.deepStrictEqual(monthNormal.upstreamRecordDate, ['gte.2026-09-01', 'lte.2026-09-30']);
+  // Start: 2026-09-01 00:00 WIB -> 2026-08-31T17:00:00.000Z. Next: 2026-10-01 00:00 WIB -> 2026-09-30T17:00:00.000Z
+  assert.deepStrictEqual(monthNormal.upstreamRecordDate, ['gte.2026-08-31T17:00:00.000Z', 'lt.2026-09-30T17:00:00.000Z']);
   assert.strictEqual(monthNormal.appliedFilters.dateRange?.label, 'Bulan ini');
+  assert.strictEqual(monthNormal.appliedFilters.dateRange?.selector, 'bulan ini');
 
-  // 4.4 Relative date periods: today
+  // 4.4 Relative date periods: today (half-open UTC interval for Asia/Jakarta)
+  // Start: 2026-09-11 00:00 WIB -> 2026-09-10T17:00:00.000Z. Next: 2026-09-12 00:00 WIB -> 2026-09-11T17:00:00.000Z
   const todayNormal = normalizeTransactionHistoryFilters({ datePeriod: 'today' }, [], [], fixedRefDate);
   assert.strictEqual(todayNormal.isValid, true);
-  assert.deepStrictEqual(todayNormal.upstreamRecordDate, ['eq.2026-09-11']);
+  assert.deepStrictEqual(todayNormal.upstreamRecordDate, ['gte.2026-09-10T17:00:00.000Z', 'lt.2026-09-11T17:00:00.000Z']);
+  assert.strictEqual(todayNormal.appliedFilters.dateRange?.label, 'Hari ini');
+  assert.strictEqual(todayNormal.appliedFilters.dateRange?.selector, 'hari ini');
 
-  // 4.5 Relative date periods: yesterday
+  // 4.5 Relative date periods: yesterday (half-open UTC interval for Asia/Jakarta)
+  // Start: 2026-09-10 00:00 WIB -> 2026-09-09T17:00:00.000Z. Next: 2026-09-11 00:00 WIB -> 2026-09-10T17:00:00.000Z
   const yesterdayNormal = normalizeTransactionHistoryFilters({ datePeriod: 'yesterday' }, [], [], fixedRefDate);
   assert.strictEqual(yesterdayNormal.isValid, true);
-  assert.deepStrictEqual(yesterdayNormal.upstreamRecordDate, ['eq.2026-09-10']);
+  assert.deepStrictEqual(yesterdayNormal.upstreamRecordDate, ['gte.2026-09-09T17:00:00.000Z', 'lt.2026-09-10T17:00:00.000Z']);
+  assert.strictEqual(yesterdayNormal.appliedFilters.dateRange?.label, 'Kemarin');
+  assert.strictEqual(yesterdayNormal.appliedFilters.dateRange?.selector, 'kemarin');
 
-  // 4.6 Date boundary: startDate > endDate fails closed
-  const callCountBefore = capturedCalls.length;
+  // 4.6 Timezone boundary transaction matching regression test (Asia/Jakarta UTC+7)
+  // Today = 2026-09-11 WIB (Interval: [2026-09-10T17:00:00.000Z, 2026-09-11T17:00:00.000Z))
+  const [lowerBoundOp, upperBoundOp] = todayNormal.upstreamRecordDate!;
+  const lowerTimestamp = Date.parse(lowerBoundOp.replace('gte.', ''));
+  const upperTimestamp = Date.parse(upperBoundOp.replace('lt.', ''));
+
+  const isIncludedInToday = (utcIsoString: string): boolean => {
+    const ts = Date.parse(utcIsoString);
+    return ts >= lowerTimestamp && ts < upperTimestamp;
+  };
+
+  // Transaction 1: 00:30 WIB on Sep 11 (2026-09-10T17:30:00.000Z) -> INCLUDED
+  assert.strictEqual(isIncludedInToday('2026-09-10T17:30:00.000Z'), true);
+  // Transaction 2: 23:30 WIB on Sep 11 (2026-09-11T16:30:00.000Z) -> INCLUDED
+  assert.strictEqual(isIncludedInToday('2026-09-11T16:30:00.000Z'), true);
+  // Transaction 3: 00:05 WIB on Sep 12 (2026-09-11T17:05:00.000Z) -> EXCLUDED (next local midnight)
+  assert.strictEqual(isIncludedInToday('2026-09-11T17:05:00.000Z'), false);
+  // Transaction 4: 23:55 WIB on Sep 10 (2026-09-10T16:55:00.000Z) -> EXCLUDED (before local midnight)
+  assert.strictEqual(isIncludedInToday('2026-09-10T16:55:00.000Z'), false);
+
+  // 4.7 Date boundary: startDate > endDate fails closed before MCP
+  const callsBeforeReversedDates = capturedCalls.length;
   const invalidRangePage = await service.getTransactionHistory({
     startDate: '2024-12-31',
     endDate: '2024-01-01',
   });
-  assert.strictEqual(capturedCalls.length, callCountBefore);
+  assert.strictEqual(capturedCalls.length, callsBeforeReversedDates); // No MCP call!
   assert.strictEqual(invalidRangePage.unresolvedFilters?.[0].filterKey, 'dateRange');
   assert.strictEqual(invalidRangePage.unresolvedFilters?.[0].reason, 'INVALID_RANGE');
 
-  console.log('  [PASS] Date ranges, operators, relative periods, and boundary validations verified.');
+  // 4.8 Array dateRange: reversed bounds fails closed before MCP
+  const callsBeforeArrayReversed = capturedCalls.length;
+  const arrayReversedPage = await service.getTransactionHistory({
+    dateRange: ['gte.2026-09-30', 'lte.2026-09-01'],
+  });
+  assert.strictEqual(capturedCalls.length, callsBeforeArrayReversed); // No MCP call!
+  assert.strictEqual(arrayReversedPage.records.length, 0);
+  assert.strictEqual(arrayReversedPage.unresolvedFilters?.[0].filterKey, 'dateRange');
+  assert.strictEqual(arrayReversedPage.unresolvedFilters?.[0].reason, 'INVALID_RANGE');
+
+  // 4.9 Fast-path reversed bounds: fails closed before MCP
+  const fastPathReversedAction = detectFastPathAction('history 2026-09-30 2026-09-01');
+  assert.ok(fastPathReversedAction);
+  assert.strictEqual((fastPathReversedAction as any).type, 'TRANSACTION_HISTORY');
+  const callsBeforeFpReversed = capturedCalls.length;
+  const fpReversedPage = await service.getTransactionHistory((fastPathReversedAction as any).options);
+  assert.strictEqual(capturedCalls.length, callsBeforeFpReversed); // No MCP call!
+  assert.strictEqual(fpReversedPage.unresolvedFilters?.[0].reason, 'INVALID_RANGE');
+
+  // 4.10 Array dateRange: impossible calendar dates fail closed before MCP
+  const callsBeforeImpossibleDate = capturedCalls.length;
+  const impossibleDatePage = await service.getTransactionHistory({
+    dateRange: ['eq.2024-02-30'],
+  });
+  assert.strictEqual(capturedCalls.length, callsBeforeImpossibleDate); // No MCP call!
+  assert.strictEqual(impossibleDatePage.records.length, 0);
+  assert.strictEqual(impossibleDatePage.unresolvedFilters?.[0].filterKey, 'dateRange');
+  assert.strictEqual(impossibleDatePage.unresolvedFilters?.[0].reason, 'INVALID_FORMAT');
+
+  // 4.11 Start date with impossible calendar date (2026-04-31) fails closed before MCP
+  const callsBeforeImpossibleApr31 = capturedCalls.length;
+  const impossibleApr31Page = await service.getTransactionHistory({
+    startDate: '2026-04-31',
+  });
+  assert.strictEqual(capturedCalls.length, callsBeforeImpossibleApr31); // No MCP call!
+  assert.strictEqual(impossibleApr31Page.unresolvedFilters?.[0].reason, 'INVALID_FORMAT');
+
+  // 4.12 Non-leap year Feb 29 (2025-02-29) fails closed before MCP
+  const callsBeforeNonLeapFeb29 = capturedCalls.length;
+  const nonLeapFeb29Page = await service.getTransactionHistory({
+    startDate: '2025-02-29',
+  });
+  assert.strictEqual(capturedCalls.length, callsBeforeNonLeapFeb29); // No MCP call!
+  assert.strictEqual(nonLeapFeb29Page.unresolvedFilters?.[0].reason, 'INVALID_FORMAT');
+
+  // 4.13 Remaining relative date periods: this_week, last_week, last_month, this_year
+  const thisWeekResult = normalizeTransactionHistoryFilters({ datePeriod: 'this_week' }, [], [], fixedRefDate);
+  assert.strictEqual(thisWeekResult.isValid, true);
+  assert.strictEqual(thisWeekResult.appliedFilters.dateRange?.label, 'Minggu ini');
+  assert.strictEqual(thisWeekResult.appliedFilters.dateRange?.selector, 'minggu ini');
+  assert.strictEqual(thisWeekResult.upstreamRecordDate?.length, 2);
+
+  const lastWeekResult = normalizeTransactionHistoryFilters({ datePeriod: 'last_week' }, [], [], fixedRefDate);
+  assert.strictEqual(lastWeekResult.isValid, true);
+  assert.strictEqual(lastWeekResult.appliedFilters.dateRange?.label, 'Minggu lalu');
+  assert.strictEqual(lastWeekResult.appliedFilters.dateRange?.selector, 'minggu lalu');
+  assert.strictEqual(lastWeekResult.upstreamRecordDate?.length, 2);
+
+  const lastMonthResult = normalizeTransactionHistoryFilters({ datePeriod: 'last_month' }, [], [], fixedRefDate);
+  assert.strictEqual(lastMonthResult.isValid, true);
+  assert.strictEqual(lastMonthResult.appliedFilters.dateRange?.label, 'Bulan lalu');
+  assert.strictEqual(lastMonthResult.appliedFilters.dateRange?.selector, 'bulan lalu');
+  assert.strictEqual(lastMonthResult.upstreamRecordDate?.length, 2);
+
+  const thisYearResult = normalizeTransactionHistoryFilters({ datePeriod: 'this_year' }, [], [], fixedRefDate);
+  assert.strictEqual(thisYearResult.isValid, true);
+  assert.strictEqual(thisYearResult.appliedFilters.dateRange?.label, 'Tahun ini');
+  assert.strictEqual(thisYearResult.appliedFilters.dateRange?.selector, 'tahun ini');
+  assert.strictEqual(thisYearResult.upstreamRecordDate?.length, 2);
+
+  // 4.14 Object dateRange { from, to } valid normalization
+  const validObjRange = normalizeTransactionHistoryFilters({ dateRange: { from: '2026-05-01', to: '2026-05-31' } });
+  assert.strictEqual(validObjRange.isValid, true);
+  assert.deepStrictEqual(validObjRange.upstreamRecordDate, ['gte.2026-05-01', 'lte.2026-05-31']);
+
+  // 4.15 Object dateRange { from, to } with invalid 'to' fails closed before MCP
+  const callsBeforeObjInvalidTo = capturedCalls.length;
+  const objInvalidToPage = await service.getTransactionHistory({
+    dateRange: { from: '2026-05-01', to: '2026-02-30' },
+  });
+  assert.strictEqual(capturedCalls.length, callsBeforeObjInvalidTo);
+  assert.strictEqual(objInvalidToPage.unresolvedFilters?.[0].reason, 'INVALID_FORMAT');
+
+  // 4.16 Direct unit tests for strict calendar validator function isValidCalendarDateString
+  assert.strictEqual(isValidCalendarDateString('2024-02-29'), true); // Leap year valid
+  assert.strictEqual(isValidCalendarDateString('2024-02-30'), false); // Leap year Feb 30 impossible
+  assert.strictEqual(isValidCalendarDateString('2025-02-29'), false); // Non-leap year Feb 29 impossible
+  assert.strictEqual(isValidCalendarDateString('2026-04-31'), false); // April has 30 days
+  assert.strictEqual(isValidCalendarDateString('2026-13-01'), false); // Invalid month 13
+  assert.strictEqual(isValidCalendarDateString('2026-00-10'), false); // Invalid month 0
+  assert.strictEqual(isValidCalendarDateString('2026-01-32'), false); // Invalid day 32
+  assert.strictEqual(isValidCalendarDateString('2026-01-00'), false); // Invalid day 0
+  assert.strictEqual(isValidCalendarDateString('not-a-date'), false);
+  assert.strictEqual(isValidCalendarDateString(12345 as any), false);
+  assert.strictEqual(isValidCalendarDateString('2026-09-10T17:00:00.000Z'), true);
+  assert.strictEqual(isValidCalendarDateString('2026-09-10T17:00:00+07:00'), true);
+  assert.strictEqual(isValidCalendarDateString('2026-02-30T17:00:00.000Z'), false);
+  assert.strictEqual(isValidCalendarDateString('2026-09-10T25:00:00.000Z'), false);
+  assert.strictEqual(isValidCalendarDateString('2026-09-10T12:60:00.000Z'), false);
+
+  // 4.17 Category group navigation token propagation
+  const categoryGroupNorm = normalizeTransactionHistoryFilters({ categoryGroup: 'food_and_drinks' });
+  assert.strictEqual(categoryGroupNorm.isValid, true);
+  assert.strictEqual(categoryGroupNorm.appliedFilters.navigationTokens?.[0], 'food_and_drinks');
+
+  console.log('  [PASS] Timezone UTC boundaries, strict calendar validation, and reversed bounds verified.');
 }
 
 // -----------------------------------------------------------------------------
@@ -283,7 +420,9 @@ console.log('\n[Suite 5] Testing Composable Multi-Filter Queries...');
   assert.strictEqual(comboResult.records.length, 1);
   assert.strictEqual(comboResult.records[0].accountName, 'BCA Tabungan');
   assert.strictEqual(comboResult.appliedFilters?.account?.name, 'BCA Tabungan');
+  assert.strictEqual(comboResult.appliedFilters?.account?.selector, 'bca');
   assert.strictEqual(comboResult.appliedFilters?.category?.name, 'Makanan & Minuman');
+  assert.strictEqual(comboResult.appliedFilters?.category?.selector, 'makanan');
   assert.strictEqual(comboResult.appliedFilters?.recordType, 'expense');
 
   console.log('  [PASS] Composable multi-filter query accurately combines all dimensions simultaneously.');
@@ -384,8 +523,20 @@ console.log('\n[Suite 7] Testing Human-Facing Response Formatting & i18n...');
   const failClosedFormattedEn = formatTransactionHistoryMessage(failClosedPage, 'en');
   assert.match(failClosedFormattedEn, /Transaction History Filter Not Found/);
 
-  // 7.4 Filter-preserving navigation hints
-  const multiPageWithFilters: any = {
+  // 7.4 Next-page command round-trip regression test (Issue #101 Review)
+  // Normalize query with 'bca' (which maps to 'BCA Tabungan') and 'makanan' (which maps to 'Makanan & Minuman')
+  const roundTripNormalized = normalizeTransactionHistoryFilters(
+    { accountName: 'bca', categoryName: 'makanan' },
+    MOCK_ACCOUNTS,
+    MOCK_CATEGORIES
+  );
+  assert.strictEqual(roundTripNormalized.isValid, true);
+  assert.strictEqual(roundTripNormalized.appliedFilters.account?.name, 'BCA Tabungan');
+  assert.strictEqual(roundTripNormalized.appliedFilters.account?.selector, 'bca');
+  assert.strictEqual(roundTripNormalized.appliedFilters.category?.name, 'Makanan & Minuman');
+  assert.strictEqual(roundTripNormalized.appliedFilters.category?.selector, 'makanan');
+
+  const roundTripPage: any = {
     records: samplePage.records,
     total: 25,
     limit: 10,
@@ -395,11 +546,89 @@ console.log('\n[Suite 7] Testing Human-Facing Response Formatting & i18n...');
     nextOffset: 10,
     hasMore: true,
     sort: 'newest',
-    appliedFilters: samplePage.appliedFilters,
+    appliedFilters: roundTripNormalized.appliedFilters,
   };
 
-  const hintFormatted = formatTransactionHistoryMessage(multiPageWithFilters, 'id');
-  assert.match(hintFormatted, /riwayat bca makanan pengeluaran bulan ini hal 2/);
+  const formattedRoundTrip = formatTransactionHistoryMessage(roundTripPage, 'id');
+  // Command hint must use parser-safe selectors 'bca' and 'makanan', NOT 'bca tabungan' or 'makanan & minuman'
+  assert.match(formattedRoundTrip, /riwayat bca makanan hal 2/);
+  assert.doesNotMatch(formattedRoundTrip, /tabungan/);
+  assert.doesNotMatch(formattedRoundTrip, /minuman/);
+
+  // Extract the exact generated command from the markdown
+  const commandMatch = formattedRoundTrip.match(/_Ketik \*(riwayat .+?)\* untuk halaman selanjutnya\._/);
+  assert.ok(commandMatch, 'Next page command hint must be present');
+  const extractedCommand = commandMatch[1];
+  assert.strictEqual(extractedCommand, 'riwayat bca makanan hal 2');
+
+  // Parse that exact hint command back through detectFastPathAction
+  const parsedBackAction = detectFastPathAction(extractedCommand);
+  assert.ok(parsedBackAction, 'detectFastPathAction must parse the generated navigation hint command');
+  assert.strictEqual((parsedBackAction as any).type, 'TRANSACTION_HISTORY');
+  assert.strictEqual((parsedBackAction as any).options.page, 2);
+  assert.strictEqual((parsedBackAction as any).options.accountName, 'bca');
+  assert.strictEqual((parsedBackAction as any).options.categoryName, 'makanan');
+
+  // 7.5 Full multi-filter navigation hint round-trip (Account + Category + Type + Period + Limit + Sort)
+  const fullComboNormalized = normalizeTransactionHistoryFilters(
+    {
+      accountName: 'bca',
+      categoryName: 'makanan',
+      recordType: 'expense',
+      datePeriod: 'this_month',
+      limit: 5,
+      sort: 'oldest',
+    },
+    MOCK_ACCOUNTS,
+    MOCK_CATEGORIES
+  );
+  const fullComboPage: any = {
+    records: samplePage.records,
+    total: 50,
+    limit: 5,
+    offset: 0,
+    page: 1,
+    totalPages: 10,
+    nextOffset: 5,
+    hasMore: true,
+    sort: 'oldest',
+    appliedFilters: fullComboNormalized.appliedFilters,
+  };
+
+  const fullComboFormattedId = formatTransactionHistoryMessage(fullComboPage, 'id');
+  const fullComboMatchId = fullComboFormattedId.match(/_Ketik \*(riwayat .+?)\* untuk halaman selanjutnya\._/);
+  assert.ok(fullComboMatchId);
+  const fullExtractedCommandId = fullComboMatchId[1];
+  assert.strictEqual(fullExtractedCommandId, 'riwayat bca makanan pengeluaran bulan ini 5 hal 2 terlama');
+
+  const parsedFullId = detectFastPathAction(fullExtractedCommandId);
+  assert.ok(parsedFullId);
+  assert.strictEqual((parsedFullId as any).type, 'TRANSACTION_HISTORY');
+  assert.strictEqual((parsedFullId as any).options.page, 2);
+  assert.strictEqual((parsedFullId as any).options.limit, 5);
+  assert.strictEqual((parsedFullId as any).options.sort, 'oldest');
+  assert.strictEqual((parsedFullId as any).options.accountName, 'bca');
+  assert.strictEqual((parsedFullId as any).options.categoryName, 'makanan');
+  assert.strictEqual((parsedFullId as any).options.recordType, 'expense');
+  assert.strictEqual((parsedFullId as any).options.datePeriod, 'this_month');
+
+  // English full combo round-trip
+  const fullComboFormattedEn = formatTransactionHistoryMessage(fullComboPage, 'en');
+  const fullComboMatchEn = fullComboFormattedEn.match(/_Type \*(history .+?)\* for the next page\._/);
+  assert.ok(fullComboMatchEn);
+  const fullExtractedCommandEn = fullComboMatchEn[1];
+  assert.strictEqual(fullExtractedCommandEn, 'history bca makanan expense this month 5 page 2 oldest');
+
+  const parsedFullEn = detectFastPathAction(fullExtractedCommandEn);
+  assert.ok(parsedFullEn);
+  assert.strictEqual((parsedFullEn as any).type, 'TRANSACTION_HISTORY');
+  assert.strictEqual((parsedFullEn as any).options.page, 2);
+  assert.strictEqual((parsedFullEn as any).options.limit, 5);
+  assert.strictEqual((parsedFullEn as any).options.sort, 'oldest');
+  assert.strictEqual((parsedFullEn as any).options.accountName, 'bca');
+  assert.strictEqual((parsedFullEn as any).options.categoryName, 'makanan');
+  assert.strictEqual((parsedFullEn as any).options.recordType, 'expense');
+  assert.strictEqual((parsedFullEn as any).options.datePeriod, 'this_month');
 
   console.log('  [PASS] Localized headers, badges, warnings, and navigation hints formatted properly.');
 }

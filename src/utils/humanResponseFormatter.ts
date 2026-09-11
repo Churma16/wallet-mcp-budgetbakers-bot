@@ -465,21 +465,57 @@ export function formatTransactionHistoryMessage(
   if (historyPage.hasMore) {
     const nextPageIndex = historyPage.page + 1;
     const filterTokens: string[] = [];
-    if (appliedFilters?.account?.name) {
-      filterTokens.push(appliedFilters.account.name.toLowerCase());
-    }
-    if (appliedFilters?.category?.name) {
-      filterTokens.push(appliedFilters.category.name.toLowerCase());
-    }
-    if (appliedFilters?.recordType) {
-      filterTokens.push(
-        appliedFilters.recordType === 'expense'
-          ? (languageCode === 'en' ? 'expense' : 'pengeluaran')
-          : (languageCode === 'en' ? 'income' : 'pemasukan')
-      );
-    }
-    if (appliedFilters?.dateRange?.label) {
-      filterTokens.push(appliedFilters.dateRange.label.toLowerCase());
+
+    if (appliedFilters?.navigationTokens && appliedFilters.navigationTokens.length > 0) {
+      if (languageCode === 'en') {
+        const localizedTokens = appliedFilters.navigationTokens.map(token => {
+          if (token === 'pengeluaran') return 'expense';
+          if (token === 'pemasukan') return 'income';
+          if (token === 'hari ini') return 'today';
+          if (token === 'kemarin') return 'yesterday';
+          if (token === 'minggu ini') return 'this week';
+          if (token === 'minggu lalu') return 'last week';
+          if (token === 'bulan ini') return 'this month';
+          if (token === 'bulan lalu') return 'last month';
+          if (token === 'tahun ini') return 'this year';
+          return token;
+        });
+        filterTokens.push(...localizedTokens);
+      } else {
+        filterTokens.push(...appliedFilters.navigationTokens);
+      }
+    } else {
+      if (appliedFilters?.account?.selector) {
+        filterTokens.push(appliedFilters.account.selector);
+      } else if (appliedFilters?.account?.name) {
+        filterTokens.push(appliedFilters.account.name.toLowerCase());
+      }
+
+      if (appliedFilters?.category?.selector) {
+        filterTokens.push(appliedFilters.category.selector);
+      } else if (appliedFilters?.categoryGroup) {
+        filterTokens.push(appliedFilters.categoryGroup);
+      } else if (appliedFilters?.category?.name) {
+        filterTokens.push(appliedFilters.category.name.toLowerCase());
+      }
+
+      if (appliedFilters?.recordType) {
+        filterTokens.push(
+          appliedFilters.recordType === 'expense'
+            ? (languageCode === 'en' ? 'expense' : 'pengeluaran')
+            : (languageCode === 'en' ? 'income' : 'pemasukan')
+        );
+      }
+
+      if (appliedFilters?.dateRange?.selector) {
+        filterTokens.push(
+          languageCode === 'en' && appliedFilters.dateRange.selector === 'bulan ini'
+            ? 'this month'
+            : appliedFilters.dateRange.selector
+        );
+      } else if (appliedFilters?.dateRange?.label) {
+        filterTokens.push(appliedFilters.dateRange.label.toLowerCase());
+      }
     }
 
     messageParts.push('');
