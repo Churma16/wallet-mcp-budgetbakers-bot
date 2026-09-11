@@ -61,12 +61,42 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
     private readonly onUserMessageReceived: UserMessageCallback,
     safeguardConfiguration?: WhatsappSafeguardConfiguration
   ) {
-    this.normalizedAllowedPhoneNumber = this.allowedPhoneNumber.replace(/[^0-9]/g, '');
+    this.normalizedAllowedPhoneNumber = (this.allowedPhoneNumber || '').replace(/[^0-9]/g, '');
     this.maxReconnectAttempts = safeguardConfiguration?.maxReconnectAttempts ?? 6;
     this.maxBackoffSeconds = safeguardConfiguration?.maxBackoffSeconds ?? 300;
     this.messageQueueIntervalMs = safeguardConfiguration?.messageQueueIntervalMs ?? 1000;
     this.typingPresenceCooldownMilliseconds = safeguardConfiguration?.typingPresenceCooldownMs ?? 2500;
     this.maxMediaDownloadBytes = safeguardConfiguration?.maxMediaDownloadBytes ?? (10 * 1024 * 1024);
+  }
+
+  public isTargetingSelf(
+    remoteJid: string,
+    botUserPhoneNumber?: string,
+    botUserLinkedDeviceIdentifier?: string
+  ): boolean {
+    const [senderRawIdentifier] = remoteJid.split('@');
+    const normalizedSenderDigits = senderRawIdentifier.replace(/[^0-9]/g, '');
+
+    return Boolean(
+      (botUserPhoneNumber && normalizedSenderDigits === botUserPhoneNumber) ||
+      (botUserLinkedDeviceIdentifier && senderRawIdentifier === botUserLinkedDeviceIdentifier) ||
+      (this.normalizedAllowedPhoneNumber && normalizedSenderDigits === this.normalizedAllowedPhoneNumber)
+    );
+  }
+
+  public isAuthorizedSender(remoteJid: string, isMessageTargetingSelf: boolean): boolean {
+    if (isMessageTargetingSelf) {
+      return true;
+    }
+
+    if (!this.normalizedAllowedPhoneNumber) {
+      return false;
+    }
+
+    const [senderRawIdentifier, jidDomain] = remoteJid.split('@');
+    const normalizedSenderDigits = senderRawIdentifier.replace(/[^0-9]/g, '');
+
+    return jidDomain === 's.whatsapp.net' && normalizedSenderDigits === this.normalizedAllowedPhoneNumber;
   }
 
   public getMaxMediaDownloadBytes(): number {
@@ -319,102 +349,113 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
           }
 
           applicationLogger.success('WhatsApp connection successfully established and ready!');
-          if (this.allowedPhoneNumber) {
-            applicationLogger.security(`WhatsApp whitelist active. Only responding to: ${this.allowedPhoneNumber}`);
+          if (this.normalizedAllowedPhoneNumber) {
+            applicationLogger.security(`WhatsApp whitelist active. Only responding to: ${this.normalizedAllowedPhoneNumber}`);
           } else {
-            applicationLogger.warn('ALLOWED_PHONE_NUMBER is not set in .env. WhatsApp will respond to all private chats.');
+            applicationLogger.warn(
+              'ALLOWED_PHONE_NUMBER is not set in .env. Inbound non-self WhatsApp messages will be rejected (fail-closed).'
+            );
           }
         }
       });
 
     this.socketInstance.ev.on('messages.upsert', async messageUpsertEvent => {
-      const incomingMessageList = messageUpsertEvent.messages;
-
-      for (const rawMessage of incomingMessageList) {
-        const remoteJid = rawMessage.key.remoteJid;
-        if (!remoteJid || remoteJid === 'status@broadcast') {
-          continue;
-        }
-
-        const incomingMessageId = rawMessage.key.id;
-        if (incomingMessageId) {
-          if (this.recentIncomingMessageIdSet.has(incomingMessageId)) {
-            continue;
-          }
-          this.recordIncomingMessageId(incomingMessageId);
-        }
-
-        if (incomingMessageId && this.recentOutgoingMessageIdSet.has(incomingMessageId)) {
-          continue;
-        }
-
-        const isGroupOrNewsletterChat = remoteJid.endsWith('@g.us') || remoteJid.endsWith('@newsletter');
-        if (isGroupOrNewsletterChat) {
-          continue;
-        }
-
-        const [senderRawIdentifier, jidDomain] = remoteJid.split('@');
-        const normalizedSenderDigits = senderRawIdentifier.replace(/[^0-9]/g, '');
-
-        const botUserPhoneNumber =
-          this.socketInstance?.user?.id?.split(':')[0]?.split('@')[0]?.replace(/[^0-9]/g, '') || '';
-        const botUserLinkedDeviceIdentifier =
-          (this.socketInstance?.user as any)?.lid?.split(':')[0]?.split('@')[0] || '';
-
-        const isMessageTargetingSelf = Boolean(
-          (botUserPhoneNumber && normalizedSenderDigits === botUserPhoneNumber) ||
-          (botUserLinkedDeviceIdentifier && senderRawIdentifier === botUserLinkedDeviceIdentifier) ||
-          (this.normalizedAllowedPhoneNumber && normalizedSenderDigits === this.normalizedAllowedPhoneNumber)
-        );
-
-        const unwrappedMessageContent = this.extractUnwrappedMessageContent(rawMessage);
-        if (!unwrappedMessageContent) {
-          continue;
-        }
-
-        if (rawMessage.key.fromMe) {
-          if (!isMessageTargetingSelf) {
-            continue;
-          }
-
-          const textContent =
-            unwrappedMessageContent.conversation ||
-            unwrappedMessageContent.extendedTextMessage?.text ||
-            unwrappedMessageContent.imageMessage?.caption ||
-            '';
-
-          if (
-            textContent.startsWith('✅') ||
-            textContent.startsWith('⚠️') ||
-            textContent.startsWith('📊 *Saldo Rekening*') ||
-            textContent.startsWith('📈 *Status Anggaran*') ||
-            textContent.startsWith('[success]') ||
-            textContent.startsWith('[error]') ||
-            textContent.startsWith('[info]') ||
-            textContent.startsWith('[warn]')
-          ) {
-            continue;
-          }
-        }
-
-        if (this.normalizedAllowedPhoneNumber && !isMessageTargetingSelf) {
-          const isSenderWhitelisted =
-            jidDomain === 's.whatsapp.net' && normalizedSenderDigits === this.normalizedAllowedPhoneNumber;
-
-          if (!isSenderWhitelisted) {
-            applicationLogger.security(`WhatsApp ignored message from unauthorized sender: ${remoteJid}`);
-            continue;
-          }
-        }
-
-        await this.handleIncomingMessage(rawMessage, unwrappedMessageContent, remoteJid, senderRawIdentifier);
-      }
+      await this.processIncomingMessages(messageUpsertEvent.messages);
     });
     } catch (connectionInitializationError: unknown) {
       applicationLogger.error(`Failed to initialize WhatsApp connection: ${connectionInitializationError}`);
       throw connectionInitializationError;
     } finally {
       this.isConnectingOrReconnecting = false;
+    }
+  }
+
+  public async processIncomingMessages(incomingMessageList: proto.IWebMessageInfo[]): Promise<void> {
+    for (const rawMessage of incomingMessageList) {
+      if (!rawMessage.key) {
+        continue;
+      }
+
+      const remoteJid = rawMessage.key.remoteJid;
+      if (!remoteJid || remoteJid === 'status@broadcast') {
+        continue;
+      }
+
+      const incomingMessageId = rawMessage.key.id;
+      if (incomingMessageId) {
+        if (this.recentIncomingMessageIdSet.has(incomingMessageId)) {
+          continue;
+        }
+        this.recordIncomingMessageId(incomingMessageId);
+      }
+
+      if (incomingMessageId && this.recentOutgoingMessageIdSet.has(incomingMessageId)) {
+        continue;
+      }
+
+      const isGroupOrNewsletterChat = remoteJid.endsWith('@g.us') || remoteJid.endsWith('@newsletter');
+      if (isGroupOrNewsletterChat) {
+        continue;
+      }
+
+      const [senderRawIdentifier] = remoteJid.split('@');
+
+      const botUserPhoneNumber =
+        this.socketInstance?.user?.id?.split(':')[0]?.split('@')[0]?.replace(/[^0-9]/g, '') || '';
+      const botUserLinkedDeviceIdentifier =
+        (this.socketInstance?.user as any)?.lid?.split(':')[0]?.split('@')[0] || '';
+
+      const isMessageTargetingSelf = this.isTargetingSelf(
+        remoteJid,
+        botUserPhoneNumber,
+        botUserLinkedDeviceIdentifier
+      );
+
+      const unwrappedMessageContent = this.extractUnwrappedMessageContent(rawMessage);
+      if (!unwrappedMessageContent) {
+        continue;
+      }
+
+      if (rawMessage.key.fromMe) {
+        if (!isMessageTargetingSelf) {
+          continue;
+        }
+
+        const textContent =
+          unwrappedMessageContent.conversation ||
+          unwrappedMessageContent.extendedTextMessage?.text ||
+          unwrappedMessageContent.imageMessage?.caption ||
+          '';
+
+        if (
+          textContent.startsWith('✅') ||
+          textContent.startsWith('⚠️') ||
+          textContent.startsWith('📊 *Saldo Rekening*') ||
+          textContent.startsWith('📈 *Status Anggaran*') ||
+          textContent.startsWith('[success]') ||
+          textContent.startsWith('[error]') ||
+          textContent.startsWith('[info]') ||
+          textContent.startsWith('[warn]')
+        ) {
+          continue;
+        }
+      }
+
+      if (!isMessageTargetingSelf) {
+        if (!this.normalizedAllowedPhoneNumber) {
+          applicationLogger.security(
+            `WhatsApp ignored non-self message from ${remoteJid}: ALLOWED_PHONE_NUMBER is not configured (fail-closed).`
+          );
+          continue;
+        }
+
+        if (!this.isAuthorizedSender(remoteJid, false)) {
+          applicationLogger.security(`WhatsApp ignored message from unauthorized sender: ${remoteJid}`);
+          continue;
+        }
+      }
+
+      await this.handleIncomingMessage(rawMessage, unwrappedMessageContent, remoteJid, senderRawIdentifier);
     }
   }
 
