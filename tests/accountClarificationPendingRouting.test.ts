@@ -88,12 +88,16 @@ function createHarness() {
   const fastPathHandler = new MockFastPathHandler();
   const financialAiProvider = new MockFinancialAiProvider();
   const messagingGateway = new MockMessagingGateway();
+  const walletDispatch = { calls: 0 };
   const walletCacheService = {
     getAccounts: () => accounts,
     getCategories: () => categories,
   };
   const walletMcpClient = {
-    createRecords: async () => ({}),
+    createRecords: async () => {
+      walletDispatch.calls++;
+      return {};
+    },
     fetchBudgets: async () => [],
   };
 
@@ -138,10 +142,31 @@ function createHarness() {
     pendingActionHandler,
     fastPathHandler,
     financialAiProvider,
+    walletDispatch,
     handler,
     clarificationDraft,
     standardPending,
   };
+}
+
+function assertClarificationUntouched(
+  label: string,
+  harness: ReturnType<typeof createHarness>
+): void {
+  assertCondition(
+    `${label} leaves clarification draft present`,
+    harness.pendingService.getPendingAccountSelectionDraft(
+      harness.clarificationDraft.ticketId
+    ) !== undefined
+  );
+  assertCondition(
+    `${label} leaves clarification draft PENDING`,
+    harness.pendingService.getPendingAccountSelectionDraftState(
+      harness.clarificationDraft.ticketId
+    ) === 'PENDING'
+  );
+  assertCondition(`${label} bypasses AI`, harness.financialAiProvider.textCalls === 0);
+  assertCondition(`${label} does not dispatch clarification Wallet write`, harness.walletDispatch.calls === 0);
 }
 
 async function main(): Promise<void> {
@@ -156,13 +181,7 @@ async function main(): Promise<void> {
       rejectHarness.pendingActionHandler.calls[0].actionType === 'REJECT' &&
       rejectHarness.pendingActionHandler.calls[0].targetScope === rejectHarness.standardPending.ticketId
   );
-  assertCondition(
-    'Ticket-specific rejection leaves clarification draft unchanged',
-    rejectHarness.pendingService.getPendingAccountSelectionDraft(
-      rejectHarness.clarificationDraft.ticketId
-    ) !== undefined
-  );
-  assertCondition('Ticket-specific rejection bypasses AI', rejectHarness.financialAiProvider.textCalls === 0);
+  assertClarificationUntouched('Ticket-specific rejection', rejectHarness);
 
   const confirmHarness = createHarness();
   await confirmHarness.handler.handleIncomingUserMessage(
@@ -175,13 +194,62 @@ async function main(): Promise<void> {
       confirmHarness.pendingActionHandler.calls[0].actionType === 'CONFIRM' &&
       confirmHarness.pendingActionHandler.calls[0].targetScope === confirmHarness.standardPending.ticketId
   );
+  assertClarificationUntouched('Ticket-specific confirmation', confirmHarness);
+
+  const latestConfirmHarness = createHarness();
+  await latestConfirmHarness.handler.handleIncomingUserMessage(createEvent('ya'));
+
   assertCondition(
-    'Ticket-specific confirmation leaves clarification draft unchanged',
-    confirmHarness.pendingService.getPendingAccountSelectionDraft(
-      confirmHarness.clarificationDraft.ticketId
-    ) !== undefined
+    'Generic latest confirmation reaches the standard pending handler',
+    latestConfirmHarness.pendingActionHandler.calls.length === 1 &&
+      latestConfirmHarness.pendingActionHandler.calls[0].actionType === 'CONFIRM' &&
+      latestConfirmHarness.pendingActionHandler.calls[0].targetScope === 'LATEST'
   );
-  assertCondition('Ticket-specific confirmation bypasses AI', confirmHarness.financialAiProvider.textCalls === 0);
+  assertClarificationUntouched('Generic latest confirmation', latestConfirmHarness);
+
+  const confirmWordHarness = createHarness();
+  await confirmWordHarness.handler.handleIncomingUserMessage(createEvent('confirm'));
+
+  assertCondition(
+    'English generic confirmation reaches the standard pending handler',
+    confirmWordHarness.pendingActionHandler.calls.length === 1 &&
+      confirmWordHarness.pendingActionHandler.calls[0].actionType === 'CONFIRM' &&
+      confirmWordHarness.pendingActionHandler.calls[0].targetScope === 'LATEST'
+  );
+  assertClarificationUntouched('English generic confirmation', confirmWordHarness);
+
+  const confirmAllHarness = createHarness();
+  await confirmAllHarness.handler.handleIncomingUserMessage(createEvent('ya semua'));
+
+  assertCondition(
+    'Confirm-all reaches the standard pending handler',
+    confirmAllHarness.pendingActionHandler.calls.length === 1 &&
+      confirmAllHarness.pendingActionHandler.calls[0].actionType === 'CONFIRM' &&
+      confirmAllHarness.pendingActionHandler.calls[0].targetScope === 'ALL'
+  );
+  assertClarificationUntouched('Confirm-all', confirmAllHarness);
+
+  const rejectAllHarness = createHarness();
+  await rejectAllHarness.handler.handleIncomingUserMessage(createEvent('batal semua'));
+
+  assertCondition(
+    'Reject-all reaches the standard pending handler',
+    rejectAllHarness.pendingActionHandler.calls.length === 1 &&
+      rejectAllHarness.pendingActionHandler.calls[0].actionType === 'REJECT' &&
+      rejectAllHarness.pendingActionHandler.calls[0].targetScope === 'ALL'
+  );
+  assertClarificationUntouched('Reject-all', rejectAllHarness);
+
+  const latestRejectHarness = createHarness();
+  await latestRejectHarness.handler.handleIncomingUserMessage(createEvent('batal'));
+
+  assertCondition(
+    'Generic latest rejection reaches the standard pending handler when one exists',
+    latestRejectHarness.pendingActionHandler.calls.length === 1 &&
+      latestRejectHarness.pendingActionHandler.calls[0].actionType === 'REJECT' &&
+      latestRejectHarness.pendingActionHandler.calls[0].targetScope === 'LATEST'
+  );
+  assertClarificationUntouched('Generic latest rejection', latestRejectHarness);
 
   console.log(`\n[SUCCESS] ${assertionCount} assertions passed.`);
 }
