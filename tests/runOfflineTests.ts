@@ -33,6 +33,7 @@ const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
   { filePath: 'tests/messagingGatewayResilience.test.ts', description: 'Multi-adapter gateway lifecycle, degraded mode & background reconnection' },
   { filePath: 'tests/pendingActionHandler.test.ts', description: 'Pending transaction data integrity & MCP failure recovery (Issue #72)' },
   { filePath: 'tests/phoneNumberNormalization.test.ts', description: 'International E.164 phone normalization, domestic prefix detection & Indonesian 08 conversion' },
+  { filePath: 'tests/promptInjectionDefense.test.ts', description: 'Prompt trust boundaries for email-derived Gate 1 fields (Issue #76)' },
   { filePath: 'tests/receiptOcrPrompt.test.ts', description: 'Receipt vision OCR system instructions, timezone offset & QRIS rules' },
   { filePath: 'tests/recordValidator.test.ts', description: 'Deterministic account resolution & fail-closed ambiguity handling (Issue #73)' },
   { filePath: 'tests/responseDictionary.test.ts', description: 'Multi-language dictionary resolution & missing token fallbacks' },
