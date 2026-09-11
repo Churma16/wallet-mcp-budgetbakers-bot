@@ -146,6 +146,22 @@ export function formatAccountSelectionRetry(draft: PendingAccountSelectionDraft)
 export function formatAccountSelectionUnknownOutcome(draft: PendingAccountSelectionDraft): string {
   const dictionary = getDictionary();
   return dictionary.languageCode === 'id'
-    ? `⚠️ Status pencatatan draft #${draft.ticketId} belum dapat dipastikan. Demi mencegah duplikasi, draft tidak akan dikirim ulang otomatis. Periksa Wallet terlebih dahulu. Anda masih dapat memakai perintah lain atau ketik *batal* setelah rekonsiliasi.`
-    : `⚠️ The recording status of draft #${draft.ticketId} is uncertain. To prevent duplicates, the draft will not be sent again automatically. Check Wallet first. You can still use other commands or type *cancel* after reconciliation.`;
+    ? `⚠️ Status pencatatan draft #${draft.ticketId} belum dapat dipastikan. Demi mencegah duplikasi, draft tidak akan dikirim ulang otomatis. Periksa Wallet terlebih dahulu. Setelah rekonsiliasi, tutup status lokal dengan *batal #${draft.ticketId}*.`
+    : `⚠️ The recording status of draft #${draft.ticketId} is uncertain. To prevent duplicates, the draft will not be sent again automatically. Check Wallet first. After reconciliation, dismiss the local status with *cancel #${draft.ticketId}*.`;
+}
+
+export function formatAccountSelectionUnknownCancellationGuidance(
+  draft: PendingAccountSelectionDraft
+): string {
+  const dictionary = getDictionary();
+  return dictionary.languageCode === 'id'
+    ? `⚠️ Draft #${draft.ticketId} memiliki hasil Wallet yang belum pasti. Periksa Wallet terlebih dahulu. Untuk menutup rekonsiliasi lokal tanpa mengirim ulang transaksi, ketik *batal #${draft.ticketId}*.`
+    : `⚠️ Draft #${draft.ticketId} has an uncertain Wallet outcome. Check Wallet first. To dismiss only the local reconciliation state without retrying the transaction, type *cancel #${draft.ticketId}*.`;
+}
+
+export function formatAccountSelectionUnknownDismissal(draft: PendingAccountSelectionDraft): string {
+  const dictionary = getDictionary();
+  return dictionary.languageCode === 'id'
+    ? `🧾 *Rekonsiliasi draft #${draft.ticketId} ditutup.*\nTidak ada pengiriman ulang ke Wallet. Status pengiriman sebelumnya tetap belum dapat dipastikan. Periksa Wallet sebelum memasukkan transaksi ini lagi.`
+    : `🧾 *Reconciliation for draft #${draft.ticketId} dismissed.*\nNo retry was sent to Wallet. The previous write outcome is still uncertain. Check Wallet before entering this transaction again.`;
 }
