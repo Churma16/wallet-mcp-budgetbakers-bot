@@ -243,7 +243,8 @@ export class UserMessageHandler {
             extractedIntent.records,
             validationResult.accountResolutionIssues,
             cachedAccounts,
-            cachedCategories
+            cachedCategories,
+            requestReferenceInstant
           );
           if (drafted) {
             return;

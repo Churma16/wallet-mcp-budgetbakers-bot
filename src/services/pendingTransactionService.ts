@@ -41,6 +41,7 @@ export interface PendingAccountSelectionDraft {
   accountHint: string;
   candidateAccounts: PendingAccountSelectionCandidate[];
   sourceUserText?: string;
+  sourceReferenceInstant?: Date;
   createdAt: Date;
   expiresAt: Date;
 }
@@ -49,7 +50,7 @@ export type PendingTransactionDispatchState = 'PENDING' | 'PROCESSING' | 'UNKNOW
 
 type AccountSelectionDraftUpdate = Partial<Pick<
   PendingAccountSelectionDraft,
-  'records' | 'pendingRecordIndex' | 'accountHint' | 'candidateAccounts' | 'sourceUserText'
+  'records' | 'pendingRecordIndex' | 'accountHint' | 'candidateAccounts' | 'sourceUserText' | 'sourceReferenceInstant'
 >>;
 
 export class PendingTransactionService {
@@ -96,10 +97,14 @@ export class PendingTransactionService {
     const ticketId = this.nextTicketSequentialId++;
     const createdAt = new Date();
     const expiresAt = new Date(createdAt.getTime() + this.defaultTimeToLiveMilliseconds);
+    const sourceReferenceInstant = itemData.sourceReferenceInstant
+      ? new Date(itemData.sourceReferenceInstant)
+      : createdAt;
     const pendingDraft: PendingAccountSelectionDraft = {
       ...itemData,
       records: itemData.records.map(record => ({ ...record })),
       candidateAccounts: itemData.candidateAccounts.map(candidate => ({ ...candidate })),
+      sourceReferenceInstant,
       ticketId,
       createdAt,
       expiresAt,

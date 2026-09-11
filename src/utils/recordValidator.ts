@@ -124,7 +124,8 @@ export function validateAndSanitizeFinancialRecords(
   availableAccountList: WalletAccountItem[],
   availableCategoryList: WalletCategoryItem[],
   contextualUserMessage?: string,
-  referenceDate: Date = new Date()
+  referenceDate: Date = new Date(),
+  sourceUserTextForHashtags?: string
 ): FinancialRecordValidationResult {
   const validationErrors: string[] = [];
   const sanitizedRecords: CreateRecordInputPayload[] = [];
@@ -153,11 +154,16 @@ export function validateAndSanitizeFinancialRecords(
   const applicationTimezone = getApplicationTimezone();
 
   // Deterministically derive allowed explicit hashtags from raw user input.
-  // Raw user input (contextualUserMessage) is the sole authority for explicit hashtags.
+  // Raw user input (sourceUserTextForHashtags or contextualUserMessage) is the sole authority for explicit hashtags.
   // Model-generated fields (like record.note) must never authorize new hashtags absent from user input.
+  const rawUserTextForHashtags =
+    typeof sourceUserTextForHashtags === 'string'
+      ? sourceUserTextForHashtags
+      : contextualUserMessage;
+
   const rawSourceHashtags =
-    typeof contextualUserMessage === 'string'
-      ? extractHashtags(contextualUserMessage).tags
+    typeof rawUserTextForHashtags === 'string'
+      ? extractHashtags(rawUserTextForHashtags).tags
       : undefined;
 
   const allowedExplicitTagSet = new Set<string>();

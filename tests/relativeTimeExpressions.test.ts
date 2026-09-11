@@ -23,6 +23,11 @@ import {
 } from '../src/config/environmentConfig.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import { applicationLogger } from '../src/utils/logger.js';
+import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
+import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
+import { WalletCacheService } from '../src/services/walletCacheService.js';
+import { WalletMcpClientService } from '../src/services/walletMcpService.js';
+import { IncomingUserMessageEvent } from '../src/services/messaging/types.js';
 
 function assertCondition(condition: boolean, testDescription: string): void {
   try {
@@ -439,30 +444,31 @@ async function runRelativeTimeExpressionsTestSuite(): Promise<void> {
     'Record 2 resolved from note to yesterday siang (2026-09-10T05:30:00.000Z)'
   );
 
-  // Test 10: Account Clarification across Midnight Boundary (PR Comment 2)
+  // Test 10: Account Clarification across Midnight Boundary with sourceUserText & Hashes (PR Comment 6)
   applicationLogger.info('\nTEST 10: Account Clarification Across Midnight Boundary');
   const ambiguousAccounts: WalletAccountItem[] = [
     { id: 'acc-bca-1', name: 'BCA Personal', currency: 'IDR', accountType: 'General' },
     { id: 'acc-bca-2', name: 'BCA Business', currency: 'IDR', accountType: 'General' },
   ];
 
-  // Day 1: 2026-09-11 23:30:00 WIB (UTC: 2026-09-11 16:30:00Z)
-  const day1ReferenceUtc = new Date('2026-09-11T16:30:00.000Z');
+  // Request arrives before midnight: 2026-09-11 23:59:55 WIB (UTC: 2026-09-11 16:59:55Z)
+  const requestStartReferenceUtc = new Date('2026-09-11T16:59:55.000Z');
   const ambiguousInputRecords: CreateRecordInputPayload[] = [
     {
       accountId: 'bca', // Ambiguous between BCA Personal and BCA Business
       amount: -50000,
-      recordDate: '2026-09-11T16:30:00.000Z',
-      note: 'makan sate',
+      recordDate: '2026-09-11T16:59:55.000Z',
+      note: 'makan sate #dinner',
     },
   ];
 
+  // 1. Initial validation with contextual sourceUserText containing relative time and hashtag
   const day1ValidationResult = validateAndSanitizeFinancialRecords(
     ambiguousInputRecords,
     ambiguousAccounts,
     mockCategories,
-    'kemarin malem makan sate 50rb bca',
-    day1ReferenceUtc
+    'kemarin malem makan sate 50rb #dinner bca',
+    requestStartReferenceUtc
   );
 
   assertCondition(
@@ -479,31 +485,97 @@ async function runRelativeTimeExpressionsTestSuite(): Promise<void> {
     `Day 1 recordDate pre-normalized upfront into immutable UTC ISO string: 2026-09-10T13:00:00.000Z (got: ${ambiguousInputRecords[0].recordDate})`
   );
 
-  // Day 2 (After midnight): 2026-09-12 01:15:00 WIB (UTC: 2026-09-11 18:15:00Z)
-  // User clarifies account by selecting '1' (BCA Personal), re-running validation with updated accountId
-  const day2ReferenceUtc = new Date('2026-09-11T18:15:00.000Z');
-  const clarifiedRecords: CreateRecordInputPayload[] = [
-    {
-      ...ambiguousInputRecords[0],
-      accountId: 'acc-bca-1',
-    },
-  ];
+  // 2. Production path through AccountClarificationHandler and PendingTransactionService:
+  // - Request arrived before midnight (requestStartReferenceUtc = 23:59:55 WIB)
+  // - Clarification draft created with requestStartReferenceUtc
+  // - Draft creation crosses midnight to 2026-09-12 00:00:05 WIB (UTC: 2026-09-11 17:00:05Z)
+  // - User replies much later (e.g. Day 2 afternoon: 2026-09-12 14:00:00 WIB)
+  const dispatchedMcpRecords: CreateRecordInputPayload[][] = [];
+  const testSentMessages: string[] = [];
 
-  const day2ValidationResult = validateAndSanitizeFinancialRecords(
-    clarifiedRecords,
+  const testPendingService = new PendingTransactionService();
+  const testMcpClient = {
+    fetchAccounts: async () => ambiguousAccounts,
+    fetchCategories: async () => mockCategories,
+    fetchLabels: async () => [{ id: 'lbl-dinner', name: 'dinner' }],
+    createLabel: async (name: string) => ({ id: `lbl-${name}`, name }),
+    createRecords: async (records: CreateRecordInputPayload[]) => {
+      dispatchedMcpRecords.push(records.map(r => ({ ...r })));
+      return { summary: { total: records.length, succeeded: records.length, failed: 0 } };
+    },
+    fetchBudgets: async () => [],
+  } as unknown as WalletMcpClientService;
+
+  const testCache = new WalletCacheService(testMcpClient);
+  await testCache.initialize();
+
+  const testMessagingGateway = {
+    sendChatAction: async () => {},
+    clearTypingPresence: async () => {},
+    sendMessage: async (_channel: string, _chatId: string, content: string) => {
+      testSentMessages.push(content);
+    },
+  };
+
+  const testClarificationHandler = new AccountClarificationHandler(
+    testPendingService,
+    testMcpClient,
+    testCache,
+    testMessagingGateway as any
+  );
+
+  const initialIncomingEvent: IncomingUserMessageEvent = {
+    channel: 'whatsapp',
+    senderIdentifier: '+628123456789',
+    chatIdentifier: '+628123456789',
+    messageType: 'text',
+    textPayload: 'kemarin malem makan sate 50rb #dinner bca',
+  };
+
+  // Draft created with original requestReferenceInstant (23:59:55 WIB)
+  await testClarificationHandler.createPendingAccountSelectionDraft(
+    initialIncomingEvent,
+    ambiguousInputRecords,
+    day1ValidationResult.accountResolutionIssues,
     ambiguousAccounts,
     mockCategories,
-    undefined, // No contextual user message during clarification reply
-    day2ReferenceUtc
+    requestStartReferenceUtc
   );
 
+  const createdDraft = testPendingService.getPendingAccountSelectionDraft(1);
+  assertCondition(createdDraft !== undefined, 'Account clarification draft #1 created successfully');
   assertCondition(
-    day2ValidationResult.isValid === true,
-    'Day 2 clarification reply validates successfully'
+    createdDraft?.sourceReferenceInstant?.toISOString() === requestStartReferenceUtc.toISOString(),
+    `Draft preserves exact sourceReferenceInstant: ${requestStartReferenceUtc.toISOString()}`
+  );
+
+  // Simulate draft creation crossing midnight: createdAt is 2026-09-12 00:00:05 WIB (UTC 17:00:05Z)
+  if (createdDraft) {
+    createdDraft.createdAt = new Date('2026-09-11T17:00:05.000Z');
+  }
+
+  // Day 2 Afternoon: User replies to select option '1' (BCA Personal)
+  // Reply arrives at 2026-09-12 14:00:00 WIB (UTC: 2026-09-12 07:00:00Z)
+  const day2ReplyInstant = new Date('2026-09-12T07:00:00.000Z');
+  const clarificationReplyHandled = await testClarificationHandler.handlePendingAccountSelectionReply(
+    initialIncomingEvent,
+    '1',
+    day2ReplyInstant.getTime()
+  );
+
+  assertCondition(clarificationReplyHandled === true, 'Clarification reply handled successfully');
+  assertCondition(dispatchedMcpRecords.length === 1, 'Finalized records dispatched to Wallet MCP');
+  assertCondition(
+    dispatchedMcpRecords[0][0].recordDate === '2026-09-10T13:00:00.000Z',
+    `Finalized Wallet payload preserves exact normalized UTC timestamp: 2026-09-10T13:00:00.000Z (got: ${dispatchedMcpRecords[0][0].recordDate})`
   );
   assertCondition(
-    day2ValidationResult.sanitizedRecords[0].recordDate === '2026-09-10T13:00:00.000Z',
-    `Clarification reply after midnight preserves exact original normalized recordDate: 2026-09-10T13:00:00.000Z (got: ${day2ValidationResult.sanitizedRecords[0].recordDate})`
+    dispatchedMcpRecords[0][0].accountId === 'acc-bca-1',
+    `Finalized Wallet payload has resolved accountId acc-bca-1 (got: ${dispatchedMcpRecords[0][0].accountId})`
+  );
+  assertCondition(
+    dispatchedMcpRecords[0][0].labels?.includes('dinner') === true,
+    `Finalized Wallet payload retains hashtag label from sourceUserText: dinner (got: ${JSON.stringify(dispatchedMcpRecords[0][0].labels)})`
   );
 
   // Test 11: Daylight Saving Time (DST) Fall-Back and Spring-Forward Safety (PR Comment 3)
