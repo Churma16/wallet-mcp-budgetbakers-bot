@@ -6,6 +6,7 @@ import {
 import { WalletMcpClientService } from './services/walletMcpService.js';
 import { WalletCacheService } from './services/walletCacheService.js';
 import { CategoryContextService } from './services/categoryContextService.js';
+import { CategoryContextValidationResult } from './types/categoryContextTypes.js';
 import { createFinancialAiProvider, FinancialAiProvider } from './services/ai/index.js';
 import {
   MessagingGatewayService,
@@ -225,5 +226,19 @@ export class Application {
 
     this.isRunning = false;
     applicationLogger.info('All services stopped gracefully.');
+  }
+
+  /**
+   * Reloads category context configuration from disk.
+   */
+  public reloadCategoryContext(): CategoryContextValidationResult {
+    return this.categoryContextService.reload();
+  }
+
+  /**
+   * Returns the active category context service instance.
+   */
+  public getCategoryContextService(): CategoryContextService {
+    return this.categoryContextService;
   }
 }

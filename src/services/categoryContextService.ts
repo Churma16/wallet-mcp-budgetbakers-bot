@@ -18,6 +18,7 @@ export class CategoryContextService {
   private normalizedConfiguration: NormalizedCategoryContextConfiguration;
   private cachedContextFingerprint: string = '';
   private rawFileContent: string = '';
+  private lastModifiedTimestampMs: number = 0;
 
   constructor(customFilePath?: string) {
     this.targetFilePath = customFilePath || process.env.CATEGORY_CONTEXT_PATH || 'config/category-context.json';
@@ -44,6 +45,32 @@ export class CategoryContextService {
   }
 
   /**
+   * Checks if the configuration file on disk has changed since last load.
+   * If changed, automatically reloads and refreshes the normalized configuration and fingerprint.
+   */
+  public refreshIfModifiedOnDisk(): boolean {
+    const resolvedPath = this.getResolvedFilePath();
+    try {
+      if (!fs.existsSync(resolvedPath)) {
+        if (this.lastModifiedTimestampMs !== 0) {
+          this.loadConfiguration();
+          return true;
+        }
+        return false;
+      }
+
+      const fileStats = fs.statSync(resolvedPath);
+      if (fileStats.mtimeMs !== this.lastModifiedTimestampMs) {
+        this.loadConfiguration();
+        return true;
+      }
+    } catch {
+      // Fall back safely if stat fails
+    }
+    return false;
+  }
+
+  /**
    * Loads and validates the configuration file from disk.
    * If the file is missing or invalid, falls back safely to empty configuration without crashing.
    */
@@ -52,6 +79,7 @@ export class CategoryContextService {
 
     if (!fs.existsSync(resolvedPath)) {
       this.rawFileContent = '';
+      this.lastModifiedTimestampMs = 0;
       this.normalizedConfiguration = this.createEmptyConfiguration();
       this.cachedContextFingerprint = '';
       applicationLogger.info(`[INFO] No category context file found at '${resolvedPath}'. Using default category semantics.`);
@@ -63,10 +91,13 @@ export class CategoryContextService {
     }
 
     try {
+      const fileStats = fs.statSync(resolvedPath);
+      this.lastModifiedTimestampMs = fileStats.mtimeMs;
       this.rawFileContent = fs.readFileSync(resolvedPath, 'utf8');
     } catch (readError: unknown) {
       const errorMessage = readError instanceof Error ? readError.message : String(readError);
       applicationLogger.warn(`[WARN] Failed to read category context file at '${resolvedPath}': ${errorMessage}. Falling back safely.`);
+      this.lastModifiedTimestampMs = 0;
       this.normalizedConfiguration = this.createEmptyConfiguration();
       this.cachedContextFingerprint = '';
       return {
@@ -133,6 +164,7 @@ export class CategoryContextService {
    * This fingerprint is incorporated into AI system instruction cache keys.
    */
   public getContextFingerprint(): string {
+    this.refreshIfModifiedOnDisk();
     return this.cachedContextFingerprint;
   }
 
@@ -201,10 +233,34 @@ export class CategoryContextService {
     } else if (typeof typedInput.categories === 'object' && typedInput.categories !== null) {
       // Dictionary format: { "Category Name": { scope, examples, exclusions } }
       for (const [categoryName, ruleDetails] of Object.entries(typedInput.categories)) {
+        if (Array.isArray(ruleDetails)) {
+          issues.push({
+            propertyPath: `categories["${categoryName}"]`,
+            message: 'Category rule definition must be an object, not an array.',
+            severity: 'warning',
+          });
+          continue;
+        }
+
         if (typeof ruleDetails === 'object' && ruleDetails !== null) {
+          const ruleObj = ruleDetails as Record<string, unknown>;
+          if (
+            typeof ruleObj.category === 'string' &&
+            ruleObj.category.trim().length > 0 &&
+            ruleObj.category.trim().toLowerCase() !== categoryName.trim().toLowerCase()
+          ) {
+            issues.push({
+              propertyPath: `categories["${categoryName}"].category`,
+              message: `Nested category '${ruleObj.category}' ignored. Dictionary key '${categoryName}' is authoritative.`,
+              severity: 'warning',
+            });
+          }
+
           const synthesizedRule: CategoryContextRule = {
-            category: categoryName,
-            ...(ruleDetails as any),
+            category: categoryName.trim(),
+            scope: typeof ruleObj.scope === 'string' ? ruleObj.scope : undefined,
+            examples: Array.isArray(ruleObj.examples) ? ruleObj.examples as string[] : undefined,
+            exclusions: Array.isArray(ruleObj.exclusions) ? ruleObj.exclusions as string[] : undefined,
           };
           const validatedRule = this.validateSingleCategoryRule(synthesizedRule, `categories["${categoryName}"]`, issues);
           if (validatedRule) {
@@ -358,23 +414,28 @@ export class CategoryContextService {
    * If availableCategoryList is provided, only rules corresponding to active categories are included.
    */
   public formatCompactContext(availableCategoryList?: WalletCategoryItem[]): string {
+    this.refreshIfModifiedOnDisk();
     const rules = this.normalizedConfiguration.categoryRules;
     const userContext = this.normalizedConfiguration.userContextSummary;
 
-    // Filter rules if available categories are provided
+    // Filter rules if available categories are provided (distinguish undefined from empty array [])
     let activeRules = rules;
-    if (availableCategoryList && availableCategoryList.length > 0) {
-      const activeCategoryNames = new Set(
-        availableCategoryList.map(cat => cat.name.toLowerCase().trim())
-      );
-      const activeCategoryIds = new Set(
-        availableCategoryList.map(cat => cat.id.toLowerCase().trim())
-      );
+    if (Array.isArray(availableCategoryList)) {
+      if (availableCategoryList.length === 0) {
+        activeRules = [];
+      } else {
+        const activeCategoryNames = new Set(
+          availableCategoryList.map(cat => cat.name.toLowerCase().trim())
+        );
+        const activeCategoryIds = new Set(
+          availableCategoryList.map(cat => cat.id.toLowerCase().trim())
+        );
 
-      activeRules = rules.filter(rule => {
-        const targetCategory = rule.category.toLowerCase().trim();
-        return activeCategoryNames.has(targetCategory) || activeCategoryIds.has(targetCategory);
-      });
+        activeRules = rules.filter(rule => {
+          const targetCategory = rule.category.toLowerCase().trim();
+          return activeCategoryNames.has(targetCategory) || activeCategoryIds.has(targetCategory);
+        });
+      }
     }
 
     if (activeRules.length === 0 && !userContext) {
@@ -419,23 +480,28 @@ export class CategoryContextService {
    * Measures and reports token/character prompt overhead of the custom context
    */
   public measureOverhead(availableCategoryList?: WalletCategoryItem[]): CategoryContextOverheadReport {
+    this.refreshIfModifiedOnDisk();
     const formattedText = this.formatCompactContext(availableCategoryList);
     const formattedCharacterCount = formattedText.length;
     // Standard rule of thumb: ~4 characters per token in English/Indonesian
     const estimatedTokenCount = Math.ceil(formattedCharacterCount / 4);
 
     let activeCategoryCount = this.normalizedConfiguration.categoryRules.length;
-    if (availableCategoryList && availableCategoryList.length > 0) {
-      const activeCategoryNames = new Set(
-        availableCategoryList.map(cat => cat.name.toLowerCase().trim())
-      );
-      const activeCategoryIds = new Set(
-        availableCategoryList.map(cat => cat.id.toLowerCase().trim())
-      );
-      activeCategoryCount = this.normalizedConfiguration.categoryRules.filter(rule => {
-        const targetCategory = rule.category.toLowerCase().trim();
-        return activeCategoryNames.has(targetCategory) || activeCategoryIds.has(targetCategory);
-      }).length;
+    if (Array.isArray(availableCategoryList)) {
+      if (availableCategoryList.length === 0) {
+        activeCategoryCount = 0;
+      } else {
+        const activeCategoryNames = new Set(
+          availableCategoryList.map(cat => cat.name.toLowerCase().trim())
+        );
+        const activeCategoryIds = new Set(
+          availableCategoryList.map(cat => cat.id.toLowerCase().trim())
+        );
+        activeCategoryCount = this.normalizedConfiguration.categoryRules.filter(rule => {
+          const targetCategory = rule.category.toLowerCase().trim();
+          return activeCategoryNames.has(targetCategory) || activeCategoryIds.has(targetCategory);
+        }).length;
+      }
     }
 
     return {
