@@ -202,9 +202,9 @@ async function runReceiptOcrPromptTestSuite(): Promise<void> {
     'Email subject and body are escaped while observable transaction facts stay readable'
   );
   assertCondition(
-    maliciousEmailPrompt.indexOf('Application-provided Gate 1 context:') <
+    maliciousEmailPrompt.indexOf('Application-controlled Gate 1 metadata:') <
       maliciousEmailPrompt.indexOf('<untrusted_email_content encoding="xml-escaped">'),
-    'Trusted Gate 1 context remains outside the untrusted email boundary'
+    'Application-controlled Gate 1 metadata remains outside the untrusted email boundary'
   );
 
   // Test 5: Record Validator Account Resolution by Account Number (Strategy E)
