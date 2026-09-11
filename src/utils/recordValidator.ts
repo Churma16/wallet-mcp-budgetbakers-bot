@@ -1,6 +1,6 @@
 import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload } from '../types/walletTypes.js';
 import { getApplicationTimezone } from './humanResponseFormatter.js';
-import { getTimezoneOffsetDetails, parseRelativeTime } from './relativeTimeParser.js';
+import { getTimezoneOffsetDetails, parseRelativeTime, resolveTargetLocalToUtcIso } from './relativeTimeParser.js';
 
 export type AccountResolutionIssueReason = 'UNRESOLVED' | 'AMBIGUOUS';
 
@@ -144,6 +144,64 @@ export function validateAndSanitizeFinancialRecords(
     };
   }
 
+  const applicationTimezone = getApplicationTimezone();
+
+  // Pre-normalize recordDate upfront for all records into an immutable UTC ISO string
+  // BEFORE account resolution or any validation short-circuits.
+  // This guarantees:
+  // 1. Account-clarification drafts store the finalized UTC timestamp, preventing date shifts
+  //    if the user replies after midnight.
+  // 2. Multi-record batches do not have the single contextualUserMessage applied across all records.
+  for (let recordIndex = 0; recordIndex < incomingRecords.length; recordIndex++) {
+    const currentRecord = incomingRecords[recordIndex];
+
+    // For single-record inputs, prioritize contextualUserMessage (falling back to currentRecord.note).
+    // For multi-record inputs, strictly check currentRecord.note per record so records don't inherit
+    // whichever relative-time expression appears first in the contextualUserMessage.
+    let candidateTextForRelativeTime = '';
+    if (contextualUserMessage !== undefined) {
+      candidateTextForRelativeTime = incomingRecords.length === 1
+        ? (contextualUserMessage || currentRecord.note || '')
+        : (currentRecord.note || '');
+    } else if (!currentRecord.recordDate) {
+      candidateTextForRelativeTime = currentRecord.note || '';
+    }
+
+    const parsedRelativeTime = candidateTextForRelativeTime
+      ? parseRelativeTime(candidateTextForRelativeTime, referenceDate, applicationTimezone)
+      : null;
+
+    let normalizedRecordDate = currentRecord.recordDate;
+
+    if (parsedRelativeTime) {
+      normalizedRecordDate = parsedRelativeTime.resolvedUtcIso;
+    } else if (typeof normalizedRecordDate === 'string') {
+      const trimmedDateString = normalizedRecordDate.trim();
+      // If date string has no timezone offset or Z indicator (e.g. 2026-09-08T11:54:00)
+      if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(trimmedDateString)) {
+        const normalizedIsoDate = trimmedDateString.replace(' ', 'T');
+        const [datePart, timePart] = normalizedIsoDate.split('T');
+        const [hourPart, minutePart] = timePart.split(':');
+        normalizedRecordDate = resolveTargetLocalToUtcIso(
+          datePart,
+          Number.parseInt(hourPart, 10),
+          Number.parseInt(minutePart, 10),
+          applicationTimezone
+        );
+      }
+    }
+
+    const parsedDateTimestamp = Date.parse(normalizedRecordDate);
+    if (Number.isNaN(parsedDateTimestamp)) {
+      normalizedRecordDate = new Date(referenceDate).toISOString();
+    } else {
+      normalizedRecordDate = new Date(parsedDateTimestamp).toISOString();
+    }
+
+    // Mutate the incoming record upfront to preserve normalized UTC date across drafts & retries
+    currentRecord.recordDate = normalizedRecordDate;
+  }
+
   for (let recordIndex = 0; recordIndex < incomingRecords.length; recordIndex++) {
     const currentRecord = incomingRecords[recordIndex];
     const recordLabel = `Transaksi #${recordIndex + 1}`;
@@ -230,30 +288,8 @@ export function validateAndSanitizeFinancialRecords(
       // If still not matched, omit categoryId rather than failing the transaction with bad UUID
     }
 
-    // 4. Record Date Validation & Relative Time Normalization
+    // 4. Record Date Validation (already normalized into immutable UTC ISO string upfront)
     let resolvedRecordDate = currentRecord.recordDate;
-
-    // Evaluate natural language relative time expressions from contextual user message or record note
-    const candidateTextForRelativeTime = contextualUserMessage || currentRecord.note || '';
-    const parsedRelativeTime = parseRelativeTime(
-      candidateTextForRelativeTime,
-      referenceDate,
-      getApplicationTimezone()
-    );
-
-    if (parsedRelativeTime) {
-      resolvedRecordDate = parsedRelativeTime.resolvedUtcIso;
-    } else if (typeof resolvedRecordDate === 'string') {
-      const trimmedDateString = resolvedRecordDate.trim();
-      // If date string has no timezone offset or Z indicator (e.g. 2026-09-08T11:54:00)
-      if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(trimmedDateString)) {
-        const normalizedIsoDate = trimmedDateString.replace(' ', 'T');
-        const applicationTimezone = getApplicationTimezone();
-        const timezoneOffsetDetails = getTimezoneOffsetDetails(applicationTimezone, referenceDate);
-        resolvedRecordDate = `${normalizedIsoDate}${timezoneOffsetDetails.formattedOffset}`;
-      }
-    }
-
     const parsedDateTimestamp = Date.parse(resolvedRecordDate);
     if (Number.isNaN(parsedDateTimestamp)) {
       resolvedRecordDate = new Date(referenceDate).toISOString();

@@ -3,6 +3,7 @@ import {
   getLocalTimeParts,
   getPreviousLocalDateString,
   formatLocalToUtcIso,
+  resolveTargetLocalToUtcIso,
   formatLocalTimeAnchor,
   PERIOD_REPRESENTATIVE_HOURS,
 } from '../src/utils/relativeTimeParser.js';
@@ -351,6 +352,279 @@ async function runRelativeTimeExpressionsTestSuite(): Promise<void> {
   );
 
   setActiveLanguage('id');
+
+  // Test 9: Multi-Record Scoping: Preserve distinct dates across batch inputs (PR Comment 1)
+  applicationLogger.info('\nTEST 9: Multi-Record Scoping (Distinct Dates across Batches)');
+  const multiRecordBatchCaseA = [
+    {
+      accountId: 'acc-cash',
+      amount: -30000,
+      recordDate: '2026-09-11T01:00:00.000Z', // AI extracted tadi pagi
+      note: 'beli bensin',
+    },
+    {
+      accountId: 'acc-cash',
+      amount: -60000,
+      recordDate: '2026-09-10T13:00:00.000Z', // AI extracted kemarin malam
+      note: 'nonton bioskop',
+    },
+  ];
+
+  const validationResultMultiCaseA = validateAndSanitizeFinancialRecords(
+    multiRecordBatchCaseA,
+    mockAccounts,
+    mockCategories,
+    'tadi pagi beli bensin 30rb, kemarin malam nonton bioskop 60rb',
+    fixedReferenceUtc
+  );
+
+  assertCondition(
+    validationResultMultiCaseA.sanitizedRecords.length === 2,
+    'Both records sanitized successfully'
+  );
+  assertCondition(
+    validationResultMultiCaseA.sanitizedRecords[0].recordDate === '2026-09-11T01:00:00.000Z',
+    `Record 1 preserves distinct date: 2026-09-11T01:00:00.000Z (got: ${validationResultMultiCaseA.sanitizedRecords[0].recordDate})`
+  );
+  assertCondition(
+    validationResultMultiCaseA.sanitizedRecords[1].recordDate === '2026-09-10T13:00:00.000Z',
+    `Record 2 preserves distinct date: 2026-09-10T13:00:00.000Z (got: ${validationResultMultiCaseA.sanitizedRecords[1].recordDate})`
+  );
+  assertCondition(
+    validationResultMultiCaseA.sanitizedRecords[0].recordDate !== validationResultMultiCaseA.sanitizedRecords[1].recordDate,
+    'Multi-record batch does not clobber record 2 with record 1 relative time expression'
+  );
+
+  // Case B: Relative expression present in record note
+  const multiRecordBatchCaseB = [
+    {
+      accountId: 'acc-cash',
+      amount: -15000,
+      recordDate: '2026-09-11T07:15:00.000Z',
+      note: 'beli bensin tadi pagi',
+    },
+    {
+      accountId: 'acc-cash',
+      amount: -25000,
+      recordDate: '2026-09-11T07:15:00.000Z',
+      note: 'makan bakso kemarin siang',
+    },
+  ];
+
+  const validationResultMultiCaseB = validateAndSanitizeFinancialRecords(
+    multiRecordBatchCaseB,
+    mockAccounts,
+    mockCategories,
+    'beli bensin 15rb dan makan bakso 25rb',
+    fixedReferenceUtc
+  );
+
+  assertCondition(
+    validationResultMultiCaseB.sanitizedRecords[0].recordDate === '2026-09-11T01:00:00.000Z',
+    'Record 1 resolved from note to today pagi (2026-09-11T01:00:00.000Z)'
+  );
+  assertCondition(
+    validationResultMultiCaseB.sanitizedRecords[1].recordDate === '2026-09-10T05:30:00.000Z',
+    'Record 2 resolved from note to yesterday siang (2026-09-10T05:30:00.000Z)'
+  );
+
+  // Test 10: Account Clarification across Midnight Boundary (PR Comment 2)
+  applicationLogger.info('\nTEST 10: Account Clarification Across Midnight Boundary');
+  const ambiguousAccounts: WalletAccountItem[] = [
+    { id: 'acc-bca-1', name: 'BCA Personal', currency: 'IDR', accountType: 'General' },
+    { id: 'acc-bca-2', name: 'BCA Business', currency: 'IDR', accountType: 'General' },
+  ];
+
+  // Day 1: 2026-09-11 23:30:00 WIB (UTC: 2026-09-11 16:30:00Z)
+  const day1ReferenceUtc = new Date('2026-09-11T16:30:00.000Z');
+  const ambiguousInputRecords: CreateRecordInputPayload[] = [
+    {
+      accountId: 'bca', // Ambiguous between BCA Personal and BCA Business
+      amount: -50000,
+      recordDate: '2026-09-11T16:30:00.000Z',
+      note: 'makan sate',
+    },
+  ];
+
+  const day1ValidationResult = validateAndSanitizeFinancialRecords(
+    ambiguousInputRecords,
+    ambiguousAccounts,
+    mockCategories,
+    'kemarin malem makan sate 50rb bca',
+    day1ReferenceUtc
+  );
+
+  assertCondition(
+    day1ValidationResult.isValid === false,
+    'Day 1 validation fails due to ambiguous account'
+  );
+  assertCondition(
+    day1ValidationResult.accountResolutionIssues.length === 1 &&
+      day1ValidationResult.accountResolutionIssues[0].reason === 'AMBIGUOUS',
+    'Day 1 returns ambiguous account resolution issue'
+  );
+  assertCondition(
+    ambiguousInputRecords[0].recordDate === '2026-09-10T13:00:00.000Z',
+    `Day 1 recordDate pre-normalized upfront into immutable UTC ISO string: 2026-09-10T13:00:00.000Z (got: ${ambiguousInputRecords[0].recordDate})`
+  );
+
+  // Day 2 (After midnight): 2026-09-12 01:15:00 WIB (UTC: 2026-09-11 18:15:00Z)
+  // User clarifies account by selecting '1' (BCA Personal), re-running validation with updated accountId
+  const day2ReferenceUtc = new Date('2026-09-11T18:15:00.000Z');
+  const clarifiedRecords: CreateRecordInputPayload[] = [
+    {
+      ...ambiguousInputRecords[0],
+      accountId: 'acc-bca-1',
+    },
+  ];
+
+  const day2ValidationResult = validateAndSanitizeFinancialRecords(
+    clarifiedRecords,
+    ambiguousAccounts,
+    mockCategories,
+    undefined, // No contextual user message during clarification reply
+    day2ReferenceUtc
+  );
+
+  assertCondition(
+    day2ValidationResult.isValid === true,
+    'Day 2 clarification reply validates successfully'
+  );
+  assertCondition(
+    day2ValidationResult.sanitizedRecords[0].recordDate === '2026-09-10T13:00:00.000Z',
+    `Clarification reply after midnight preserves exact original normalized recordDate: 2026-09-10T13:00:00.000Z (got: ${day2ValidationResult.sanitizedRecords[0].recordDate})`
+  );
+
+  // Test 11: Daylight Saving Time (DST) Fall-Back and Spring-Forward Safety (PR Comment 3)
+  applicationLogger.info('\nTEST 11: Daylight Saving Time (DST) Boundary Safety');
+  const nyTimezone = 'America/New_York';
+
+  // Fall-back: Clocks fall back on Sunday, Nov 1, 2026 from EDT (UTC-4) to EST (UTC-5).
+  // Reference date: Nov 1, 2026 12:00:00 EST (UTC: 2026-11-01T17:00:00.000Z).
+  // "yesterday at 8pm" targets Oct 31, 2026 20:00 EDT (UTC-4) -> UTC is 2026-11-01T00:00:00.000Z.
+  const dstFallBackRefDate = new Date('2026-11-01T17:00:00.000Z');
+  const fallBackResult = parseRelativeTime(
+    'yesterday at 8pm groceries $50',
+    dstFallBackRefDate,
+    nyTimezone
+  );
+  assertCondition(
+    fallBackResult?.resolvedUtcIso === '2026-11-01T00:00:00.000Z',
+    `DST fall-back evaluates target Oct 31 EDT offset (-04:00) to 2026-11-01T00:00:00.000Z (got: ${fallBackResult?.resolvedUtcIso})`
+  );
+
+  const directFallBackUtc = resolveTargetLocalToUtcIso('2026-10-31', 20, 0, nyTimezone);
+  assertCondition(
+    directFallBackUtc === '2026-11-01T00:00:00.000Z',
+    `resolveTargetLocalToUtcIso for Oct 31 20:00 in NY is 2026-11-01T00:00:00.000Z (got: ${directFallBackUtc})`
+  );
+
+  // Spring-forward: Clocks spring forward on Sunday, March 8, 2026 from EST (UTC-5) to EDT (UTC-4).
+  // Reference date: March 8, 2026 12:00:00 EDT (UTC: 2026-03-08T16:00:00.000Z).
+  // "yesterday at 8pm" targets March 7, 2026 20:00 EST (UTC-5) -> UTC is 2026-03-08T01:00:00.000Z.
+  const dstSpringForwardRefDate = new Date('2026-03-08T16:00:00.000Z');
+  const springForwardResult = parseRelativeTime(
+    'yesterday at 8pm dinner $40',
+    dstSpringForwardRefDate,
+    nyTimezone
+  );
+  assertCondition(
+    springForwardResult?.resolvedUtcIso === '2026-03-08T01:00:00.000Z',
+    `DST spring-forward evaluates target March 7 EST offset (-05:00) to 2026-03-08T01:00:00.000Z (got: ${springForwardResult?.resolvedUtcIso})`
+  );
+
+  const directSpringForwardUtc = resolveTargetLocalToUtcIso('2026-03-07', 20, 0, nyTimezone);
+  assertCondition(
+    directSpringForwardUtc === '2026-03-08T01:00:00.000Z',
+    `resolveTargetLocalToUtcIso for March 7 20:00 in NY is 2026-03-08T01:00:00.000Z (got: ${directSpringForwardUtc})`
+  );
+
+  // Test 12: Bare 24-Hour Clocks and Monetary Number Exclusion (PR Comment 4)
+  applicationLogger.info('\nTEST 12: Bare 24-Hour Clocks and Monetary Number Exclusion');
+  // Positive test 1: "kemarin 15.30 beli makan" (yesterday 15:30 WIB -> UTC 08:30)
+  const bareClockIndonesianDot = parseRelativeTime(
+    'kemarin 15.30 beli makan',
+    fixedReferenceUtc,
+    defaultTimezone
+  );
+  assertCondition(
+    bareClockIndonesianDot?.hasExplicitTime === true &&
+      bareClockIndonesianDot.targetHour === 15 &&
+      bareClockIndonesianDot.targetMinute === 30,
+    'kemarin 15.30 matches bare 24-hour clock with dot notation'
+  );
+  assertCondition(
+    bareClockIndonesianDot?.resolvedUtcIso === '2026-09-10T08:30:00.000Z',
+    `kemarin 15.30 resolves to 2026-09-10T08:30:00.000Z (got: ${bareClockIndonesianDot?.resolvedUtcIso})`
+  );
+
+  // Positive test 2: "yesterday 15:30 groceries" (yesterday 15:30 WIB -> UTC 08:30)
+  const bareClockEnglishColon = parseRelativeTime(
+    'yesterday 15:30 groceries',
+    fixedReferenceUtc,
+    defaultTimezone
+  );
+  assertCondition(
+    bareClockEnglishColon?.hasExplicitTime === true &&
+      bareClockEnglishColon.targetHour === 15 &&
+      bareClockEnglishColon.targetMinute === 30,
+    'yesterday 15:30 matches bare 24-hour clock with colon notation'
+  );
+  assertCondition(
+    bareClockEnglishColon?.resolvedUtcIso === '2026-09-10T08:30:00.000Z',
+    `yesterday 15:30 resolves to 2026-09-10T08:30:00.000Z (got: ${bareClockEnglishColon?.resolvedUtcIso})`
+  );
+
+  // Positive test 3: "tadi pagi 07:30 beli bensin" (today 07:30 WIB -> UTC 00:30)
+  const bareClockTadiPagi = parseRelativeTime(
+    'tadi pagi 07:30 beli bensin',
+    fixedReferenceUtc,
+    defaultTimezone
+  );
+  assertCondition(
+    bareClockTadiPagi?.hasExplicitTime === true &&
+      bareClockTadiPagi.targetHour === 7 &&
+      bareClockTadiPagi.targetMinute === 30,
+    'tadi pagi 07:30 matches bare 24-hour clock'
+  );
+  assertCondition(
+    bareClockTadiPagi?.resolvedUtcIso === '2026-09-11T00:30:00.000Z',
+    `tadi pagi 07:30 resolves to 2026-09-11T00:30:00.000Z (got: ${bareClockTadiPagi?.resolvedUtcIso})`
+  );
+
+  // Negative test 1: Monetary values like 50.000 or 20.000 must NOT match as times
+  const monetaryInput50k = parseRelativeTime(
+    'kemarin beli baju 50.000',
+    fixedReferenceUtc,
+    defaultTimezone
+  );
+  assertCondition(
+    monetaryInput50k !== null && monetaryInput50k.hasExplicitTime === false,
+    '50.000 is not falsely captured as clock time'
+  );
+
+  const monetaryInput20k = parseRelativeTime(
+    'kemarin isi pulsa 20.000',
+    fixedReferenceUtc,
+    defaultTimezone
+  );
+  assertCondition(
+    monetaryInput20k !== null && monetaryInput20k.hasExplicitTime === false,
+    '20.000 is not falsely captured as clock time'
+  );
+
+  // Negative test 2: Monetary input with both clock time and currency
+  const mixedTimeAndAmount = parseRelativeTime(
+    'kemarin 15.30 makan sate 50.000',
+    fixedReferenceUtc,
+    defaultTimezone
+  );
+  assertCondition(
+    mixedTimeAndAmount?.hasExplicitTime === true &&
+      mixedTimeAndAmount.targetHour === 15 &&
+      mixedTimeAndAmount.targetMinute === 30,
+    'Correctly extracts 15.30 while ignoring 50.000'
+  );
 
   console.log('\n======================================================');
   applicationLogger.success('ALL NATURAL LANGUAGE RELATIVE TIME TESTS PASSED!');

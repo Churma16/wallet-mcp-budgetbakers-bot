@@ -202,8 +202,49 @@ export function formatLocalTimeAnchor(
 }
 
 /**
+ * Resolves a local date and time in a given timezone to a UTC ISO 8601 string.
+ * Accurately evaluates the IANA timezone offset at the target instant to prevent
+ * offset errors across Daylight Saving Time (DST) transitions (e.g., fall back or spring forward).
+ */
+export function resolveTargetLocalToUtcIso(
+  targetDateString: string,
+  targetHour: number,
+  targetMinute: number,
+  targetTimezoneIdentifier: string = 'Asia/Jakarta'
+): string {
+  const paddedHour = String(targetHour).padStart(2, '0');
+  const paddedMinute = String(targetMinute).padStart(2, '0');
+
+  // Estimate the target instant using midday UTC to get the approximate local date offset
+  const middayEstimate = new Date(`${targetDateString}T12:00:00.000Z`);
+  const initialOffsetDetails = getTimezoneOffsetDetails(targetTimezoneIdentifier, middayEstimate);
+  const candidateIso = `${targetDateString}T${paddedHour}:${paddedMinute}:00.000${initialOffsetDetails.formattedOffset}`;
+  const candidateTimestamp = Date.parse(candidateIso);
+
+  if (Number.isNaN(candidateTimestamp)) {
+    throw new Error(`Invalid local date conversion payload: ${candidateIso}`);
+  }
+
+  // Refine the offset using the candidate instant to capture DST transitions at the exact hour
+  const candidateDate = new Date(candidateTimestamp);
+  const refinedOffsetDetails = getTimezoneOffsetDetails(targetTimezoneIdentifier, candidateDate);
+
+  if (refinedOffsetDetails.formattedOffset === initialOffsetDetails.formattedOffset) {
+    return candidateDate.toISOString();
+  }
+
+  const refinedIso = `${targetDateString}T${paddedHour}:${paddedMinute}:00.000${refinedOffsetDetails.formattedOffset}`;
+  const refinedTimestamp = Date.parse(refinedIso);
+  if (Number.isNaN(refinedTimestamp)) {
+    return candidateDate.toISOString();
+  }
+  return new Date(refinedTimestamp).toISOString();
+}
+
+/**
  * Extracts explicit hour and minute from text if specified by the user.
- * Supports 12-hour AM/PM formats, 24-hour formats, and Indonesian colloquial times (e.g. jam 3 sore, pukul 15.30).
+ * Supports 12-hour AM/PM formats, 24-hour formats, bare bounded HH:mm / HH.mm clocks,
+ * and Indonesian colloquial times (e.g. jam 3 sore, pukul 15.30).
  */
 function extractExplicitClockTime(
   inputText: string,
@@ -271,17 +312,41 @@ function extractExplicitClockTime(
     }
   }
 
-  // Pattern 3: Standalone 24-hour time e.g. "at 14:30" or "15.30"
-  const standalone24HourRegex = /(?:at\s+)(\d{1,2})[.:](\d{2})/i;
-  const standaloneMatch = inputText.match(standalone24HourRegex);
-  if (standaloneMatch) {
-    const rawHour = Number.parseInt(standaloneMatch[1], 10);
-    const rawMinute = Number.parseInt(standaloneMatch[2], 10);
+  // Pattern 3: Bare or prefixed 24-hour clock e.g. "at 14:30", "15.30", "15:30", "07:30"
+  // Negative lookahead (?!\d|[.,]\d|[a-zA-Z%]) and lookbehind (?<![A-Za-z0-9$€£¥]) ensure
+  // currency and monetary numbers (e.g. 50.000, 20.000, $15.30, 15.30k) are not falsely matched as times.
+  const bare24HourRegex = /(?:at\s+)?(?<![A-Za-z0-9$€£¥])([01]?\d|2[0-3])[.:]([0-5]\d)(?!\d|[.,]\d|[a-zA-Z%])/i;
+  const bareMatch = inputText.match(bare24HourRegex);
+  if (bareMatch) {
+    let rawHour = Number.parseInt(bareMatch[1], 10);
+    const rawMinute = Number.parseInt(bareMatch[2], 10);
+    const explicitPeriodString = (inferredPeriod || '').toLowerCase();
+
     if (rawHour >= 0 && rawHour < 24 && rawMinute >= 0 && rawMinute < 60) {
+      if (explicitPeriodString === 'siang') {
+        if (rawHour >= 1 && rawHour <= 4) {
+          rawHour += 12;
+        }
+      } else if (explicitPeriodString === 'sore') {
+        if (rawHour >= 1 && rawHour <= 6) {
+          rawHour += 12;
+        }
+      } else if (explicitPeriodString === 'malam' || explicitPeriodString === 'malem') {
+        if (rawHour >= 1 && rawHour <= 11) {
+          rawHour += 12;
+        } else if (rawHour === 12) {
+          rawHour = 0;
+        }
+      } else if (explicitPeriodString === 'pagi' || explicitPeriodString === 'subuh') {
+        if (rawHour === 12) {
+          rawHour = 0;
+        }
+      }
+
       return {
-        hour: rawHour,
+        hour: rawHour % 24,
         minute: rawMinute,
-        matchedClockSubstring: standaloneMatch[0],
+        matchedClockSubstring: bareMatch[0],
       };
     }
   }
@@ -338,11 +403,11 @@ export function parseRelativeTime(
     const explicitClock = extractExplicitClockTime(inputText, 'malam');
     const targetHour = explicitClock ? explicitClock.hour : PERIOD_REPRESENTATIVE_HOURS.malam.hour;
     const targetMinute = explicitClock ? explicitClock.minute : PERIOD_REPRESENTATIVE_HOURS.malam.minute;
-    const resolvedUtcIso = formatLocalToUtcIso(
+    const resolvedUtcIso = resolveTargetLocalToUtcIso(
       yesterdayDateString,
       targetHour,
       targetMinute,
-      localTimeParts.formattedOffset
+      targetTimezoneIdentifier
     );
 
     return {
@@ -364,11 +429,11 @@ export function parseRelativeTime(
     const explicitClock = extractExplicitClockTime(inputText, 'malam');
     const targetHour = explicitClock ? explicitClock.hour : PERIOD_REPRESENTATIVE_HOURS.malam.hour;
     const targetMinute = explicitClock ? explicitClock.minute : PERIOD_REPRESENTATIVE_HOURS.malam.minute;
-    const resolvedUtcIso = formatLocalToUtcIso(
+    const resolvedUtcIso = resolveTargetLocalToUtcIso(
       yesterdayDateString,
       targetHour,
       targetMinute,
-      localTimeParts.formattedOffset
+      targetTimezoneIdentifier
     );
 
     return {
@@ -390,11 +455,11 @@ export function parseRelativeTime(
     const explicitClock = extractExplicitClockTime(inputText, 'malam');
     const targetHour = explicitClock ? explicitClock.hour : PERIOD_REPRESENTATIVE_HOURS.malam.hour;
     const targetMinute = explicitClock ? explicitClock.minute : PERIOD_REPRESENTATIVE_HOURS.malam.minute;
-    const resolvedUtcIso = formatLocalToUtcIso(
+    const resolvedUtcIso = resolveTargetLocalToUtcIso(
       yesterdayDateString,
       targetHour,
       targetMinute,
-      localTimeParts.formattedOffset
+      targetTimezoneIdentifier
     );
 
     return {
@@ -417,11 +482,11 @@ export function parseRelativeTime(
     const explicitClock = extractExplicitClockTime(inputText, periodName);
     const targetHour = explicitClock ? explicitClock.hour : PERIOD_REPRESENTATIVE_HOURS[periodName].hour;
     const targetMinute = explicitClock ? explicitClock.minute : PERIOD_REPRESENTATIVE_HOURS[periodName].minute;
-    const resolvedUtcIso = formatLocalToUtcIso(
+    const resolvedUtcIso = resolveTargetLocalToUtcIso(
       yesterdayDateString,
       targetHour,
       targetMinute,
-      localTimeParts.formattedOffset
+      targetTimezoneIdentifier
     );
 
     return {
@@ -444,11 +509,11 @@ export function parseRelativeTime(
     const explicitClock = extractExplicitClockTime(inputText, periodName);
     const targetHour = explicitClock ? explicitClock.hour : PERIOD_REPRESENTATIVE_HOURS[periodName].hour;
     const targetMinute = explicitClock ? explicitClock.minute : PERIOD_REPRESENTATIVE_HOURS[periodName].minute;
-    const resolvedUtcIso = formatLocalToUtcIso(
+    const resolvedUtcIso = resolveTargetLocalToUtcIso(
       yesterdayDateString,
       targetHour,
       targetMinute,
-      localTimeParts.formattedOffset
+      targetTimezoneIdentifier
     );
 
     return {
@@ -471,11 +536,11 @@ export function parseRelativeTime(
     const explicitClock = extractExplicitClockTime(inputText, periodName);
     const targetHour = explicitClock ? explicitClock.hour : PERIOD_REPRESENTATIVE_HOURS[periodName].hour;
     const targetMinute = explicitClock ? explicitClock.minute : PERIOD_REPRESENTATIVE_HOURS[periodName].minute;
-    const resolvedUtcIso = formatLocalToUtcIso(
+    const resolvedUtcIso = resolveTargetLocalToUtcIso(
       todayDateString,
       targetHour,
       targetMinute,
-      localTimeParts.formattedOffset
+      targetTimezoneIdentifier
     );
 
     return {
@@ -498,11 +563,11 @@ export function parseRelativeTime(
     const explicitClock = extractExplicitClockTime(inputText, periodName);
     const targetHour = explicitClock ? explicitClock.hour : PERIOD_REPRESENTATIVE_HOURS[periodName].hour;
     const targetMinute = explicitClock ? explicitClock.minute : PERIOD_REPRESENTATIVE_HOURS[periodName].minute;
-    const resolvedUtcIso = formatLocalToUtcIso(
+    const resolvedUtcIso = resolveTargetLocalToUtcIso(
       todayDateString,
       targetHour,
       targetMinute,
-      localTimeParts.formattedOffset
+      targetTimezoneIdentifier
     );
 
     return {
@@ -526,11 +591,11 @@ export function parseRelativeTime(
     const explicitClock = extractExplicitClockTime(inputText, periodName);
     const targetHour = explicitClock ? explicitClock.hour : PERIOD_REPRESENTATIVE_HOURS[periodName].hour;
     const targetMinute = explicitClock ? explicitClock.minute : PERIOD_REPRESENTATIVE_HOURS[periodName].minute;
-    const resolvedUtcIso = formatLocalToUtcIso(
+    const resolvedUtcIso = resolveTargetLocalToUtcIso(
       todayDateString,
       targetHour,
       targetMinute,
-      localTimeParts.formattedOffset
+      targetTimezoneIdentifier
     );
 
     return {
@@ -552,11 +617,11 @@ export function parseRelativeTime(
     const explicitClock = extractExplicitClockTime(inputText);
     const targetHour = explicitClock ? explicitClock.hour : localTimeParts.hour;
     const targetMinute = explicitClock ? explicitClock.minute : localTimeParts.minute;
-    const resolvedUtcIso = formatLocalToUtcIso(
+    const resolvedUtcIso = resolveTargetLocalToUtcIso(
       yesterdayDateString,
       targetHour,
       targetMinute,
-      localTimeParts.formattedOffset
+      targetTimezoneIdentifier
     );
 
     return {
@@ -576,11 +641,11 @@ export function parseRelativeTime(
   if (bareTadiMatch) {
     const explicitClock = extractExplicitClockTime(inputText);
     if (explicitClock) {
-      const resolvedUtcIso = formatLocalToUtcIso(
+      const resolvedUtcIso = resolveTargetLocalToUtcIso(
         todayDateString,
         explicitClock.hour,
         explicitClock.minute,
-        localTimeParts.formattedOffset
+        targetTimezoneIdentifier
       );
 
       return {
