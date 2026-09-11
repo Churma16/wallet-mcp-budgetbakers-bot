@@ -150,15 +150,6 @@ export function formatAccountSelectionUnknownOutcome(draft: PendingAccountSelect
     : `⚠️ The recording status of draft #${draft.ticketId} is uncertain. To prevent duplicates, the draft will not be sent again automatically. Check Wallet first. After reconciliation, dismiss the local status with *cancel #${draft.ticketId}*.`;
 }
 
-export function formatAccountSelectionUnknownCancellationGuidance(
-  draft: PendingAccountSelectionDraft
-): string {
-  const dictionary = getDictionary();
-  return dictionary.languageCode === 'id'
-    ? `⚠️ Draft #${draft.ticketId} memiliki hasil Wallet yang belum pasti. Periksa Wallet terlebih dahulu. Untuk menutup rekonsiliasi lokal tanpa mengirim ulang transaksi, ketik *batal #${draft.ticketId}*.`
-    : `⚠️ Draft #${draft.ticketId} has an uncertain Wallet outcome. Check Wallet first. To dismiss only the local reconciliation state without retrying the transaction, type *cancel #${draft.ticketId}*.`;
-}
-
 export function formatAccountSelectionUnknownDismissal(draft: PendingAccountSelectionDraft): string {
   const dictionary = getDictionary();
   return dictionary.languageCode === 'id'
