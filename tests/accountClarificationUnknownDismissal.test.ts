@@ -1,4 +1,5 @@
 import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
+import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
 import { WalletMcpRequestError } from '../src/services/walletMcpService.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
@@ -21,6 +22,9 @@ function assertCondition(testName: string, condition: boolean): void {
 
 class MockMessagingGateway {
   public readonly messages: string[] = [];
+
+  async sendTypingPresence(): Promise<void> {}
+  async clearTypingPresence(): Promise<void> {}
 
   async sendMessage(_channel: string, _chatId: string, content: string): Promise<void> {
     this.messages.push(content);
@@ -56,6 +60,36 @@ class MockWalletCacheService {
   }
 }
 
+class RecordingPendingActionHandler {
+  public readonly calls: Array<{ actionType: string; targetScope: string | number }> = [];
+
+  async handlePendingAction(
+    _event: IncomingUserMessageEvent,
+    intent: { actionType: string; targetScope: string | number }
+  ): Promise<boolean> {
+    this.calls.push({ ...intent });
+    return true;
+  }
+}
+
+class NoopFastPathHandler {
+  async handleFastPath(): Promise<boolean> {
+    return false;
+  }
+}
+
+class FailIfCalledAiProvider {
+  public readonly providerName = 'test';
+
+  async processTextMessage(): Promise<never> {
+    throw new Error('AI must not run for ticket-specific pending commands');
+  }
+
+  async processImageMessage(): Promise<never> {
+    throw new Error('AI must not run for ticket-specific pending commands');
+  }
+}
+
 const accounts: WalletAccountItem[] = [
   { id: 'acc-cash', name: 'Cash', currency: 'IDR' },
 ];
@@ -80,6 +114,23 @@ const unresolvedRecord: CreateRecordInputPayload = {
   note: 'Lunch',
   counterParty: 'Warung',
 };
+
+function addStandardPendingTransaction(pendingService: PendingTransactionService, note: string) {
+  return pendingService.addPendingTransaction({
+    sourceType: 'WHATSAPP',
+    bankDisplayName: 'BCA',
+    accountNameHint: 'Cash',
+    counterParty: 'Pending merchant',
+    amount: -10000,
+    transactionType: 'EXPENSE',
+    matchedAccountId: 'acc-cash',
+    matchedCategoryId: 'cat-food',
+    matchedCategoryName: 'Food',
+    note,
+    recordDate: '2026-09-11T07:05:00+07:00',
+    currency: 'IDR',
+  });
+}
 
 async function main(): Promise<void> {
   setActiveLanguage('id');
@@ -123,20 +174,7 @@ async function main(): Promise<void> {
     messaging.messages.at(-1)?.includes(`batal #${draft.ticketId}`) === true
   );
 
-  pendingService.addPendingTransaction({
-    sourceType: 'WHATSAPP',
-    bankDisplayName: 'BCA',
-    accountNameHint: 'Cash',
-    counterParty: 'Pending merchant',
-    amount: -10000,
-    transactionType: 'EXPENSE',
-    matchedAccountId: 'acc-cash',
-    matchedCategoryId: 'cat-food',
-    matchedCategoryName: 'Food',
-    note: 'Separate pending transaction',
-    recordDate: '2026-09-11T07:05:00+07:00',
-    currency: 'IDR',
-  });
+  addStandardPendingTransaction(pendingService, 'Separate pending transaction');
 
   const genericCancellationHandled = await handler.handlePendingAccountSelectionReply(
     { ...event, textPayload: 'batal' },
@@ -179,6 +217,77 @@ async function main(): Promise<void> {
   assertCondition(
     'Separate standard pending transaction remains available',
     pendingService.hasPendingTransactions()
+  );
+
+  // Regression: an active PENDING clarification must not swallow ticket-specific commands that
+  // target a standard pending transaction. Exercise the real UserMessageHandler ordering so the
+  // test proves those commands actually reach PendingActionHandler.
+  const routingPendingService = new PendingTransactionService();
+  const routingMessaging = new MockMessagingGateway();
+  const routingWalletMcp = new MockWalletMcpClient();
+  const routingCache = new MockWalletCacheService(accounts, categories);
+  const routingPendingAction = new RecordingPendingActionHandler();
+  const routingHandler = new UserMessageHandler(
+    routingMessaging as any,
+    routingPendingService,
+    routingPendingAction as any,
+    new NoopFastPathHandler() as any,
+    new FailIfCalledAiProvider() as any,
+    routingCache as any,
+    routingWalletMcp as any
+  );
+
+  const routingDraft = routingPendingService.addPendingAccountSelectionDraft({
+    sourceType: 'USER',
+    channel: event.channel,
+    senderIdentifier: event.senderIdentifier,
+    chatIdentifier: event.chatIdentifier,
+    records: [unresolvedRecord],
+    pendingRecordIndex: 0,
+    accountHint: '',
+    candidateAccounts: accounts,
+  });
+  const standardTicket = addStandardPendingTransaction(
+    routingPendingService,
+    'Standard ticket targeted by explicit commands'
+  );
+
+  await routingHandler.handleIncomingUserMessage({
+    ...event,
+    textPayload: `batal #${standardTicket.ticketId}`,
+  });
+
+  assertCondition(
+    'Ticket-specific reject reaches standard pending handler',
+    routingPendingAction.calls.length === 1 &&
+      routingPendingAction.calls[0].actionType === 'REJECT' &&
+      routingPendingAction.calls[0].targetScope === standardTicket.ticketId
+  );
+  assertCondition(
+    'Ticket-specific reject leaves clarification draft untouched',
+    routingPendingService.getPendingAccountSelectionDraft(routingDraft.ticketId) !== undefined &&
+      routingPendingService.getPendingAccountSelectionDraftState(routingDraft.ticketId) === 'PENDING'
+  );
+
+  await routingHandler.handleIncomingUserMessage({
+    ...event,
+    textPayload: `ya #${standardTicket.ticketId}`,
+  });
+
+  assertCondition(
+    'Ticket-specific confirm reaches standard pending handler',
+    routingPendingAction.calls.length === 2 &&
+      routingPendingAction.calls[1].actionType === 'CONFIRM' &&
+      routingPendingAction.calls[1].targetScope === standardTicket.ticketId
+  );
+  assertCondition(
+    'Ticket-specific confirm also leaves clarification draft untouched',
+    routingPendingService.getPendingAccountSelectionDraft(routingDraft.ticketId) !== undefined &&
+      routingPendingService.getPendingAccountSelectionDraftState(routingDraft.ticketId) === 'PENDING'
+  );
+  assertCondition(
+    'Ticket-specific standard commands do not dispatch clarification Wallet writes',
+    routingWalletMcp.calls.length === 0
   );
 
   console.log(`\n[SUCCESS] ${assertionCount} assertions passed.`);
