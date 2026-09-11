@@ -78,9 +78,8 @@ export class UserMessageHandler {
 
     try {
       // 0. Generic standard-pending commands (LATEST / ALL) must remain reachable even when an
-      // unrelated account-clarification draft exists. If a standard pending transaction exists,
-      // give its deterministic command router precedence for inputs such as `ya`, `confirm`,
-      // `batal`, `ya semua`, and `batal semua`.
+      // unrelated account-clarification draft exists. A bare `batal` / `cancel` is the exception:
+      // when both workflows have a PENDING item, it is ambiguous and must not mutate either one.
       if (
         event.messageType === 'text' &&
         event.textPayload &&
@@ -91,6 +90,51 @@ export class UserMessageHandler {
           genericPendingIntent &&
           (genericPendingIntent.targetScope === 'LATEST' || genericPendingIntent.targetScope === 'ALL')
         ) {
+          const isBareCancellation =
+            genericPendingIntent.actionType === 'REJECT' &&
+            genericPendingIntent.targetScope === 'LATEST' &&
+            /^(?:batal|cancel)$/i.test(event.textPayload.trim());
+
+          if (isBareCancellation) {
+            const manager = this.pendingTransactionManager as Partial<PendingTransactionService>;
+            if (
+              typeof manager.getLatestPendingAccountSelectionDraft === 'function' &&
+              typeof manager.getPendingAccountSelectionDraftState === 'function' &&
+              typeof manager.getAllPendingTransactions === 'function' &&
+              typeof manager.getPendingTransactionState === 'function'
+            ) {
+              const clarificationDraft = manager.getLatestPendingAccountSelectionDraft(
+                event.channel,
+                event.chatIdentifier,
+                event.senderIdentifier
+              );
+              const pendingStandardItems = manager.getAllPendingTransactions().filter(
+                item => manager.getPendingTransactionState?.(item.ticketId) === 'PENDING'
+              );
+              const standardPendingItem = pendingStandardItems[pendingStandardItems.length - 1];
+              const clarificationIsPending = Boolean(
+                clarificationDraft &&
+                manager.getPendingAccountSelectionDraftState(clarificationDraft.ticketId) === 'PENDING'
+              );
+
+              if (clarificationDraft && clarificationIsPending && standardPendingItem) {
+                const dictionary = getDictionary();
+                const disambiguationMessage = dictionary.languageCode === 'id'
+                  ? `⚠️ Ada dua transaksi yang bisa dibatalkan. Tidak ada yang dibatalkan.\nBalas *batal #${clarificationDraft.ticketId}* untuk membatalkan draft klarifikasi, atau *batal #${standardPendingItem.ticketId}* untuk membatalkan tiket transaksi.`
+                  : `⚠️ Two transactions can be cancelled. Nothing was cancelled.\nReply *cancel #${clarificationDraft.ticketId}* to cancel the clarification draft, or *cancel #${standardPendingItem.ticketId}* to cancel the pending transaction ticket.`;
+                await this.messagingGateway.sendMessage(
+                  event.channel,
+                  event.chatIdentifier,
+                  disambiguationMessage
+                );
+                applicationLogger.info(
+                  `[${event.channel.toUpperCase()}] Bare cancellation was ambiguous between clarification #${clarificationDraft.ticketId} and pending ticket #${standardPendingItem.ticketId}; no state changed.`
+                );
+                return;
+              }
+            }
+          }
+
           const handled = await this.pendingActionHandler.handlePendingAction(
             event,
             genericPendingIntent,
