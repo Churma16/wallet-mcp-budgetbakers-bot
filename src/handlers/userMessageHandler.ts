@@ -6,7 +6,10 @@ import { WalletCacheService } from '../services/walletCacheService.js';
 import { PendingActionHandler } from './pendingActionHandler.js';
 import { FastPathHandler } from './fastPathHandler.js';
 import { detectFastPathAction, detectPendingConfirmationAction } from '../utils/fastPathIntentDetector.js';
-import { validateAndSanitizeFinancialRecords } from '../utils/recordValidator.js';
+import {
+  AccountResolutionIssue,
+  validateAndSanitizeFinancialRecords,
+} from '../utils/recordValidator.js';
 import {
   formatRecordSuccessMessage,
   formatBalanceSummaryMessage,
@@ -16,6 +19,19 @@ import {
 } from '../utils/humanResponseFormatter.js';
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../utils/logger.js';
+
+function formatAccountResolutionIssueMessage(issue: AccountResolutionIssue): string {
+  const dictionary = getDictionary();
+  if (issue.reason === 'AMBIGUOUS') {
+    return dictionary.errors.accountResolutionAmbiguous(
+      issue.recordIndex + 1,
+      issue.accountHint,
+      issue.candidates.map(candidate => candidate.name)
+    );
+  }
+
+  return dictionary.errors.accountResolutionUnresolved(issue.recordIndex + 1, issue.accountHint);
+}
 
 export class UserMessageHandler {
   constructor(
@@ -121,14 +137,24 @@ export class UserMessageHandler {
         );
 
         if (!validationResult.isValid || validationResult.sanitizedRecords.length === 0) {
-          const validationErrorMessage = validationResult.validationErrors.join('\n');
+          const accountResolutionMessages = validationResult.accountResolutionIssues.map(
+            formatAccountResolutionIssueMessage
+          );
+          const validationErrorMessage = [
+            ...validationResult.validationErrors,
+            ...accountResolutionMessages,
+          ].join('\n') || getDictionary().errors.accountResolutionFallback;
+          const totalValidationIssueCount =
+            validationResult.validationErrors.length + validationResult.accountResolutionIssues.length;
+
           applicationLogger.warn(
-            `Financial record validation rejected (${validationResult.validationErrors.length} validation error(s)).`
+            `Financial record validation rejected (${totalValidationIssueCount} issue(s)).`
           );
 
           applicationLogger.fileDetail('error', 'Financial Record Validation Failure', {
             originalRecords: extractedIntent.records,
             validationErrors: validationResult.validationErrors,
+            accountResolutionIssues: validationResult.accountResolutionIssues,
           });
 
           await this.messagingGateway.sendMessage(
@@ -138,7 +164,7 @@ export class UserMessageHandler {
           );
           const processingDurationMs = Date.now() - processingStartTimestamp;
           applicationLogger.warn(
-            `[${event.channel.toUpperCase()}] Validation rejected with ${validationResult.validationErrors.length} error(s) (${processingDurationMs}ms).`
+            `[${event.channel.toUpperCase()}] Validation rejected with ${totalValidationIssueCount} issue(s) (${processingDurationMs}ms).`
           );
           return;
         }

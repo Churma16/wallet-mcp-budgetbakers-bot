@@ -122,5 +122,8 @@ export interface ResponseDictionary {
     networkConnection(timestampString: string): string;
     generic(timestampString: string): string;
     validationRejected(errorMessage: string): string;
+    accountResolutionUnresolved(recordNumber: number, accountHint: string): string;
+    accountResolutionAmbiguous(recordNumber: number, accountHint: string, candidateNames: string[]): string;
+    accountResolutionFallback: string;
   };
 }

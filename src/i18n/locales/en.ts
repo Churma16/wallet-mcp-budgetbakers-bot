@@ -205,5 +205,16 @@ export const englishDictionary: ResponseDictionary = {
     validationRejected(errorMessage: string): string {
       return `⚠️ Transaction could not be saved due to invalid data:\n${errorMessage}`;
     },
+    accountResolutionUnresolved(recordNumber: number, accountHint: string): string {
+      const displayHint = accountHint || '(empty)';
+      return `Transaction #${recordNumber}: Account "${displayHint}" could not be resolved reliably.`;
+    },
+    accountResolutionAmbiguous(recordNumber: number, accountHint: string, candidateNames: string[]): string {
+      const displayHint = accountHint || '(empty)';
+      return candidateNames.length > 0
+        ? `Transaction #${recordNumber}: Account "${displayHint}" is ambiguous. Candidates: ${candidateNames.join(', ')}.`
+        : `Transaction #${recordNumber}: Account "${displayHint}" is ambiguous and cannot be selected safely.`;
+    },
+    accountResolutionFallback: 'The transaction account could not be determined safely.',
   },
 };
