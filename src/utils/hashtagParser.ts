@@ -3,8 +3,8 @@
  * from user input and transaction notes.
  */
 
-const HASHTAG_EXTRACTION_REGEX = /(?:^|[\s([{\<])#([a-zA-Z0-9_\-]+?)(?=[.,!?;:)\]}>]*(?:\s|$))/g;
-const HASHTAG_REMOVAL_REGEX = /(?:^|[\s([{\<])#([a-zA-Z0-9_\-]+)[.,!?;:)\]}>]*/g;
+// Unified token pattern matching explicit hashtags preceded by boundary, followed by optional punctuation then whitespace/end
+const HASHTAG_TOKEN_REGEX = /(^|[\s([{\<])#([a-zA-Z0-9_\-]+)([.,!?;:)\]}>]*)(?=\s|$)/g;
 
 /**
  * Normalizes a single tag name by stripping leading '#' and trimming whitespace.
@@ -44,6 +44,7 @@ export interface ExtractedHashtagsResult {
 /**
  * Extracts explicit hashtag tokens from text and returns both the normalized unique tags
  * and the cleaned text with hashtag tokens stripped.
+ * Note text is removed if and only if the exact token was recognized as a hashtag.
  */
 export function extractHashtags(sourceText: string): ExtractedHashtagsResult {
   if (!sourceText || typeof sourceText !== 'string') {
@@ -51,21 +52,20 @@ export function extractHashtags(sourceText: string): ExtractedHashtagsResult {
   }
 
   const rawExtractedTags: string[] = [];
-  let regexMatch: RegExpExecArray | null;
 
-  // Reset regex index before matching
-  HASHTAG_EXTRACTION_REGEX.lastIndex = 0;
-  while ((regexMatch = HASHTAG_EXTRACTION_REGEX.exec(sourceText)) !== null) {
-    if (regexMatch[1]) {
-      rawExtractedTags.push(regexMatch[1]);
+  // Single-pass replacement: tokens are removed if and only if they are recognized as hashtags
+  const cleanedWithSpaces = sourceText.replace(
+    HASHTAG_TOKEN_REGEX,
+    (_fullMatch, prefix, tagName) => {
+      rawExtractedTags.push(tagName);
+      return prefix ? ' ' : '';
     }
-  }
+  );
 
   const uniqueTags = deduplicateTags(rawExtractedTags);
 
-  // Clean the text by removing hashtags and tidying residual whitespace/punctuation
-  const cleanedText = sourceText
-    .replace(HASHTAG_REMOVAL_REGEX, ' ')
+  // Clean the text by tidying residual empty brackets, whitespace, and punctuation
+  const cleanedText = cleanedWithSpaces
     .replace(/\(\s*\)|\[\s*\]|\{\s*\}/g, ' ')
     .replace(/\s+/g, ' ')
     .replace(/\s+([,.:;?!])/g, '$1')

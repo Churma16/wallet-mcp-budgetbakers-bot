@@ -6,6 +6,7 @@ export class WalletCacheService {
   private cachedAccountList: WalletAccountItem[] = [];
   private cachedCategoryList: WalletCategoryItem[] = [];
   private cachedLabelList: WalletLabelItem[] = [];
+  private labelsLoadedSuccessfully: boolean = false;
 
   constructor(private readonly walletMcpClient: WalletMcpClientService) {}
 
@@ -23,10 +24,16 @@ export class WalletCacheService {
       return [];
     });
 
-    this.cachedLabelList = await this.walletMcpClient.fetchLabels(true).catch(fetchError => {
-      applicationLogger.warn(`Failed to fetch labels during cache initialization: ${fetchError.message}`);
-      return [];
-    });
+    try {
+      this.cachedLabelList = await this.walletMcpClient.fetchLabels(true);
+      this.labelsLoadedSuccessfully = true;
+    } catch (fetchError) {
+      this.labelsLoadedSuccessfully = false;
+      applicationLogger.warn(
+        `Failed to fetch labels during cache initialization: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`
+      );
+      this.cachedLabelList = [];
+    }
 
     applicationLogger.success(
       `Cached ${this.cachedAccountList.length} accounts, ${this.cachedCategoryList.length} categories, and ${this.cachedLabelList.length} labels.`
@@ -74,8 +81,28 @@ export class WalletCacheService {
    * Forces a fresh fetch of labels from Wallet MCP and updates cache
    */
   public async refreshLabels(): Promise<WalletLabelItem[]> {
-    this.cachedLabelList = await this.walletMcpClient.fetchLabels(true);
-    return this.cachedLabelList;
+    try {
+      this.cachedLabelList = await this.walletMcpClient.fetchLabels(true);
+      this.labelsLoadedSuccessfully = true;
+      return this.cachedLabelList;
+    } catch (error) {
+      this.labelsLoadedSuccessfully = false;
+      throw error;
+    }
+  }
+
+  /**
+   * Indicates whether labels were successfully loaded from Wallet MCP at least once
+   */
+  public isLabelsLoaded(): boolean {
+    return this.labelsLoadedSuccessfully;
+  }
+
+  /**
+   * Explicitly sets the labels loaded status (useful for seeded caches or tests)
+   */
+  public setLabelsLoaded(isLoaded: boolean): void {
+    this.labelsLoadedSuccessfully = isLoaded;
   }
 
   /**

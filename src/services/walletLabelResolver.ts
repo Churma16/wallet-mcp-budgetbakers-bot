@@ -28,7 +28,25 @@ export async function resolveAndEnsureLabels(
 
   for (const tagName of uniqueNormalizedTags) {
     // Check if label exists in cache (case-insensitive)
-    const existingLabel = walletCacheService.findLabelByName(tagName);
+    let existingLabel = walletCacheService.findLabelByName(tagName);
+
+    // If not found in cache and cache has not successfully loaded labels yet, attempt refresh
+    const isCacheLoadedInitially = typeof walletCacheService.isLabelsLoaded === 'function'
+      ? walletCacheService.isLabelsLoaded()
+      : true;
+
+    if (!existingLabel && !isCacheLoadedInitially) {
+      try {
+        await walletCacheService.refreshLabels();
+        existingLabel = walletCacheService.findLabelByName(tagName);
+      } catch (refreshError) {
+        applicationLogger.warn(
+          `[Label Resolver] Could not refresh labels from Wallet MCP to verify "${tagName}": ${
+            refreshError instanceof Error ? refreshError.message : String(refreshError)
+          }`
+        );
+      }
+    }
 
     if (existingLabel) {
       if (!resolvedLabelIds.includes(existingLabel.id)) {
@@ -40,7 +58,22 @@ export async function resolveAndEnsureLabels(
       continue;
     }
 
-    // Attempt auto-creation of missing label
+    // Only auto-create if cache successfully confirmed absence
+    const isCacheLoadedNow = typeof walletCacheService.isLabelsLoaded === 'function'
+      ? walletCacheService.isLabelsLoaded()
+      : true;
+
+    if (!isCacheLoadedNow) {
+      applicationLogger.warn(
+        `[Label Resolver] Cannot verify absence of label "${tagName}" due to label listing read failure; skipping auto-creation.`
+      );
+      if (!resolvedLabelNames.includes(tagName)) {
+        resolvedLabelNames.push(tagName);
+      }
+      continue;
+    }
+
+    // Attempt auto-creation of missing label after absence is confirmed
     applicationLogger.info(`[Label Resolver] Attempting auto-creation for missing label: "${tagName}"`);
     const createdLabel = await walletMcpClient.createLabel(tagName).catch(creationError => {
       applicationLogger.warn(

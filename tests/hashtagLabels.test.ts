@@ -74,6 +74,19 @@ const mockCategories: WalletCategoryItem[] = [
   assert.deepEqual(nonTagResult.tags, []);
   assert.equal(nonTagResult.cleanedText, 'Buku belajar C# harga # murah');
 
+  // Malformed or non-token hash sequences must NOT be recognized or removed
+  const malformedResult1 = extractHashtags('Bayar #trip/bali');
+  assert.deepEqual(malformedResult1.tags, []);
+  assert.equal(malformedResult1.cleanedText, 'Bayar #trip/bali');
+
+  const malformedResult2 = extractHashtags('Tiket #trip/bali dan belanja #oleh-oleh.');
+  assert.deepEqual(malformedResult2.tags, ['oleh-oleh']);
+  assert.equal(malformedResult2.cleanedText, 'Tiket #trip/bali dan belanja');
+
+  const malformedResult3 = extractHashtags('#123/456 email#domain.com #valid-tag');
+  assert.deepEqual(malformedResult3.tags, ['valid-tag']);
+  assert.equal(malformedResult3.cleanedText, '#123/456 email#domain.com');
+
   // normalizeTagName & deduplicateTags helpers
   assert.equal(normalizeTagName('#reimburse'), 'reimburse');
   assert.equal(normalizeTagName('###tag'), 'tag');
@@ -163,6 +176,7 @@ const mockCategories: WalletCategoryItem[] = [
   for (const label of initialLabels) {
     mockCacheService.addLabelToCache(label);
   }
+  mockCacheService.setLabelsLoaded(true);
 
   // A: Reuse existing label case-insensitively
   const existingResolveResult = await resolveAndEnsureLabels(
@@ -207,6 +221,70 @@ const mockCategories: WalletCategoryItem[] = [
   );
   assert.deepEqual(failedResult.resolvedLabelIds, [], 'Failed label should have no ID');
   assert.deepEqual(failedResult.resolvedLabelNames, ['fail-create']);
+
+  // E: Cold-start read failure followed by successful refresh reconciling existing label
+  // First fetchLabels failed, so cache is empty and not loaded
+  let getLabelsCallCount = 0;
+  const createLabelCallsE: string[] = [];
+
+  const mockMcpClientE = {
+    fetchAccounts: async () => [],
+    fetchCategories: async () => [],
+    fetchLabels: async () => {
+      getLabelsCallCount++;
+      if (getLabelsCallCount === 1) {
+        throw new Error('Timeout fetching labels on cold start');
+      }
+      return [{ id: 'lbl-reimburse', name: 'reimburse' }];
+    },
+    createLabel: async (name: string) => {
+      createLabelCallsE.push(name);
+      return { id: `lbl-${name}`, name };
+    },
+  } as unknown as WalletMcpClientService;
+
+  const coldStartCache = new WalletCacheService(mockMcpClientE);
+  // initialize fails to fetch labels
+  await coldStartCache.initialize();
+  assert.equal(coldStartCache.isLabelsLoaded(), false, 'Cache should mark labels as not loaded after failure');
+  assert.equal(coldStartCache.getLabels().length, 0);
+
+  // User message arrives with #reimburse; resolver must refresh, find existing, and NEVER call createLabel
+  const reconciledResult = await resolveAndEnsureLabels(
+    ['reimburse'],
+    coldStartCache,
+    mockMcpClientE
+  );
+  assert.deepEqual(reconciledResult.resolvedLabelIds, ['lbl-reimburse']);
+  assert.deepEqual(reconciledResult.resolvedLabelNames, ['reimburse']);
+  assert.equal(createLabelCallsE.length, 0, 'Must reuse existing label and NEVER call createLabel on read recovery');
+  assert.equal(coldStartCache.isLabelsLoaded(), true, 'Cache should now be marked as loaded');
+
+  // F: Persistent read failure must NEVER trigger createLabel
+  const createLabelCallsF: string[] = [];
+  const persistentFailMcpClient = {
+    fetchAccounts: async () => [],
+    fetchCategories: async () => [],
+    fetchLabels: async () => {
+      throw new Error('Persistent network error');
+    },
+    createLabel: async (name: string) => {
+      createLabelCallsF.push(name);
+      return { id: `lbl-${name}`, name };
+    },
+  } as unknown as WalletMcpClientService;
+
+  const failCache = new WalletCacheService(persistentFailMcpClient);
+  await failCache.initialize();
+
+  const failResult = await resolveAndEnsureLabels(
+    ['kantor'],
+    failCache,
+    persistentFailMcpClient
+  );
+  assert.deepEqual(failResult.resolvedLabelIds, [], 'Unverified label must have no ID');
+  assert.deepEqual(failResult.resolvedLabelNames, ['kantor']);
+  assert.equal(createLabelCallsF.length, 0, 'Persistent read failure must NEVER trigger createLabel');
 }
 
 // ---------------------------------------------------------------------------
@@ -413,15 +491,18 @@ const mockCategories: WalletCategoryItem[] = [
   assert.equal(wrappedLabels[0].id, 'lbl-3');
   assert.equal(wrappedLabels[0].name, 'proyek');
 
-  // Test fetchLabels error handling (graceful fallback to cached list)
+  // Test fetchLabels error handling (rethrow error on tool failure so caller knows read failed)
   realMcpClient.callMcpTool = async (toolName: string) => {
     if (toolName === 'get_labels') {
       throw new Error('Network timeout');
     }
     return {} as any;
   };
-  const fallbackLabels = await realMcpClient.fetchLabels(true);
-  assert.equal(fallbackLabels.length, 1, 'Should return existing cached labels when error occurs');
+  await assert.rejects(
+    async () => realMcpClient.fetchLabels(true),
+    /Network timeout/,
+    'fetchLabels should rethrow error when tool call fails'
+  );
 
   // Test createLabel with empty name
   const emptyResult = await realMcpClient.createLabel('  #   ');
@@ -495,6 +576,7 @@ const mockCategories: WalletCategoryItem[] = [
   const realCacheService = new WalletCacheService(realMcpClient);
   await realCacheService.initialize();
 
+  assert.equal(realCacheService.isLabelsLoaded(), true, 'isLabelsLoaded should be true after successful initialize');
   assert.equal(realCacheService.getLabels().length, 2);
   const foundById = realCacheService.findLabelById('lbl-cache-1');
   assert.equal(foundById?.name, 'Keluarga');
@@ -505,6 +587,12 @@ const mockCategories: WalletCategoryItem[] = [
   assert.equal(foundByName?.id, 'lbl-cache-1');
   const foundByHashName = realCacheService.findLabelByName('#GADGET');
   assert.equal(foundByHashName?.id, 'lbl-cache-2');
+
+  // Test setLabelsLoaded helper
+  realCacheService.setLabelsLoaded(false);
+  assert.equal(realCacheService.isLabelsLoaded(), false);
+  realCacheService.setLabelsLoaded(true);
+  assert.equal(realCacheService.isLabelsLoaded(), true);
 
   // Test addLabelToCache (new & update)
   realCacheService.addLabelToCache({ id: 'lbl-cache-3', name: 'Hiburan' });
@@ -517,6 +605,15 @@ const mockCategories: WalletCategoryItem[] = [
   const refreshedList = await realCacheService.refreshLabels();
   assert.equal(refreshedList.length, 1);
   assert.equal(refreshedList[0].id, 'lbl-refreshed');
+  assert.equal(realCacheService.isLabelsLoaded(), true);
+
+  // Test refreshLabels failure marks isLabelsLoaded = false and rethrows
+  realMcpClient.callMcpTool = async (toolName: string) => {
+    if (toolName === 'get_labels') throw new Error('Refresh error');
+    return {};
+  };
+  await assert.rejects(async () => realCacheService.refreshLabels(), /Refresh error/);
+  assert.equal(realCacheService.isLabelsLoaded(), false);
 }
 
 // ---------------------------------------------------------------------------

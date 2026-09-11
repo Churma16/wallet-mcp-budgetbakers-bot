@@ -268,7 +268,7 @@ export class WalletMcpClientService {
       applicationLogger.fileDetail('warn', 'Failed to fetch labels from Wallet MCP', {
         error: error instanceof Error ? error.message : String(error),
       });
-      return this.cachedLabelList;
+      throw error;
     }
   }
 
