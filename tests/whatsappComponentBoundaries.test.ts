@@ -26,15 +26,21 @@ async function run(): Promise<void> {
 
   (adapter as any).socketInstance = {
     user: { id: '6281234567890:1@s.whatsapp.net' },
-    sendMessage: async () => ({ key: { id: 'tracked-outgoing-id' } }),
+    sendMessage: async (
+      _jid: string,
+      content: { text: string },
+      options: { messageId: string }
+    ) => {
+      await adapter.processIncomingMessages([{
+        key: { remoteJid: '6281234567890@s.whatsapp.net', id: options.messageId, fromMe: true },
+        message: { conversation: content.text },
+      }]);
+      return { key: { id: options.messageId } };
+    },
   };
 
   await adapter.sendTextMessage('6281234567890@s.whatsapp.net', 'arbitrary bot response');
-  await adapter.processIncomingMessages([{
-    key: { remoteJid: '6281234567890@s.whatsapp.net', id: 'tracked-outgoing-id', fromMe: true },
-    message: { conversation: 'arbitrary bot response without a recognized prefix' },
-  }]);
-  assert.deepEqual(receivedTexts, [], 'tracked outgoing message identifiers prevent bot loops');
+  assert.deepEqual(receivedTexts, [], 'pre-registered outgoing identifiers prevent pre-resolution bot loops');
 
   await adapter.processIncomingMessages([{
     key: { remoteJid: '6281234567890@s.whatsapp.net', id: 'manual-self-message', fromMe: true },

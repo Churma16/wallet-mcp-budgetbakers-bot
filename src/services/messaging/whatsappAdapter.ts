@@ -1,4 +1,4 @@
-import makeWASocket, { useMultiFileAuthState, WASocket, proto } from '@whiskeysockets/baileys';
+import makeWASocket, { generateMessageIDV2, useMultiFileAuthState, WASocket, proto } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import qrcodeTerminal from 'qrcode-terminal';
 import { applicationLogger } from '../../utils/logger.js';
@@ -149,9 +149,9 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
       const socket = this.socketInstance;
       if (!socket) throw new Error('[error] WhatsApp socket is not connected');
       try {
-        const dispatchedMessage = await socket.sendMessage(targetChatIdentifier, { text: messageText });
-        const messageId = dispatchedMessage?.key?.id;
-        if (messageId) this.outgoingMessageIds.record(messageId);
+        const messageId = generateMessageIDV2(socket.user?.id);
+        this.outgoingMessageIds.record(messageId);
+        await socket.sendMessage(targetChatIdentifier, { text: messageText }, { messageId });
         applicationLogger.fileDetail('whatsapp', 'Dispatched WhatsApp Text Message', {
           targetChatIdentifier, messageId, messageLength: messageText.length,
           messagePreview: messageText.substring(0, 120),
