@@ -411,34 +411,15 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
         botUserLinkedDeviceIdentifier
       );
 
-      const unwrappedMessageContent = this.extractUnwrappedMessageContent(rawMessage);
-      if (!unwrappedMessageContent) {
+      // Provider metadata is authoritative: never process an outgoing event as input.
+      // This deliberately does not inspect response text, which must not affect safeguards.
+      if (rawMessage.key.fromMe) {
         continue;
       }
 
-      if (rawMessage.key.fromMe) {
-        if (!isMessageTargetingSelf) {
-          continue;
-        }
-
-        const textContent =
-          unwrappedMessageContent.conversation ||
-          unwrappedMessageContent.extendedTextMessage?.text ||
-          unwrappedMessageContent.imageMessage?.caption ||
-          '';
-
-        if (
-          textContent.startsWith('✅') ||
-          textContent.startsWith('⚠️') ||
-          textContent.startsWith('📊 *Saldo Rekening*') ||
-          textContent.startsWith('📈 *Status Anggaran*') ||
-          textContent.startsWith('[success]') ||
-          textContent.startsWith('[error]') ||
-          textContent.startsWith('[info]') ||
-          textContent.startsWith('[warn]')
-        ) {
-          continue;
-        }
+      const unwrappedMessageContent = this.extractUnwrappedMessageContent(rawMessage);
+      if (!unwrappedMessageContent) {
+        continue;
       }
 
       if (!isMessageTargetingSelf) {
