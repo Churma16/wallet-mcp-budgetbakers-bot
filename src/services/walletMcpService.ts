@@ -16,7 +16,14 @@ import { matchesTransactionRecordSearch } from '../utils/transactionSearchMatche
 
 export const DEFAULT_TRANSACTION_HISTORY_LIMIT = 10;
 export const MAX_TRANSACTION_HISTORY_LIMIT = 50;
-export const MAX_TRANSACTION_SEARCH_SCAN_RECORDS = 500;
+
+interface TransactionSearchScanCacheEntry {
+  matchedRecords: WalletRecordItem[];
+  seenMatchedRecordIds: Set<string>;
+  nextOffset: number | null;
+  exhausted: boolean;
+  updatedAt: number;
+}
 
 export type WalletMcpDispatchOutcome = 'DEFINITIVE_FAILURE' | 'UNKNOWN';
 
@@ -45,6 +52,9 @@ export class WalletMcpClientService {
   private cachedLabelList: WalletLabelItem[] = [];
   private cacheLastUpdatedTimestamp: number = 0;
   private readonly cacheDurationMilliseconds: number = 1000 * 60 * 30; // 30 minutes
+  private readonly transactionSearchScanCache = new Map<string, TransactionSearchScanCacheEntry>();
+  private readonly transactionSearchScanCacheTtlMilliseconds = 1000 * 60 * 2; // 2 minutes
+  private readonly maxTransactionSearchScanCacheEntries = 20;
 
   constructor(private readonly baseUrl: string, private readonly accessToken: string) {
     this.httpClient = axios.create({
@@ -383,7 +393,8 @@ export class WalletMcpClientService {
 
   /**
    * Retrieve transaction records with pagination and deterministic sorting.
-   * Capped at safe upper bound (MAX_TRANSACTION_HISTORY_LIMIT = 50).
+   * Search pagination incrementally verifies upstream candidates and reuses a short-lived
+   * per-query scan cache so later pages resume instead of rescanning from offset zero.
    */
   public async fetchRecords(queryOptions?: TransactionHistoryQueryOptions): Promise<TransactionHistoryPage> {
     const rawLimit = queryOptions?.limit;
@@ -528,21 +539,49 @@ export class WalletMcpClientService {
     };
 
     if (queryOptions?.searchQuery) {
-      const matchedRecords: WalletRecordItem[] = [];
-      const seenMatchedRecordIds = new Set<string>();
-      let scanOffset = 0;
-      let scannedCandidateCount = 0;
+      const searchCacheKey = JSON.stringify({
+        query: mcpCallPayload.query,
+        accountId: mcpCallPayload.accountId,
+        categoryId: mcpCallPayload.categoryId,
+        categoryGroup: mcpCallPayload.categoryGroup,
+        recordType: mcpCallPayload.recordType,
+        recordDate: mcpCallPayload.recordDate,
+        sortBy: upstreamSortBy,
+      });
+      const currentTimestamp = Date.now();
 
-      while (true) {
-        if (scannedCandidateCount >= MAX_TRANSACTION_SEARCH_SCAN_RECORDS) {
-          throw new WalletMcpRequestError(
-            `[error] Transaction search verification exceeded the bounded scan limit of ${MAX_TRANSACTION_SEARCH_SCAN_RECORDS} candidate records`,
-            'DEFINITIVE_FAILURE'
-          );
+      for (const [cacheKey, cacheEntry] of this.transactionSearchScanCache.entries()) {
+        if (currentTimestamp - cacheEntry.updatedAt > this.transactionSearchScanCacheTtlMilliseconds) {
+          this.transactionSearchScanCache.delete(cacheKey);
+        }
+      }
+
+      let searchCacheEntry = this.transactionSearchScanCache.get(searchCacheKey);
+      if (!searchCacheEntry) {
+        if (this.transactionSearchScanCache.size >= this.maxTransactionSearchScanCacheEntries) {
+          const oldestCacheKey = this.transactionSearchScanCache.keys().next().value as string | undefined;
+          if (oldestCacheKey) {
+            this.transactionSearchScanCache.delete(oldestCacheKey);
+          }
         }
 
-        const remainingScanCapacity = MAX_TRANSACTION_SEARCH_SCAN_RECORDS - scannedCandidateCount;
-        const scanLimit = Math.min(MAX_TRANSACTION_HISTORY_LIMIT, remainingScanCapacity);
+        searchCacheEntry = {
+          matchedRecords: [],
+          seenMatchedRecordIds: new Set<string>(),
+          nextOffset: 0,
+          exhausted: false,
+          updatedAt: currentTimestamp,
+        };
+        this.transactionSearchScanCache.set(searchCacheKey, searchCacheEntry);
+      }
+
+      const requestedPageEndOffset = resolvedOffset + resolvedLimit;
+      const lookaheadTargetCount = requestedPageEndOffset + 1;
+
+      while (!searchCacheEntry.exhausted && searchCacheEntry.matchedRecords.length < lookaheadTargetCount) {
+        const scanOffset = searchCacheEntry.nextOffset ?? 0;
+        const isFreshScan = scanOffset === 0 && searchCacheEntry.matchedRecords.length === 0;
+        const scanLimit = isFreshScan ? resolvedLimit : MAX_TRANSACTION_HISTORY_LIMIT;
         const scanPayload: Record<string, unknown> = {
           ...mcpCallPayload,
           limit: scanLimit,
@@ -555,6 +594,9 @@ export class WalletMcpClientService {
           : (rawResponse?.records || rawResponse?.items || []);
 
         if (rawRecordArray.length === 0) {
+          searchCacheEntry.exhausted = true;
+          searchCacheEntry.nextOffset = null;
+          searchCacheEntry.updatedAt = Date.now();
           break;
         }
 
@@ -565,16 +607,14 @@ export class WalletMcpClientService {
           }
 
           if (recordItem.id) {
-            if (seenMatchedRecordIds.has(recordItem.id)) {
+            if (searchCacheEntry.seenMatchedRecordIds.has(recordItem.id)) {
               continue;
             }
-            seenMatchedRecordIds.add(recordItem.id);
+            searchCacheEntry.seenMatchedRecordIds.add(recordItem.id);
           }
 
-          matchedRecords.push(recordItem);
+          searchCacheEntry.matchedRecords.push(recordItem);
         }
-
-        scannedCandidateCount += rawRecordArray.length;
 
         const hasExplicitTotal = typeof rawResponse?.total === 'number' && Number.isFinite(rawResponse.total);
         const upstreamTotal = hasExplicitTotal ? Math.max(0, rawResponse.total) : undefined;
@@ -592,31 +632,34 @@ export class WalletMcpClientService {
         }
 
         if (nextScanOffset === null) {
+          searchCacheEntry.exhausted = true;
+          searchCacheEntry.nextOffset = null;
+          searchCacheEntry.updatedAt = Date.now();
           break;
         }
 
         if (nextScanOffset <= scanOffset) {
+          this.transactionSearchScanCache.delete(searchCacheKey);
           throw new WalletMcpRequestError(
             '[error] Wallet MCP search pagination did not make forward progress',
             'DEFINITIVE_FAILURE'
           );
         }
 
-        if (scannedCandidateCount >= MAX_TRANSACTION_SEARCH_SCAN_RECORDS) {
-          throw new WalletMcpRequestError(
-            `[error] Transaction search verification exceeded the bounded scan limit of ${MAX_TRANSACTION_SEARCH_SCAN_RECORDS} candidate records`,
-            'DEFINITIVE_FAILURE'
-          );
-        }
-
-        scanOffset = nextScanOffset;
+        searchCacheEntry.nextOffset = nextScanOffset;
+        searchCacheEntry.updatedAt = Date.now();
       }
 
-      const resolvedTotalCount = matchedRecords.length;
       const pageNumber = Math.floor(resolvedOffset / resolvedLimit) + 1;
-      const totalPagesCount = Math.max(1, Math.ceil(resolvedTotalCount / resolvedLimit));
-      const pageRecords = matchedRecords.slice(resolvedOffset, resolvedOffset + resolvedLimit);
-      const hasMore = resolvedOffset + pageRecords.length < resolvedTotalCount;
+      const pageRecords = searchCacheEntry.matchedRecords.slice(resolvedOffset, requestedPageEndOffset);
+      const hasBufferedLookahead = searchCacheEntry.matchedRecords.length > requestedPageEndOffset;
+      const hasMore = hasBufferedLookahead || !searchCacheEntry.exhausted;
+      const resolvedTotalCount = searchCacheEntry.exhausted
+        ? searchCacheEntry.matchedRecords.length
+        : undefined;
+      const totalPagesCount = typeof resolvedTotalCount === 'number'
+        ? Math.max(1, Math.ceil(resolvedTotalCount / resolvedLimit))
+        : undefined;
 
       return {
         records: pageRecords,
@@ -625,7 +668,7 @@ export class WalletMcpClientService {
         offset: resolvedOffset,
         page: pageNumber,
         totalPages: totalPagesCount,
-        nextOffset: hasMore ? resolvedOffset + resolvedLimit : null,
+        nextOffset: hasMore ? requestedPageEndOffset : null,
         hasMore,
         sort: resolvedSort,
       };
@@ -754,7 +797,9 @@ export class WalletMcpClientService {
       );
     }
 
-    return this.validateCreateRecordsResponse(createRecordsResult, sanitizedRecordPayloadList.length);
+    const validatedResult = this.validateCreateRecordsResponse(createRecordsResult, sanitizedRecordPayloadList.length);
+    this.transactionSearchScanCache.clear();
+    return validatedResult;
   }
 
   private validateCreateRecordsResponse(
