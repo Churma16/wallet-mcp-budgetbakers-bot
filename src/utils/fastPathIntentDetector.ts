@@ -434,6 +434,7 @@ function parseTransactionSummaryIntent(userMessageText: string): FastPathTransac
 
   let remainder = trimmedText;
   let explicitRecordType: 'expense' | 'income' | undefined;
+  let forcedGroupBy: TransactionSummaryQueryOptions['groupBy'] | undefined;
   let matchedPrefix = false;
 
   const slashCommandMatch = remainder.match(/^\/(?:summary|ringkasan|rekap)\b/i);
@@ -510,21 +511,46 @@ function parseTransactionSummaryIntent(userMessageText: string): FastPathTransac
     }
   }
 
+  if (!matchedPrefix) {
+    const categoryRankingQuestionMatch = remainder.match(
+      /^(?:which|what)\s+category\s+did\s+i\s+spend\s+(?:the\s+)?most\s+on(?:\s+(.*))?$/i
+    );
+    if (categoryRankingQuestionMatch) {
+      matchedPrefix = true;
+      explicitRecordType = 'expense';
+      forcedGroupBy = 'category';
+      remainder = (categoryRankingQuestionMatch[1] || '').trim();
+    }
+  }
+
+  if (!matchedPrefix) {
+    const indonesianCategoryRankingMatch = remainder.match(
+      /^kategori\s+(?:mana|apa)\s+yang\s+paling\s+banyak\s+pengeluarannya(?:\s+(.*))?$/i
+    );
+    if (indonesianCategoryRankingMatch) {
+      matchedPrefix = true;
+      explicitRecordType = 'expense';
+      forcedGroupBy = 'category';
+      remainder = (indonesianCategoryRankingMatch[1] || '').trim();
+    }
+  }
+
   if (!matchedPrefix) return null;
 
-  let groupBy: TransactionSummaryQueryOptions['groupBy'] = 'none';
+  let groupBy: TransactionSummaryQueryOptions['groupBy'] = forcedGroupBy || 'none';
   const categoryBreakdownPattern = /\b(?:per\s+kategori|berdasarkan\s+kategori|by\s+category|category\s+breakdown|breakdown\s+(?:per\s+)?kategori)\b/i;
   const accountBreakdownPattern = /\b(?:per\s+(?:akun|rekening)|berdasarkan\s+(?:akun|rekening)|by\s+account|account\s+breakdown|breakdown\s+(?:per\s+)?(?:akun|rekening))\b/i;
   const hasCategoryBreakdown = categoryBreakdownPattern.test(remainder);
   const hasAccountBreakdown = accountBreakdownPattern.test(remainder);
   if (hasCategoryBreakdown && hasAccountBreakdown) return null;
+  if (forcedGroupBy && (hasCategoryBreakdown || hasAccountBreakdown)) return null;
   if (hasCategoryBreakdown) {
     groupBy = 'category';
     remainder = remainder.replace(categoryBreakdownPattern, ' ').trim();
   } else if (hasAccountBreakdown) {
     groupBy = 'account';
     remainder = remainder.replace(accountBreakdownPattern, ' ').trim();
-  } else {
+  } else if (!forcedGroupBy) {
     const leadingGroupMatch = remainder.match(/^(kategori|category|akun|account|rekening)\b/i);
     if (leadingGroupMatch) {
       groupBy = /^(?:kategori|category)$/i.test(leadingGroupMatch[1]) ? 'category' : 'account';
