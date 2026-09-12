@@ -513,6 +513,28 @@ describe('Canonical Application Configuration (Issue #110 Part B)', () => {
       resetRuntimeApplicationConfig();
       expect(getApplicationTimezone()).toBe('Asia/Jakarta');
     });
+
+    it('keeps registered runtime config authoritative when localization fields are empty or invalid despite conflicting env values', () => {
+      process.env.APP_TIMEZONE = 'Europe/Paris';
+      process.env.DEFAULT_CURRENCY = 'EUR';
+      process.env.APP_LANGUAGE = 'en';
+
+      const customConfig = loadEnvironmentConfiguration();
+      customConfig.appTimezone = '';
+      customConfig.defaultCurrency = '';
+      customConfig.appLanguage = '' as 'id' | 'en';
+
+      setRuntimeApplicationConfig(customConfig);
+
+      // Must return the documented defaults rather than falling back to process.env values
+      expect(getApplicationTimezone()).toBe(DEFAULT_APP_TIMEZONE);
+      expect(getDefaultCurrency()).toBe(DEFAULT_APP_CURRENCY);
+      expect(getApplicationLanguage()).toBe(DEFAULT_APP_LANGUAGE);
+
+      // Also test with invalid timezone in registered config
+      customConfig.appTimezone = 'Invalid/Non_Existent_Timezone';
+      expect(getApplicationTimezone()).toBe(DEFAULT_APP_TIMEZONE);
+    });
   });
 
   describe('Configuration Validation Behavior Compatibility', () => {

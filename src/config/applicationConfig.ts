@@ -49,7 +49,7 @@ export function getRuntimeApplicationConfig(): ApplicationEnvironmentConfigurati
  * Returns a valid IANA timezone identifier, falling back to 'Asia/Jakarta'.
  */
 export function getApplicationTimezone(): string {
-  if (activeRuntimeConfiguration?.appTimezone) {
+  if (activeRuntimeConfiguration) {
     return resolveSafeTimezone(activeRuntimeConfiguration.appTimezone);
   }
   const loadedConfiguration = loadEnvironmentConfiguration();
@@ -61,8 +61,8 @@ export function getApplicationTimezone(): string {
  * Returns normalized uppercase currency code, falling back to 'IDR'.
  */
 export function getDefaultCurrency(): string {
-  if (activeRuntimeConfiguration?.defaultCurrency) {
-    const rawCurrency = activeRuntimeConfiguration.defaultCurrency.toUpperCase().trim();
+  if (activeRuntimeConfiguration) {
+    const rawCurrency = (activeRuntimeConfiguration.defaultCurrency || '').toUpperCase().trim();
     return rawCurrency.length > 0 ? rawCurrency : DEFAULT_APP_CURRENCY;
   }
   const loadedConfiguration = loadEnvironmentConfiguration();
@@ -74,8 +74,9 @@ export function getDefaultCurrency(): string {
  * Returns supported language code ('id' | 'en'), falling back to 'id'.
  */
 export function getApplicationLanguage(): 'id' | 'en' {
-  if (activeRuntimeConfiguration?.appLanguage) {
-    return activeRuntimeConfiguration.appLanguage;
+  if (activeRuntimeConfiguration) {
+    const rawLanguage = (activeRuntimeConfiguration.appLanguage || '').toLowerCase().trim();
+    return rawLanguage === 'en' ? 'en' : DEFAULT_APP_LANGUAGE;
   }
   const loadedConfiguration = loadEnvironmentConfiguration();
   return loadedConfiguration.appLanguage || DEFAULT_APP_LANGUAGE;
