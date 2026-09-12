@@ -37,5 +37,8 @@ jobs:
       - name: Verify Build
         run: npm run build
 
-      - name: Run Automated Offline Tests
-        run: npm test
+      - name: Run Legacy Offline Tests
+        run: npm run test:offline
+
+      - name: Run Vitest Offline Tests
+        run: npm run test:vitest
