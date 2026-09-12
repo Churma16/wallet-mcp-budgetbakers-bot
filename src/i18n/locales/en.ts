@@ -329,6 +329,13 @@ export const englishDictionary: ResponseDictionary = {
         `_(${timestampString})_`,
       ].join('\n');
     },
+    receiptExtractionFailed(timestampString: string): string {
+      return [
+        '⚠️ Could not clearly read the receipt image.',
+        'Please make sure the photo is well-lit and legible, or resend with a caption like: _"Lunch 35k using Gopay"_',
+        `_(${timestampString})_`,
+      ].join('\n');
+    },
     validationRejected(errorMessage: string): string {
       return `⚠️ Transaction could not be saved due to invalid data:\n${errorMessage}`;
     },

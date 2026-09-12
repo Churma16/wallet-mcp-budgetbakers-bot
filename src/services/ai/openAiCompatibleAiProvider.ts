@@ -8,7 +8,11 @@ import {
   ExtractedEmailTransactionData,
   TokenUsageStatistics,
 } from './financialAiProvider.js';
-import { extractAndParseJsonObject } from './jsonExtractionHelper.js';
+import {
+  extractAndParseJsonObject,
+  validateReceiptFinancialIntentEnvelope,
+  isAiResponseParseError,
+} from './jsonExtractionHelper.js';
 import { getApplicationTimezone } from '../../utils/humanResponseFormatter.js';
 import { getCurrentLocalDateString } from '../../utils/relativeTimeParser.js';
 import {
@@ -343,11 +347,15 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
         `Receipt photo (size: ${imageBuffer.length} bytes, caption: "${optionalCaption}")`
       );
 
-      const parsedIntent = extractAndParseJsonObject<ExtractedFinancialIntent>(generationResult.responseText);
+      const parsedJsonObject = extractAndParseJsonObject<unknown>(generationResult.responseText);
+      const parsedIntent = validateReceiptFinancialIntentEnvelope(parsedJsonObject, generationResult.responseText);
       parsedIntent.tokenUsage = generationResult.tokenUsage;
       applicationLogger.fileDetail('ai', `Parsed Financial Intent from ${this.providerName} Vision`, parsedIntent);
       return parsedIntent;
     } catch (visionError: any) {
+      if (isAiResponseParseError(visionError)) {
+        throw visionError;
+      }
       const errorMessage = visionError?.message || String(visionError);
       // If error indicates image or vision is not supported by the model
       if (

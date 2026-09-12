@@ -7,6 +7,7 @@ import {
   ParsedRelativeTimeResult,
 } from './relativeTimeParser.js';
 import { extractHashtags, deduplicateTags, normalizeTagName } from './hashtagParser.js';
+import { parseFinancialAmount, parseFinancialAmountString } from './financialAmountParser.js';
 
 export type AccountResolutionIssueReason = 'UNRESOLVED' | 'AMBIGUOUS';
 
@@ -281,8 +282,43 @@ export function validateAndSanitizeFinancialRecords(
     const recordLabel = `Transaksi #${recordIndex + 1}`;
 
     // 1. Amount Validation
-    const parsedAmount = Number(currentRecord.amount);
-    if (!Number.isFinite(parsedAmount) || Number.isNaN(parsedAmount)) {
+    const rawAmountValue: unknown = currentRecord.amount;
+    const rawRecordCurrency: string | undefined =
+      typeof currentRecord.currency === 'string' && currentRecord.currency.trim()
+        ? currentRecord.currency.trim().toUpperCase()
+        : undefined;
+
+    let parsedAmount: number | null = null;
+    let stringAmountCurrencyHint: string | undefined = undefined;
+
+    if (typeof rawAmountValue === 'number') {
+      parsedAmount = Number.isFinite(rawAmountValue) ? rawAmountValue : null;
+    } else if (typeof rawAmountValue === 'string') {
+      // First check if the raw string amount embeds an explicit currency marker
+      const embeddedMarkerResult = parseFinancialAmount(rawAmountValue);
+      if (embeddedMarkerResult?.explicitCurrencyHint) {
+        stringAmountCurrencyHint = embeddedMarkerResult.explicitCurrencyHint.trim().toUpperCase();
+      }
+
+      // Reconcile currency hints: record currency vs explicit currency parsed from amount string
+      if (rawRecordCurrency && stringAmountCurrencyHint && rawRecordCurrency !== stringAmountCurrencyHint) {
+        validationErrors.push(
+          `${recordLabel}: Konflik mata uang terdeteksi antara data transaksi (${rawRecordCurrency}) dan nominal (${stringAmountCurrencyHint}).`
+        );
+        continue;
+      }
+
+      const effectiveCurrencyContext = rawRecordCurrency || stringAmountCurrencyHint;
+      const parsedFinancialResult = parseFinancialAmount(rawAmountValue, effectiveCurrencyContext);
+      if (parsedFinancialResult !== null && Number.isFinite(parsedFinancialResult.amount)) {
+        parsedAmount = parsedFinancialResult.amount;
+        if (parsedFinancialResult.explicitCurrencyHint) {
+          stringAmountCurrencyHint = parsedFinancialResult.explicitCurrencyHint.trim().toUpperCase();
+        }
+      }
+    }
+
+    if (parsedAmount === null || !Number.isFinite(parsedAmount) || Number.isNaN(parsedAmount)) {
       validationErrors.push(`${recordLabel}: Nominal tidak valid (${currentRecord.amount}).`);
       continue;
     }
@@ -297,6 +333,22 @@ export function validateAndSanitizeFinancialRecords(
         `${recordLabel}: Nominal (${Math.abs(parsedAmount).toLocaleString('id-ID')}) melebihi batas wajar keamanan sistem.`
       );
       continue;
+    }
+
+    // Reconcile currency hints: record currency vs explicit currency parsed from amount string
+    if (rawRecordCurrency && stringAmountCurrencyHint && rawRecordCurrency !== stringAmountCurrencyHint) {
+      validationErrors.push(
+        `${recordLabel}: Konflik mata uang terdeteksi antara data transaksi (${rawRecordCurrency}) dan nominal (${stringAmountCurrencyHint}).`
+      );
+      continue;
+    }
+
+    const effectiveCurrencyHint = rawRecordCurrency || stringAmountCurrencyHint;
+
+    // Persist normalized amount and reconciled currency so downstream drafts and consumers stay normalized
+    currentRecord.amount = parsedAmount;
+    if (effectiveCurrencyHint) {
+      currentRecord.currency = effectiveCurrencyHint;
     }
 
     // 2. Account ID Resolution & Validation. All applicable heuristic strategies
@@ -317,7 +369,20 @@ export function validateAndSanitizeFinancialRecords(
       continue;
     }
 
-    const resolvedAccountId = accountResolutionCandidates[0].id;
+    const resolvedAccount = accountResolutionCandidates[0];
+    const resolvedAccountId = resolvedAccount.id;
+
+    // Currency compatibility check: explicit OCR / record currency hint must match resolved account currency
+    if (effectiveCurrencyHint && resolvedAccount.currency) {
+      const normalizedAccountCurrency = resolvedAccount.currency.trim().toUpperCase();
+      const normalizedRecordCurrency = effectiveCurrencyHint.trim().toUpperCase();
+      if (normalizedRecordCurrency !== normalizedAccountCurrency) {
+        validationErrors.push(
+          `${recordLabel}: Mata uang transaksi (${normalizedRecordCurrency}) berbeda dengan mata uang akun ${resolvedAccount.name} (${normalizedAccountCurrency}).`
+        );
+        continue;
+      }
+    }
 
     // 3. Category ID Validation (supports UUID, 1-based index number, exact name, or partial name)
     let resolvedCategoryId: string | undefined = undefined;
@@ -417,6 +482,7 @@ export function validateAndSanitizeFinancialRecords(
       recordDate: resolvedRecordDate,
       note: cleanedNote,
       counterParty: sanitizedCounterParty,
+      ...(effectiveCurrencyHint ? { currency: effectiveCurrencyHint } : {}),
     };
 
     if (combinedLabels.length > 0) {

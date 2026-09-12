@@ -329,6 +329,13 @@ export const indonesianDictionary: ResponseDictionary = {
         `_(${timestampString})_`,
       ].join('\n');
     },
+    receiptExtractionFailed(timestampString: string): string {
+      return [
+        '⚠️ Foto struk belum berhasil dibaca dengan jelas.',
+        'Pastikan foto terang dan teks transaksi terbaca, atau kirim ulang dengan caption contoh: _"Makan siang 35rb pakai Gopay"_',
+        `_(${timestampString})_`,
+      ].join('\n');
+    },
     validationRejected(errorMessage: string): string {
       return `⚠️ Transaksi tidak dapat disimpan karena data tidak valid:\n${errorMessage}`;
     },

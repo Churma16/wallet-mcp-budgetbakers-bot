@@ -57,6 +57,7 @@ const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
   { filePath: 'tests/transactionHistorySearchReviewRegression.test.ts', description: 'PR #114 quoted literal and search pagination regressions (Issue #102)' },
   { filePath: 'tests/transactionSummary.test.ts', description: 'Transaction totals, grouped breakdowns, filters, empty data, and currency isolation (Issue #103)' },
   { filePath: 'tests/transactionSummaryHandler.test.ts', description: 'Transaction summary fast-path dispatch, service delegation, formatting, and message delivery (Issue #103)' },
+  { filePath: 'tests/receiptProcessingBoundary.test.ts', description: 'Receipt processing boundary, partial extraction clarification & recovery (Issue #123)' },
 ];
 
 const isVerboseMode = process.argv.includes('--verbose') || process.argv.includes('-v');

@@ -179,6 +179,7 @@ CRITICAL RULES FOR RECEIPTS & QRIS:
    - Expenses MUST have a negative amount (e.g. -10000 for Rp10.000 spent).
    - Incomes MUST have a positive amount.
    - Extract the final total amount paid (including any taxes, platform/service fees, or discounts).
+   - "currency": Explicit ISO 4217 currency code printed or indicated on the receipt (e.g. "IDR" for Rp, "USD" for $, "SGD" for S$, "EUR" for €). MUST be provided for every record based on visible currency symbols, codes, or account context.
 
 2. SOURCE ACCOUNT VS. ACQUIRER (INDONESIAN QRIS & BANKING):
    - "Acquirer Name" / "Nama Acquirer" / "Acquirer" / "Terminal" / "NMID" indicates the MERCHANT'S payment gateway or acquiring bank (e.g. Bank Mandiri, BCA, Netzme, Nobu, ShopeePay). NEVER match the user's account to the Acquirer Name!
@@ -190,6 +191,7 @@ CRITICAL RULES FOR RECEIPTS & QRIS:
      * "GoPay", "OVO", "DANA", "ShopeePay" refer to their respective e-wallet accounts.
    - If the receipt shows a source account number (e.g. "Source Of Fund: 507431877335"), match it directly to the registered account with that account/rekening number.
    - USER CAPTION OVERRIDE: If the user provided a caption specifying a payment account (e.g. "pake jago", "dari mandiri", "cash"), the user's caption ALWAYS overrides the receipt's source account.
+   - MISSING OR UNIDENTIFIABLE ACCOUNT: If the payment account is not identifiable from the receipt or caption, set "accountId": "" (empty string). DO NOT guess an account, DO NOT invent an account name, and NEVER fail or abort extraction; always extract all observable transaction details (amount, recordDate, counterParty, note) with action "CREATE_RECORD".
 
 3. RECEIPT DATE, TIME & TIMEZONE RESOLUTION:
    - Receipts print local transaction timestamps (e.g. "8 September 2026, 11.54" or "15 July 2026, 11:54").
@@ -215,7 +217,7 @@ CRITICAL RULES FOR RECEIPTS & QRIS:
 
 7. JSON OUTPUT SCHEMA:
 Respond with valid JSON ONLY matching schema:
-{"action":"CREATE_RECORD"|"GENERAL_REPLY","records":[{"accountId":"ID or Name","categoryId":"ID or Name (optional)","amount":number,"recordDate":"ISO 8601","note":"string","counterParty":"string (optional)","labels":["string (optional)"]}],"explanation":"human friendly summary in ${summaryLanguageName}"}`;
+{"action":"CREATE_RECORD"|"GENERAL_REPLY","records":[{"accountId":"ID or Name","categoryId":"ID or Name (optional)","amount":number,"currency":"string (ISO 4217 code e.g. IDR, USD)","recordDate":"ISO 8601","note":"string","counterParty":"string (optional)","labels":["string (optional)"]}],"explanation":"human friendly summary in ${summaryLanguageName}"}`;
 }
 
 /**
