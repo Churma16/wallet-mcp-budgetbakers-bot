@@ -350,5 +350,11 @@ export const indonesianDictionary: ResponseDictionary = {
         : `Transaksi #${recordNumber}: Akun "${displayHint}" ambigu dan tidak dapat dipilih secara aman.`;
     },
     accountResolutionFallback: 'Akun transaksi tidak dapat ditentukan secara aman.',
+    mediaTooLarge(maxMegabytes: number): string {
+      return `⚠️ Ukuran foto melebihi batas maksimal (${maxMegabytes} MB). Silakan kirim foto dengan ukuran lebih kecil ya!`;
+    },
+    mediaDownloadFailed(channelDisplayName: string): string {
+      return `⚠️ Gagal mengunduh foto struk dari ${channelDisplayName}. Silakan coba kirim ulang ya!`;
+    },
   },
 };

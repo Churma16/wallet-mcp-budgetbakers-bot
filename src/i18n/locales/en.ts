@@ -351,5 +351,11 @@ export const englishDictionary: ResponseDictionary = {
         : `Transaction #${recordNumber}: Account "${displayHint}" is ambiguous and cannot be selected safely.`;
     },
     accountResolutionFallback: 'The transaction account could not be determined safely.',
+    mediaTooLarge(maxMegabytes: number): string {
+      return `⚠️ Photo size exceeds the maximum limit (${maxMegabytes} MB). Please send a smaller photo!`;
+    },
+    mediaDownloadFailed(channelDisplayName: string): string {
+      return `⚠️ Failed to download receipt photo from ${channelDisplayName}. Please try sending it again!`;
+    },
   },
 };

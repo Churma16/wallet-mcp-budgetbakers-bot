@@ -160,5 +160,7 @@ export interface ResponseDictionary {
     accountResolutionUnresolved(recordNumber: number, accountHint: string): string;
     accountResolutionAmbiguous(recordNumber: number, accountHint: string, candidateNames: string[]): string;
     accountResolutionFallback: string;
+    mediaTooLarge(maxMegabytes: number): string;
+    mediaDownloadFailed(channelDisplayName: string): string;
   };
 }
