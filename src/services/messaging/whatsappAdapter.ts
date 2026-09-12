@@ -2,6 +2,7 @@ import makeWASocket, { generateMessageIDV2, useMultiFileAuthState, WASocket, pro
 import pino from 'pino';
 import qrcodeTerminal from 'qrcode-terminal';
 import { applicationLogger } from '../../utils/logger.js';
+import { digitsOnly } from '../../utils/digitNormalization.js';
 import { MessagingAdapter, SupportedMessengerChannel, UserMessageCallback } from './types.js';
 import { WhatsappConnectionResilience } from './whatsapp/connectionResilience.js';
 import { WhatsappInboundMessageProcessor } from './whatsapp/inboundMessageProcessor.js';
@@ -30,7 +31,7 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
     private readonly onUserMessageReceived: UserMessageCallback,
     safeguardConfiguration?: WhatsappSafeguardConfiguration
   ) {
-    this.normalizedAllowedPhoneNumber = (allowedPhoneNumber || '').replace(/[^0-9]/g, '');
+    this.normalizedAllowedPhoneNumber = digitsOnly(allowedPhoneNumber || '');
     this.maxMediaDownloadBytes = safeguardConfiguration?.maxMediaDownloadBytes ?? 10 * 1024 * 1024;
     const getSocket = () => this.socketInstance;
 

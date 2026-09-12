@@ -1,7 +1,7 @@
 import { Bot, Context, GrammyError, HttpError } from 'grammy';
 import axios from 'axios';
-import { randomInt } from 'node:crypto';
 import { applicationLogger } from '../../utils/logger.js';
+import { calculateExponentialBackoff } from '../../utils/exponentialBackoff.js';
 import {
   AdapterConnectionState,
   MessagingAdapter,
@@ -145,10 +145,13 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
   }
 
   public calculateBackoffDelayMilliseconds(attemptIndex: number): number {
-    const exponentialDelay = this.startupRetryBaseDelayMs * Math.pow(2, attemptIndex);
-    const boundedDelay = Math.min(this.startupRetryMaxDelayMs, exponentialDelay);
-    const randomJitterMilliseconds = randomInt(500, 1500);
-    return boundedDelay + randomJitterMilliseconds;
+    return calculateExponentialBackoff({
+      attempt: attemptIndex,
+      baseMs: this.startupRetryBaseDelayMs,
+      maxMs: this.startupRetryMaxDelayMs,
+      jitterMinMs: 500,
+      jitterMaxMs: 1500,
+    });
   }
 
   public isRetryableNetworkError(error: unknown): boolean {
