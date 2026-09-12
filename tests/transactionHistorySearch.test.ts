@@ -431,7 +431,7 @@ test('Suite 4: Composable Combinations', async () => {
   assert.strictEqual(lastCallArgs.accountId, 'acc-cash-003');
   assert.deepStrictEqual(lastCallArgs.categoryId, ['cat-transport-002']);
   assert.strictEqual(lastCallArgs.recordType, 'expense');
-  assert.strictEqual(lastCallArgs.limit, 20);
+  assert.strictEqual(lastCallArgs.limit, MAX_TRANSACTION_HISTORY_LIMIT);
   assert.deepStrictEqual(lastCallArgs.sortBy, ['+recordDate', '+createdAt']);
   assert.strictEqual(fullyFilteredPage.appliedFilters?.searchQuery, 'Pertamax');
   assert.strictEqual(fullyFilteredPage.appliedFilters?.account?.name, 'Cash Dompet');
