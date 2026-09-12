@@ -15,7 +15,7 @@
         "test:vitest": "vitest run",
         "test:vitest:watch": "vitest",
         "test:coverage": "npm run test:coverage:legacy && npm run test:coverage:vitest",
-        "test:coverage:legacy": "c8 --report-dir=coverage/legacy --reporter=lcov --reporter=text tsx tests/runOfflineTests.ts",
+        "test:coverage:legacy": "c8 --exclude='src/setup/**' --exclude='src/diagnostics/**' --exclude='src/cli/**' --report-dir=coverage/legacy --reporter=lcov --reporter=text tsx tests/runOfflineTests.ts",
         "test:coverage:vitest": "npm install --no-save --package-lock=false @vitest/coverage-v8@5.0.0 && vitest run --coverage",
         "test:format": "vitest run tests/messageFormatHelper.vitest.test.ts",
         "test:formatter": "tsx tests/humanResponseFormatter.test.ts",
