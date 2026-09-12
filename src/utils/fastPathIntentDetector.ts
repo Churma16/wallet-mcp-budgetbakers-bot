@@ -96,6 +96,17 @@ function extractHistoryQueryOptionsFromTokens(
   let resolvedCategoryName: string | undefined = undefined;
   let resolvedSearchQuery: string | undefined = undefined;
 
+  // A dedicated one-token search must remain literal even when the token also
+  // belongs to the structured-filter vocabulary (e.g. income, today, bca, 5).
+  if (isDedicatedSearchCommand && remainingTokens.length > 0 && !/\s/.test(remainingTokens)) {
+    return {
+      limit: resolvedLimit,
+      page: resolvedPage,
+      sort: resolvedSort,
+      searchQuery: remainingTokens,
+    };
+  }
+
   // Protect quoted search literals before structured-token parsing so reserved
   // filter words inside quotes remain part of the literal search query.
   const explicitQuotedSearchMatch = remainingTokens.match(
