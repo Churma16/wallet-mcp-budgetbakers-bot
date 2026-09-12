@@ -8,6 +8,7 @@ import {
 } from '../types/walletTypes.js';
 import { PendingTransactionItem } from '../services/pendingTransactionService.js';
 import { getDictionary, getActiveLanguage, SupportedLanguage } from '../i18n/index.js';
+import { isAiResponseParseError } from '../services/ai/jsonExtractionHelper.js';
 
 const ZERO_DECIMAL_CURRENCY_SET = new Set([
   'IDR', 'JPY', 'KRW', 'VND', 'CLP', 'PYG', 'RWF', 'UGX', 'BIF', 'DJF', 'GNF', 'KMF',
@@ -556,13 +557,18 @@ export function formatTransactionHistoryMessage(
   return messageParts.join('\n');
 }
 
+export interface ErrorFormattingContext {
+  isImageMessage?: boolean;
+}
+
 /**
  * Analyzes error causes and generates an empathetic, casual, and actionable human message
  */
 export function formatErrorMessageForHuman(
   encounteredError: unknown,
   timestampString?: string,
-  languageCode?: SupportedLanguage
+  languageCode?: SupportedLanguage,
+  context?: ErrorFormattingContext
 ): string {
   const dictionary = getDictionary(languageCode);
   const resolvedTimestamp = timestampString || getHumanReadableTimestamp(new Date(), languageCode);
@@ -585,17 +591,7 @@ export function formatErrorMessageForHuman(
     return dictionary.errors.aiBusy(resolvedTimestamp);
   }
 
-  // 2. Schema validation / MCP argument format failure
-  if (
-    lowerCaseErrorMessage.includes('schema validation') ||
-    lowerCaseErrorMessage.includes('unexpected additional properties') ||
-    lowerCaseErrorMessage.includes('failed to parse') ||
-    lowerCaseErrorMessage.includes('create_records')
-  ) {
-    return dictionary.errors.schemaValidation(resolvedTimestamp);
-  }
-
-  // 3. Network connection / Timeout failure
+  // 2. Network connection / Timeout failure
   if (
     lowerCaseErrorMessage.includes('econnrefused') ||
     lowerCaseErrorMessage.includes('etimedout') ||
@@ -607,7 +603,27 @@ export function formatErrorMessageForHuman(
     return dictionary.errors.networkConnection(resolvedTimestamp);
   }
 
-  // 4. Default generic unexpected error
+  // 3. Receipt / Vision extraction & parse failure for image messages
+  if (
+    context?.isImageMessage &&
+    (isAiResponseParseError(encounteredError) ||
+      lowerCaseErrorMessage.includes('parse') ||
+      lowerCaseErrorMessage.includes('json') ||
+      lowerCaseErrorMessage.includes('vision') ||
+      lowerCaseErrorMessage.includes('ocr'))
+  ) {
+    return dictionary.errors.receiptExtractionFailed(resolvedTimestamp);
+  }
+
+  // 4. Schema validation / MCP argument format failure (strictly requires explicit schema validation indicators, never broad tool names)
+  if (
+    lowerCaseErrorMessage.includes('schema validation') ||
+    lowerCaseErrorMessage.includes('unexpected additional properties')
+  ) {
+    return dictionary.errors.schemaValidation(resolvedTimestamp);
+  }
+
+  // 5. Default generic unexpected error (including downstream create_records / Wallet MCP failures)
   return dictionary.errors.generic(resolvedTimestamp);
 }
 

@@ -7,6 +7,7 @@ import {
   ParsedRelativeTimeResult,
 } from './relativeTimeParser.js';
 import { extractHashtags, deduplicateTags, normalizeTagName } from './hashtagParser.js';
+import { parseCurrencyAmountStringToNumber } from './emailGateEvaluator.js';
 
 export type AccountResolutionIssueReason = 'UNRESOLVED' | 'AMBIGUOUS';
 
@@ -281,7 +282,17 @@ export function validateAndSanitizeFinancialRecords(
     const recordLabel = `Transaksi #${recordIndex + 1}`;
 
     // 1. Amount Validation
-    const parsedAmount = Number(currentRecord.amount);
+    const rawAmountValue: unknown = currentRecord.amount;
+    let parsedAmount = Number(rawAmountValue);
+    if ((!Number.isFinite(parsedAmount) || Number.isNaN(parsedAmount)) && typeof rawAmountValue === 'string') {
+      const trimmedAmountString = rawAmountValue.trim();
+      const isNegative = trimmedAmountString.startsWith('-') || /^-|\(.*\)$/.test(trimmedAmountString);
+      const parsedFromCurrency = parseCurrencyAmountStringToNumber(trimmedAmountString);
+      if (parsedFromCurrency > 0) {
+        parsedAmount = isNegative ? -parsedFromCurrency : parsedFromCurrency;
+      }
+    }
+
     if (!Number.isFinite(parsedAmount) || Number.isNaN(parsedAmount)) {
       validationErrors.push(`${recordLabel}: Nominal tidak valid (${currentRecord.amount}).`);
       continue;

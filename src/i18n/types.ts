@@ -155,6 +155,7 @@ export interface ResponseDictionary {
     schemaValidation(timestampString: string): string;
     networkConnection(timestampString: string): string;
     generic(timestampString: string): string;
+    receiptExtractionFailed(timestampString: string): string;
     validationRejected(errorMessage: string): string;
     accountResolutionUnresolved(recordNumber: number, accountHint: string): string;
     accountResolutionAmbiguous(recordNumber: number, accountHint: string, candidateNames: string[]): string;

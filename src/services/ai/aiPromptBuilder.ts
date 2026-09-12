@@ -190,6 +190,7 @@ CRITICAL RULES FOR RECEIPTS & QRIS:
      * "GoPay", "OVO", "DANA", "ShopeePay" refer to their respective e-wallet accounts.
    - If the receipt shows a source account number (e.g. "Source Of Fund: 507431877335"), match it directly to the registered account with that account/rekening number.
    - USER CAPTION OVERRIDE: If the user provided a caption specifying a payment account (e.g. "pake jago", "dari mandiri", "cash"), the user's caption ALWAYS overrides the receipt's source account.
+   - MISSING OR UNIDENTIFIABLE ACCOUNT: If the payment account is not identifiable from the receipt or caption, set "accountId": "" (empty string). DO NOT guess an account, DO NOT invent an account name, and NEVER fail or abort extraction; always extract all observable transaction details (amount, recordDate, counterParty, note) with action "CREATE_RECORD".
 
 3. RECEIPT DATE, TIME & TIMEZONE RESOLUTION:
    - Receipts print local transaction timestamps (e.g. "8 September 2026, 11.54" or "15 July 2026, 11:54").

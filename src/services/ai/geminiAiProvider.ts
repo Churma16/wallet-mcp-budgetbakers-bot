@@ -354,18 +354,10 @@ export class GeminiAiProvider implements FinancialAiProvider {
       requestContextDescription: `Receipt photo message (mime: ${mimeType}, size: ${imageBuffer.length} bytes, caption: "${optionalCaption}")`,
     });
 
-    try {
-      const parsedIntent = extractAndParseJsonObject<ExtractedFinancialIntent>(generationResult.responseText);
-      parsedIntent.tokenUsage = generationResult.tokenUsage;
-      applicationLogger.fileDetail('ai', 'Parsed Financial Intent from Gemini Vision', parsedIntent);
-      return parsedIntent;
-    } catch {
-      return {
-        action: 'GENERAL_REPLY',
-        explanation: generationResult.responseText,
-        tokenUsage: generationResult.tokenUsage,
-      };
-    }
+    const parsedIntent = extractAndParseJsonObject<ExtractedFinancialIntent>(generationResult.responseText);
+    parsedIntent.tokenUsage = generationResult.tokenUsage;
+    applicationLogger.fileDetail('ai', 'Parsed Financial Intent from Gemini Vision', parsedIntent);
+    return parsedIntent;
   }
 
   /**

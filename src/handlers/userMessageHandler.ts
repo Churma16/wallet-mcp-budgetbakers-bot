@@ -225,6 +225,20 @@ export class UserMessageHandler {
       });
 
       // 5. Route actions based on AI analysis
+      if (
+        event.messageType === 'image' &&
+        extractedIntent.action === 'CREATE_RECORD' &&
+        (!extractedIntent.records || extractedIntent.records.length === 0)
+      ) {
+        applicationLogger.warn('Receipt extraction returned CREATE_RECORD with 0 records.');
+        await this.messagingGateway.sendMessage(
+          event.channel,
+          event.chatIdentifier,
+          getDictionary().errors.receiptExtractionFailed(getHumanReadableTimestamp())
+        );
+        return;
+      }
+
       if (extractedIntent.action === 'CREATE_RECORD' && extractedIntent.records && extractedIntent.records.length > 0) {
         const validationResult = validateAndSanitizeFinancialRecords(
           extractedIntent.records,
@@ -386,6 +400,17 @@ export class UserMessageHandler {
       }
 
       // Default: general reply or guidance
+      if (event.messageType === 'image') {
+        const receiptReplyMessage = extractedIntent.explanation?.trim() ||
+          getDictionary().errors.receiptExtractionFailed(getHumanReadableTimestamp());
+        await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, receiptReplyMessage);
+        const processingDurationMs = Date.now() - processingStartTimestamp;
+        applicationLogger.success(
+          `[${event.channel.toUpperCase()}] Sent receipt extraction response (${processingDurationMs}ms).`
+        );
+        return;
+      }
+
       const replyMessage = extractedIntent.explanation || getDictionary().help.welcomeGuidance;
 
       applicationLogger.fileDetail('chat', 'Dispatched General Guidance Reply', {
@@ -422,7 +447,12 @@ export class UserMessageHandler {
         cachedCategoriesCount: this.walletCacheService.getCategories().length,
       });
 
-      const humanErrorMessage = formatErrorMessageForHuman(processingError, getHumanReadableTimestamp());
+      const humanErrorMessage = formatErrorMessageForHuman(
+        processingError,
+        getHumanReadableTimestamp(),
+        undefined,
+        { isImageMessage: event.messageType === 'image' }
+      );
       await this.messagingGateway.sendMessage(
         event.channel,
         event.chatIdentifier,

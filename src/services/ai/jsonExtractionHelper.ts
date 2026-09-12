@@ -1,4 +1,4 @@
-﻿import { applicationLogger } from '../../utils/logger.js';
+import { applicationLogger } from '../../utils/logger.js';
 
 /**
  * Extracts the content of the first triple-backtick code fence using linear index scanning
@@ -28,6 +28,28 @@ function extractMarkdownCodeFenceContent(rawText: string): string | null {
   }
 
   return extractedContent;
+}
+
+/**
+ * Dedicated error class for AI response extraction and parsing failures.
+ */
+export class AiResponseParseError extends Error {
+  constructor(
+    message: string,
+    public readonly rawResponseContent?: string
+  ) {
+    super(message);
+    this.name = 'AiResponseParseError';
+  }
+}
+
+/**
+ * Checks whether an error is an AiResponseParseError.
+ */
+export function isAiResponseParseError(error: unknown): error is AiResponseParseError {
+  return error instanceof AiResponseParseError || (
+    error instanceof Error && error.name === 'AiResponseParseError'
+  );
 }
 
 /**
@@ -64,10 +86,16 @@ export function extractAndParseJsonObject<T>(rawResponseText: string): T {
           errorMessage,
           extractedJsonSubstring,
         });
-        throw new Error(`Unable to parse JSON from AI response: ${errorMessage}`);
+        throw new AiResponseParseError(
+          `Unable to parse JSON from AI response: ${errorMessage}`,
+          rawResponseText
+        );
       }
     }
 
-    throw new Error('No valid JSON object structure found in AI response');
+    throw new AiResponseParseError(
+      'No valid JSON object structure found in AI response',
+      rawResponseText
+    );
   }
 }
