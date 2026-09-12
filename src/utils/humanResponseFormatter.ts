@@ -544,6 +544,13 @@ export function formatTransactionHistoryMessage(
         filterTokens: filterTokens.length > 0 ? filterTokens : undefined,
       })
     );
+  } else if (historyPage.continuationUnknown) {
+    messageParts.push('');
+    messageParts.push(
+      activeLanguage === 'en'
+        ? '_More matching transactions may still exist. Retry the same search to continue scanning from the saved position._'
+        : '_Transaksi yang cocok mungkin masih ada. Ulangi pencarian yang sama untuk melanjutkan pemindaian dari posisi tersimpan._'
+    );
   }
 
   return messageParts.join('\n');
