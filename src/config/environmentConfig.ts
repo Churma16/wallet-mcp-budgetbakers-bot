@@ -17,6 +17,37 @@ export interface ConfigurationValidationResult {
   readonly warnings: ConfigurationValidationIssue[];
 }
 
+export const DEFAULT_APP_TIMEZONE = 'Asia/Jakarta';
+export const DEFAULT_APP_CURRENCY = 'IDR';
+export const DEFAULT_APP_LANGUAGE: 'id' | 'en' = 'id';
+
+/**
+ * Checks whether a timezone string is a valid IANA timezone identifier.
+ */
+export function isValidIanaTimezone(timeZoneIdentifier?: string): boolean {
+  if (!timeZoneIdentifier || typeof timeZoneIdentifier !== 'string') {
+    return false;
+  }
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timeZoneIdentifier.trim() });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolves a safe IANA timezone identifier, falling back to DEFAULT_APP_TIMEZONE
+ * if undefined, empty, or invalid.
+ */
+export function resolveSafeTimezone(timeZoneIdentifier?: string): string {
+  const trimmed = timeZoneIdentifier?.trim();
+  if (!trimmed) {
+    return DEFAULT_APP_TIMEZONE;
+  }
+  return isValidIanaTimezone(trimmed) ? trimmed : DEFAULT_APP_TIMEZONE;
+}
+
 export interface ApplicationEnvironmentConfiguration {
   aiProvider: SupportedAiProviderType;
   aiProviders: SupportedAiProviderType[];
@@ -201,11 +232,12 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
   const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN || '';
   const telegramAllowedUserId = (process.env.TELEGRAM_ALLOWED_USER_ID || '').trim();
 
-  const rawLanguage = (process.env.APP_LANGUAGE || process.env.BOT_LANGUAGE || 'id').toLowerCase().trim();
+  const rawLanguage = (process.env.APP_LANGUAGE || process.env.BOT_LANGUAGE || DEFAULT_APP_LANGUAGE).toLowerCase().trim();
   const appLanguage: 'id' | 'en' = rawLanguage === 'en' ? 'en' : 'id';
-  const defaultCurrency = (process.env.DEFAULT_CURRENCY || 'IDR').toUpperCase().trim();
+  const rawCurrency = (process.env.DEFAULT_CURRENCY || '').trim().toUpperCase();
+  const defaultCurrency = rawCurrency.length > 0 ? rawCurrency : DEFAULT_APP_CURRENCY;
   const rawAppTimezone = process.env.APP_TIMEZONE?.trim();
-  const appTimezone = rawAppTimezone && rawAppTimezone.length > 0 ? rawAppTimezone : 'Asia/Jakarta';
+  const appTimezone = rawAppTimezone && rawAppTimezone.length > 0 ? rawAppTimezone : DEFAULT_APP_TIMEZONE;
 
   const rawAllowedPhoneNumber = (process.env.ALLOWED_PHONE_NUMBER || process.env.OWNER_PHONE_NUMBER || '')
     .trim();
@@ -405,16 +437,12 @@ export function validateApplicationConfiguration(
   }
 
   // 4. Timezone validation (fail closed on invalid IANA identifier)
-  if (config.appTimezone) {
-    try {
-      new Intl.DateTimeFormat('en-US', { timeZone: config.appTimezone });
-    } catch {
-      validationErrorList.push({
-        variableName: 'APP_TIMEZONE',
-        message: `APP_TIMEZONE '${config.appTimezone}' is not a valid IANA timezone identifier!`,
-        hint: 'Specify a valid IANA timezone identifier (e.g. "Asia/Jakarta", "America/New_York", or "UTC").',
-      });
-    }
+  if (config.appTimezone && !isValidIanaTimezone(config.appTimezone)) {
+    validationErrorList.push({
+      variableName: 'APP_TIMEZONE',
+      message: `APP_TIMEZONE '${config.appTimezone}' is not a valid IANA timezone identifier!`,
+      hint: 'Specify a valid IANA timezone identifier (e.g. "Asia/Jakarta", "America/New_York", or "UTC").',
+    });
   }
 
   return {

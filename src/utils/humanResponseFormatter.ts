@@ -9,6 +9,12 @@ import {
 import { PendingTransactionItem } from '../services/pendingTransactionService.js';
 import { getDictionary, getActiveLanguage, SupportedLanguage } from '../i18n/index.js';
 import { isAiResponseParseError } from '../services/ai/jsonExtractionHelper.js';
+import {
+  getApplicationTimezone,
+  getDefaultCurrency,
+} from '../config/applicationConfig.js';
+
+export { getApplicationTimezone };
 
 const ZERO_DECIMAL_CURRENCY_SET = new Set([
   'IDR', 'JPY', 'KRW', 'VND', 'CLP', 'PYG', 'RWF', 'UGX', 'BIF', 'DJF', 'GNF', 'KMF',
@@ -29,22 +35,6 @@ const CURRENCY_SYMBOL_MAP: Record<string, string> = {
   CNY: '¥',
   INR: '₹',
 };
-
-/**
- * Resolves the application timezone safely from environment variables or defaults to Asia/Jakarta
- */
-export function getApplicationTimezone(): string {
-  const configuredTimezone = process.env.APP_TIMEZONE?.trim();
-  if (!configuredTimezone) {
-    return 'Asia/Jakarta';
-  }
-  try {
-    Intl.DateTimeFormat(undefined, { timeZone: configuredTimezone });
-    return configuredTimezone;
-  } catch {
-    return 'Asia/Jakarta';
-  }
-}
 
 /**
  * Resolves short timezone abbreviation or falls back to timeZone name
@@ -229,8 +219,7 @@ export function formatCurrencyAmount(
   const dictionary = getDictionary(languageCode);
   const resolvedCurrencyCode = (
     currencyCode ||
-    process.env.DEFAULT_CURRENCY ||
-    'IDR'
+    getDefaultCurrency()
   ).toUpperCase().trim();
 
   const absoluteAmount = Math.abs(amount);
@@ -266,7 +255,7 @@ function formatSingleRecordSuccess(
   const dictionary = getDictionary(languageCode);
   const isExpense = recordItem.amount < 0;
   const transactionTypeIcon = isExpense ? '💸' : '💰';
-  const resolvedCurrency = accountCurrency || process.env.DEFAULT_CURRENCY || 'IDR';
+  const resolvedCurrency = accountCurrency || getDefaultCurrency();
   const formattedAmount = formatCurrencyAmount(recordItem.amount, resolvedCurrency, languageCode);
   const defaultTitle = isExpense ? dictionary.labels.expense : dictionary.labels.income;
   const transactionTitle = recordItem.note || recordItem.counterParty || defaultTitle;
@@ -301,7 +290,7 @@ function formatMultipleRecordsSuccess(
     const isExpense = recordItem.amount < 0;
     const transactionTypeIcon = isExpense ? '💸' : '💰';
     const targetAccount = availableAccounts.find(account => account.id === recordItem.accountId);
-    const resolvedCurrency = targetAccount?.currency || process.env.DEFAULT_CURRENCY || 'IDR';
+    const resolvedCurrency = targetAccount?.currency || getDefaultCurrency();
     const formattedAmount = formatCurrencyAmount(recordItem.amount, resolvedCurrency, languageCode);
     const accountName = targetAccount?.name || dictionary.labels.defaultAccount;
     const categoryName = availableCategories.find(category => category.id === recordItem.categoryId)?.name || dictionary.labels.defaultCategory;
@@ -370,7 +359,7 @@ export function formatBalanceSummaryMessage(
     if (accountItem.balance !== undefined && accountItem.balance !== null) {
       hasValidNumericBalance = true;
       totalBalanceAccumulator += accountItem.balance;
-      const resolvedCurrency = accountItem.currency || process.env.DEFAULT_CURRENCY || 'IDR';
+      const resolvedCurrency = accountItem.currency || getDefaultCurrency();
       const formattedBalance = formatCurrencyAmount(accountItem.balance, resolvedCurrency, languageCode);
       return `• *${accountItem.name}*: ${formattedBalance}`;
     }
@@ -384,7 +373,7 @@ export function formatBalanceSummaryMessage(
   ];
 
   if (hasValidNumericBalance) {
-    const fallbackCurrency = process.env.DEFAULT_CURRENCY || 'IDR';
+    const fallbackCurrency = getDefaultCurrency();
     const formattedGrandTotal = formatCurrencyAmount(totalBalanceAccumulator, fallbackCurrency, languageCode);
     messageParts.push('', dictionary.balance.grandTotal(formattedGrandTotal));
   }
@@ -414,7 +403,7 @@ export function formatBudgetSummaryMessage(
     const remainingAmount = budgetItem.remainingAmount !== undefined
       ? budgetItem.remainingAmount
       : (limitAmount - spentAmount);
-    const budgetCurrency = budgetItem.currency || process.env.DEFAULT_CURRENCY || 'IDR';
+    const budgetCurrency = budgetItem.currency || getDefaultCurrency();
     const formattedSpent = formatCurrencyAmount(spentAmount, budgetCurrency, languageCode);
     const formattedLimit = formatCurrencyAmount(limitAmount, budgetCurrency, languageCode);
 
@@ -717,7 +706,7 @@ export function formatPendingEmailTransactionNotification(
   const isExpense = pendingItem.amount < 0 || pendingItem.transactionType === 'EXPENSE';
   const typeLabel = isTransfer ? dictionary.labels.transfer : isExpense ? dictionary.labels.expense : dictionary.labels.income;
   const typeIcon = isTransfer ? '🔄' : isExpense ? '💸' : '💰';
-  const itemCurrency = pendingItem.currency || process.env.DEFAULT_CURRENCY || 'IDR';
+  const itemCurrency = pendingItem.currency || getDefaultCurrency();
   const formattedAmount = formatCurrencyAmount(pendingItem.amount, itemCurrency, languageCode);
   const formattedTime = formatTransactionDate(pendingItem.recordDate, languageCode);
 
@@ -746,7 +735,7 @@ export function formatPendingConfirmationSuccess(
 ): string {
   const dictionary = getDictionary(languageCode);
   const isTransfer = item.transactionType === 'TRANSFER';
-  const itemCurrency = item.currency || process.env.DEFAULT_CURRENCY || 'IDR';
+  const itemCurrency = item.currency || getDefaultCurrency();
   const formattedAmount = formatCurrencyAmount(item.amount, itemCurrency, languageCode);
   const formattedTime = formatTransactionDate(item.recordDate, languageCode);
 
@@ -789,7 +778,7 @@ export function formatBulkPendingConfirmationSuccess(
   const currentTimestamp = getHumanReadableTimestamp(new Date(), languageCode);
 
   const bulkItemParams = items.map(item => {
-    const itemCurrency = item.currency || process.env.DEFAULT_CURRENCY || 'IDR';
+    const itemCurrency = item.currency || getDefaultCurrency();
     return {
       ticketId: item.ticketId,
       title: item.counterParty || item.note || item.bankDisplayName,
@@ -815,7 +804,7 @@ export function formatPendingCancellationMessage(
       count: item.length,
     });
   }
-  const itemCurrency = item.currency || process.env.DEFAULT_CURRENCY || 'IDR';
+  const itemCurrency = item.currency || getDefaultCurrency();
   const formattedAmount = formatCurrencyAmount(item.amount, itemCurrency, languageCode);
   const title = item.counterParty || item.note || item.bankDisplayName;
   return dictionary.confirmation.cancellation({

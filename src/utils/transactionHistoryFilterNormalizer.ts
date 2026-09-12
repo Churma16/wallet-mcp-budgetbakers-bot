@@ -7,7 +7,7 @@ import {
   WalletAccountItem,
   WalletCategoryItem,
 } from '../types/walletTypes.js';
-import { getApplicationTimezone } from './humanResponseFormatter.js';
+import { getApplicationTimezone } from '../config/applicationConfig.js';
 import {
   getLocalTimeParts,
   getNextLocalDateString,

@@ -2,7 +2,8 @@ import {
   loadEnvironmentConfiguration,
   validateApplicationConfiguration,
   ApplicationEnvironmentConfiguration,
-} from './config/environmentConfig.js';
+  setRuntimeApplicationConfig,
+} from './config/index.js';
 import { WalletMcpClientService } from './services/walletMcpService.js';
 import { WalletCacheService } from './services/walletCacheService.js';
 import { CategoryContextService } from './services/categoryContextService.js';
@@ -48,6 +49,7 @@ export class Application {
 
   constructor(customConfig?: ApplicationEnvironmentConfiguration) {
     this.environmentConfig = customConfig || loadEnvironmentConfiguration();
+    setRuntimeApplicationConfig(this.environmentConfig);
     setActiveLanguage(this.environmentConfig.appLanguage);
 
     this.walletMcpClient = new WalletMcpClientService(

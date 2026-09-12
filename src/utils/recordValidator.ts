@@ -1,5 +1,5 @@
 import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload } from '../types/walletTypes.js';
-import { getApplicationTimezone } from './humanResponseFormatter.js';
+import { getApplicationTimezone } from '../config/applicationConfig.js';
 import {
   getTimezoneOffsetDetails,
   parseRelativeTime,
