@@ -603,14 +603,10 @@ export function formatErrorMessageForHuman(
     return dictionary.errors.networkConnection(resolvedTimestamp);
   }
 
-  // 3. Receipt / Vision extraction & parse failure for image messages
+  // 3. Receipt / Vision extraction & parse failure for image messages (strictly typed AI parse errors)
   if (
     context?.isImageMessage &&
-    (isAiResponseParseError(encounteredError) ||
-      lowerCaseErrorMessage.includes('parse') ||
-      lowerCaseErrorMessage.includes('json') ||
-      lowerCaseErrorMessage.includes('vision') ||
-      lowerCaseErrorMessage.includes('ocr'))
+    isAiResponseParseError(encounteredError)
   ) {
     return dictionary.errors.receiptExtractionFailed(resolvedTimestamp);
   }

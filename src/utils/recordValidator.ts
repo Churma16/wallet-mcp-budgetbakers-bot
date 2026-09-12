@@ -7,7 +7,7 @@ import {
   ParsedRelativeTimeResult,
 } from './relativeTimeParser.js';
 import { extractHashtags, deduplicateTags, normalizeTagName } from './hashtagParser.js';
-import { parseCurrencyAmountStringToNumber } from './emailGateEvaluator.js';
+import { parseFinancialAmountString } from './financialAmountParser.js';
 
 export type AccountResolutionIssueReason = 'UNRESOLVED' | 'AMBIGUOUS';
 
@@ -285,11 +285,9 @@ export function validateAndSanitizeFinancialRecords(
     const rawAmountValue: unknown = currentRecord.amount;
     let parsedAmount = Number(rawAmountValue);
     if ((!Number.isFinite(parsedAmount) || Number.isNaN(parsedAmount)) && typeof rawAmountValue === 'string') {
-      const trimmedAmountString = rawAmountValue.trim();
-      const isNegative = trimmedAmountString.startsWith('-') || /^-|\(.*\)$/.test(trimmedAmountString);
-      const parsedFromCurrency = parseCurrencyAmountStringToNumber(trimmedAmountString);
-      if (parsedFromCurrency > 0) {
-        parsedAmount = isNegative ? -parsedFromCurrency : parsedFromCurrency;
+      const parsedFinancialAmount = parseFinancialAmountString(rawAmountValue);
+      if (parsedFinancialAmount !== null && Number.isFinite(parsedFinancialAmount)) {
+        parsedAmount = parsedFinancialAmount;
       }
     }
 
