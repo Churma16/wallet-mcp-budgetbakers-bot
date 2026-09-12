@@ -501,7 +501,7 @@ async function runCategoryContextTestSuite(): Promise<void> {
       geminiCapturedInstruction = requestConfig.config?.systemInstruction;
       return {
         text: JSON.stringify({
-          action: 'RECORD_EXPENSE',
+          action: 'CREATE_RECORD',
           records: [
             {
               amount: -45000,
@@ -529,8 +529,8 @@ async function runCategoryContextTestSuite(): Promise<void> {
     );
 
     assertCondition(
-      geminiImageResult.action === 'RECORD_EXPENSE',
-      'Gemini processImageMessage extracted RECORD_EXPENSE'
+      geminiImageResult.action === 'CREATE_RECORD',
+      'Gemini processImageMessage extracted CREATE_RECORD'
     );
     assertCondition(
       Boolean(geminiCapturedInstruction && geminiCapturedInstruction.includes('CATEGORY SEMANTICS & RULES:')),
@@ -647,6 +647,36 @@ async function runCategoryContextTestSuite(): Promise<void> {
     );
 
     // 4. OpenAiCompatibleAiProvider.processImageMessage
+    mockHttpClient.post = async (_url: string, payload: any) => {
+      openAiCapturedMessages = payload.messages;
+      return {
+        data: {
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  action: 'CREATE_RECORD',
+                  records: [
+                    {
+                      amount: -35000,
+                      accountId: 'acc-1',
+                      categoryId: 'cat-nafsu',
+                      note: 'Boba Chatime',
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+          usage: {
+            prompt_tokens: 150,
+            completion_tokens: 50,
+            total_tokens: 200,
+          },
+        },
+      };
+    };
+
     const openAiImageResult = await openAiProvider.processImageMessage(
       dummyImageBuffer,
       'image/jpeg',
@@ -656,8 +686,8 @@ async function runCategoryContextTestSuite(): Promise<void> {
     );
 
     assertCondition(
-      openAiImageResult.action === 'RECORD_EXPENSE',
-      'OpenAiCompatible processImageMessage extracted RECORD_EXPENSE'
+      openAiImageResult.action === 'CREATE_RECORD',
+      'OpenAiCompatible processImageMessage extracted CREATE_RECORD'
     );
     const openAiVisionSystemMsg = openAiCapturedMessages.find(m => m.role === 'system');
     assertCondition(

@@ -53,15 +53,16 @@ function resolveDraftCurrency(draft: PendingAccountSelectionDraft): string | und
 function formatDraftAmount(draft: PendingAccountSelectionDraft): string {
   const dictionary = getDictionary();
   const record = draft.records[draft.pendingRecordIndex];
-  const resolvedCurrency = resolveDraftCurrency(draft);
+  const resolvedCurrency = record.currency || resolveDraftCurrency(draft);
 
   if (resolvedCurrency) {
     return formatCurrencyAmount(record.amount, resolvedCurrency);
   }
 
+  const numericAmount = Number(record.amount);
   const formattedNumber = new Intl.NumberFormat(dictionary.localeIdentifier, {
     maximumFractionDigits: 2,
-  }).format(Math.abs(record.amount));
+  }).format(Number.isFinite(numericAmount) ? Math.abs(numericAmount) : 0);
 
   return dictionary.languageCode === 'id'
     ? `${formattedNumber} _(mata uang mengikuti akun yang dipilih)_`

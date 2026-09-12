@@ -1,6 +1,7 @@
 import { MessagingGatewayService, IncomingUserMessageEvent } from '../services/messaging/index.js';
 import { PendingTransactionService } from '../services/pendingTransactionService.js';
 import { FinancialAiProvider, ExtractedFinancialIntent } from '../services/ai/index.js';
+import { validateReceiptFinancialIntentEnvelope } from '../services/ai/jsonExtractionHelper.js';
 import { WalletMcpClientService } from '../services/walletMcpService.js';
 import { WalletCacheService } from '../services/walletCacheService.js';
 import { AccountClarificationHandler } from './accountClarificationHandler.js';
@@ -199,7 +200,7 @@ export class UserMessageHandler {
 
       if (event.messageType === 'image' && event.imageBuffer) {
         applicationLogger.ai(`Processing receipt photo with ${this.financialAiProvider.providerName.toUpperCase()} Vision...`);
-        extractedIntent = await this.financialAiProvider.processImageMessage(
+        const rawExtractedIntent = await this.financialAiProvider.processImageMessage(
           event.imageBuffer,
           event.imageMimeType || 'image/jpeg',
           event.textPayload || '',
@@ -207,6 +208,7 @@ export class UserMessageHandler {
           cachedCategories,
           requestReferenceInstant
         );
+        extractedIntent = validateReceiptFinancialIntentEnvelope(rawExtractedIntent);
       } else {
         applicationLogger.ai(`Analyzing message intent with ${this.financialAiProvider.providerName.toUpperCase()}...`);
         extractedIntent = await this.financialAiProvider.processTextMessage(

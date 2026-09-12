@@ -179,6 +179,7 @@ CRITICAL RULES FOR RECEIPTS & QRIS:
    - Expenses MUST have a negative amount (e.g. -10000 for Rp10.000 spent).
    - Incomes MUST have a positive amount.
    - Extract the final total amount paid (including any taxes, platform/service fees, or discounts).
+   - "currency": Explicit ISO 4217 currency code printed or indicated on the receipt (e.g. "IDR" for Rp, "USD" for $, "SGD" for S$, "EUR" for €). Set whenever a currency marker or context is visible.
 
 2. SOURCE ACCOUNT VS. ACQUIRER (INDONESIAN QRIS & BANKING):
    - "Acquirer Name" / "Nama Acquirer" / "Acquirer" / "Terminal" / "NMID" indicates the MERCHANT'S payment gateway or acquiring bank (e.g. Bank Mandiri, BCA, Netzme, Nobu, ShopeePay). NEVER match the user's account to the Acquirer Name!
@@ -216,7 +217,7 @@ CRITICAL RULES FOR RECEIPTS & QRIS:
 
 7. JSON OUTPUT SCHEMA:
 Respond with valid JSON ONLY matching schema:
-{"action":"CREATE_RECORD"|"GENERAL_REPLY","records":[{"accountId":"ID or Name","categoryId":"ID or Name (optional)","amount":number,"recordDate":"ISO 8601","note":"string","counterParty":"string (optional)","labels":["string (optional)"]}],"explanation":"human friendly summary in ${summaryLanguageName}"}`;
+{"action":"CREATE_RECORD"|"GENERAL_REPLY","records":[{"accountId":"ID or Name","categoryId":"ID or Name (optional)","amount":number,"currency":"string (ISO 4217 code e.g. IDR, USD) (optional)","recordDate":"ISO 8601","note":"string","counterParty":"string (optional)","labels":["string (optional)"]}],"explanation":"human friendly summary in ${summaryLanguageName}"}`;
 }
 
 /**

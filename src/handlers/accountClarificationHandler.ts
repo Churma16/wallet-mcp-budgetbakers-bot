@@ -256,7 +256,8 @@ export class AccountClarificationHandler {
 
     const nextIssue = this.getFirstAccountResolutionIssue(validationResult.accountResolutionIssues);
     if (nextIssue) {
-      const nextCandidates = this.buildCandidateAccounts(nextIssue, availableAccounts);
+      const nextRecordCurrency = updatedRecords[nextIssue.recordIndex]?.currency;
+      const nextCandidates = this.buildCandidateAccounts(nextIssue, availableAccounts, nextRecordCurrency);
       if (nextCandidates.length === 0) {
         this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(claimedDraft.ticketId);
         this.pendingTransactionManager.rejectPendingAccountSelectionDraft(claimedDraft.ticketId);
@@ -435,20 +436,28 @@ export class AccountClarificationHandler {
     currencyHint?: string
   ): PendingAccountSelectionCandidate[] {
     const normalizedCurrencyHint = currencyHint?.trim().toUpperCase();
-    const candidateAccountsSource = issue.candidates.length > 0
-      ? issue.candidates
-      : normalizedCurrencyHint
-        ? availableAccounts.filter(
-            account => !account.currency || account.currency.trim().toUpperCase() === normalizedCurrencyHint
-          )
-        : availableAccounts;
+    const accountMap = new Map(availableAccounts.map(account => [account.id, account]));
 
-    const effectiveAccounts = candidateAccountsSource.length > 0
-      ? candidateAccountsSource
+    // Start with issue.candidates if non-empty (e.g. ambiguous matches), otherwise all available accounts
+    const baseCandidatePool = issue.candidates.length > 0
+      ? issue.candidates
       : availableAccounts;
 
-    const accountMap = new Map(availableAccounts.map(account => [account.id, account]));
-    const sourceAccounts: PendingAccountSelectionCandidate[] = effectiveAccounts.map(candidate => {
+    // Filter every candidate source by explicit currency hint when available
+    const filteredCandidatePool = normalizedCurrencyHint
+      ? baseCandidatePool.filter(candidate => {
+          const activeAccount = accountMap.get(candidate.id);
+          const candidateCurrency = activeAccount?.currency;
+          if (!candidateCurrency) {
+            return true;
+          }
+          return candidateCurrency.trim().toUpperCase() === normalizedCurrencyHint;
+        })
+      : baseCandidatePool;
+
+    // When an explicit currency hint is provided, do NOT fall back to the full account list
+    // if zero candidates match.
+    const sourceAccounts: PendingAccountSelectionCandidate[] = filteredCandidatePool.map(candidate => {
       const activeAccount = accountMap.get(candidate.id);
       return activeAccount
         ? {

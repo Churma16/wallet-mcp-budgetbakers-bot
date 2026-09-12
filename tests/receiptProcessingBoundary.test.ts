@@ -12,6 +12,8 @@ import { ExtractedFinancialIntent, FinancialAiProvider } from '../src/services/a
 import { parseFinancialAmount, parseFinancialAmountString } from '../src/utils/financialAmountParser.js';
 import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
 import { validateReceiptFinancialIntentEnvelope } from '../src/services/ai/jsonExtractionHelper.js';
+import { OpenAiCompatibleAiProvider } from '../src/services/ai/openAiCompatibleAiProvider.js';
+import { FallbackAiProvider } from '../src/services/ai/fallbackAiProvider.js';
 
 console.log('[TEST] Starting Receipt Processing Boundary & Recovery Tests (Issue #123)...');
 
@@ -170,12 +172,16 @@ interface TestHarness {
   mockAiProvider: ConfigurableMockAiProvider;
 }
 
-function buildTestHarness(): TestHarness {
+function buildTestHarness(
+  customAiProvider?: FinancialAiProvider,
+  customAccounts: WalletAccountItem[] = mockAccounts
+): TestHarness {
   const mockGateway = new MockMessagingGateway();
   const mockMcpClient = new MockWalletMcpClient();
-  const mockCache = new MockWalletCacheService(mockAccounts, mockCategories);
+  const mockCache = new MockWalletCacheService(customAccounts, mockCategories);
   const pendingTransactionService = new PendingTransactionService();
   const mockAiProvider = new ConfigurableMockAiProvider();
+  const effectiveAiProvider = customAiProvider || mockAiProvider;
 
   const accountClarificationHandler = new AccountClarificationHandler(
     pendingTransactionService,
@@ -189,7 +195,7 @@ function buildTestHarness(): TestHarness {
     pendingTransactionService,
     new MockPendingActionHandler() as any,
     new MockFastPathHandler() as any,
-    mockAiProvider,
+    effectiveAiProvider,
     mockCache as any,
     mockMcpClient as any
   );
@@ -313,12 +319,54 @@ test('validateAndSanitizeFinancialRecords rejects explicit currency conflicting 
   );
   assert.strictEqual(matchingUsdResult.isValid, true, 'USD amount on USD account succeeds');
   assert.strictEqual(matchingUsdResult.sanitizedRecords[0].amount, -10.5);
+
+  // Case D: Numeric amount with explicit currency field "IDR" on USD account fails
+  const numericIdrOnUsdResult = validateAndSanitizeFinancialRecords(
+    [
+      { accountId: 'acc-usd', amount: -10079, currency: 'IDR', recordDate: '2026-09-08T04:54:00.000Z' },
+    ],
+    mockAccounts,
+    mockCategories
+  );
+  assert.strictEqual(numericIdrOnUsdResult.isValid, false, 'Numeric IDR on USD account must fail validation');
+  assert.ok(
+    numericIdrOnUsdResult.validationErrors[0].includes('berbeda dengan mata uang akun USD Account (USD)'),
+    'Validation error explains numeric IDR vs USD currency mismatch'
+  );
+
+  // Case E: Numeric amount with explicit currency field "USD" on IDR account fails
+  const numericUsdOnIdrResult = validateAndSanitizeFinancialRecords(
+    [
+      { accountId: 'acc-jago', amount: -10.5, currency: 'USD', recordDate: '2026-09-08T04:54:00.000Z' },
+    ],
+    mockAccounts,
+    mockCategories
+  );
+  assert.strictEqual(numericUsdOnIdrResult.isValid, false, 'Numeric USD on IDR account must fail validation');
+  assert.ok(
+    numericUsdOnIdrResult.validationErrors[0].includes('berbeda dengan mata uang akun Jago (IDR)'),
+    'Validation error explains numeric USD vs IDR currency mismatch'
+  );
+
+  // Case F: Currency field "USD" conflicting with string amount "-Rp10.079" fails closed
+  const conflictingHintsResult = validateAndSanitizeFinancialRecords(
+    [
+      { accountId: 'acc-jago', amount: '-Rp10.079' as any, currency: 'USD', recordDate: '2026-09-08T04:54:00.000Z' },
+    ],
+    mockAccounts,
+    mockCategories
+  );
+  assert.strictEqual(conflictingHintsResult.isValid, false, 'Conflicting currency hints must fail validation');
+  assert.ok(
+    conflictingHintsResult.validationErrors[0].includes('Konflik mata uang terdeteksi antara data transaksi (USD) dan nominal (IDR)'),
+    'Validation error explains USD vs IDR hint conflict'
+  );
 });
 
 test('Message flow rejects conflicting currency receipts before Wallet MCP write', async () => {
   setActiveLanguage('id');
 
-  // Subcase A: Vision returning USD Account with IDR amount
+  // Subcase A: Vision returning USD Account with string IDR amount
   const harnessA = buildTestHarness();
   harnessA.mockAiProvider.setImageHandler(async () => ({
     action: 'CREATE_RECORD',
@@ -337,7 +385,7 @@ test('Message flow rejects conflicting currency receipts before Wallet MCP write
   const replyA = harnessA.mockGateway.lastMessage || '';
   assert.ok(replyA.includes('berbeda dengan mata uang akun USD Account'), 'Reply explains currency mismatch');
 
-  // Subcase B: Vision returning Jago with USD amount
+  // Subcase B: Vision returning Jago with string USD amount
   const harnessB = buildTestHarness();
   harnessB.mockAiProvider.setImageHandler(async () => ({
     action: 'CREATE_RECORD',
@@ -355,12 +403,64 @@ test('Message flow rejects conflicting currency receipts before Wallet MCP write
   assert.strictEqual(harnessB.mockMcpClient.calls.length, 0, 'Zero writes sent to Wallet MCP on currency mismatch');
   const replyB = harnessB.mockGateway.lastMessage || '';
   assert.ok(replyB.includes('berbeda dengan mata uang akun Jago'), 'Reply explains currency mismatch');
+
+  // Subcase C: Vision returning numeric IDR amount with USD Account
+  const harnessC = buildTestHarness();
+  harnessC.mockAiProvider.setImageHandler(async () => ({
+    action: 'CREATE_RECORD',
+    records: [
+      {
+        accountId: 'USD Account',
+        amount: -10079,
+        currency: 'IDR',
+        recordDate: '2026-09-08T04:54:00.000Z',
+        note: 'Coffee',
+      },
+    ],
+  }));
+
+  await harnessC.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessC.mockMcpClient.calls.length, 0, 'Zero writes sent to Wallet MCP on numeric currency mismatch');
+  const replyC = harnessC.mockGateway.lastMessage || '';
+  assert.ok(replyC.includes('berbeda dengan mata uang akun USD Account'), 'Reply explains numeric currency mismatch');
+
+  // Subcase D: Vision returning currency USD with string amount -Rp10.079
+  const harnessD = buildTestHarness();
+  harnessD.mockAiProvider.setImageHandler(async () => ({
+    action: 'CREATE_RECORD',
+    records: [
+      {
+        accountId: 'Jago',
+        amount: '-Rp10.079' as any,
+        currency: 'USD',
+        recordDate: '2026-09-08T04:54:00.000Z',
+        note: 'Coffee',
+      },
+    ],
+  }));
+
+  await harnessD.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessD.mockMcpClient.calls.length, 0, 'Zero writes sent to Wallet MCP on conflicting hints');
+  const replyD = harnessD.mockGateway.lastMessage || '';
+  assert.ok(replyD.includes('Konflik mata uang terdeteksi'), 'Reply explains conflicting currency hints');
 });
 
 test('validateReceiptFinancialIntentEnvelope validates runtime envelope and rejects malformed shapes', () => {
   // Invalid action
   assert.throws(
     () => validateReceiptFinancialIntentEnvelope({ action: 'INVALID_ACTION' }),
+    (error: unknown) => error instanceof AiResponseParseError && error.message.includes('invalid action')
+  );
+
+  // Out-of-contract action: RECORD_EXPENSE (only CREATE_RECORD and GENERAL_REPLY allowed)
+  assert.throws(
+    () => validateReceiptFinancialIntentEnvelope({ action: 'RECORD_EXPENSE', records: [] }),
+    (error: unknown) => error instanceof AiResponseParseError && error.message.includes('invalid action')
+  );
+
+  // Out-of-contract action: CHECK_BALANCE
+  assert.throws(
+    () => validateReceiptFinancialIntentEnvelope({ action: 'CHECK_BALANCE' }),
     (error: unknown) => error instanceof AiResponseParseError && error.message.includes('invalid action')
   );
 
@@ -431,6 +531,31 @@ test('Message flow returns receiptExtractionFailed on parseable-but-structurally
   assert.strictEqual(harnessC.mockMcpClient.calls.length, 0, 'Zero writes to Wallet MCP');
   const replyC = harnessC.mockGateway.lastMessage || '';
   assert.ok(replyC.includes('Foto struk belum berhasil dibaca'), 'Returns receiptExtractionFailed');
+
+  // Case D: RECORD_EXPENSE out-of-contract action
+  const harnessD = buildTestHarness();
+  harnessD.mockAiProvider.setImageHandler(async () => {
+    return validateReceiptFinancialIntentEnvelope({
+      action: 'RECORD_EXPENSE' as any,
+      records: [{ accountId: 'Jago', amount: -10079 }],
+    });
+  });
+
+  await harnessD.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessD.mockMcpClient.calls.length, 0, 'Zero writes on RECORD_EXPENSE');
+  const replyD = harnessD.mockGateway.lastMessage || '';
+  assert.ok(replyD.includes('Foto struk belum berhasil dibaca'), 'Returns receiptExtractionFailed on RECORD_EXPENSE');
+
+  // Case E: CHECK_BALANCE out-of-contract action
+  const harnessE = buildTestHarness();
+  harnessE.mockAiProvider.setImageHandler(async () => {
+    return validateReceiptFinancialIntentEnvelope({ action: 'CHECK_BALANCE' as any });
+  });
+
+  await harnessE.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessE.mockMcpClient.calls.length, 0, 'Zero writes on CHECK_BALANCE');
+  const replyE = harnessE.mockGateway.lastMessage || '';
+  assert.ok(replyE.includes('Foto struk belum berhasil dibaca'), 'Returns receiptExtractionFailed on CHECK_BALANCE');
 });
 
 // =========================================================================
@@ -569,6 +694,155 @@ test('Case 4: Interactive resolution of partial receipt draft', async () => {
 
   const finalReply = harness.mockGateway.lastMessage || '';
   assert.ok(finalReply.includes('Donate trakteer ke bang al'), 'Success reply contains note');
+});
+
+// =========================================================================
+// Case 4B: Partial extraction with string amount "-Rp10.079" stores normalized numeric -10079 in draft
+// =========================================================================
+test('Case 4B: Partial extraction with string amount "-Rp10.079" stores normalized numeric -10079 in draft and formats prompt correctly', async () => {
+  setActiveLanguage('id');
+  const harness = buildTestHarness();
+  harness.mockAiProvider.setImageHandler(async () => ({
+    action: 'CREATE_RECORD',
+    records: [
+      {
+        accountId: '',
+        amount: '-Rp10.079' as any,
+        recordDate: '2026-09-08T04:54:00.000Z',
+        note: 'Coffee meeting',
+        counterParty: 'Starbucks',
+      },
+    ],
+  }));
+
+  const event = createImageEvent();
+  await harness.userMessageHandler.handleIncomingUserMessage(event);
+
+  assert.strictEqual(harness.mockMcpClient.calls.length, 0, 'No direct writes without account');
+  const drafts = harness.pendingTransactionService.getAllPendingAccountSelectionDrafts();
+  assert.strictEqual(drafts.length, 1, 'One draft created');
+  const draft = drafts[0];
+  assert.strictEqual(typeof draft.records[0].amount, 'number', 'Draft stored amount must be numeric');
+  assert.strictEqual(draft.records[0].amount, -10079, 'Draft stored amount is -10079');
+  assert.strictEqual(draft.records[0].currency, 'IDR', 'Draft stored currency is IDR');
+
+  const promptReply = harness.mockGateway.lastMessage || '';
+  assert.ok(!promptReply.includes('NaN'), 'Prompt must NOT format amount as NaN');
+  assert.ok(promptReply.includes('10.079'), 'Prompt displays formatted 10.079 amount');
+
+  // Select account 1 (Jago)
+  await harness.userMessageHandler.handleIncomingUserMessage(createTextEvent('1'));
+  assert.strictEqual(harness.mockMcpClient.calls.length, 1, 'Exactly one Wallet MCP write dispatched');
+  const recorded = harness.mockMcpClient.calls[0][0];
+  assert.strictEqual(recorded.accountId, 'acc-jago', 'Recorded with selected account');
+  assert.strictEqual(recorded.amount, -10079, 'Recorded with normalized numeric amount');
+});
+
+// =========================================================================
+// Case 4C: Ambiguous same-name accounts with currency hint filters out incompatible currency candidates
+// =========================================================================
+test('Case 4C: Ambiguous same-name accounts with currency hint filters out incompatible currency candidates', async () => {
+  setActiveLanguage('id');
+  const accountsWithSameName: WalletAccountItem[] = [
+    { id: 'acc-pocket-idr', name: 'Pocket', currency: 'IDR' },
+    { id: 'acc-pocket-usd', name: 'Pocket', currency: 'USD' },
+    { id: 'acc-bca-idr', name: 'BCA', currency: 'IDR' },
+  ];
+
+  const harness = buildTestHarness(undefined, accountsWithSameName);
+  harness.mockAiProvider.setImageHandler(async () => ({
+    action: 'CREATE_RECORD',
+    records: [
+      {
+        accountId: 'Pocket',
+        amount: -10079,
+        currency: 'IDR',
+        recordDate: '2026-09-08T04:54:00.000Z',
+        note: 'Ambiguous same name test',
+      },
+    ],
+  }));
+
+  await harness.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  const drafts = harness.pendingTransactionService.getAllPendingAccountSelectionDrafts();
+  assert.strictEqual(drafts.length, 1, 'Draft created for ambiguous account');
+  const draft = drafts[0];
+  assert.strictEqual(draft.candidateAccounts.length, 1, 'Only IDR candidate kept, USD filtered out');
+  assert.strictEqual(draft.candidateAccounts[0].id, 'acc-pocket-idr', 'Candidate is acc-pocket-idr');
+
+  // Select candidate 1
+  await harness.userMessageHandler.handleIncomingUserMessage(createTextEvent('1'));
+  assert.strictEqual(harness.mockMcpClient.calls.length, 1, 'Wallet MCP write dispatched');
+  assert.strictEqual(harness.mockMcpClient.calls[0][0].accountId, 'acc-pocket-idr');
+});
+
+// =========================================================================
+// Case 4D: Multi-record clarification flow across IDR and USD preserves currency constraints at each step
+// =========================================================================
+test('Case 4D: Multi-record clarification flow across IDR and USD preserves currency constraints at each step', async () => {
+  setActiveLanguage('id');
+  const harness = buildTestHarness();
+  harness.mockAiProvider.setImageHandler(async () => ({
+    action: 'CREATE_RECORD',
+    records: [
+      {
+        accountId: '',
+        amount: -50000,
+        currency: 'IDR',
+        recordDate: '2026-09-08T04:54:00.000Z',
+        note: 'IDR Expense',
+      },
+      {
+        accountId: '',
+        amount: -15,
+        currency: 'USD',
+        recordDate: '2026-09-08T04:54:00.000Z',
+        note: 'USD Expense',
+      },
+    ],
+  }));
+
+  await harness.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  const drafts1 = harness.pendingTransactionService.getAllPendingAccountSelectionDrafts();
+  assert.strictEqual(drafts1.length, 1, 'First clarification draft created');
+  const draft1 = drafts1[0];
+  assert.strictEqual(draft1.pendingRecordIndex, 0, 'Clarification for record 0 (IDR)');
+  assert.ok(
+    draft1.candidateAccounts.every(c => c.currency === 'IDR' || !c.currency),
+    'Only IDR candidate accounts offered in prompt 1'
+  );
+  assert.ok(
+    !draft1.candidateAccounts.some(c => c.id === 'acc-usd'),
+    'USD account is NOT offered for IDR record'
+  );
+
+  // User selects option 1 (acc-jago)
+  await harness.userMessageHandler.handleIncomingUserMessage(createTextEvent('1'));
+
+  // Should now prompt for record 1 (USD)
+  const drafts2 = harness.pendingTransactionService.getAllPendingAccountSelectionDrafts();
+  assert.strictEqual(drafts2.length, 1, 'Follow-up clarification draft active for record 1');
+  const draft2 = drafts2[0];
+  assert.strictEqual(draft2.pendingRecordIndex, 1, 'Clarification for record 1 (USD)');
+  assert.ok(
+    draft2.candidateAccounts.every(c => c.currency === 'USD' || !c.currency),
+    'Only USD candidate accounts offered in prompt 2'
+  );
+  assert.ok(
+    draft2.candidateAccounts.some(c => c.id === 'acc-usd'),
+    'USD account is offered for USD record'
+  );
+  assert.ok(
+    !draft2.candidateAccounts.some(c => c.id === 'acc-jago'),
+    'IDR account Jago is NOT offered for USD record'
+  );
+
+  // User selects option 1 (USD Account)
+  await harness.userMessageHandler.handleIncomingUserMessage(createTextEvent('1'));
+  assert.strictEqual(harness.mockMcpClient.calls.length, 1, 'Exactly one batch write sent to Wallet MCP');
+  assert.strictEqual(harness.mockMcpClient.calls[0].length, 2, 'Both records dispatched');
+  assert.strictEqual(harness.mockMcpClient.calls[0][0].accountId, 'acc-jago', 'Record 0 assigned to Jago');
+  assert.strictEqual(harness.mockMcpClient.calls[0][1].accountId, 'acc-usd', 'Record 1 assigned to USD Account');
 });
 
 // =========================================================================
@@ -737,3 +1011,74 @@ test('Case 9: English localization returns English receiptExtractionFailed and d
 
   setActiveLanguage('id'); // Reset
 });
+
+// =========================================================================
+// Case 10: OpenAI-compatible and Fallback providers reject out-of-contract receipt actions and trigger receipt recovery
+// =========================================================================
+test('Case 10: OpenAI-compatible and Fallback providers reject out-of-contract receipt actions and trigger receipt recovery', async () => {
+  setActiveLanguage('id');
+
+  // Subcase A: OpenAI-compatible provider returning RECORD_EXPENSE
+  let capturedOpenAiResponse = JSON.stringify({
+    action: 'RECORD_EXPENSE',
+    records: [
+      {
+        accountId: 'acc-jago',
+        amount: -10079,
+        recordDate: '2026-09-08T04:54:00.000Z',
+        note: 'Coffee',
+      },
+    ],
+  });
+
+  const openAiProvider = new OpenAiCompatibleAiProvider({
+    baseUrl: 'https://api.openai.com/v1',
+    apiKey: 'test-key',
+    primaryModelName: 'gpt-4o',
+  });
+
+  (openAiProvider as any).httpClient.post = async () => ({
+    data: {
+      choices: [
+        {
+          message: {
+            content: capturedOpenAiResponse,
+          },
+        },
+      ],
+      usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+    },
+  });
+
+  const harnessA = buildTestHarness(openAiProvider);
+  await harnessA.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessA.mockMcpClient.calls.length, 0, 'Zero Wallet writes on RECORD_EXPENSE');
+  const replyA = harnessA.mockGateway.lastMessage || '';
+  assert.ok(replyA.includes('Foto struk belum berhasil dibaca'), 'Returns receiptExtractionFailed on RECORD_EXPENSE');
+
+  // Subcase B: FallbackAiProvider with primary returning CHECK_BALANCE
+  capturedOpenAiResponse = JSON.stringify({
+    action: 'CHECK_BALANCE',
+    explanation: 'Checking balance is not allowed on receipts',
+  });
+
+  const fallbackProvider = new FallbackAiProvider([openAiProvider]);
+  const harnessB = buildTestHarness(fallbackProvider);
+  await harnessB.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessB.mockMcpClient.calls.length, 0, 'Zero Wallet writes on CHECK_BALANCE');
+  const replyB = harnessB.mockGateway.lastMessage || '';
+  assert.ok(replyB.includes('Foto struk belum berhasil dibaca'), 'Returns receiptExtractionFailed on CHECK_BALANCE');
+
+  // Subcase C: OpenAI-compatible provider returning malformed Vision JSON (records: "oops")
+  capturedOpenAiResponse = JSON.stringify({
+    action: 'CREATE_RECORD',
+    records: 'oops',
+  });
+
+  const harnessC = buildTestHarness(openAiProvider);
+  await harnessC.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessC.mockMcpClient.calls.length, 0, 'Zero Wallet writes on malformed Vision JSON');
+  const replyC = harnessC.mockGateway.lastMessage || '';
+  assert.ok(replyC.includes('Foto struk belum berhasil dibaca'), 'Returns receiptExtractionFailed on malformed Vision JSON');
+});
+

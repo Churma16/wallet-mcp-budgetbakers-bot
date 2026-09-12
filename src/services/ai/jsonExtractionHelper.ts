@@ -120,11 +120,6 @@ export function validateReceiptFinancialIntentEnvelope(
   const rawRecord = rawParsedObject as Record<string, unknown>;
   const allowedActions = new Set<string>([
     'CREATE_RECORD',
-    'RECORD_EXPENSE',
-    'RECORD_INCOME',
-    'RECORD_TRANSFER',
-    'CHECK_BUDGET',
-    'CHECK_BALANCE',
     'GENERAL_REPLY',
   ]);
 
@@ -136,17 +131,12 @@ export function validateReceiptFinancialIntentEnvelope(
     );
   }
 
-  const validatedAction = rawAction as ExtractedFinancialIntent['action'];
+  const validatedAction = rawAction as 'CREATE_RECORD' | 'GENERAL_REPLY';
 
-  if (
-    validatedAction === 'CREATE_RECORD' ||
-    validatedAction === 'RECORD_EXPENSE' ||
-    validatedAction === 'RECORD_INCOME' ||
-    validatedAction === 'RECORD_TRANSFER'
-  ) {
+  if (validatedAction === 'CREATE_RECORD') {
     if (!('records' in rawRecord) || !Array.isArray(rawRecord.records)) {
       throw new AiResponseParseError(
-        `Receipt Vision ${validatedAction} intent requires records to be an array`,
+        'Receipt Vision CREATE_RECORD intent requires records to be an array',
         rawResponseContent
       );
     }

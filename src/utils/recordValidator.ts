@@ -284,18 +284,25 @@ export function validateAndSanitizeFinancialRecords(
     // 1. Amount Validation
     const rawAmountValue: unknown = currentRecord.amount;
     let parsedAmount = Number(rawAmountValue);
-    let recordCurrencyHint: string | undefined =
+    const rawRecordCurrency: string | undefined =
       typeof currentRecord.currency === 'string' && currentRecord.currency.trim()
         ? currentRecord.currency.trim().toUpperCase()
         : undefined;
+
+    let stringAmountCurrencyHint: string | undefined = undefined;
 
     if ((!Number.isFinite(parsedAmount) || Number.isNaN(parsedAmount)) && typeof rawAmountValue === 'string') {
       const parsedFinancialResult = parseFinancialAmount(rawAmountValue);
       if (parsedFinancialResult !== null && Number.isFinite(parsedFinancialResult.amount)) {
         parsedAmount = parsedFinancialResult.amount;
-        if (!recordCurrencyHint && parsedFinancialResult.explicitCurrencyHint) {
-          recordCurrencyHint = parsedFinancialResult.explicitCurrencyHint;
+        if (parsedFinancialResult.explicitCurrencyHint) {
+          stringAmountCurrencyHint = parsedFinancialResult.explicitCurrencyHint.trim().toUpperCase();
         }
+      }
+    } else if (typeof rawAmountValue === 'string') {
+      const parsedFinancialResult = parseFinancialAmount(rawAmountValue);
+      if (parsedFinancialResult?.explicitCurrencyHint) {
+        stringAmountCurrencyHint = parsedFinancialResult.explicitCurrencyHint.trim().toUpperCase();
       }
     }
 
@@ -316,6 +323,22 @@ export function validateAndSanitizeFinancialRecords(
       continue;
     }
 
+    // Reconcile currency hints: record currency vs explicit currency parsed from amount string
+    if (rawRecordCurrency && stringAmountCurrencyHint && rawRecordCurrency !== stringAmountCurrencyHint) {
+      validationErrors.push(
+        `${recordLabel}: Konflik mata uang terdeteksi antara data transaksi (${rawRecordCurrency}) dan nominal (${stringAmountCurrencyHint}).`
+      );
+      continue;
+    }
+
+    const effectiveCurrencyHint = rawRecordCurrency || stringAmountCurrencyHint;
+
+    // Persist normalized amount and reconciled currency so downstream drafts and consumers stay normalized
+    currentRecord.amount = parsedAmount;
+    if (effectiveCurrencyHint) {
+      currentRecord.currency = effectiveCurrencyHint;
+    }
+
     // 2. Account ID Resolution & Validation. All applicable heuristic strategies
     // are compared before committing so conflicting interpretations fail closed.
     const rawAccountIdStr = String(currentRecord.accountId ?? '').trim();
@@ -325,9 +348,6 @@ export function validateAndSanitizeFinancialRecords(
     );
 
     if (accountResolutionCandidates.length !== 1) {
-      if (recordCurrencyHint) {
-        currentRecord.currency = recordCurrencyHint;
-      }
       accountResolutionIssues.push({
         recordIndex,
         accountHint: rawAccountIdStr,
@@ -341,9 +361,9 @@ export function validateAndSanitizeFinancialRecords(
     const resolvedAccountId = resolvedAccount.id;
 
     // Currency compatibility check: explicit OCR / record currency hint must match resolved account currency
-    if (recordCurrencyHint && resolvedAccount.currency) {
+    if (effectiveCurrencyHint && resolvedAccount.currency) {
       const normalizedAccountCurrency = resolvedAccount.currency.trim().toUpperCase();
-      const normalizedRecordCurrency = recordCurrencyHint.trim().toUpperCase();
+      const normalizedRecordCurrency = effectiveCurrencyHint.trim().toUpperCase();
       if (normalizedRecordCurrency !== normalizedAccountCurrency) {
         validationErrors.push(
           `${recordLabel}: Mata uang transaksi (${normalizedRecordCurrency}) berbeda dengan mata uang akun ${resolvedAccount.name} (${normalizedAccountCurrency}).`
@@ -450,7 +470,7 @@ export function validateAndSanitizeFinancialRecords(
       recordDate: resolvedRecordDate,
       note: cleanedNote,
       counterParty: sanitizedCounterParty,
-      ...(recordCurrencyHint ? { currency: recordCurrencyHint } : {}),
+      ...(effectiveCurrencyHint ? { currency: effectiveCurrencyHint } : {}),
     };
 
     if (combinedLabels.length > 0) {
