@@ -378,19 +378,24 @@ console.log('\n[Suite 7] Testing Human-Facing Response Formatting (i18n)...');
   setActiveLanguage('id');
   const formattedId = formatTransactionHistoryMessage(samplePage);
   assert.match(formattedId, /Riwayat Transaksi/);
-  assert.match(formattedId, /Hal\. 1\/2/);
-  assert.match(formattedId, /2 dari 15/);
-  assert.match(formattedId, /💸 \*Nasi Goreng\* — \*-Rp 25\.000\* \(BCA Prioritas\)/);
-  assert.match(formattedId, /💰 \*Bonus Freelance\* — \*\+Rp 500\.000\* \(BCA Prioritas\)/);
+  assert.match(formattedId, /Hal\. 1\/2 • 2 item/);
+  assert.match(formattedId, /1\. Nasi Goreng/);
+  assert.match(formattedId, /\*-Rp25\.000\* • BCA Prioritas/);
+  assert.match(formattedId, /2\. Bonus Freelance/);
+  assert.match(formattedId, /\*\+Rp500\.000\* • BCA Prioritas/);
   assert.match(formattedId, /#lunch/);
+  assert.doesNotMatch(formattedId, /[💸💰🔄🏷️🔖]/u);
   assert.match(formattedId, /riwayat hal 2/);
 
   // English
   setActiveLanguage('en');
   const formattedEn = formatTransactionHistoryMessage(samplePage);
   assert.match(formattedEn, /Transaction History/);
-  assert.match(formattedEn, /Page 1\/2/);
-  assert.match(formattedEn, /2 of 15/);
+  assert.match(formattedEn, /Page 1\/2 • 2 items/);
+  assert.match(formattedEn, /1\. Nasi Goreng/);
+  assert.match(formattedEn, /\*-Rp25,000\* • BCA Prioritas/);
+  assert.match(formattedEn, /2\. Bonus Freelance/);
+  assert.match(formattedEn, /\*\+Rp500,000\* • BCA Prioritas/);
   assert.match(formattedEn, /history page 2/);
 
   // Oldest sort indicator
