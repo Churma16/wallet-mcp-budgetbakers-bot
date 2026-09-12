@@ -420,11 +420,11 @@ function parseTransactionHistoryIntent(userMessageText: string): FastPathTransac
 
 function normalizeSummaryRecordType(rawValue: string | undefined): 'expense' | 'income' | undefined {
   if (!rawValue) return undefined;
-  return /^(?:pengeluaran|expenses?|spending)$/i.test(rawValue) ? 'expense' : 'income';
+  return /^(?:pengeluaran|expenses?|spending|spend|spent)$/i.test(rawValue) ? 'expense' : 'income';
 }
 
 function parseTransactionSummaryIntent(userMessageText: string): FastPathTransactionSummaryAction | null {
-  const trimmedText = userMessageText.trim();
+  const trimmedText = userMessageText.trim().replace(/[?!.]+$/g, '').trim();
   const trimmedLowerText = trimmedText.toLowerCase();
 
   const hasTransactionAmountPattern =
@@ -482,6 +482,31 @@ function parseTransactionSummaryIntent(userMessageText: string): FastPathTransac
       matchedPrefix = true;
       explicitRecordType = normalizeSummaryRecordType(groupedTypeMatch[1]);
       remainder = remainder.slice(groupedTypeMatch[0].length).trim();
+    }
+  }
+
+  if (!matchedPrefix) {
+    const englishQuestionMatch = remainder.match(
+      /^(?:how\s+much\s+(?:did\s+i|do\s+i|have\s+i)\s+(spend|spent|earn|earned|make|made)|what(?:'s|\s+is)\s+(?:my\s+)?(?:total\s+)?(spending|expenses?|income|earnings?))\b/i
+    );
+    if (englishQuestionMatch) {
+      matchedPrefix = true;
+      explicitRecordType = normalizeSummaryRecordType(englishQuestionMatch[1] || englishQuestionMatch[2]);
+      remainder = remainder.slice(englishQuestionMatch[0].length).trim();
+      remainder = remainder.replace(/^(?:on|for|from)\s+/i, '').trim();
+    }
+  }
+
+  if (!matchedPrefix) {
+    const indonesianQuestionMatch = remainder.match(
+      /^(?:berapa\s+(?:total|jumlah)\s+(pengeluaran|pemasukan)|berapa\s+(pengeluaran|pemasukan))\b/i
+    );
+    if (indonesianQuestionMatch) {
+      matchedPrefix = true;
+      explicitRecordType = normalizeSummaryRecordType(
+        indonesianQuestionMatch[1] || indonesianQuestionMatch[2]
+      );
+      remainder = remainder.slice(indonesianQuestionMatch[0].length).trim();
     }
   }
 
