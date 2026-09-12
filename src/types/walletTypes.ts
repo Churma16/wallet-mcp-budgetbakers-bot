@@ -29,6 +29,7 @@ export interface CreateRecordInputPayload {
   counterParty?: string;
   labelIds?: string[];
   labels?: string[];
+  currency?: string;
 }
 
 export interface WalletCreateRecordsResponse {

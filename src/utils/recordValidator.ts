@@ -7,7 +7,7 @@ import {
   ParsedRelativeTimeResult,
 } from './relativeTimeParser.js';
 import { extractHashtags, deduplicateTags, normalizeTagName } from './hashtagParser.js';
-import { parseFinancialAmountString } from './financialAmountParser.js';
+import { parseFinancialAmount, parseFinancialAmountString } from './financialAmountParser.js';
 
 export type AccountResolutionIssueReason = 'UNRESOLVED' | 'AMBIGUOUS';
 
@@ -284,10 +284,18 @@ export function validateAndSanitizeFinancialRecords(
     // 1. Amount Validation
     const rawAmountValue: unknown = currentRecord.amount;
     let parsedAmount = Number(rawAmountValue);
+    let recordCurrencyHint: string | undefined =
+      typeof currentRecord.currency === 'string' && currentRecord.currency.trim()
+        ? currentRecord.currency.trim().toUpperCase()
+        : undefined;
+
     if ((!Number.isFinite(parsedAmount) || Number.isNaN(parsedAmount)) && typeof rawAmountValue === 'string') {
-      const parsedFinancialAmount = parseFinancialAmountString(rawAmountValue);
-      if (parsedFinancialAmount !== null && Number.isFinite(parsedFinancialAmount)) {
-        parsedAmount = parsedFinancialAmount;
+      const parsedFinancialResult = parseFinancialAmount(rawAmountValue);
+      if (parsedFinancialResult !== null && Number.isFinite(parsedFinancialResult.amount)) {
+        parsedAmount = parsedFinancialResult.amount;
+        if (!recordCurrencyHint && parsedFinancialResult.explicitCurrencyHint) {
+          recordCurrencyHint = parsedFinancialResult.explicitCurrencyHint;
+        }
       }
     }
 
@@ -317,6 +325,9 @@ export function validateAndSanitizeFinancialRecords(
     );
 
     if (accountResolutionCandidates.length !== 1) {
+      if (recordCurrencyHint) {
+        currentRecord.currency = recordCurrencyHint;
+      }
       accountResolutionIssues.push({
         recordIndex,
         accountHint: rawAccountIdStr,
@@ -326,7 +337,20 @@ export function validateAndSanitizeFinancialRecords(
       continue;
     }
 
-    const resolvedAccountId = accountResolutionCandidates[0].id;
+    const resolvedAccount = accountResolutionCandidates[0];
+    const resolvedAccountId = resolvedAccount.id;
+
+    // Currency compatibility check: explicit OCR / record currency hint must match resolved account currency
+    if (recordCurrencyHint && resolvedAccount.currency) {
+      const normalizedAccountCurrency = resolvedAccount.currency.trim().toUpperCase();
+      const normalizedRecordCurrency = recordCurrencyHint.trim().toUpperCase();
+      if (normalizedRecordCurrency !== normalizedAccountCurrency) {
+        validationErrors.push(
+          `${recordLabel}: Mata uang transaksi (${normalizedRecordCurrency}) berbeda dengan mata uang akun ${resolvedAccount.name} (${normalizedAccountCurrency}).`
+        );
+        continue;
+      }
+    }
 
     // 3. Category ID Validation (supports UUID, 1-based index number, exact name, or partial name)
     let resolvedCategoryId: string | undefined = undefined;
@@ -426,6 +450,7 @@ export function validateAndSanitizeFinancialRecords(
       recordDate: resolvedRecordDate,
       note: cleanedNote,
       counterParty: sanitizedCounterParty,
+      ...(recordCurrencyHint ? { currency: recordCurrencyHint } : {}),
     };
 
     if (combinedLabels.length > 0) {

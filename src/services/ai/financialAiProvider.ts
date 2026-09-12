@@ -17,10 +17,11 @@ export interface ExtractedFinancialRecordItem {
   note: string;
   counterParty?: string;
   labels?: string[];
+  currency?: string;
 }
 
 export interface ExtractedFinancialIntent {
-  action: 'CREATE_RECORD' | 'CHECK_BUDGET' | 'CHECK_BALANCE' | 'GENERAL_REPLY';
+  action: 'CREATE_RECORD' | 'CHECK_BUDGET' | 'CHECK_BALANCE' | 'GENERAL_REPLY' | 'RECORD_EXPENSE' | 'RECORD_INCOME' | 'RECORD_TRANSFER';
   records?: ExtractedFinancialRecordItem[];
   explanation?: string;
   tokenUsage?: TokenUsageStatistics;

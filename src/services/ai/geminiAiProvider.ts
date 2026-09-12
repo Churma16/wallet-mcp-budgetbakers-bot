@@ -8,7 +8,7 @@ import {
   ExtractedEmailTransactionData,
   TokenUsageStatistics,
 } from './financialAiProvider.js';
-import { extractAndParseJsonObject } from './jsonExtractionHelper.js';
+import { extractAndParseJsonObject, validateReceiptFinancialIntentEnvelope } from './jsonExtractionHelper.js';
 import { getActiveLanguage } from '../../i18n/index.js';
 
 import { getApplicationTimezone } from '../../utils/humanResponseFormatter.js';
@@ -354,7 +354,8 @@ export class GeminiAiProvider implements FinancialAiProvider {
       requestContextDescription: `Receipt photo message (mime: ${mimeType}, size: ${imageBuffer.length} bytes, caption: "${optionalCaption}")`,
     });
 
-    const parsedIntent = extractAndParseJsonObject<ExtractedFinancialIntent>(generationResult.responseText);
+    const parsedJsonObject = extractAndParseJsonObject<unknown>(generationResult.responseText);
+    const parsedIntent = validateReceiptFinancialIntentEnvelope(parsedJsonObject, generationResult.responseText);
     parsedIntent.tokenUsage = generationResult.tokenUsage;
     applicationLogger.fileDetail('ai', 'Parsed Financial Intent from Gemini Vision', parsedIntent);
     return parsedIntent;

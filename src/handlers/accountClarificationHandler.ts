@@ -49,7 +49,8 @@ export class AccountClarificationHandler {
       return false;
     }
 
-    const candidateAccounts = this.buildCandidateAccounts(firstIssue, availableAccounts);
+    const recordCurrency = originalRecords[firstIssue.recordIndex]?.currency;
+    const candidateAccounts = this.buildCandidateAccounts(firstIssue, availableAccounts, recordCurrency);
     if (candidateAccounts.length === 0) {
       return false;
     }
@@ -430,27 +431,34 @@ export class AccountClarificationHandler {
 
   private buildCandidateAccounts(
     issue: AccountResolutionIssue,
-    availableAccounts: WalletAccountItem[]
+    availableAccounts: WalletAccountItem[],
+    currencyHint?: string
   ): PendingAccountSelectionCandidate[] {
+    const normalizedCurrencyHint = currencyHint?.trim().toUpperCase();
+    const candidateAccountsSource = issue.candidates.length > 0
+      ? issue.candidates
+      : normalizedCurrencyHint
+        ? availableAccounts.filter(
+            account => !account.currency || account.currency.trim().toUpperCase() === normalizedCurrencyHint
+          )
+        : availableAccounts;
+
+    const effectiveAccounts = candidateAccountsSource.length > 0
+      ? candidateAccountsSource
+      : availableAccounts;
+
     const accountMap = new Map(availableAccounts.map(account => [account.id, account]));
-    const sourceAccounts: PendingAccountSelectionCandidate[] = issue.candidates.length > 0
-      ? issue.candidates.map(candidate => {
-          const activeAccount = accountMap.get(candidate.id);
-          return activeAccount
-            ? {
-                id: activeAccount.id,
-                name: activeAccount.name,
-                currency: activeAccount.currency,
-                bankAccountNumber: activeAccount.bankAccountNumber,
-              }
-            : { ...candidate };
-        })
-      : availableAccounts.map(account => ({
-          id: account.id,
-          name: account.name,
-          currency: account.currency,
-          bankAccountNumber: account.bankAccountNumber,
-        }));
+    const sourceAccounts: PendingAccountSelectionCandidate[] = effectiveAccounts.map(candidate => {
+      const activeAccount = accountMap.get(candidate.id);
+      return activeAccount
+        ? {
+            id: activeAccount.id,
+            name: activeAccount.name,
+            currency: activeAccount.currency,
+            bankAccountNumber: activeAccount.bankAccountNumber,
+          }
+        : { ...candidate };
+    });
 
     const uniqueAccounts = new Map<string, PendingAccountSelectionCandidate>();
     for (const account of sourceAccounts) {

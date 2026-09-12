@@ -1,11 +1,19 @@
 /**
- * Parses raw OCR/LLM currency amount strings into signed numbers.
+ * Structured result of parsing an amount string with currency awareness.
+ */
+export interface ParsedFinancialAmountResult {
+  amount: number;
+  explicitCurrencyHint?: string;
+}
+
+/**
+ * Parses raw OCR/LLM currency amount strings into signed numbers and explicit currency hints.
  * Preserves decimal scale for decimal currencies (e.g. USD, EUR) while
  * respecting integer thousands separators for non-decimal currencies (e.g. IDR).
  *
  * Fails closed (returns null) on ambiguous separator patterns or invalid structures.
  */
-export function parseFinancialAmountString(rawInput: string): number | null {
+export function parseFinancialAmount(rawInput: string): ParsedFinancialAmountResult | null {
   if (typeof rawInput !== 'string') {
     return null;
   }
@@ -29,7 +37,24 @@ export function parseFinancialAmountString(rawInput: string): number | null {
     /^(?:rp\.?|idr)/i.test(strippedText) ||
     /(?:rp\.?|idr)$/i.test(strippedText);
 
-  const isDecimalCurrency = /[$€£]|\b(?:usd|eur|gbp|sgd|aud|cad)\b/i.test(strippedText);
+  let detectedCurrency: string | undefined = undefined;
+  if (isIdr) {
+    detectedCurrency = 'IDR';
+  } else if (/[$]|\busd\b/i.test(strippedText)) {
+    detectedCurrency = 'USD';
+  } else if (/[€]|\beur\b/i.test(strippedText)) {
+    detectedCurrency = 'EUR';
+  } else if (/[£]|\bgbp\b/i.test(strippedText)) {
+    detectedCurrency = 'GBP';
+  } else if (/\bsgd\b/i.test(strippedText)) {
+    detectedCurrency = 'SGD';
+  } else if (/\baud\b/i.test(strippedText)) {
+    detectedCurrency = 'AUD';
+  } else if (/\bcad\b/i.test(strippedText)) {
+    detectedCurrency = 'CAD';
+  }
+
+  const isDecimalCurrency = detectedCurrency !== undefined && detectedCurrency !== 'IDR';
 
   // Conflicting currency indicators fail closed
   if (isIdr && isDecimalCurrency) {
@@ -54,13 +79,18 @@ export function parseFinancialAmountString(rawInput: string): number | null {
   const dotCount = (withoutCurrency.match(/\./g) || []).length;
   const commaCount = (withoutCurrency.match(/,/g) || []).length;
 
+  const buildResult = (value: number): ParsedFinancialAmountResult => ({
+    amount: isNegative ? -value : value,
+    ...(detectedCurrency ? { explicitCurrencyHint: detectedCurrency } : {}),
+  });
+
   // Case A: No separators (pure integer digits)
   if (dotCount === 0 && commaCount === 0) {
     const parsedNumber = Number(withoutCurrency);
     if (!Number.isFinite(parsedNumber) || parsedNumber === 0) {
       return null;
     }
-    return isNegative ? -parsedNumber : parsedNumber;
+    return buildResult(parsedNumber);
   }
 
   // Case B: Both dot and comma present
@@ -85,7 +115,7 @@ export function parseFinancialAmountString(rawInput: string): number | null {
       if (!Number.isFinite(standardizedNumber) || standardizedNumber === 0) {
         return null;
       }
-      return isNegative ? -standardizedNumber : standardizedNumber;
+      return buildResult(standardizedNumber);
     } else {
       // European/Indonesian format: dots are thousands separators, last comma is decimal separator (e.g. 1.234,50)
       if (commaCount > 1) {
@@ -104,7 +134,7 @@ export function parseFinancialAmountString(rawInput: string): number | null {
       if (!Number.isFinite(standardizedNumber) || standardizedNumber === 0) {
         return null;
       }
-      return isNegative ? -standardizedNumber : standardizedNumber;
+      return buildResult(standardizedNumber);
     }
   }
 
@@ -117,7 +147,7 @@ export function parseFinancialAmountString(rawInput: string): number | null {
     if (!Number.isFinite(standardizedNumber) || standardizedNumber === 0) {
       return null;
     }
-    return isNegative ? -standardizedNumber : standardizedNumber;
+    return buildResult(standardizedNumber);
   }
 
   // Case D: Multiple commas, no dot (thousands separators, e.g. 1,500,000)
@@ -129,7 +159,7 @@ export function parseFinancialAmountString(rawInput: string): number | null {
     if (!Number.isFinite(standardizedNumber) || standardizedNumber === 0) {
       return null;
     }
-    return isNegative ? -standardizedNumber : standardizedNumber;
+    return buildResult(standardizedNumber);
   }
 
   // Case E: Exactly ONE separator (single dot or single comma)
@@ -145,7 +175,7 @@ export function parseFinancialAmountString(rawInput: string): number | null {
         if (!Number.isFinite(parsedNumber) || parsedNumber === 0) {
           return null;
         }
-        return isNegative ? -parsedNumber : parsedNumber;
+        return buildResult(parsedNumber);
       }
       // Non-3-digit dots with Rp are ambiguous or invalid in IDR
       return null;
@@ -158,7 +188,7 @@ export function parseFinancialAmountString(rawInput: string): number | null {
         if (!Number.isFinite(parsedNumber) || parsedNumber === 0) {
           return null;
         }
-        return isNegative ? -parsedNumber : parsedNumber;
+        return buildResult(parsedNumber);
       }
       // Dot with 3 trailing digits under decimal currency (e.g. $10.500) is ambiguous
       return null;
@@ -171,7 +201,7 @@ export function parseFinancialAmountString(rawInput: string): number | null {
       if (!Number.isFinite(parsedNumber) || parsedNumber === 0) {
         return null;
       }
-      return isNegative ? -parsedNumber : parsedNumber;
+      return buildResult(parsedNumber);
     }
 
     // Dot followed by 3 digits with no currency (e.g. "10.079", "10.500") is ambiguous between decimal and thousands
@@ -185,7 +215,7 @@ export function parseFinancialAmountString(rawInput: string): number | null {
         if (!Number.isFinite(parsedNumber) || parsedNumber === 0) {
           return null;
         }
-        return isNegative ? -parsedNumber : parsedNumber;
+        return buildResult(parsedNumber);
       }
       return null;
     }
@@ -197,7 +227,7 @@ export function parseFinancialAmountString(rawInput: string): number | null {
         if (!Number.isFinite(parsedNumber) || parsedNumber === 0) {
           return null;
         }
-        return isNegative ? -parsedNumber : parsedNumber;
+        return buildResult(parsedNumber);
       }
       // Comma with 1 or 2 digits under USD ($10,50) is ambiguous European notation
       return null;
@@ -206,4 +236,11 @@ export function parseFinancialAmountString(rawInput: string): number | null {
     // Single comma without currency indicator is ambiguous
     return null;
   }
+}
+
+/**
+ * Convenience wrapper returning only the numeric amount, or null if unparseable/ambiguous.
+ */
+export function parseFinancialAmountString(rawInput: string): number | null {
+  return parseFinancialAmount(rawInput)?.amount ?? null;
 }

@@ -9,8 +9,9 @@ import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from 
 import { setActiveLanguage } from '../src/i18n/index.js';
 import { AiResponseParseError } from '../src/services/ai/jsonExtractionHelper.js';
 import { ExtractedFinancialIntent, FinancialAiProvider } from '../src/services/ai/financialAiProvider.js';
-import { parseFinancialAmountString } from '../src/utils/financialAmountParser.js';
+import { parseFinancialAmount, parseFinancialAmountString } from '../src/utils/financialAmountParser.js';
 import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
+import { validateReceiptFinancialIntentEnvelope } from '../src/services/ai/jsonExtractionHelper.js';
 
 console.log('[TEST] Starting Receipt Processing Boundary & Recovery Tests (Issue #123)...');
 
@@ -261,6 +262,175 @@ test('validateAndSanitizeFinancialRecords normalizes currency strings and reject
   );
   assert.strictEqual(ambiguousResult.isValid, false);
   assert.ok(ambiguousResult.validationErrors[0].includes('Nominal tidak valid ($10.500)'));
+});
+
+test('validateAndSanitizeFinancialRecords rejects explicit currency conflicting with resolved account currency', () => {
+  // Case A: IDR amount explicitly stated on USD account fails
+  const idrOnUsdResult = validateAndSanitizeFinancialRecords(
+    [
+      { accountId: 'acc-usd', amount: '-Rp10.079' as any, recordDate: '2026-09-08T04:54:00.000Z' },
+    ],
+    mockAccounts,
+    mockCategories
+  );
+  assert.strictEqual(idrOnUsdResult.isValid, false, 'IDR amount on USD account must fail validation');
+  assert.ok(
+    idrOnUsdResult.validationErrors[0].includes('berbeda dengan mata uang akun USD Account (USD)'),
+    'Validation error explains IDR vs USD currency mismatch'
+  );
+
+  // Case B: USD amount explicitly stated on IDR account fails
+  const usdOnIdrResult = validateAndSanitizeFinancialRecords(
+    [
+      { accountId: 'acc-jago', amount: '-$10.50' as any, recordDate: '2026-09-08T04:54:00.000Z' },
+    ],
+    mockAccounts,
+    mockCategories
+  );
+  assert.strictEqual(usdOnIdrResult.isValid, false, 'USD amount on IDR account must fail validation');
+  assert.ok(
+    usdOnIdrResult.validationErrors[0].includes('berbeda dengan mata uang akun Jago (IDR)'),
+    'Validation error explains USD vs IDR currency mismatch'
+  );
+
+  // Case C: Matching currencies succeed
+  const matchingIdrResult = validateAndSanitizeFinancialRecords(
+    [
+      { accountId: 'acc-jago', amount: '-Rp10.079' as any, recordDate: '2026-09-08T04:54:00.000Z' },
+    ],
+    mockAccounts,
+    mockCategories
+  );
+  assert.strictEqual(matchingIdrResult.isValid, true, 'IDR amount on IDR account succeeds');
+  assert.strictEqual(matchingIdrResult.sanitizedRecords[0].amount, -10079);
+
+  const matchingUsdResult = validateAndSanitizeFinancialRecords(
+    [
+      { accountId: 'acc-usd', amount: '-$10.50' as any, recordDate: '2026-09-08T04:54:00.000Z' },
+    ],
+    mockAccounts,
+    mockCategories
+  );
+  assert.strictEqual(matchingUsdResult.isValid, true, 'USD amount on USD account succeeds');
+  assert.strictEqual(matchingUsdResult.sanitizedRecords[0].amount, -10.5);
+});
+
+test('Message flow rejects conflicting currency receipts before Wallet MCP write', async () => {
+  setActiveLanguage('id');
+
+  // Subcase A: Vision returning USD Account with IDR amount
+  const harnessA = buildTestHarness();
+  harnessA.mockAiProvider.setImageHandler(async () => ({
+    action: 'CREATE_RECORD',
+    records: [
+      {
+        accountId: 'USD Account',
+        amount: '-Rp10.079' as any,
+        recordDate: '2026-09-08T04:54:00.000Z',
+        note: 'Coffee',
+      },
+    ],
+  }));
+
+  await harnessA.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessA.mockMcpClient.calls.length, 0, 'Zero writes sent to Wallet MCP on currency mismatch');
+  const replyA = harnessA.mockGateway.lastMessage || '';
+  assert.ok(replyA.includes('berbeda dengan mata uang akun USD Account'), 'Reply explains currency mismatch');
+
+  // Subcase B: Vision returning Jago with USD amount
+  const harnessB = buildTestHarness();
+  harnessB.mockAiProvider.setImageHandler(async () => ({
+    action: 'CREATE_RECORD',
+    records: [
+      {
+        accountId: 'Jago',
+        amount: '-$10.50' as any,
+        recordDate: '2026-09-08T04:54:00.000Z',
+        note: 'Coffee',
+      },
+    ],
+  }));
+
+  await harnessB.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessB.mockMcpClient.calls.length, 0, 'Zero writes sent to Wallet MCP on currency mismatch');
+  const replyB = harnessB.mockGateway.lastMessage || '';
+  assert.ok(replyB.includes('berbeda dengan mata uang akun Jago'), 'Reply explains currency mismatch');
+});
+
+test('validateReceiptFinancialIntentEnvelope validates runtime envelope and rejects malformed shapes', () => {
+  // Invalid action
+  assert.throws(
+    () => validateReceiptFinancialIntentEnvelope({ action: 'INVALID_ACTION' }),
+    (error: unknown) => error instanceof AiResponseParseError && error.message.includes('invalid action')
+  );
+
+  // Non-array records for CREATE_RECORD
+  assert.throws(
+    () => validateReceiptFinancialIntentEnvelope({ action: 'CREATE_RECORD', records: 'oops' }),
+    (error: unknown) => error instanceof AiResponseParseError && error.message.includes('requires records to be an array')
+  );
+
+  // Null record in array
+  assert.throws(
+    () => validateReceiptFinancialIntentEnvelope({ action: 'CREATE_RECORD', records: [null] }),
+    (error: unknown) => error instanceof AiResponseParseError && error.message.includes('must be a non-null object')
+  );
+
+  // Valid CREATE_RECORD envelope passes and preserves fields
+  const validEnvelope = validateReceiptFinancialIntentEnvelope({
+    action: 'CREATE_RECORD',
+    records: [
+      {
+        accountId: 'Jago',
+        amount: -10079,
+        recordDate: '2026-09-08T04:54:00.000Z',
+        note: 'Valid',
+      },
+    ],
+    explanation: 'Valid note',
+  });
+  assert.strictEqual(validEnvelope.action, 'CREATE_RECORD');
+  assert.strictEqual(validEnvelope.records?.length, 1);
+  assert.strictEqual(validEnvelope.records?.[0].accountId, 'Jago');
+});
+
+test('Message flow returns receiptExtractionFailed on parseable-but-structurally-invalid Vision outputs', async () => {
+  setActiveLanguage('id');
+
+  // Case A: records is a string instead of array
+  const harnessA = buildTestHarness();
+  harnessA.mockAiProvider.setImageHandler(async () => {
+    // Simulates Vision output { action: "CREATE_RECORD", records: "oops" } validated by envelope
+    return validateReceiptFinancialIntentEnvelope({ action: 'CREATE_RECORD', records: 'oops' });
+  });
+
+  await harnessA.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessA.mockMcpClient.calls.length, 0, 'Zero writes to Wallet MCP');
+  const replyA = harnessA.mockGateway.lastMessage || '';
+  assert.ok(replyA.includes('Foto struk belum berhasil dibaca'), 'Returns receiptExtractionFailed');
+  assert.ok(!replyA.includes('format datanya kurang pas'), 'Does not blame format');
+
+  // Case B: records contains null item
+  const harnessB = buildTestHarness();
+  harnessB.mockAiProvider.setImageHandler(async () => {
+    return validateReceiptFinancialIntentEnvelope({ action: 'CREATE_RECORD', records: [null] });
+  });
+
+  await harnessB.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessB.mockMcpClient.calls.length, 0, 'Zero writes to Wallet MCP');
+  const replyB = harnessB.mockGateway.lastMessage || '';
+  assert.ok(replyB.includes('Foto struk belum berhasil dibaca'), 'Returns receiptExtractionFailed');
+
+  // Case C: invalid action
+  const harnessC = buildTestHarness();
+  harnessC.mockAiProvider.setImageHandler(async () => {
+    return validateReceiptFinancialIntentEnvelope({ action: 'INVALID_ACTION' });
+  });
+
+  await harnessC.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessC.mockMcpClient.calls.length, 0, 'Zero writes to Wallet MCP');
+  const replyC = harnessC.mockGateway.lastMessage || '';
+  assert.ok(replyC.includes('Foto struk belum berhasil dibaca'), 'Returns receiptExtractionFailed');
 });
 
 // =========================================================================
