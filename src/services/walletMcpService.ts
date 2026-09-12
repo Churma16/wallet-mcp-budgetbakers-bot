@@ -708,6 +708,7 @@ export class WalletMcpClientService {
         totalPages: totalPagesCount,
         nextOffset: hasMore ? requestedPageEndOffset : null,
         hasMore,
+        continuationUnknown,
         sort: resolvedSort,
       };
     }
