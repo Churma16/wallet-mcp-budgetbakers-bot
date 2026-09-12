@@ -48,6 +48,8 @@ export class FinancialActionExecutor {
     event: IncomingUserMessageEvent,
     executionContext?: FinancialActionExecutionContext
   ): Promise<void> {
+    const processingStartTimestamp = executionContext?.processingStartTimestamp ?? Date.now();
+
     applicationLogger.mcp('Fetching updated balances...');
 
     const freshAccounts = await this.walletCacheService.refreshAccounts();
@@ -67,7 +69,6 @@ export class FinancialActionExecutor {
 
     await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
 
-    const processingStartTimestamp = executionContext?.processingStartTimestamp ?? Date.now();
     const processingDurationMs = Date.now() - processingStartTimestamp;
     const viaRoutingSuffix = executionContext?.routingSource === 'fast-path' ? ' via Fast-path' : '';
     applicationLogger.success(
@@ -83,6 +84,8 @@ export class FinancialActionExecutor {
     event: IncomingUserMessageEvent,
     executionContext?: FinancialActionExecutionContext
   ): Promise<void> {
+    const processingStartTimestamp = executionContext?.processingStartTimestamp ?? Date.now();
+
     applicationLogger.mcp('Fetching budget status...');
 
     const budgetList = await this.walletMcpClient.fetchBudgets();
@@ -98,7 +101,6 @@ export class FinancialActionExecutor {
 
     await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
 
-    const processingStartTimestamp = executionContext?.processingStartTimestamp ?? Date.now();
     const processingDurationMs = Date.now() - processingStartTimestamp;
     const viaRoutingSuffix = executionContext?.routingSource === 'fast-path' ? ' via Fast-path' : '';
     applicationLogger.success(
@@ -190,6 +192,8 @@ export class FinancialActionExecutor {
     event: IncomingUserMessageEvent,
     executionContext?: FinancialActionExecutionContext
   ): Promise<void> {
+    const processingStartTimestamp = executionContext?.processingStartTimestamp ?? Date.now();
+
     const dictionary = getDictionary();
     const helpGuidanceMessage = [
       dictionary.help.welcomeGuidance,
@@ -209,7 +213,6 @@ export class FinancialActionExecutor {
 
     await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, helpGuidanceMessage);
 
-    const processingStartTimestamp = executionContext?.processingStartTimestamp ?? Date.now();
     const processingDurationMs = Date.now() - processingStartTimestamp;
     applicationLogger.success(
       `[${event.channel.toUpperCase()}] Sent help guidance menu via Fast-path (${processingDurationMs}ms).`

@@ -12,6 +12,7 @@ import {
   TransactionSummaryResult,
 } from '../src/types/walletTypes.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
+import { applicationLogger } from '../src/utils/logger.js';
 
 console.log('[TEST] Starting Unified Financial Action Execution Paths Tests (Issue #107)...');
 
@@ -345,6 +346,93 @@ console.log('\n[Suite 4] Testing End-to-End Equivalence Between Fast-Path and AI
   );
 
   console.log('  [PASS] Output equivalence verified: both routes produce identical human messages');
+}
+
+// -----------------------------------------------------------------------------
+// Suite 5: Fallback Start Timestamp Resolution Without Context (Review Feedback)
+// -----------------------------------------------------------------------------
+console.log('\n[Suite 5] Testing Fallback Start Timestamp Resolution When Context Is Omitted...');
+{
+  setActiveLanguage('id');
+
+  const capturedSuccessLogs: string[] = [];
+  const originalSuccessLogger = applicationLogger.success;
+  applicationLogger.success = (logMessage: string, ...rest: unknown[]) => {
+    capturedSuccessLogs.push(logMessage);
+    originalSuccessLogger(logMessage, ...rest);
+  };
+
+  try {
+    const artificialOperationDelayMs = 25;
+
+    const mockGatewayWithDelay = {
+      sendMessage: async (_channel: string, _chatId: string, _msg: string): Promise<void> => {
+        await new Promise(resolve => setTimeout(resolve, artificialOperationDelayMs));
+      },
+    };
+
+    const mockWalletCache = {
+      refreshAccounts: async (): Promise<WalletAccountItem[]> => {
+        await new Promise(resolve => setTimeout(resolve, artificialOperationDelayMs));
+        return mockSampleAccounts;
+      },
+    };
+
+    const mockWalletMcpClient = {
+      fetchBudgets: async (): Promise<WalletBudgetProgressItem[]> => {
+        await new Promise(resolve => setTimeout(resolve, artificialOperationDelayMs));
+        return mockSampleBudgets;
+      },
+    };
+
+    const executor = new FinancialActionExecutor(
+      mockWalletMcpClient as any,
+      mockWalletCache as any,
+      mockGatewayWithDelay as any
+    );
+
+    const testEvent = createMockIncomingEvent('test');
+
+    // 5.1 executeCheckBalance without context
+    capturedSuccessLogs.length = 0;
+    await executor.executeCheckBalance(testEvent);
+    assert.strictEqual(capturedSuccessLogs.length, 1);
+    const balanceDurationMatch = capturedSuccessLogs[0].match(/\((\d+)ms\)/);
+    assert.ok(balanceDurationMatch, 'Balance success log should contain duration in ms');
+    const balanceDuration = Number(balanceDurationMatch[1]);
+    assert.ok(
+      balanceDuration >= artificialOperationDelayMs,
+      `Balance duration (${balanceDuration}ms) should be at least ${artificialOperationDelayMs}ms, reflecting method entry timestamp`
+    );
+
+    // 5.2 executeCheckBudget without context
+    capturedSuccessLogs.length = 0;
+    await executor.executeCheckBudget(testEvent);
+    assert.strictEqual(capturedSuccessLogs.length, 1);
+    const budgetDurationMatch = capturedSuccessLogs[0].match(/\((\d+)ms\)/);
+    assert.ok(budgetDurationMatch, 'Budget success log should contain duration in ms');
+    const budgetDuration = Number(budgetDurationMatch[1]);
+    assert.ok(
+      budgetDuration >= artificialOperationDelayMs,
+      `Budget duration (${budgetDuration}ms) should be at least ${artificialOperationDelayMs}ms, reflecting method entry timestamp`
+    );
+
+    // 5.3 executeHelpMenu without context
+    capturedSuccessLogs.length = 0;
+    await executor.executeHelpMenu(testEvent);
+    assert.strictEqual(capturedSuccessLogs.length, 1);
+    const helpDurationMatch = capturedSuccessLogs[0].match(/\((\d+)ms\)/);
+    assert.ok(helpDurationMatch, 'Help success log should contain duration in ms');
+    const helpDuration = Number(helpDurationMatch[1]);
+    assert.ok(
+      helpDuration >= artificialOperationDelayMs,
+      `Help duration (${helpDuration}ms) should be at least ${artificialOperationDelayMs}ms, reflecting method entry timestamp`
+    );
+
+    console.log('  [PASS] All executor methods establish fallback timestamp before work begins');
+  } finally {
+    applicationLogger.success = originalSuccessLogger;
+  }
 }
 
 console.log('\n[SUCCESS] All Unified Financial Action Execution Tests Passed Cleanly!');
