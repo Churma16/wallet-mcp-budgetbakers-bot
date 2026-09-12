@@ -1,4 +1,5 @@
 import { applicationLogger } from '../../utils/logger.js';
+import { parseFinancialAmount } from '../../utils/financialAmountParser.js';
 import type { ExtractedFinancialIntent, ExtractedFinancialRecordItem } from './financialAiProvider.js';
 
 /**
@@ -176,7 +177,26 @@ export function validateReceiptFinancialIntentEnvelope(
         );
       }
 
-      // 3. AccountId: allow empty string for deterministic clarification
+      // 3. Currency: require deterministic currency evidence for receipt CREATE_RECORD records before write.
+      // Must have an explicit ISO 4217 code (e.g. IDR, USD) or explicit currency hint parsed from amount string.
+      let resolvedCurrency: string | undefined = undefined;
+      if (typeof rawItem.currency === 'string' && /^[A-Za-z]{3}$/.test(rawItem.currency.trim())) {
+        resolvedCurrency = rawItem.currency.trim().toUpperCase();
+      } else if (typeof rawAmount === 'string') {
+        const parsedFinancialResult = parseFinancialAmount(rawAmount);
+        if (parsedFinancialResult?.explicitCurrencyHint) {
+          resolvedCurrency = parsedFinancialResult.explicitCurrencyHint.trim().toUpperCase();
+        }
+      }
+
+      if (!resolvedCurrency) {
+        throw new AiResponseParseError(
+          `Receipt Vision record item at index ${index} must have a valid currency`,
+          rawResponseContent
+        );
+      }
+
+      // 4. AccountId: allow empty string for deterministic clarification
       const resolvedAccountId = typeof rawItem.accountId === 'string' ? rawItem.accountId.trim() : '';
 
       validatedRecords.push({
@@ -185,6 +205,7 @@ export function validateReceiptFinancialIntentEnvelope(
           ? rawItem.categoryId.trim()
           : undefined,
         amount: rawAmount as any,
+        currency: resolvedCurrency,
         recordDate: (rawRecordDate as string).trim(),
         note: typeof rawItem.note === 'string' ? rawItem.note : '',
         counterParty: typeof rawItem.counterParty === 'string' && rawItem.counterParty.trim()
@@ -193,9 +214,6 @@ export function validateReceiptFinancialIntentEnvelope(
         labels: Array.isArray(rawItem.labels)
           ? rawItem.labels.filter((labelItem): labelItem is string => typeof labelItem === 'string')
           : undefined,
-        ...(typeof rawItem.currency === 'string' && rawItem.currency.trim()
-          ? { currency: rawItem.currency.trim() }
-          : {}),
       });
     }
 

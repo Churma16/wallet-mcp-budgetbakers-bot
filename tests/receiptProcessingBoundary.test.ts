@@ -484,7 +484,7 @@ test('validateReceiptFinancialIntentEnvelope validates runtime envelope and reje
   assert.throws(
     () => validateReceiptFinancialIntentEnvelope({
       action: 'CREATE_RECORD',
-      records: [{ accountId: 'Jago', amount: -10079 }],
+      records: [{ accountId: 'Jago', amount: -10079, currency: 'IDR' }],
     }),
     (error: unknown) => error instanceof AiResponseParseError && error.message.includes('valid recordDate')
   );
@@ -493,7 +493,7 @@ test('validateReceiptFinancialIntentEnvelope validates runtime envelope and reje
   assert.throws(
     () => validateReceiptFinancialIntentEnvelope({
       action: 'CREATE_RECORD',
-      records: [{ accountId: 'Jago', amount: -10079, recordDate: {} }],
+      records: [{ accountId: 'Jago', amount: -10079, currency: 'IDR', recordDate: {} }],
     }),
     (error: unknown) => error instanceof AiResponseParseError && error.message.includes('valid recordDate')
   );
@@ -502,7 +502,7 @@ test('validateReceiptFinancialIntentEnvelope validates runtime envelope and reje
   assert.throws(
     () => validateReceiptFinancialIntentEnvelope({
       action: 'CREATE_RECORD',
-      records: [{ accountId: 'Jago', amount: -10079, recordDate: 'invalid-date' }],
+      records: [{ accountId: 'Jago', amount: -10079, currency: 'IDR', recordDate: 'invalid-date' }],
     }),
     (error: unknown) => error instanceof AiResponseParseError && error.message.includes('valid recordDate')
   );
@@ -511,7 +511,7 @@ test('validateReceiptFinancialIntentEnvelope validates runtime envelope and reje
   assert.throws(
     () => validateReceiptFinancialIntentEnvelope({
       action: 'CREATE_RECORD',
-      records: [{ accountId: 'Jago', recordDate: '2026-09-08T04:54:00.000Z' }],
+      records: [{ accountId: 'Jago', currency: 'IDR', recordDate: '2026-09-08T04:54:00.000Z' }],
     }),
     (error: unknown) => error instanceof AiResponseParseError && error.message.includes('valid amount')
   );
@@ -520,7 +520,7 @@ test('validateReceiptFinancialIntentEnvelope validates runtime envelope and reje
   assert.throws(
     () => validateReceiptFinancialIntentEnvelope({
       action: 'CREATE_RECORD',
-      records: [{ accountId: 'Jago', amount: { val: -10079 }, recordDate: '2026-09-08T04:54:00.000Z' }],
+      records: [{ accountId: 'Jago', amount: { val: -10079 }, currency: 'IDR', recordDate: '2026-09-08T04:54:00.000Z' }],
     }),
     (error: unknown) => error instanceof AiResponseParseError && error.message.includes('valid amount')
   );
@@ -529,17 +529,50 @@ test('validateReceiptFinancialIntentEnvelope validates runtime envelope and reje
   assert.throws(
     () => validateReceiptFinancialIntentEnvelope({
       action: 'CREATE_RECORD',
-      records: [{ accountId: 'Jago', amount: true, recordDate: '2026-09-08T04:54:00.000Z' }],
+      records: [{ accountId: 'Jago', amount: true, currency: 'IDR', recordDate: '2026-09-08T04:54:00.000Z' }],
     }),
     (error: unknown) => error instanceof AiResponseParseError && error.message.includes('valid amount')
   );
 
-  // Missing accountId with valid amount and recordDate passes envelope validation (defaults accountId to empty string)
+  // Missing currency on numeric amount
+  assert.throws(
+    () => validateReceiptFinancialIntentEnvelope({
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'Jago', amount: -10079, recordDate: '2026-09-08T04:54:00.000Z' }],
+    }),
+    (error: unknown) => error instanceof AiResponseParseError && error.message.includes('valid currency')
+  );
+
+  // Invalid currency format (not 3-letter ISO code)
+  assert.throws(
+    () => validateReceiptFinancialIntentEnvelope({
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'Jago', amount: -10079, currency: 'TOOLONG', recordDate: '2026-09-08T04:54:00.000Z' }],
+    }),
+    (error: unknown) => error instanceof AiResponseParseError && error.message.includes('valid currency')
+  );
+
+  // String amount with explicit currency marker derives currency automatically
+  const envelopeWithStringCurrency = validateReceiptFinancialIntentEnvelope({
+    action: 'CREATE_RECORD',
+    records: [
+      {
+        accountId: 'Jago',
+        amount: '-Rp10.079',
+        recordDate: '2026-09-08T04:54:00.000Z',
+      },
+    ],
+  });
+  assert.strictEqual(envelopeWithStringCurrency.action, 'CREATE_RECORD');
+  assert.strictEqual(envelopeWithStringCurrency.records?.[0].currency, 'IDR');
+
+  // Missing accountId with valid amount, currency and recordDate passes envelope validation (defaults accountId to empty string)
   const envelopeWithoutAccount = validateReceiptFinancialIntentEnvelope({
     action: 'CREATE_RECORD',
     records: [
       {
         amount: -10079,
+        currency: 'IDR',
         recordDate: '2026-09-08T04:54:00.000Z',
         note: 'Coffee',
       },
@@ -548,6 +581,7 @@ test('validateReceiptFinancialIntentEnvelope validates runtime envelope and reje
   assert.strictEqual(envelopeWithoutAccount.action, 'CREATE_RECORD');
   assert.strictEqual(envelopeWithoutAccount.records?.[0].accountId, '');
   assert.strictEqual(envelopeWithoutAccount.records?.[0].amount, -10079);
+  assert.strictEqual(envelopeWithoutAccount.records?.[0].currency, 'IDR');
 
   // Valid CREATE_RECORD envelope passes and preserves fields
   const validEnvelope = validateReceiptFinancialIntentEnvelope({
@@ -556,6 +590,7 @@ test('validateReceiptFinancialIntentEnvelope validates runtime envelope and reje
       {
         accountId: 'Jago',
         amount: -10079,
+        currency: 'IDR',
         recordDate: '2026-09-08T04:54:00.000Z',
         note: 'Valid',
       },
@@ -565,6 +600,7 @@ test('validateReceiptFinancialIntentEnvelope validates runtime envelope and reje
   assert.strictEqual(validEnvelope.action, 'CREATE_RECORD');
   assert.strictEqual(validEnvelope.records?.length, 1);
   assert.strictEqual(validEnvelope.records?.[0].accountId, 'Jago');
+  assert.strictEqual(validEnvelope.records?.[0].currency, 'IDR');
 });
 
 test('Message flow returns receiptExtractionFailed on parseable-but-structurally-invalid Vision outputs', async () => {
@@ -635,7 +671,7 @@ test('Message flow returns receiptExtractionFailed on parseable-but-structurally
   harnessF.mockAiProvider.setImageHandler(async () => {
     return validateReceiptFinancialIntentEnvelope({
       action: 'CREATE_RECORD',
-      records: [{ accountId: 'Jago', amount: -10079 }],
+      records: [{ accountId: 'Jago', amount: -10079, currency: 'IDR' }],
     });
   });
 
@@ -649,7 +685,7 @@ test('Message flow returns receiptExtractionFailed on parseable-but-structurally
   harnessG.mockAiProvider.setImageHandler(async () => {
     return validateReceiptFinancialIntentEnvelope({
       action: 'CREATE_RECORD',
-      records: [{ accountId: 'Jago', amount: -10079, recordDate: {} }],
+      records: [{ accountId: 'Jago', amount: -10079, currency: 'IDR', recordDate: {} }],
     });
   });
 
@@ -663,7 +699,7 @@ test('Message flow returns receiptExtractionFailed on parseable-but-structurally
   harnessH.mockAiProvider.setImageHandler(async () => {
     return validateReceiptFinancialIntentEnvelope({
       action: 'CREATE_RECORD',
-      records: [{ accountId: 'Jago', amount: { val: -10079 }, recordDate: '2026-09-08T04:54:00.000Z' }],
+      records: [{ accountId: 'Jago', amount: { val: -10079 }, currency: 'IDR', recordDate: '2026-09-08T04:54:00.000Z' }],
     });
   });
 
@@ -677,7 +713,7 @@ test('Message flow returns receiptExtractionFailed on parseable-but-structurally
   harnessI.mockAiProvider.setImageHandler(async () => {
     return validateReceiptFinancialIntentEnvelope({
       action: 'CREATE_RECORD',
-      records: [{ accountId: 'Jago', amount: true, recordDate: '2026-09-08T04:54:00.000Z' }],
+      records: [{ accountId: 'Jago', amount: true, currency: 'IDR', recordDate: '2026-09-08T04:54:00.000Z' }],
     });
   });
 
@@ -686,12 +722,12 @@ test('Message flow returns receiptExtractionFailed on parseable-but-structurally
   const replyI = harnessI.mockGateway.lastMessage || '';
   assert.ok(replyI.includes('Foto struk belum berhasil dibaca'), 'Returns receiptExtractionFailed on boolean amount');
 
-  // Case J: missing account with valid amount and recordDate creates a clarification draft
+  // Case J: missing account with valid amount, currency and recordDate creates a clarification draft
   const harnessJ = buildTestHarness();
   harnessJ.mockAiProvider.setImageHandler(async () => {
     return validateReceiptFinancialIntentEnvelope({
       action: 'CREATE_RECORD',
-      records: [{ accountId: '', amount: -10079, recordDate: '2026-09-08T04:54:00.000Z', note: 'Receipt lunch' }],
+      records: [{ accountId: '', amount: -10079, currency: 'IDR', recordDate: '2026-09-08T04:54:00.000Z', note: 'Receipt lunch' }],
     });
   });
 
@@ -700,9 +736,52 @@ test('Message flow returns receiptExtractionFailed on parseable-but-structurally
   const draftsJ = harnessJ.pendingTransactionService.getAllPendingAccountSelectionDrafts();
   assert.strictEqual(draftsJ.length, 1, 'Creates clarification draft for missing account');
   assert.strictEqual(draftsJ[0].records[0].amount, -10079, 'Clarification draft preserved amount');
+  assert.strictEqual(draftsJ[0].records[0].currency, 'IDR', 'Clarification draft preserved currency');
   assert.strictEqual(draftsJ[0].records[0].recordDate, '2026-09-08T04:54:00.000Z', 'Clarification draft preserved recordDate');
   const replyJ = harnessJ.mockGateway.lastMessage || '';
   assert.ok(replyJ.includes('draft') || replyJ.includes('akun') || replyJ.includes('rekening'), 'Prompts user to clarify account');
+
+  // Case K: numeric receipt without currency produces zero Wallet writes and returns receiptExtractionFailed
+  const harnessK = buildTestHarness();
+  harnessK.mockAiProvider.setImageHandler(async () => {
+    return validateReceiptFinancialIntentEnvelope({
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'Jago', amount: -10079, recordDate: '2026-09-08T04:54:00.000Z' }],
+    });
+  });
+
+  await harnessK.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessK.mockMcpClient.calls.length, 0, 'Zero writes to Wallet MCP on numeric receipt without currency');
+  const replyK = harnessK.mockGateway.lastMessage || '';
+  assert.ok(replyK.includes('Foto struk belum berhasil dibaca'), 'Returns receiptExtractionFailed on missing currency');
+
+  // Case L: numeric receipt without currency on mismatched USD account produces zero Wallet writes
+  const harnessL = buildTestHarness();
+  harnessL.mockAiProvider.setImageHandler(async () => {
+    return validateReceiptFinancialIntentEnvelope({
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'USD Account', amount: -10079, recordDate: '2026-09-08T04:54:00.000Z' }],
+    });
+  });
+
+  await harnessL.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessL.mockMcpClient.calls.length, 0, 'Zero writes to Wallet MCP on numeric receipt without currency on USD account');
+  const replyL = harnessL.mockGateway.lastMessage || '';
+  assert.ok(replyL.includes('Foto struk belum berhasil dibaca'), 'Returns receiptExtractionFailed on numeric receipt without currency');
+
+  // Case M: matching numeric USD record on USD account with explicit currency succeeds with 1 Wallet write
+  const harnessM = buildTestHarness();
+  harnessM.mockAiProvider.setImageHandler(async () => {
+    return validateReceiptFinancialIntentEnvelope({
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'USD Account', amount: -10.50, currency: 'USD', recordDate: '2026-09-08T04:54:00.000Z', note: 'Coffee' }],
+    });
+  });
+
+  await harnessM.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessM.mockMcpClient.calls.length, 1, 'Exactly one Wallet MCP write for matching USD record');
+  assert.strictEqual(harnessM.mockMcpClient.calls[0][0].accountId, 'acc-usd');
+  assert.strictEqual(harnessM.mockMcpClient.calls[0][0].amount, -10.5);
 });
 
 // =========================================================================
@@ -717,6 +796,7 @@ test('Case 1: Jago receipt + explicit caption override reaches CREATE_RECORD', a
       {
         accountId: 'Jago',
         amount: -10079,
+        currency: 'IDR',
         recordDate: '2026-09-08T04:54:00.000Z',
         note: 'Donate trakteer ke bang al',
         counterParty: 'trakteer',
@@ -781,6 +861,7 @@ test('Case 3: Partial extraction without account emits draft and prompts user', 
       {
         accountId: '',
         amount: -10079,
+        currency: 'IDR',
         recordDate: '2026-09-08T04:54:00.000Z',
         note: 'Donate trakteer ke bang al',
         counterParty: 'trakteer',
@@ -819,6 +900,7 @@ test('Case 4: Interactive resolution of partial receipt draft', async () => {
       {
         accountId: '',
         amount: -10079,
+        currency: 'IDR',
         recordDate: '2026-09-08T04:54:00.000Z',
         note: 'Donate trakteer ke bang al',
         counterParty: 'trakteer',
@@ -1060,6 +1142,7 @@ test('Case 7: Validation failure on receipt record returns error message without
       {
         accountId: 'acc-jago',
         amount: 'invalid-amount' as any,
+        currency: 'IDR',
         recordDate: '2026-09-08T04:54:00.000Z',
       },
     ],
@@ -1085,6 +1168,7 @@ test('Case 8: Downstream Wallet MCP JSON-RPC failure in image flow returns gener
       {
         accountId: 'Jago',
         amount: -10079,
+        currency: 'IDR',
         recordDate: '2026-09-08T04:54:00.000Z',
         note: 'Valid coffee transaction',
       },
@@ -1145,6 +1229,7 @@ test('Case 9: English localization returns English receiptExtractionFailed and d
       {
         accountId: '',
         amount: -25000,
+        currency: 'IDR',
         recordDate: '2026-09-08T04:54:00.000Z',
         note: 'Groceries',
       },
