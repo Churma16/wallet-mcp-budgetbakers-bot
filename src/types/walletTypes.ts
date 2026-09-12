@@ -169,6 +169,7 @@ export interface TransactionHistoryPage {
   totalPages?: number;
   nextOffset: number | null;
   hasMore: boolean;
+  continuationUnknown?: boolean;
   sort: TransactionSortOrder;
   appliedFilters?: AppliedTransactionHistoryFilters;
   unresolvedFilters?: UnresolvedFilterIssue[];
