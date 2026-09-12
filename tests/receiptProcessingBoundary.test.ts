@@ -226,7 +226,11 @@ test('parseFinancialAmountString preserves decimal scale and fails closed on amb
   assert.strictEqual(parseFinancialAmountString('1,500,000'), 1500000, 'Multiple US thousands commas');
   assert.strictEqual(parseFinancialAmountString('10.5'), 10.5, 'Lone dot with single decimal digit');
 
-  // Ambiguous inputs that must fail closed (return null)
+  // Ambiguous and conflicting currency inputs that must fail closed (return null)
+  assert.strictEqual(parseFinancialAmountString('Rp$10.079'), null, 'Rp$10.079 conflicting currency markers');
+  assert.strictEqual(parseFinancialAmountString('-Rp$10.079'), null, '-Rp$10.079 conflicting currency markers');
+  assert.strictEqual(parseFinancialAmountString('IDR USD 10.079'), null, 'IDR USD 10.079 conflicting currency markers');
+  assert.strictEqual(parseFinancialAmountString('USD€10.50'), null, 'USD€10.50 conflicting currency markers');
   assert.strictEqual(parseFinancialAmountString('$10.500'), null, '$10.500 is ambiguous');
   assert.strictEqual(parseFinancialAmountString('10.500'), null, '10.500 without currency is ambiguous');
   assert.strictEqual(parseFinancialAmountString('10.079'), null, '10.079 without currency is ambiguous');
@@ -476,6 +480,75 @@ test('validateReceiptFinancialIntentEnvelope validates runtime envelope and reje
     (error: unknown) => error instanceof AiResponseParseError && error.message.includes('must be a non-null object')
   );
 
+  // Missing recordDate
+  assert.throws(
+    () => validateReceiptFinancialIntentEnvelope({
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'Jago', amount: -10079 }],
+    }),
+    (error: unknown) => error instanceof AiResponseParseError && error.message.includes('valid recordDate')
+  );
+
+  // Object recordDate
+  assert.throws(
+    () => validateReceiptFinancialIntentEnvelope({
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'Jago', amount: -10079, recordDate: {} }],
+    }),
+    (error: unknown) => error instanceof AiResponseParseError && error.message.includes('valid recordDate')
+  );
+
+  // Unparseable string recordDate
+  assert.throws(
+    () => validateReceiptFinancialIntentEnvelope({
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'Jago', amount: -10079, recordDate: 'invalid-date' }],
+    }),
+    (error: unknown) => error instanceof AiResponseParseError && error.message.includes('valid recordDate')
+  );
+
+  // Missing amount
+  assert.throws(
+    () => validateReceiptFinancialIntentEnvelope({
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'Jago', recordDate: '2026-09-08T04:54:00.000Z' }],
+    }),
+    (error: unknown) => error instanceof AiResponseParseError && error.message.includes('valid amount')
+  );
+
+  // Object amount
+  assert.throws(
+    () => validateReceiptFinancialIntentEnvelope({
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'Jago', amount: { val: -10079 }, recordDate: '2026-09-08T04:54:00.000Z' }],
+    }),
+    (error: unknown) => error instanceof AiResponseParseError && error.message.includes('valid amount')
+  );
+
+  // Boolean amount
+  assert.throws(
+    () => validateReceiptFinancialIntentEnvelope({
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'Jago', amount: true, recordDate: '2026-09-08T04:54:00.000Z' }],
+    }),
+    (error: unknown) => error instanceof AiResponseParseError && error.message.includes('valid amount')
+  );
+
+  // Missing accountId with valid amount and recordDate passes envelope validation (defaults accountId to empty string)
+  const envelopeWithoutAccount = validateReceiptFinancialIntentEnvelope({
+    action: 'CREATE_RECORD',
+    records: [
+      {
+        amount: -10079,
+        recordDate: '2026-09-08T04:54:00.000Z',
+        note: 'Coffee',
+      },
+    ],
+  });
+  assert.strictEqual(envelopeWithoutAccount.action, 'CREATE_RECORD');
+  assert.strictEqual(envelopeWithoutAccount.records?.[0].accountId, '');
+  assert.strictEqual(envelopeWithoutAccount.records?.[0].amount, -10079);
+
   // Valid CREATE_RECORD envelope passes and preserves fields
   const validEnvelope = validateReceiptFinancialIntentEnvelope({
     action: 'CREATE_RECORD',
@@ -556,6 +629,80 @@ test('Message flow returns receiptExtractionFailed on parseable-but-structurally
   assert.strictEqual(harnessE.mockMcpClient.calls.length, 0, 'Zero writes on CHECK_BALANCE');
   const replyE = harnessE.mockGateway.lastMessage || '';
   assert.ok(replyE.includes('Foto struk belum berhasil dibaca'), 'Returns receiptExtractionFailed on CHECK_BALANCE');
+
+  // Case F: missing recordDate in records item
+  const harnessF = buildTestHarness();
+  harnessF.mockAiProvider.setImageHandler(async () => {
+    return validateReceiptFinancialIntentEnvelope({
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'Jago', amount: -10079 }],
+    });
+  });
+
+  await harnessF.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessF.mockMcpClient.calls.length, 0, 'Zero writes to Wallet MCP on missing recordDate');
+  const replyF = harnessF.mockGateway.lastMessage || '';
+  assert.ok(replyF.includes('Foto struk belum berhasil dibaca'), 'Returns receiptExtractionFailed on missing recordDate');
+
+  // Case G: object recordDate in records item
+  const harnessG = buildTestHarness();
+  harnessG.mockAiProvider.setImageHandler(async () => {
+    return validateReceiptFinancialIntentEnvelope({
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'Jago', amount: -10079, recordDate: {} }],
+    });
+  });
+
+  await harnessG.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessG.mockMcpClient.calls.length, 0, 'Zero writes to Wallet MCP on object recordDate');
+  const replyG = harnessG.mockGateway.lastMessage || '';
+  assert.ok(replyG.includes('Foto struk belum berhasil dibaca'), 'Returns receiptExtractionFailed on object recordDate');
+
+  // Case H: object amount in records item
+  const harnessH = buildTestHarness();
+  harnessH.mockAiProvider.setImageHandler(async () => {
+    return validateReceiptFinancialIntentEnvelope({
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'Jago', amount: { val: -10079 }, recordDate: '2026-09-08T04:54:00.000Z' }],
+    });
+  });
+
+  await harnessH.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessH.mockMcpClient.calls.length, 0, 'Zero writes to Wallet MCP on object amount');
+  const replyH = harnessH.mockGateway.lastMessage || '';
+  assert.ok(replyH.includes('Foto struk belum berhasil dibaca'), 'Returns receiptExtractionFailed on object amount');
+
+  // Case I: boolean amount in records item
+  const harnessI = buildTestHarness();
+  harnessI.mockAiProvider.setImageHandler(async () => {
+    return validateReceiptFinancialIntentEnvelope({
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'Jago', amount: true, recordDate: '2026-09-08T04:54:00.000Z' }],
+    });
+  });
+
+  await harnessI.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessI.mockMcpClient.calls.length, 0, 'Zero writes to Wallet MCP on boolean amount');
+  const replyI = harnessI.mockGateway.lastMessage || '';
+  assert.ok(replyI.includes('Foto struk belum berhasil dibaca'), 'Returns receiptExtractionFailed on boolean amount');
+
+  // Case J: missing account with valid amount and recordDate creates a clarification draft
+  const harnessJ = buildTestHarness();
+  harnessJ.mockAiProvider.setImageHandler(async () => {
+    return validateReceiptFinancialIntentEnvelope({
+      action: 'CREATE_RECORD',
+      records: [{ accountId: '', amount: -10079, recordDate: '2026-09-08T04:54:00.000Z', note: 'Receipt lunch' }],
+    });
+  });
+
+  await harnessJ.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessJ.mockMcpClient.calls.length, 0, 'Zero immediate writes to Wallet MCP pending clarification');
+  const draftsJ = harnessJ.pendingTransactionService.getAllPendingAccountSelectionDrafts();
+  assert.strictEqual(draftsJ.length, 1, 'Creates clarification draft for missing account');
+  assert.strictEqual(draftsJ[0].records[0].amount, -10079, 'Clarification draft preserved amount');
+  assert.strictEqual(draftsJ[0].records[0].recordDate, '2026-09-08T04:54:00.000Z', 'Clarification draft preserved recordDate');
+  const replyJ = harnessJ.mockGateway.lastMessage || '';
+  assert.ok(replyJ.includes('draft') || replyJ.includes('akun') || replyJ.includes('rekening'), 'Prompts user to clarify account');
 });
 
 // =========================================================================

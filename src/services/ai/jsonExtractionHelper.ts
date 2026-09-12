@@ -151,17 +151,51 @@ export function validateReceiptFinancialIntentEnvelope(
         );
       }
       const rawItem = item as Record<string, unknown>;
+
+      // 1. Amount: restrict to supported shapes (finite number or non-empty string; reject object/boolean/null/undefined/NaN)
+      const rawAmount = rawItem.amount;
+      const isValidNumberAmount = typeof rawAmount === 'number' && Number.isFinite(rawAmount);
+      const isValidStringAmount = typeof rawAmount === 'string' && rawAmount.trim().length > 0;
+      if (!isValidNumberAmount && !isValidStringAmount) {
+        throw new AiResponseParseError(
+          `Receipt Vision record item at index ${index} must have a valid amount`,
+          rawResponseContent
+        );
+      }
+
+      // 2. RecordDate: require a usable recordDate (non-empty string, valid Date.parse; reject missing/object/boolean/null/undefined/unparseable)
+      const rawRecordDate = rawItem.recordDate;
+      const isValidRecordDate =
+        typeof rawRecordDate === 'string' &&
+        rawRecordDate.trim().length > 0 &&
+        !Number.isNaN(Date.parse(rawRecordDate.trim()));
+      if (!isValidRecordDate) {
+        throw new AiResponseParseError(
+          `Receipt Vision record item at index ${index} must have a valid recordDate`,
+          rawResponseContent
+        );
+      }
+
+      // 3. AccountId: allow empty string for deterministic clarification
+      const resolvedAccountId = typeof rawItem.accountId === 'string' ? rawItem.accountId.trim() : '';
+
       validatedRecords.push({
-        accountId: typeof rawItem.accountId === 'string' ? rawItem.accountId : '',
-        categoryId: typeof rawItem.categoryId === 'string' ? rawItem.categoryId : undefined,
-        amount: rawItem.amount as any,
-        recordDate: typeof rawItem.recordDate === 'string' ? rawItem.recordDate : '',
-        note: typeof rawItem.note === 'string' ? rawItem.note : '',
-        counterParty: typeof rawItem.counterParty === 'string' ? rawItem.counterParty : undefined,
-        labels: Array.isArray(rawItem.labels)
-          ? rawItem.labels.filter((l): l is string => typeof l === 'string')
+        accountId: resolvedAccountId,
+        categoryId: typeof rawItem.categoryId === 'string' && rawItem.categoryId.trim()
+          ? rawItem.categoryId.trim()
           : undefined,
-        ...(typeof rawItem.currency === 'string' ? { currency: rawItem.currency } : {}),
+        amount: rawAmount as any,
+        recordDate: (rawRecordDate as string).trim(),
+        note: typeof rawItem.note === 'string' ? rawItem.note : '',
+        counterParty: typeof rawItem.counterParty === 'string' && rawItem.counterParty.trim()
+          ? rawItem.counterParty.trim()
+          : undefined,
+        labels: Array.isArray(rawItem.labels)
+          ? rawItem.labels.filter((labelItem): labelItem is string => typeof labelItem === 'string')
+          : undefined,
+        ...(typeof rawItem.currency === 'string' && rawItem.currency.trim()
+          ? { currency: rawItem.currency.trim() }
+          : {}),
       });
     }
 

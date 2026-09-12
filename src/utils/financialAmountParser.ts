@@ -32,34 +32,45 @@ export function parseFinancialAmount(rawInput: string): ParsedFinancialAmountRes
     strippedText = strippedText.slice(1, -1).trim();
   }
 
-  // 2. Identify explicit currency hints
-  const isIdr = /(?:^|\s)(?:rp\.?|idr)(?:\s|$)/i.test(strippedText) ||
+  // 2. Identify explicit currency hints across all supported currencies
+  const detectedCurrencies = new Set<string>();
+
+  const isIdrMatch = /(?:^|\s)(?:rp\.?|idr)(?:\s|$)/i.test(strippedText) ||
     /^(?:rp\.?|idr)/i.test(strippedText) ||
     /(?:rp\.?|idr)$/i.test(strippedText);
-
-  let detectedCurrency: string | undefined = undefined;
-  if (isIdr) {
-    detectedCurrency = 'IDR';
-  } else if (/[$]|\busd\b/i.test(strippedText)) {
-    detectedCurrency = 'USD';
-  } else if (/[€]|\beur\b/i.test(strippedText)) {
-    detectedCurrency = 'EUR';
-  } else if (/[£]|\bgbp\b/i.test(strippedText)) {
-    detectedCurrency = 'GBP';
-  } else if (/\bsgd\b/i.test(strippedText)) {
-    detectedCurrency = 'SGD';
-  } else if (/\baud\b/i.test(strippedText)) {
-    detectedCurrency = 'AUD';
-  } else if (/\bcad\b/i.test(strippedText)) {
-    detectedCurrency = 'CAD';
+  if (isIdrMatch) {
+    detectedCurrencies.add('IDR');
+  }
+  if (/[$]|\busd\b/i.test(strippedText)) {
+    detectedCurrencies.add('USD');
+  }
+  if (/[€]|\beur\b/i.test(strippedText)) {
+    detectedCurrencies.add('EUR');
+  }
+  if (/[£]|\bgbp\b/i.test(strippedText)) {
+    detectedCurrencies.add('GBP');
+  }
+  if (/\bsgd\b/i.test(strippedText)) {
+    detectedCurrencies.add('SGD');
+  }
+  if (/\baud\b/i.test(strippedText)) {
+    detectedCurrencies.add('AUD');
+  }
+  if (/\bcad\b/i.test(strippedText)) {
+    detectedCurrencies.add('CAD');
   }
 
-  const isDecimalCurrency = detectedCurrency !== undefined && detectedCurrency !== 'IDR';
-
-  // Conflicting currency indicators fail closed
-  if (isIdr && isDecimalCurrency) {
+  // Multiple conflicting currency indicators fail closed
+  if (detectedCurrencies.size > 1) {
     return null;
   }
+
+  const detectedCurrency: string | undefined = detectedCurrencies.size === 1
+    ? Array.from(detectedCurrencies)[0]
+    : undefined;
+
+  const isIdr = detectedCurrency === 'IDR';
+  const isDecimalCurrency = detectedCurrency !== undefined && detectedCurrency !== 'IDR';
 
   // 3. Strip currency markers and spaces
   const withoutCurrency = strippedText
