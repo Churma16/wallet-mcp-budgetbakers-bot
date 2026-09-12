@@ -42,6 +42,7 @@
         "test:history": "tsx tests/transactionHistory.test.ts",
         "test:history-filters": "tsx tests/transactionHistoryFilters.test.ts",
         "test:history-search": "tsx tests/transactionHistorySearch.test.ts",
+        "test:summary": "tsx tests/transactionSummary.test.ts",
         "build": "tsc"
     },
     "dependencies": {
