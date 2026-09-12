@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { loadEnvironmentConfiguration } from '../src/config/environmentConfig.js';
 import {
   collectSetupConfiguration,
   SetupChoice,
@@ -9,35 +10,60 @@ import {
   parseEnvFileContent,
 } from '../src/setup/envFileEditor.js';
 
+interface FakePrompterOptions {
+  readonly secrets?: Record<string, string>;
+  readonly questionAnswers?: Record<string, string[]>;
+  readonly aiProviders?: string[];
+  readonly channels?: string[];
+  readonly language?: string;
+  readonly emailEnabled?: boolean;
+}
+
 class FakeSetupPrompter implements SetupPrompter {
   public readonly infoMessages: string[] = [];
+  private readonly questionAnswers: Record<string, string[]>;
 
-  constructor(private readonly secretValues: Record<string, string> = {}) {}
+  constructor(private readonly options: FakePrompterOptions = {}) {
+    this.questionAnswers = Object.fromEntries(
+      Object.entries(options.questionAnswers || {}).map(([key, values]) => [key, [...values]])
+    );
+  }
 
   public info(message: string): void {
     this.infoMessages.push(message);
   }
 
   public async question(message: string, defaultValue?: string): Promise<string> {
+    for (const [messageFragment, answers] of Object.entries(this.questionAnswers)) {
+      if (message.includes(messageFragment) && answers.length > 0) {
+        return answers.shift() || '';
+      }
+    }
+
     if (message.includes('Authorized WhatsApp phone number')) {
       return defaultValue || '6281234567890';
+    }
+    if (message.includes('Authorized Telegram user ID')) {
+      return defaultValue || '123456789';
+    }
+    if (message.includes('IMAP email address')) {
+      return defaultValue || 'user@example.com';
     }
     return defaultValue || 'value';
   }
 
   public async secret(message: string): Promise<string> {
-    if (message.includes('WALLET_MCP_ACCESS_TOKEN')) {
-      return this.secretValues.wallet || '';
-    }
-    if (message.includes('GEMINI_API_KEY')) {
-      return this.secretValues.gemini || '';
+    for (const [messageFragment, value] of Object.entries(this.options.secrets || {})) {
+      if (message.includes(messageFragment)) {
+        return value;
+      }
     }
     return '';
   }
 
   public async confirm(message: string): Promise<boolean> {
     if (message.includes('email monitoring')) {
-      return false;
+      return this.options.emailEnabled ?? false;
     }
     return true;
   }
@@ -47,37 +73,80 @@ class FakeSetupPrompter implements SetupPrompter {
     _choices: readonly SetupChoice[],
     defaultValue: string
   ): Promise<string> {
-    return defaultValue;
+    return this.options.language || defaultValue;
   }
 
   public async chooseMany(message: string): Promise<string[]> {
     if (message.includes('AI provider')) {
-      return ['gemini'];
+      return this.options.aiProviders || ['gemini'];
     }
-    return ['whatsapp'];
+    return this.options.channels || ['whatsapp'];
+  }
+}
+
+function withEnvironment<T>(values: Record<string, string>, callback: () => T): T {
+  const managedKeys = [
+    'AI_PROVIDER',
+    'AI_API_KEY',
+    'AI_BASE_URL',
+    'AI_MODEL',
+    'OPENROUTER_API_KEY',
+    'GROQ_API_KEY',
+    'OPENAI_API_KEY',
+    'GEMINI_API_KEY',
+    'WALLET_MCP_ACCESS_TOKEN',
+    'ENABLED_MESSENGER_CHANNELS',
+    'APP_LANGUAGE',
+    'DEFAULT_CURRENCY',
+    'APP_TIMEZONE',
+  ];
+  const previousValues = new Map<string, string | undefined>();
+
+  for (const key of managedKeys) {
+    previousValues.set(key, process.env[key]);
+    delete process.env[key];
+  }
+  Object.assign(process.env, values);
+
+  try {
+    return callback();
+  } finally {
+    for (const key of managedKeys) {
+      const previousValue = previousValues.get(key);
+      if (previousValue === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = previousValue;
+      }
+    }
   }
 }
 
 describe('setup wizard', () => {
-  it('preserves comments and unknown values when updating env content', () => {
+  it('preserves comments, inline comments, quoted hashes, and unknown values', () => {
     const existing = [
       '# existing comment',
       'UNKNOWN_SETTING=keep-me',
-      'APP_LANGUAGE=en',
+      'APP_LANGUAGE=en # preferred locally',
+      'CUSTOM_TEXT="value # not comment" # preserve this note',
       'WALLET_MCP_ACCESS_TOKEN=old-secret',
       '',
     ].join('\n');
 
     const merged = mergeEnvFileContent(existing, {
       APP_LANGUAGE: 'id',
+      CUSTOM_TEXT: 'changed # value',
       DEFAULT_CURRENCY: 'IDR',
     });
     const parsed = parseEnvFileContent(merged);
 
     expect(merged).toContain('# existing comment');
+    expect(merged).toContain('APP_LANGUAGE=id # preferred locally');
+    expect(merged).toContain('CUSTOM_TEXT="changed # value" # preserve this note');
     expect(parsed.UNKNOWN_SETTING).toBe('keep-me');
     expect(parsed.WALLET_MCP_ACCESS_TOKEN).toBe('old-secret');
     expect(parsed.APP_LANGUAGE).toBe('id');
+    expect(parsed.CUSTOM_TEXT).toBe('changed # value');
     expect(parsed.DEFAULT_CURRENCY).toBe('IDR');
   });
 
@@ -110,8 +179,10 @@ describe('setup wizard', () => {
 
   it('collects fresh required credentials while keeping them out of help and summary output', async () => {
     const prompter = new FakeSetupPrompter({
-      wallet: 'wallet-new-secret',
-      gemini: 'gemini-new-secret',
+      secrets: {
+        WALLET_MCP_ACCESS_TOKEN: 'wallet-new-secret',
+        GEMINI_API_KEY: 'gemini-new-secret',
+      },
     });
 
     const result = await collectSetupConfiguration(prompter, {});
@@ -123,5 +194,127 @@ describe('setup wizard', () => {
     expect(visibleOutput).not.toContain('gemini-new-secret');
     expect(visibleOutput).toContain('docs/setup-credentials.md#wallet-mcp');
     expect(visibleOutput).toContain('docs/setup-credentials.md#gemini');
+  });
+
+  it('rebinds AI_API_KEY to a retained credential when the primary provider is reordered', async () => {
+    const existingValues = {
+      WALLET_MCP_BASE_URL: 'https://mcp.wallet.budgetbakers.com',
+      WALLET_MCP_ACCESS_TOKEN: 'wallet-existing-secret',
+      AI_PROVIDER: 'openrouter,groq',
+      AI_API_KEY: 'openrouter-primary-secret',
+      OPENROUTER_API_KEY: 'openrouter-provider-secret',
+      GROQ_API_KEY: 'groq-provider-secret',
+      AI_BASE_URL: 'https://openrouter.ai/api/v1',
+      AI_MODEL: 'openrouter-model',
+      ENABLED_MESSENGER_CHANNELS: 'console',
+      APP_LANGUAGE: 'id',
+      DEFAULT_CURRENCY: 'IDR',
+      APP_TIMEZONE: 'Asia/Jakarta',
+      EMAIL_SYNC_ENABLED: 'false',
+    };
+    const prompter = new FakeSetupPrompter({
+      aiProviders: ['groq', 'openrouter'],
+      channels: ['console'],
+    });
+
+    const result = await collectSetupConfiguration(prompter, existingValues);
+    const existingContent = Object.entries(existingValues)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n');
+    const mergedValues = parseEnvFileContent(
+      mergeEnvFileContent(existingContent, result.updates)
+    );
+
+    expect(result.updates.AI_API_KEY).toBe('groq-provider-secret');
+    expect(mergedValues.AI_PROVIDER).toBe('groq,openrouter');
+
+    const loadedConfig = withEnvironment(mergedValues, () => loadEnvironmentConfiguration());
+    expect(loadedConfig.aiProvider).toBe('groq');
+    expect(loadedConfig.aiApiKey).toBe('groq-provider-secret');
+  });
+
+  it('requires a fresh generic key when switching from a named provider to custom', async () => {
+    const existingValues = {
+      WALLET_MCP_ACCESS_TOKEN: 'wallet-existing-secret',
+      AI_PROVIDER: 'openrouter',
+      AI_API_KEY: 'stale-openrouter-generic-secret',
+      OPENROUTER_API_KEY: 'openrouter-provider-secret',
+      ENABLED_MESSENGER_CHANNELS: 'console',
+      APP_LANGUAGE: 'id',
+      DEFAULT_CURRENCY: 'IDR',
+      APP_TIMEZONE: 'Asia/Jakarta',
+      EMAIL_SYNC_ENABLED: 'false',
+    };
+    const prompter = new FakeSetupPrompter({
+      aiProviders: ['custom'],
+      channels: ['console'],
+      secrets: {
+        AI_API_KEY: 'custom-new-secret',
+      },
+      questionAnswers: {
+        'custom base URL': ['https://custom.example/v1'],
+        'custom model': ['custom-model'],
+      },
+    });
+
+    const result = await collectSetupConfiguration(prompter, existingValues);
+
+    expect(result.updates.AI_API_KEY).toBe('custom-new-secret');
+    expect(result.updates.AI_BASE_URL).toBe('https://custom.example/v1');
+    expect(result.updates.AI_MODEL).toBe('custom-model');
+  });
+
+  it('reprompts invalid WhatsApp numbers and stores only the runtime-normalized value', async () => {
+    const existingValues = {
+      WALLET_MCP_ACCESS_TOKEN: 'wallet-existing-secret',
+      AI_PROVIDER: 'gemini',
+      GEMINI_API_KEY: 'gemini-existing-secret',
+      ENABLED_MESSENGER_CHANNELS: 'whatsapp',
+      APP_LANGUAGE: 'id',
+      DEFAULT_CURRENCY: 'IDR',
+      APP_TIMEZONE: 'Asia/Jakarta',
+      EMAIL_SYNC_ENABLED: 'false',
+    };
+    const prompter = new FakeSetupPrompter({
+      questionAnswers: {
+        'Authorized WhatsApp phone number': ['123', '081234567890'],
+      },
+    });
+
+    const result = await collectSetupConfiguration(prompter, existingValues);
+
+    expect(result.updates.ALLOWED_PHONE_NUMBER).toBe('6281234567890');
+    expect(
+      prompter.infoMessages.some(message => message.includes('valid WhatsApp phone number'))
+    ).toBe(true);
+  });
+
+  it('configures Telegram, console, OpenAI, and optional email sync in one run', async () => {
+    const prompter = new FakeSetupPrompter({
+      aiProviders: ['openai'],
+      channels: ['telegram', 'console'],
+      emailEnabled: true,
+      secrets: {
+        WALLET_MCP_ACCESS_TOKEN: 'wallet-new-secret',
+        OPENAI_API_KEY: 'openai-new-secret',
+        TELEGRAM_BOT_TOKEN: 'telegram-new-secret',
+        EMAIL_IMAP_PASSWORD: 'email-app-password',
+      },
+      questionAnswers: {
+        'Authorized Telegram user ID': ['123456789'],
+        'IMAP email address': ['user@example.com'],
+      },
+    });
+
+    const result = await collectSetupConfiguration(prompter, {});
+
+    expect(result.updates.AI_PROVIDER).toBe('openai');
+    expect(result.updates.AI_API_KEY).toBe('openai-new-secret');
+    expect(result.updates.OPENAI_API_KEY).toBe('openai-new-secret');
+    expect(result.updates.ENABLED_MESSENGER_CHANNELS).toBe('telegram,console');
+    expect(result.updates.TELEGRAM_ALLOWED_USER_ID).toBe('123456789');
+    expect(result.updates.EMAIL_SYNC_ENABLED).toBe('true');
+    expect(result.updates.EMAIL_IMAP_USER).toBe('user@example.com');
+    expect(result.updates.EMAIL_IMAP_PASSWORD).toBe('email-app-password');
   });
 });
