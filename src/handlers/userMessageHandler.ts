@@ -21,7 +21,7 @@ import {
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../utils/logger.js';
 import { extractHashtags } from '../utils/hashtagParser.js';
-import { resolveAndEnsureLabels } from '../services/walletLabelResolver.js';
+import { WalletRecordPreparationService } from '../services/walletRecordPreparationService.js';
 
 function formatAccountResolutionIssueMessage(issue: AccountResolutionIssue): string {
   const dictionary = getDictionary();
@@ -39,6 +39,7 @@ function formatAccountResolutionIssueMessage(issue: AccountResolutionIssue): str
 export class UserMessageHandler {
   private readonly accountClarificationHandler: AccountClarificationHandler;
   private readonly financialActionExecutor: FinancialActionExecutor;
+  private readonly recordPreparationService: WalletRecordPreparationService;
 
   constructor(
     private readonly messagingGateway: MessagingGatewayService,
@@ -48,7 +49,8 @@ export class UserMessageHandler {
     private readonly financialAiProvider: FinancialAiProvider,
     private readonly walletCacheService: WalletCacheService,
     private readonly walletMcpClient: WalletMcpClientService,
-    financialActionExecutor?: FinancialActionExecutor
+    financialActionExecutor?: FinancialActionExecutor,
+    recordPreparationService?: WalletRecordPreparationService
   ) {
     this.financialActionExecutor =
       financialActionExecutor ||
@@ -57,11 +59,15 @@ export class UserMessageHandler {
         walletCacheService,
         messagingGateway
       );
+    this.recordPreparationService =
+      recordPreparationService ||
+      new WalletRecordPreparationService(walletCacheService, walletMcpClient);
     this.accountClarificationHandler = new AccountClarificationHandler(
       pendingTransactionManager,
       walletMcpClient,
       walletCacheService,
-      messagingGateway
+      messagingGateway,
+      this.recordPreparationService
     );
   }
 
@@ -323,17 +329,7 @@ export class UserMessageHandler {
         }
 
         // Resolve and auto-create labels for all records
-        for (const record of validRecordsToCreate) {
-          if (record.labels && record.labels.length > 0) {
-            const { resolvedLabelIds, resolvedLabelNames } = await resolveAndEnsureLabels(
-              record.labels,
-              this.walletCacheService,
-              this.walletMcpClient
-            );
-            record.labelIds = resolvedLabelIds.length > 0 ? resolvedLabelIds : undefined;
-            record.labels = resolvedLabelNames.length > 0 ? resolvedLabelNames : undefined;
-          }
-        }
+        await this.recordPreparationService.prepareRecordsForDispatch(validRecordsToCreate);
 
         applicationLogger.mcp(`Creating ${validRecordsToCreate.length} record(s) in Wallet...`);
 

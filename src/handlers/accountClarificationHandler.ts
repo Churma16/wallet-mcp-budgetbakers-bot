@@ -26,15 +26,22 @@ import {
 } from '../utils/accountClarificationFormatter.js';
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger, formatConciseErrorMessage } from '../utils/logger.js';
-import { resolveAndEnsureLabels } from '../services/walletLabelResolver.js';
+import { WalletRecordPreparationService } from '../services/walletRecordPreparationService.js';
 
 export class AccountClarificationHandler {
+  private readonly recordPreparationService: WalletRecordPreparationService;
+
   constructor(
     private readonly pendingTransactionManager: PendingTransactionService,
     private readonly walletMcpClient: WalletMcpClientService,
     private readonly walletCacheService: WalletCacheService,
-    private readonly messagingGateway: MessagingGatewayService
-  ) {}
+    private readonly messagingGateway: MessagingGatewayService,
+    recordPreparationService?: WalletRecordPreparationService
+  ) {
+    this.recordPreparationService =
+      recordPreparationService ||
+      new WalletRecordPreparationService(walletCacheService, walletMcpClient);
+  }
 
   public async createPendingAccountSelectionDraft(
     event: IncomingUserMessageEvent,
@@ -314,17 +321,7 @@ export class AccountClarificationHandler {
       return true;
     }
 
-    for (const record of validationResult.sanitizedRecords) {
-      if (record.labels && record.labels.length > 0) {
-        const { resolvedLabelIds, resolvedLabelNames } = await resolveAndEnsureLabels(
-          record.labels,
-          this.walletCacheService,
-          this.walletMcpClient
-        );
-        record.labelIds = resolvedLabelIds.length > 0 ? resolvedLabelIds : undefined;
-        record.labels = resolvedLabelNames.length > 0 ? resolvedLabelNames : undefined;
-      }
-    }
+    await this.recordPreparationService.prepareRecordsForDispatch(validationResult.sanitizedRecords);
 
     try {
       await this.walletMcpClient.createRecords(validationResult.sanitizedRecords);

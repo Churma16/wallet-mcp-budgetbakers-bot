@@ -11,7 +11,7 @@ import {
   validateReceiptFinancialIntentEnvelope,
 } from './jsonExtractionHelper.js';
 import { getActiveLanguage } from '../../i18n/index.js';
-import { getApplicationTimezone } from '../../utils/humanResponseFormatter.js';
+import { getApplicationTimezone } from '../../config/applicationConfig.js';
 import {
   getCurrentLocalDateString,
   getTimezoneOffsetDetails,
