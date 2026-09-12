@@ -178,17 +178,24 @@ assert.strictEqual(usdExpense, '-$25.00', 'USD expense amount is formatted with 
 const usdIncome = formatCompactTransactionAmount(100.5, 'income', 'USD', 'en');
 assert.strictEqual(usdIncome, '+$100.50', 'USD income amount is formatted with plus prefix and two decimals');
 
-// 10.3 Compact transaction date formatting tests (deterministic across runners/timezones)
-const currentCalendarYear = new Date().getFullYear();
+// 10.3 Compact transaction date formatting tests (deterministic across runners/timezones & year-boundaries)
+const fixedReferenceInstant = new Date('2026-06-15T12:00:00.000Z');
 // 06:52:00 UTC corresponds to 13:52:00 in Asia/Jakarta (UTC+7)
-const sampleDateCurrentYear = new Date(Date.UTC(currentCalendarYear, 8, 11, 6, 52, 0, 0));
-const compactDateCurrentYear = formatCompactTransactionDate(sampleDateCurrentYear, 'id');
-assert.doesNotMatch(compactDateCurrentYear, new RegExp(String(currentCalendarYear)), 'Current year should be omitted from compact date');
+const sampleDateCurrentYear = new Date('2026-09-11T06:52:00.000Z');
+const compactDateCurrentYear = formatCompactTransactionDate(sampleDateCurrentYear, 'id', fixedReferenceInstant);
+assert.doesNotMatch(compactDateCurrentYear, /2026/, 'Current year should be omitted from compact date');
 assert.match(compactDateCurrentYear, /13:52/, 'Time HH:mm should be preserved in compact date');
 
 const sampleDatePastYear = new Date('2024-05-10T03:15:00.000Z');
-const compactDatePastYear = formatCompactTransactionDate(sampleDatePastYear, 'id');
+const compactDatePastYear = formatCompactTransactionDate(sampleDatePastYear, 'id', fixedReferenceInstant);
 assert.match(compactDatePastYear, /2024/, 'Past year should be included in compact date');
+
+// 10.4 Line normalization and Unicode surrogate safety in title truncation
+const multilineTitle = 'Pembayaran Toko Buku\nLantai 2\r\nBlok B';
+assert.strictEqual(truncateTransactionTitle(multilineTitle), 'Pembayaran Toko Buku Lantai 2 Blok B', 'Internal newlines collapsed to single line');
+
+const emojiBoundaryTitle = `${'A'.repeat(42)}🎉 EXTRA_TEXT_THAT_SHOULD_BE_TRUNCATED`;
+assert.strictEqual(truncateTransactionTitle(emojiBoundaryTitle), `${'A'.repeat(42)}🎉...`, 'Emoji surrogate pair preserved cleanly at truncation boundary');
 
 // 10.4 3-line item layout, lighter header, bold amount, and emoji-free items
 const sampleHistoryPage = {
@@ -286,6 +293,35 @@ const fallbackHistoryPage = {
 };
 const fallbackFormattedId = formatTransactionHistoryMessage(fallbackHistoryPage, 'id');
 assert.match(fallbackFormattedId, /1\. Pengeluaran\n\*-Rp15\.000\* • Akun\nUmum • \d+ Sep \d\d:\d\d/m, 'Missing note, account, and category resolve to defaults');
+
+// 10.6 Transfer semantics preservation (distinguishable from ordinary expense/income)
+const transferPage = {
+  records: [
+    {
+      id: 'rec-transfer-1',
+      accountId: 'acc-bca',
+      accountName: 'BCA Utama',
+      amount: -500000,
+      currency: 'IDR',
+      recordDate: '2026-09-11T06:50:00.000Z',
+      recordType: 'expense' as const,
+      transfer: true,
+    },
+  ],
+  total: 1,
+  limit: 10,
+  offset: 0,
+  page: 1,
+  totalPages: 1,
+  nextOffset: null,
+  hasMore: false,
+  sort: 'newest' as const,
+};
+const transferFormattedId = formatTransactionHistoryMessage(transferPage, 'id');
+assert.match(transferFormattedId, /1\. Transfer \/ Top-Up/, 'Transfer without note/category identifies as transfer');
+assert.match(transferFormattedId, /\*-Rp500\.000\* • BCA Utama/, 'Transfer renders compact signed amount');
+assert.match(transferFormattedId, /Transfer \/ Top-Up • \d+ Sep \d\d:\d\d/, 'Transfer category defaults to Transfer / Top-Up');
+assert.strictEqual(transferFormattedId.includes('Pengeluaran'), false, 'Transfer must not render as ordinary expense');
 
 console.log('\n[PASS] All humanResponseFormatter tests completed with assertions!');
 
