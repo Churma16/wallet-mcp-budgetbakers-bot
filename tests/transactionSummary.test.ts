@@ -130,10 +130,16 @@ console.log('\n[Suite 1] Aggregates totals across paginated history and excludes
   assert.strictEqual(result.breakdown[0].name, 'Food');
   assert.strictEqual(result.breakdown[0].totals[0].expense, 100000);
 
+  setActiveLanguage('en');
+  const formatted = formatTransactionSummaryMessage(result);
+  assert.match(formatted, /💰 Income:/);
+  assert.match(formatted, /💸 Expenses:/);
+  assert.match(formatted, /🧮 Net:/);
+
   console.log('  [PASS] Pagination, totals, transfer exclusion, and category breakdown verified.');
 }
 
-console.log('\n[Suite 2] Filtered totals preserve history filter semantics...');
+console.log('\n[Suite 2] Filtered totals preserve history filter semantics without pseudo-net output...');
 {
   const capturedOptions: TransactionHistoryQueryOptions[] = [];
   const mockHistoryService = {
@@ -141,7 +147,9 @@ console.log('\n[Suite 2] Filtered totals preserve history filter semantics...');
       capturedOptions.push(options);
       const records = options.recordType === 'income'
         ? [createRecord({ id: 'income-only', amount: 750000, recordType: 'income' })]
-        : [];
+        : options.recordType === 'expense'
+          ? [createRecord({ id: 'expense-only', amount: -250000, recordType: 'expense' })]
+          : [];
       return createHistoryPage(records, {
         appliedFilters: {
           account: { id: 'acc-bca', name: 'BCA' },
@@ -153,7 +161,7 @@ console.log('\n[Suite 2] Filtered totals preserve history filter semantics...');
   } as unknown as TransactionHistoryService;
 
   const service = new TransactionSummaryService(mockHistoryService);
-  const result = await service.getTransactionSummary({
+  const incomeResult = await service.getTransactionSummary({
     accountName: 'bca',
     recordType: 'income',
     datePeriod: 'today',
@@ -162,11 +170,31 @@ console.log('\n[Suite 2] Filtered totals preserve history filter semantics...');
   assert.strictEqual(capturedOptions[0].accountName, 'bca');
   assert.strictEqual(capturedOptions[0].recordType, 'income');
   assert.strictEqual(capturedOptions[0].datePeriod, 'today');
-  assert.strictEqual(result.totals[0].income, 750000);
-  assert.strictEqual(result.totals[0].expense, 0);
-  assert.strictEqual(result.totals[0].net, 750000);
+  assert.strictEqual(incomeResult.totals[0].income, 750000);
+  assert.strictEqual(incomeResult.totals[0].expense, 0);
+  assert.strictEqual(incomeResult.totals[0].net, 750000);
 
-  console.log('  [PASS] Account, type, and date filters are delegated unchanged to transaction history.');
+  setActiveLanguage('en');
+  const incomeFormatted = formatTransactionSummaryMessage(incomeResult);
+  assert.match(incomeFormatted, /💰 Income:/);
+  assert.doesNotMatch(incomeFormatted, /💸 Expenses:/);
+  assert.doesNotMatch(incomeFormatted, /🧮 Net:/);
+
+  const expenseResult = await service.getTransactionSummary({
+    accountName: 'bca',
+    recordType: 'expense',
+    datePeriod: 'today',
+  });
+  assert.strictEqual(expenseResult.totals[0].income, 0);
+  assert.strictEqual(expenseResult.totals[0].expense, 250000);
+  assert.strictEqual(expenseResult.totals[0].net, -250000);
+
+  const expenseFormatted = formatTransactionSummaryMessage(expenseResult);
+  assert.doesNotMatch(expenseFormatted, /💰 Income:/);
+  assert.match(expenseFormatted, /💸 Expenses:/);
+  assert.doesNotMatch(expenseFormatted, /🧮 Net:/);
+
+  console.log('  [PASS] Type-filtered summaries render only the requested metric and omit pseudo-net values.');
 }
 
 console.log('\n[Suite 3] Multi-currency totals remain isolated...');
@@ -258,9 +286,21 @@ console.log('\n[Suite 5] Fast-path summary intents reuse history-style filters..
   assert.strictEqual((filteredAction as any)?.options.categoryName, 'makanan');
   assert.strictEqual((filteredAction as any)?.options.datePeriod, 'this_month');
 
+  const naturalEnglishAction = detectFastPathAction('how much did I spend on food this month?');
+  assert.strictEqual((naturalEnglishAction as any)?.type, 'TRANSACTION_SUMMARY');
+  assert.strictEqual((naturalEnglishAction as any)?.options.recordType, 'expense');
+  assert.strictEqual((naturalEnglishAction as any)?.options.categoryName, 'food');
+  assert.strictEqual((naturalEnglishAction as any)?.options.datePeriod, 'this_month');
+
+  const naturalIndonesianAction = detectFastPathAction('berapa total pengeluaran makanan bulan ini?');
+  assert.strictEqual((naturalIndonesianAction as any)?.type, 'TRANSACTION_SUMMARY');
+  assert.strictEqual((naturalIndonesianAction as any)?.options.recordType, 'expense');
+  assert.strictEqual((naturalIndonesianAction as any)?.options.categoryName, 'makanan');
+  assert.strictEqual((naturalIndonesianAction as any)?.options.datePeriod, 'this_month');
+
   assert.strictEqual(detectFastPathAction('bayar 50rb makan siang'), null);
 
-  console.log('  [PASS] Indonesian and English summary commands route through deterministic fast-path parsing.');
+  console.log('  [PASS] Command and natural-language summary questions route through deterministic parsing.');
 }
 
 setActiveLanguage('id');
