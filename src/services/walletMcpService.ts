@@ -661,10 +661,10 @@ export class WalletMcpClientService {
         !searchCacheEntry.exhausted &&
         searchCacheEntry.matchedRecords.length < lookaheadTargetCount &&
         scanCallCount >= MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST;
-
+      const requestedPageComplete = searchCacheEntry.matchedRecords.length >= requestedPageEndOffset;
       const pageNumber = Math.floor(resolvedOffset / resolvedLimit) + 1;
 
-      if (scanBudgetReached) {
+      if (scanBudgetReached && !requestedPageComplete) {
         return {
           records: [],
           total: undefined,
@@ -688,7 +688,10 @@ export class WalletMcpClientService {
 
       const pageRecords = searchCacheEntry.matchedRecords.slice(resolvedOffset, requestedPageEndOffset);
       const hasBufferedLookahead = searchCacheEntry.matchedRecords.length > requestedPageEndOffset;
-      const hasMore = hasBufferedLookahead || !searchCacheEntry.exhausted;
+      const continuationUnknown = scanBudgetReached && requestedPageComplete && !hasBufferedLookahead;
+      const hasMore = continuationUnknown
+        ? false
+        : (hasBufferedLookahead || !searchCacheEntry.exhausted);
       const resolvedTotalCount = searchCacheEntry.exhausted
         ? searchCacheEntry.matchedRecords.length
         : undefined;
