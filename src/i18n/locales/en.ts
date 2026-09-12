@@ -154,6 +154,9 @@ export const englishDictionary: ResponseDictionary = {
             }
             return `• Search keyword "${issue.rawValue}" is invalid or exceeds the maximum length of 100 characters.`;
           }
+          if (issue.reason === 'UNRESOLVED') {
+            return `• Search verification paused at the safe scan limit. Retry the same search to continue from the cached position, or narrow it with account, category, or date filters.`;
+          }
           return `• Search query "${issue.rawValue}" could not be processed.`;
         }
         return `• ${issue.message}`;
