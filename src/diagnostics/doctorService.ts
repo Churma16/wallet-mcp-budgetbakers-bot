@@ -94,7 +94,7 @@ async function probeAiProvider(
         temperature: 0,
         maxOutputTokens: 4,
         httpOptions: {
-          timeout: Math.min(config.geminiRequestTimeoutMilliseconds, 15000),
+          timeout: config.geminiRequestTimeoutMilliseconds,
         },
       },
     });
@@ -123,7 +123,7 @@ async function probeAiProvider(
   const httpClient = axios.create({
     baseURL: trimTrailingSlashes(connection.baseUrl),
     headers,
-    timeout: Math.min(config.aiRequestTimeoutMilliseconds, 15000),
+    timeout: config.aiRequestTimeoutMilliseconds,
   });
 
   await httpClient.post('/chat/completions', {
