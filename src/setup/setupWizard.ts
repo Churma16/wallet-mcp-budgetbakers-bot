@@ -1,4 +1,7 @@
-import { SupportedAiProviderType } from '../config/environmentConfig.js';
+import {
+  normalizePhoneNumber,
+  SupportedAiProviderType,
+} from '../config/environmentConfig.js';
 import { EnvironmentValueMap } from './envFileEditor.js';
 
 export interface SetupChoice {
@@ -187,6 +190,37 @@ async function promptCredential(
   }
 }
 
+async function normalizeWhatsAppPhoneNumber(
+  prompter: SetupPrompter,
+  initialValue: string,
+  defaultCurrency: string,
+  appTimezone: string,
+  appLanguage: string
+): Promise<string> {
+  let candidateValue = initialValue;
+
+  while (true) {
+    try {
+      const normalizedValue = normalizePhoneNumber(
+        candidateValue,
+        defaultCurrency,
+        appTimezone,
+        appLanguage
+      );
+      if (normalizedValue) {
+        return normalizedValue;
+      }
+    } catch {
+      // Re-prompt below with a concise message rather than echoing runtime error details.
+    }
+
+    prompter.info(
+      '[WARN] Enter a valid WhatsApp phone number in international E.164 format (7-15 digits), or an Indonesian 08 number when using Indonesian regional settings.'
+    );
+    candidateValue = await promptRequiredText(prompter, 'Authorized WhatsApp phone number');
+  }
+}
+
 function resolveExistingProviderKey(
   provider: SupportedAiProviderType,
   existingValues: EnvironmentValueMap,
@@ -195,6 +229,10 @@ function resolveExistingProviderKey(
   const providerVariable = PROVIDER_API_KEY_VARIABLE[provider];
   if (!providerVariable) {
     return undefined;
+  }
+
+  if (provider === 'custom') {
+    return existingPrimaryProvider === 'custom' ? existingValues.AI_API_KEY : undefined;
   }
 
   if (provider === existingPrimaryProvider && provider !== 'gemini') {
@@ -262,15 +300,17 @@ async function configureAiProviders(
         existingCredential,
         true
       );
+      const effectiveCredential = enteredCredential || existingCredential;
 
       if (enteredCredential) {
         const providerVariable = PROVIDER_API_KEY_VARIABLE[provider];
         if (providerVariable) {
           updates[providerVariable] = enteredCredential;
         }
-        if (provider === primaryProvider && provider !== 'gemini') {
-          updates.AI_API_KEY = enteredCredential;
-        }
+      }
+
+      if (provider === primaryProvider && provider !== 'gemini' && effectiveCredential) {
+        updates.AI_API_KEY = effectiveCredential;
       }
     }
 
@@ -362,13 +402,14 @@ export async function collectSetupConfiguration(
 
   const selectedChannels = selectedChannelValues.filter(isKnownMessenger);
   updates.ENABLED_MESSENGER_CHANNELS = selectedChannels.join(',');
+  let whatsappPhoneNumberCandidate: string | undefined;
 
   if (selectedChannels.includes('whatsapp')) {
     prompter.info('');
     prompter.info('[INFO] WhatsApp setup');
     prompter.info('Use the authorized phone number in international E.164 format.');
     prompter.info(`Full guide: ${REPOSITORY_DOC_BASE}#whatsapp`);
-    updates.ALLOWED_PHONE_NUMBER = await promptRequiredText(
+    whatsappPhoneNumberCandidate = await promptRequiredText(
       prompter,
       'Authorized WhatsApp phone number',
       existingValues.ALLOWED_PHONE_NUMBER
@@ -426,6 +467,16 @@ export async function collectSetupConfiguration(
     'Application timezone (IANA identifier)',
     existingValues.APP_TIMEZONE || 'Asia/Jakarta'
   );
+
+  if (whatsappPhoneNumberCandidate !== undefined) {
+    updates.ALLOWED_PHONE_NUMBER = await normalizeWhatsAppPhoneNumber(
+      prompter,
+      whatsappPhoneNumberCandidate,
+      updates.DEFAULT_CURRENCY,
+      updates.APP_TIMEZONE,
+      updates.APP_LANGUAGE
+    );
+  }
 
   const existingEmailEnabled = existingValues.EMAIL_SYNC_ENABLED === 'true';
   const enableEmailSync = await prompter.confirm(
