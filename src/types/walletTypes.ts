@@ -176,3 +176,35 @@ export interface TransactionHistoryPage {
   unresolvedFilters?: UnresolvedFilterIssue[];
 }
 
+export type TransactionSummaryGroupBy = 'none' | 'category' | 'account';
+
+export interface TransactionSummaryQueryOptions extends TransactionHistoryFilters {
+  groupBy?: TransactionSummaryGroupBy;
+}
+
+export interface TransactionCurrencyTotals {
+  currency: string;
+  income: number;
+  expense: number;
+  net: number;
+  transactionCount: number;
+}
+
+export interface TransactionSummaryBreakdownItem {
+  key: string;
+  name?: string;
+  transactionCount: number;
+  totals: TransactionCurrencyTotals[];
+}
+
+export interface TransactionSummaryResult {
+  transactionCount: number;
+  excludedTransferCount: number;
+  totals: TransactionCurrencyTotals[];
+  breakdown: TransactionSummaryBreakdownItem[];
+  groupBy: TransactionSummaryGroupBy;
+  isMultiCurrency: boolean;
+  isComplete: boolean;
+  appliedFilters?: AppliedTransactionHistoryFilters;
+  unresolvedFilters?: UnresolvedFilterIssue[];
+}

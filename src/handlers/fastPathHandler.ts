@@ -2,38 +2,61 @@ import { FastPathAction } from '../utils/fastPathIntentDetector.js';
 import { WalletMcpClientService } from '../services/walletMcpService.js';
 import { WalletCacheService } from '../services/walletCacheService.js';
 import { TransactionHistoryService } from '../services/transactionHistoryService.js';
+import { TransactionSummaryService } from '../services/transactionSummaryService.js';
 import { MessagingGatewayService, IncomingUserMessageEvent } from '../services/messaging/index.js';
 import {
   formatBalanceSummaryMessage,
   formatBudgetSummaryMessage,
   formatTransactionHistoryMessage,
 } from '../utils/humanResponseFormatter.js';
-import { TransactionHistoryQueryOptions } from '../types/walletTypes.js';
+import { formatTransactionSummaryMessage } from '../utils/transactionSummaryFormatter.js';
+import {
+  TransactionHistoryQueryOptions,
+  TransactionSummaryQueryOptions,
+} from '../types/walletTypes.js';
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../utils/logger.js';
 
 export class FastPathHandler {
   private readonly transactionHistoryService: TransactionHistoryService;
+  private readonly transactionSummaryService: TransactionSummaryService;
 
   constructor(
     private readonly walletMcpClient: WalletMcpClientService,
     private readonly walletCacheService: WalletCacheService,
     private readonly messagingGateway: MessagingGatewayService,
-    transactionHistoryService?: TransactionHistoryService
+    transactionHistoryService?: TransactionHistoryService,
+    transactionSummaryService?: TransactionSummaryService
   ) {
     this.transactionHistoryService =
       transactionHistoryService ||
       new TransactionHistoryService(walletMcpClient, walletCacheService);
+    this.transactionSummaryService =
+      transactionSummaryService ||
+      new TransactionSummaryService(this.transactionHistoryService);
   }
 
   /**
-   * Handles zero-token instant actions like balance checks, budget status, transaction history, and help menu
+   * Handles zero-token instant actions like balance checks, budget status,
+   * transaction history, transaction summaries, and help menu.
    */
   public async handleFastPath(
     event: IncomingUserMessageEvent,
     fastPathAction: FastPathAction,
     processingStartTimestamp: number
   ): Promise<boolean> {
+    if (
+      typeof fastPathAction === 'object' &&
+      fastPathAction !== null &&
+      fastPathAction.type === 'TRANSACTION_SUMMARY'
+    ) {
+      return await this.handleTransactionSummary(
+        event,
+        fastPathAction.options,
+        processingStartTimestamp
+      );
+    }
+
     if (
       (typeof fastPathAction === 'object' &&
         fastPathAction !== null &&
@@ -44,7 +67,7 @@ export class FastPathHandler {
         typeof fastPathAction === 'object' &&
         fastPathAction !== null &&
         'options' in fastPathAction
-          ? fastPathAction.options
+          ? fastPathAction.options as TransactionHistoryQueryOptions
           : undefined;
       return await this.handleTransactionHistory(event, options, processingStartTimestamp);
     }
@@ -144,6 +167,40 @@ export class FastPathHandler {
     const totalCountSuffix = typeof historyPage.total === 'number' ? ` of ${historyPage.total}` : '';
     applicationLogger.success(
       `[${event.channel.toUpperCase()}] Sent transaction history (${historyPage.records.length}${totalCountSuffix}) via Fast-path (${processingDurationMs}ms).`
+    );
+
+    return true;
+  }
+
+  private async handleTransactionSummary(
+    event: IncomingUserMessageEvent,
+    options: TransactionSummaryQueryOptions,
+    processingStartTimestamp: number
+  ): Promise<boolean> {
+    applicationLogger.info('Fast-path matched: TRANSACTION_SUMMARY (0 AI tokens consumed)');
+    applicationLogger.mcp('Fetching transaction summary...');
+
+    const requestReferenceInstant = new Date(processingStartTimestamp);
+    const summaryResult = await this.transactionSummaryService.getTransactionSummary(
+      options,
+      requestReferenceInstant
+    );
+    const replyMessage = formatTransactionSummaryMessage(summaryResult);
+
+    applicationLogger.fileDetail('mcp', 'Dispatched Transaction Summary Reply (Fast-path)', {
+      channel: event.channel,
+      transactionCount: summaryResult.transactionCount,
+      excludedTransferCount: summaryResult.excludedTransferCount,
+      currencyCount: summaryResult.totals.length,
+      groupBy: summaryResult.groupBy,
+      isComplete: summaryResult.isComplete,
+      replyText: replyMessage,
+    });
+
+    await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
+    const processingDurationMs = Date.now() - processingStartTimestamp;
+    applicationLogger.success(
+      `[${event.channel.toUpperCase()}] Sent transaction summary for ${summaryResult.transactionCount} transaction(s) via Fast-path (${processingDurationMs}ms).`
     );
 
     return true;
