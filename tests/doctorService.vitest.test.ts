@@ -1,10 +1,17 @@
-import { describe, expect, it, vi } from 'vitest';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import axios from 'axios';
+import { ImapFlow } from 'imapflow';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApplicationEnvironmentConfiguration } from '../src/config/environmentConfig.js';
 import {
+  createDefaultDoctorDependencies,
   DoctorDependencies,
   renderDoctorResult,
   runDoctorDiagnostics,
 } from '../src/diagnostics/doctorService.js';
+import { WalletMcpClientService } from '../src/services/walletMcpService.js';
 
 function createConfiguration(): ApplicationEnvironmentConfiguration {
   return {
@@ -59,6 +66,10 @@ function createDependencies(overrides: Partial<DoctorDependencies> = {}): Doctor
   };
 }
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe('doctor diagnostics', () => {
   it('reports successful read-only checks for a valid configuration', async () => {
     const config = createConfiguration();
@@ -91,7 +102,7 @@ describe('doctor diagnostics', () => {
     });
   });
 
-  it('does not expose secrets even when a dependency error contains them', async () => {
+  it('does not expose secrets even when dependency errors contain them', async () => {
     const config = createConfiguration();
     const dependencies = createDependencies({
       probeWalletMcp: vi.fn().mockRejectedValue(
@@ -123,5 +134,202 @@ describe('doctor diagnostics', () => {
       check: 'Runtime',
       message: 'Node.js 22 or newer is required; current version is 20.19.0.',
     });
+  });
+
+  it('checks Telegram, console, and enabled email sync', async () => {
+    const config = {
+      ...createConfiguration(),
+      allowedPhoneNumber: '',
+      enabledMessengerChannels: ['telegram', 'console'] as ('telegram' | 'console')[],
+      telegramBotToken: 'telegram-secret',
+      telegramAllowedUserId: '123456789',
+      emailSyncEnabled: true,
+      emailImapUser: 'user@example.com',
+      emailImapPassword: 'app-password',
+    };
+    const dependencies = createDependencies();
+
+    const results = await runDoctorDiagnostics(config, dependencies);
+
+    expect(dependencies.probeTelegram).toHaveBeenCalledWith('telegram-secret');
+    expect(dependencies.probeEmail).toHaveBeenCalledWith(config);
+    expect(results).toContainEqual({
+      status: 'SUCCESS',
+      check: 'Console',
+      message: 'Console messaging channel is enabled.',
+    });
+    expect(results).toContainEqual({
+      status: 'SUCCESS',
+      check: 'Email IMAP',
+      message: 'IMAP authentication and connection succeeded.',
+    });
+  });
+
+  it('reports missing or rejected messaging and email diagnostics safely', async () => {
+    const config = {
+      ...createConfiguration(),
+      allowedPhoneNumber: '',
+      enabledMessengerChannels: ['whatsapp', 'telegram'] as ('whatsapp' | 'telegram')[],
+      telegramBotToken: '',
+      telegramAllowedUserId: '',
+      emailSyncEnabled: true,
+      emailImapUser: '',
+      emailImapPassword: '',
+    };
+
+    const results = await runDoctorDiagnostics(config, createDependencies());
+
+    expect(results).toContainEqual({
+      status: 'ERROR',
+      check: 'WhatsApp',
+      message: 'ALLOWED_PHONE_NUMBER is required when WhatsApp is enabled.',
+    });
+    expect(results).toContainEqual({
+      status: 'ERROR',
+      check: 'Telegram',
+      message: 'Bot token and numeric allowed user ID are required when Telegram is enabled.',
+    });
+    expect(results).toContainEqual({
+      status: 'ERROR',
+      check: 'Email IMAP',
+      message: 'IMAP user and App Password are required when email sync is enabled.',
+    });
+  });
+
+  it('reports Telegram and email probe failures without exposing upstream errors', async () => {
+    const config = {
+      ...createConfiguration(),
+      allowedPhoneNumber: '',
+      enabledMessengerChannels: ['telegram'] as ['telegram'],
+      telegramBotToken: 'telegram-secret',
+      telegramAllowedUserId: '123456789',
+      emailSyncEnabled: true,
+      emailImapUser: 'user@example.com',
+      emailImapPassword: 'app-password',
+    };
+    const dependencies = createDependencies({
+      probeTelegram: vi.fn().mockRejectedValue(new Error('telegram-secret leaked upstream')),
+      probeEmail: vi.fn().mockRejectedValue(new Error('app-password leaked upstream')),
+    });
+
+    const results = await runDoctorDiagnostics(config, dependencies);
+    const output = results.map(renderDoctorResult).join('\n');
+
+    expect(output).toContain('[ERROR] Telegram');
+    expect(output).toContain('[ERROR] Email IMAP');
+    expect(output).not.toContain('telegram-secret');
+    expect(output).not.toContain('app-password');
+  });
+
+  it('uses the configured runtime timeout for OpenAI-compatible AI probes', async () => {
+    const post = vi.fn().mockResolvedValue({ data: { choices: [] } });
+    const createSpy = vi.spyOn(axios, 'create').mockReturnValue({ post } as never);
+    const config = {
+      ...createConfiguration(),
+      aiProvider: 'ollama' as const,
+      aiProviders: ['ollama'] as ['ollama'],
+      aiApiKey: 'ollama',
+      aiBaseUrl: 'http://localhost:11434/v1///',
+      aiModel: 'llama3.2',
+      aiRequestTimeoutMilliseconds: 60000,
+    };
+
+    await createDefaultDoctorDependencies().probeAiProvider('ollama', config);
+
+    expect(createSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        baseURL: 'http://localhost:11434/v1',
+        timeout: 60000,
+      })
+    );
+    expect(post).toHaveBeenCalledWith(
+      '/chat/completions',
+      expect.objectContaining({ model: 'llama3.2' })
+    );
+  });
+
+  it('rejects incomplete OpenAI-compatible probe configuration before network access', async () => {
+    const dependencies = createDefaultDoctorDependencies();
+    const missingBaseUrl = {
+      ...createConfiguration(),
+      aiProvider: 'custom' as const,
+      aiProviders: ['custom'] as ['custom'],
+      aiApiKey: 'custom-secret',
+      aiBaseUrl: '',
+      aiModel: 'custom-model',
+    };
+    const missingCredential = {
+      ...missingBaseUrl,
+      aiBaseUrl: 'https://custom.example/v1',
+      aiApiKey: '',
+    };
+    const missingModel = {
+      ...missingBaseUrl,
+      aiBaseUrl: 'https://custom.example/v1',
+      aiModel: '',
+    };
+
+    await expect(dependencies.probeAiProvider('custom', missingBaseUrl)).rejects.toThrow(
+      'AI provider base URL is missing.'
+    );
+    await expect(dependencies.probeAiProvider('custom', missingCredential)).rejects.toThrow(
+      'AI provider credential is missing.'
+    );
+    await expect(dependencies.probeAiProvider('custom', missingModel)).rejects.toThrow(
+      'AI provider model is missing.'
+    );
+  });
+
+  it('uses the default Wallet MCP probe without starting application services', async () => {
+    const verifySpy = vi
+      .spyOn(WalletMcpClientService.prototype, 'verifyClientProfile')
+      .mockResolvedValue({} as never);
+    const config = createConfiguration();
+
+    await createDefaultDoctorDependencies().probeWalletMcp(config);
+
+    expect(verifySpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('checks WhatsApp session persistence using creds.json', () => {
+    const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'doctor-session-'));
+    try {
+      expect(createDefaultDoctorDependencies().hasWhatsAppSession(temporaryDirectory)).toBe(false);
+      fs.writeFileSync(path.join(temporaryDirectory, 'creds.json'), '{}', 'utf8');
+      expect(createDefaultDoctorDependencies().hasWhatsAppSession(temporaryDirectory)).toBe(true);
+    } finally {
+      fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('probes Telegram through getMe and rejects unsuccessful API responses', async () => {
+    const get = vi.fn()
+      .mockResolvedValueOnce({ data: { ok: true } })
+      .mockResolvedValueOnce({ data: { ok: false } });
+    vi.spyOn(axios, 'create').mockReturnValue({ get } as never);
+    const dependencies = createDefaultDoctorDependencies();
+
+    await dependencies.probeTelegram('telegram-token');
+    await expect(dependencies.probeTelegram('telegram-token')).rejects.toThrow(
+      'Telegram API did not accept the bot token.'
+    );
+
+    expect(get).toHaveBeenCalledWith('/bottelegram-token/getMe');
+  });
+
+  it('connects to IMAP without scanning mail and closes an unusable client', async () => {
+    const connectSpy = vi.spyOn(ImapFlow.prototype, 'connect').mockResolvedValue(undefined as never);
+    const closeSpy = vi.spyOn(ImapFlow.prototype, 'close').mockImplementation(() => undefined);
+    const config = {
+      ...createConfiguration(),
+      emailSyncEnabled: true,
+      emailImapUser: 'user@example.com',
+      emailImapPassword: 'app-password',
+    };
+
+    await createDefaultDoctorDependencies().probeEmail(config);
+
+    expect(connectSpy).toHaveBeenCalledTimes(1);
+    expect(closeSpy).toHaveBeenCalled();
   });
 });
