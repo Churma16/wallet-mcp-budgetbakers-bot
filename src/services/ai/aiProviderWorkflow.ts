@@ -284,6 +284,7 @@ export function isRecoverableModelExecutionError(error: unknown): boolean {
   const httpStatus = (error as any)?.response?.status || (error as any)?.status;
 
   if (
+    httpStatus === 408 ||
     httpStatus === 429 ||
     httpStatus === 503 ||
     httpStatus === 504 ||
@@ -309,6 +310,7 @@ export function isRecoverableModelExecutionError(error: unknown): boolean {
     '504',
     '503',
     '429',
+    '408',
     '404',
     '500',
     '502',

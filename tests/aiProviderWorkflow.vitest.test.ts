@@ -400,12 +400,18 @@ describe('AI Provider Workflow (Issue #108)', () => {
 
   describe('Recoverable Model Execution Error Classification', () => {
     it('classifies transient HTTP status codes as recoverable', () => {
+      expect(
+        isRecoverableModelExecutionError({
+          response: { status: 408, data: { error: { message: 'Request Timeout' } } },
+        })
+      ).toBe(true);
+      expect(isRecoverableModelExecutionError({ response: { status: 408 } })).toBe(true);
+      expect(isRecoverableModelExecutionError({ response: { status: 404 } })).toBe(true);
       expect(isRecoverableModelExecutionError({ response: { status: 429 } })).toBe(true);
-      expect(isRecoverableModelExecutionError({ response: { status: 503 } })).toBe(true);
-      expect(isRecoverableModelExecutionError({ response: { status: 504 } })).toBe(true);
       expect(isRecoverableModelExecutionError({ response: { status: 500 } })).toBe(true);
       expect(isRecoverableModelExecutionError({ response: { status: 502 } })).toBe(true);
-      expect(isRecoverableModelExecutionError({ response: { status: 404 } })).toBe(true);
+      expect(isRecoverableModelExecutionError({ response: { status: 503 } })).toBe(true);
+      expect(isRecoverableModelExecutionError({ response: { status: 504 } })).toBe(true);
     });
 
     it('classifies Gemini gRPC transient errors as recoverable', () => {
@@ -441,8 +447,10 @@ describe('AI Provider Workflow (Issue #108)', () => {
     it('rejects non-recoverable client errors and random exceptions', () => {
       expect(isRecoverableModelExecutionError(null)).toBe(false);
       expect(isRecoverableModelExecutionError(undefined)).toBe(false);
+      expect(isRecoverableModelExecutionError({ response: { status: 400 } })).toBe(false);
       expect(isRecoverableModelExecutionError({ response: { status: 401 } })).toBe(false);
       expect(isRecoverableModelExecutionError({ response: { status: 403 } })).toBe(false);
+      expect(isRecoverableModelExecutionError({ response: { status: 422 } })).toBe(false);
       expect(isRecoverableModelExecutionError(new Error('Invalid argument: missing required field'))).toBe(false);
       expect(isRecoverableModelExecutionError(new TypeError('Cannot read properties of undefined'))).toBe(false);
     });
