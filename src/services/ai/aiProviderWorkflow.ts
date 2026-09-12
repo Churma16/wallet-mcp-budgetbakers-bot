@@ -72,7 +72,13 @@ export class SystemInstructionCache {
     const timezoneOffsetDetails = getTimezoneOffsetDetails(applicationTimezone, referenceDate);
     const activeLanguage = getActiveLanguage();
     const contextFingerprint = this.categoryContextService?.getContextFingerprint() || '';
-    const cacheKey = `${activeLanguage}|${currentDateIso}|${applicationTimezone}|${timezoneOffsetDetails.formattedOffset}|${availableAccountList.map(account => account.id).join(',')}|${availableCategoryList.map(category => category.id).join(',')}|${contextFingerprint}`;
+    const accountsFingerprint = availableAccountList
+      .map(account => `${account.id}:${account.name}:${account.currency || ''}:${account.bankAccountNumber || ''}`)
+      .join(';');
+    const categoriesFingerprint = availableCategoryList
+      .map(category => `${category.id}:${category.name}`)
+      .join(';');
+    const cacheKey = `${activeLanguage}|${currentDateIso}|${applicationTimezone}|${timezoneOffsetDetails.formattedOffset}|${accountsFingerprint}|${categoriesFingerprint}|${contextFingerprint}`;
 
     if (this.systemInstructionCacheKey === cacheKey && this.cachedSystemInstruction) {
       return this.cachedSystemInstruction;
@@ -288,31 +294,37 @@ export function isRecoverableModelExecutionError(error: unknown): boolean {
     return true;
   }
 
-  return (
-    rawErrorMessage.includes('DEADLINE_EXCEEDED') ||
-    rawErrorMessage.includes('UNAVAILABLE') ||
-    rawErrorMessage.includes('RESOURCE_EXHAUSTED') ||
-    rawErrorMessage.includes('NOT_FOUND') ||
-    rawErrorMessage.includes('ECONNABORTED') ||
-    normalizedErrorMessage.includes('504') ||
-    normalizedErrorMessage.includes('503') ||
-    normalizedErrorMessage.includes('429') ||
-    normalizedErrorMessage.includes('404') ||
-    normalizedErrorMessage.includes('500') ||
-    normalizedErrorMessage.includes('502') ||
-    normalizedErrorMessage.includes('high demand') ||
-    normalizedErrorMessage.includes('rate limit') ||
-    normalizedErrorMessage.includes('too many requests') ||
-    normalizedErrorMessage.includes('overloaded') ||
-    normalizedErrorMessage.includes('service unavailable') ||
-    normalizedErrorMessage.includes('resource_exhausted') ||
-    normalizedErrorMessage.includes('quota') ||
-    normalizedErrorMessage.includes('time') ||
-    normalizedErrorMessage.includes('timeout') ||
-    normalizedErrorMessage.includes('deadline') ||
-    normalizedErrorMessage.includes('abort') ||
-    normalizedErrorMessage.includes('econnaborted')
-  );
+  // Reject deterministic client errors (e.g. 400 Bad Request, 422 Unprocessable Entity)
+  if (typeof httpStatus === 'number' && httpStatus >= 400 && httpStatus < 500) {
+    return false;
+  }
+
+  const transientExecutionPatterns = [
+    'deadline_exceeded',
+    'unavailable',
+    'resource_exhausted',
+    'not_found',
+    'econnaborted',
+    'econnreset',
+    '504',
+    '503',
+    '429',
+    '404',
+    '500',
+    '502',
+    'high demand',
+    'rate limit',
+    'too many requests',
+    'overloaded',
+    'service unavailable',
+    'quota',
+    'timeout',
+    'timed out',
+    'deadline',
+    'abort',
+  ];
+
+  return transientExecutionPatterns.some(pattern => normalizedErrorMessage.includes(pattern));
 }
 
 /**

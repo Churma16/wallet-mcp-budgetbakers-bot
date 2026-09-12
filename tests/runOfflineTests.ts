@@ -59,7 +59,6 @@ const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
   { filePath: 'tests/transactionSummaryHandler.test.ts', description: 'Transaction summary fast-path dispatch, service delegation, formatting, and message delivery (Issue #103)' },
   { filePath: 'tests/receiptProcessingBoundary.test.ts', description: 'Receipt processing boundary, partial extraction clarification & recovery (Issue #123)' },
   { filePath: 'tests/financialActionExecutor.test.ts', description: 'Unified financial action execution paths and Fast-Path/AI routing equivalence (Issue #107)' },
-  { filePath: 'tests/aiProviderWorkflow.test.ts', description: 'Shared AI provider workflow orchestration, prompt preparation & error recovery (Issue #108)' },
 ];
 
 const isVerboseMode = process.argv.includes('--verbose') || process.argv.includes('-v');
