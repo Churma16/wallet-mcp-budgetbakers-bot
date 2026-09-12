@@ -161,44 +161,31 @@ export function formatCompactTransactionDate(
   dateInput?: string | Date,
   languageCode?: SupportedLanguage
 ): string {
+  const parsedDate = typeof dateInput === 'string' ? new Date(dateInput) : (dateInput || new Date());
+  if (Number.isNaN(parsedDate.getTime())) {
+    return getHumanReadableTimestamp(new Date(), languageCode);
+  }
+
   const dictionary = getDictionary(languageCode);
-  if (!dateInput) {
-    return getHumanReadableTimestamp(new Date(), languageCode);
-  }
-
-  const transactionDate = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
-  if (Number.isNaN(transactionDate.getTime())) {
-    return getHumanReadableTimestamp(new Date(), languageCode);
-  }
-
   const timeZone = getApplicationTimezone();
-
-  const timeFormatter = new Intl.DateTimeFormat(dictionary.localeIdentifier, {
+  const timeString = new Intl.DateTimeFormat(dictionary.localeIdentifier, {
     timeZone,
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-  });
+  }).format(parsedDate).replace('.', ':');
 
-  const now = new Date();
-  const yearFormatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-  });
+  const nowYear = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric' }).format(new Date());
+  const dateYear = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric' }).format(parsedDate);
 
-  const isCurrentYear = yearFormatter.format(transactionDate) === yearFormatter.format(now);
-
-  const dateFormatter = new Intl.DateTimeFormat(dictionary.localeIdentifier, {
+  const dateString = new Intl.DateTimeFormat(dictionary.localeIdentifier, {
     timeZone,
     day: 'numeric',
     month: 'short',
-    ...(isCurrentYear ? {} : { year: 'numeric' }),
-  });
+    ...(dateYear === nowYear ? {} : { year: 'numeric' }),
+  }).format(parsedDate);
 
-  const formattedTime = timeFormatter.format(transactionDate).replace('.', ':');
-  const formattedDate = dateFormatter.format(transactionDate);
-
-  return `${formattedDate} ${formattedTime}`.trim();
+  return `${dateString} ${timeString}`.trim();
 }
 
 /**
@@ -210,30 +197,11 @@ export function formatCompactTransactionAmount(
   currencyCode?: string,
   languageCode?: SupportedLanguage
 ): string {
-  const dictionary = getDictionary(languageCode);
   const isExpense = recordType === 'expense' || amount < 0;
   const sign = isExpense ? '-' : '+';
-  const resolvedCurrencyCode = (
-    currencyCode ||
-    process.env.DEFAULT_CURRENCY ||
-    'IDR'
-  ).toUpperCase().trim();
-
-  const absoluteAmount = Math.abs(amount);
-  const isZeroDecimal = ZERO_DECIMAL_CURRENCY_SET.has(resolvedCurrencyCode);
-  const fractionDigits = isZeroDecimal ? 0 : 2;
-
-  const formattedNumber = new Intl.NumberFormat(dictionary.localeIdentifier, {
-    minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits,
-  }).format(absoluteAmount);
-
-  const matchedSymbol = CURRENCY_SYMBOL_MAP[resolvedCurrencyCode];
-  if (matchedSymbol) {
-    return `${sign}${matchedSymbol}${formattedNumber}`;
-  }
-
-  return `${sign}${resolvedCurrencyCode} ${formattedNumber}`;
+  const rawFormattedAmount = formatCurrencyAmount(amount, currencyCode, languageCode);
+  const compactFormattedAmount = rawFormattedAmount.replace(/^Rp\s+/, 'Rp');
+  return `${sign}${compactFormattedAmount}`;
 }
 
 /**
