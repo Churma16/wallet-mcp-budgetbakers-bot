@@ -98,7 +98,14 @@ function extractHistoryQueryOptionsFromTokens(
 
   // A dedicated one-token search must remain literal even when the token also
   // belongs to the structured-filter vocabulary (e.g. income, today, bca, 5).
-  if (isDedicatedSearchCommand && remainingTokens.length > 0 && !/\s/.test(remainingTokens)) {
+  // Quoted literals are handled by the quote-aware parser below so quotes are stripped.
+  const isWholeRemainderQuotedLiteral = /^(?:"[^"]*"|'[^']*')$/.test(remainingTokens);
+  if (
+    isDedicatedSearchCommand &&
+    remainingTokens.length > 0 &&
+    !/\s/.test(remainingTokens) &&
+    !isWholeRemainderQuotedLiteral
+  ) {
     return {
       limit: resolvedLimit,
       page: resolvedPage,
