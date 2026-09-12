@@ -19,8 +19,9 @@ RUN npm ci --omit=dev --ignore-scripts \
     && npm cache clean --force
 
 COPY --from=build /app/dist ./dist
+COPY config ./config
 
-RUN mkdir -p /app/auth_session /app/logs \
+RUN mkdir -p /app/auth_session /app/data /app/logs /app/config \
     && chown -R node:node /app
 
 USER node

@@ -12,6 +12,7 @@ on:
     paths:
       - 'Dockerfile'
       - '.dockerignore'
+      - 'compose.yaml'
       - 'package.json'
       - 'package-lock.json'
       - 'tsconfig.json'
@@ -35,6 +36,11 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Validate Compose configuration
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'

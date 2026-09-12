@@ -8,6 +8,8 @@
     "scripts": {
         "dev": "tsx watch src/index.ts",
         "start": "tsx src/index.ts",
+        "setup": "tsx src/cli/setup.ts",
+        "doctor": "tsx src/cli/doctor.ts",
         "test": "tsx tests/runOfflineTests.ts",
         "test:offline": "tsx tests/runOfflineTests.ts",
         "test:vitest": "vitest run",
