@@ -5,6 +5,8 @@ import {
   MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST,
 } from '../src/services/walletMcpService.js';
 import { detectFastPathAction } from '../src/utils/fastPathIntentDetector.js';
+import { formatTransactionHistoryMessage } from '../src/utils/humanResponseFormatter.js';
+import { setActiveLanguage } from '../src/i18n/index.js';
 
 console.log('[TEST] Starting PR #114 transaction search review regression tests...');
 
@@ -197,11 +199,59 @@ test('sparse search stops at the per-request MCP scan budget and returns an acti
   assert.strictEqual(firstAttempt.unresolvedFilters?.[0].reason, 'UNRESOLVED');
   assert.match(firstAttempt.unresolvedFilters?.[0].message || '', /scan budget/i);
 
+  setActiveLanguage('en');
+  const formattedEn = formatTransactionHistoryMessage(firstAttempt);
+  assert.match(formattedEn, /retry the same search/i);
+  assert.match(formattedEn, /account, category, or date filters/i);
+
+  setActiveLanguage('id');
+  const formattedId = formatTransactionHistoryMessage(firstAttempt);
+  assert.match(formattedId, /ulangi pencarian yang sama/i);
+  assert.match(formattedId, /filter akun, kategori, atau tanggal/i);
+
   const firstAttemptCallCount = capturedOffsets.length;
   const secondAttempt = await client.fetchRecords({ searchQuery: 'needle merchant', limit: 10, page: 1 });
   assert.strictEqual(capturedOffsets.length, firstAttemptCallCount + MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST);
   assert.strictEqual(capturedOffsets[firstAttemptCallCount], 210);
   assert.strictEqual(secondAttempt.unresolvedFilters?.[0].reason, 'UNRESOLVED');
+});
+
+test('a complete page remains visible when only lookahead exhausts the scan budget', async () => {
+  const client = new WalletMcpClientService('http://localhost:8080', 'mock-token');
+  const capturedOffsets: number[] = [];
+
+  client.callMcpTool = async <T>(_toolName: string, args: Record<string, unknown> = {}): Promise<T> => {
+    const offset = Number(args.offset ?? 0);
+    const limit = Number(args.limit ?? 10);
+    capturedOffsets.push(offset);
+    const callIndex = capturedOffsets.length;
+
+    return {
+      records: Array.from({ length: limit }, (_, index) => {
+        const shouldMatch = callIndex === MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST && index < 10;
+        return {
+          id: `lookahead-${offset + index}`,
+          accountId: 'acc-1',
+          amount: -(offset + index + 1),
+          currency: 'IDR',
+          recordDate: '2026-09-11T10:00:00Z',
+          recordType: 'expense',
+          counterParty: shouldMatch ? `Target Merchant ${index}` : `Other Merchant ${offset + index}`,
+        };
+      }),
+      total: 10000,
+    } as T;
+  };
+
+  const page = await client.fetchRecords({ searchQuery: 'target merchant', limit: 10, page: 1 });
+  assert.strictEqual(capturedOffsets.length, MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST);
+  assert.strictEqual(page.records.length, 10);
+  assert.strictEqual(page.records[0].counterParty, 'Target Merchant 0');
+  assert.strictEqual(page.unresolvedFilters, undefined);
+  assert.strictEqual(page.total, undefined);
+  assert.strictEqual(page.totalPages, undefined);
+  assert.strictEqual(page.hasMore, false);
+  assert.strictEqual(page.nextOffset, null);
 });
 
 console.log('[SUCCESS] PR #114 transaction search review regression tests passed.');
