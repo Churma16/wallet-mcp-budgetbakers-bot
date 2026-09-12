@@ -41,6 +41,7 @@
         "test:gemini:live": "tsx tests/geminiAiProvider.test.ts",
         "test:history": "tsx tests/transactionHistory.test.ts",
         "test:history-filters": "tsx tests/transactionHistoryFilters.test.ts",
+        "test:history-search": "tsx tests/transactionHistorySearch.test.ts",
         "build": "tsc"
     },
     "dependencies": {

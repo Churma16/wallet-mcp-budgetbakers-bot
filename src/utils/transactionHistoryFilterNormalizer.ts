@@ -15,6 +15,7 @@ import {
   resolveLocalCalendarDayRange,
   resolveLocalCalendarRange,
 } from './relativeTimeParser.js';
+import { MAX_SEARCH_QUERY_LENGTH } from './transactionSearchMatcher.js';
 
 export const SUPPORTED_BUDGETBAKERS_CATEGORY_GROUPS: readonly string[] = [
   'communication_pc',
@@ -59,6 +60,7 @@ export interface NormalizedTransactionHistoryFilterResult {
   upstreamCategoryId?: string[];
   upstreamCategoryGroup?: string;
   upstreamRecordType?: TransactionRecordTypeFilter;
+  upstreamSearchQuery?: string;
   appliedFilters: AppliedTransactionHistoryFilters;
   unresolvedFilters: UnresolvedFilterIssue[];
 }
@@ -1150,6 +1152,39 @@ export function normalizeTransactionHistoryFilters(
     }
   }
 
+  // 5. Free-text search keyword validation and normalization
+  let upstreamSearchQuery: string | undefined = undefined;
+  if (queryOptions?.searchQuery !== undefined) {
+    if (typeof queryOptions.searchQuery !== 'string') {
+      unresolvedFilterIssues.push({
+        filterKey: 'searchQuery',
+        rawValue: String(queryOptions.searchQuery),
+        reason: 'INVALID_FORMAT',
+        message: 'Kata kunci pencarian harus berupa teks.',
+      });
+    } else {
+      const trimmedSearchQuery = queryOptions.searchQuery.trim();
+      if (trimmedSearchQuery.length === 0) {
+        unresolvedFilterIssues.push({
+          filterKey: 'searchQuery',
+          rawValue: queryOptions.searchQuery,
+          reason: 'INVALID_FORMAT',
+          message: 'Kata kunci pencarian tidak boleh kosong.',
+        });
+      } else if (trimmedSearchQuery.length > MAX_SEARCH_QUERY_LENGTH) {
+        unresolvedFilterIssues.push({
+          filterKey: 'searchQuery',
+          rawValue: queryOptions.searchQuery,
+          reason: 'INVALID_FORMAT',
+          message: `Kata kunci pencarian terlalu panjang (maksimal ${MAX_SEARCH_QUERY_LENGTH} karakter).`,
+        });
+      } else {
+        upstreamSearchQuery = trimmedSearchQuery;
+        appliedFilters.searchQuery = trimmedSearchQuery;
+      }
+    }
+  }
+
   const isValid = unresolvedFilterIssues.length === 0;
 
   if (isValid) {
@@ -1168,6 +1203,9 @@ export function normalizeTransactionHistoryFilters(
     if (appliedFilters.dateRange?.selector) {
       navigationTokens.push(appliedFilters.dateRange.selector);
     }
+    if (appliedFilters.searchQuery) {
+      navigationTokens.push(`cari "${appliedFilters.searchQuery}"`);
+    }
     if (navigationTokens.length > 0) {
       appliedFilters.navigationTokens = navigationTokens;
     }
@@ -1180,6 +1218,7 @@ export function normalizeTransactionHistoryFilters(
     categoryGroup: upstreamCategoryGroup,
     recordType: upstreamRecordType,
     dateRange: upstreamRecordDate,
+    searchQuery: upstreamSearchQuery,
   };
 
   return {
@@ -1190,6 +1229,7 @@ export function normalizeTransactionHistoryFilters(
     upstreamCategoryId,
     upstreamCategoryGroup,
     upstreamRecordType,
+    upstreamSearchQuery,
     appliedFilters,
     unresolvedFilters: unresolvedFilterIssues,
   };

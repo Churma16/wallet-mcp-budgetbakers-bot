@@ -7,7 +7,7 @@ import {
   WalletRecordItem,
 } from '../types/walletTypes.js';
 import { PendingTransactionItem } from '../services/pendingTransactionService.js';
-import { getDictionary, SupportedLanguage } from '../i18n/index.js';
+import { getDictionary, getActiveLanguage, SupportedLanguage } from '../i18n/index.js';
 
 const ZERO_DECIMAL_CURRENCY_SET = new Set([
   'IDR', 'JPY', 'KRW', 'VND', 'CLP', 'PYG', 'RWF', 'UGX', 'BIF', 'DJF', 'GNF', 'KMF',
@@ -364,7 +364,8 @@ export function formatTransactionHistoryMessage(
   historyPage: TransactionHistoryPage,
   languageCode?: SupportedLanguage
 ): string {
-  const dictionary = getDictionary(languageCode);
+  const activeLanguage = languageCode || getActiveLanguage();
+  const dictionary = getDictionary(activeLanguage);
 
   // If fail-closed unresolved filter issues occurred, return explicit explanation
   if (historyPage.unresolvedFilters && historyPage.unresolvedFilters.length > 0) {
@@ -378,6 +379,10 @@ export function formatTransactionHistoryMessage(
   // Build filter summary badges
   const filterBadges: string[] = [];
   const appliedFilters = historyPage.appliedFilters;
+
+  if (appliedFilters?.searchQuery) {
+    filterBadges.push(dictionary.history.searchBadge(appliedFilters.searchQuery));
+  }
 
   if (appliedFilters?.recordType) {
     filterBadges.push(
@@ -440,11 +445,11 @@ export function formatTransactionHistoryMessage(
       typeIcon = '💸';
     }
     const amountPrefix = isExpense ? '-' : '+';
-    const formattedAmount = formatCurrencyAmount(recordItem.amount, recordItem.currency, languageCode);
+    const formattedAmount = formatCurrencyAmount(recordItem.amount, recordItem.currency, activeLanguage);
     const resolvedTitle = recordItem.note || recordItem.counterParty || (isExpense ? dictionary.labels.expense : dictionary.labels.income);
     const accountDisplay = recordItem.accountName || dictionary.labels.defaultAccount;
     const categoryDisplay = recordItem.category?.name || dictionary.labels.defaultCategory;
-    const timestampDisplay = formatTransactionDate(recordItem.recordDate, languageCode);
+    const timestampDisplay = formatTransactionDate(recordItem.recordDate, activeLanguage);
 
     const labelSuffix = recordItem.labels && recordItem.labels.length > 0
       ? `  •  🔖 ${recordItem.labels.map(labelItem => `#${labelItem.name}`).join(' ')}`
@@ -467,7 +472,7 @@ export function formatTransactionHistoryMessage(
     const filterTokens: string[] = [];
 
     if (appliedFilters?.navigationTokens && appliedFilters.navigationTokens.length > 0) {
-      if (languageCode === 'en') {
+      if (activeLanguage === 'en') {
         const localizedTokens = appliedFilters.navigationTokens.map(token => {
           if (token === 'pengeluaran') return 'expense';
           if (token === 'pemasukan') return 'income';
@@ -482,6 +487,7 @@ export function formatTransactionHistoryMessage(
           if (token === 'minuman') return 'drink';
           if (token.startsWith('akun ')) return `account ${token.slice(5)}`;
           if (token.startsWith('kategori ')) return `category ${token.slice(9)}`;
+          if (token.startsWith('cari "')) return `search "${token.slice(6)}`;
           return token;
         });
         filterTokens.push(...localizedTokens);
@@ -506,19 +512,27 @@ export function formatTransactionHistoryMessage(
       if (appliedFilters?.recordType) {
         filterTokens.push(
           appliedFilters.recordType === 'expense'
-            ? (languageCode === 'en' ? 'expense' : 'pengeluaran')
-            : (languageCode === 'en' ? 'income' : 'pemasukan')
+            ? (activeLanguage === 'en' ? 'expense' : 'pengeluaran')
+            : (activeLanguage === 'en' ? 'income' : 'pemasukan')
         );
       }
 
       if (appliedFilters?.dateRange?.selector) {
         filterTokens.push(
-          languageCode === 'en' && appliedFilters.dateRange.selector === 'bulan ini'
+          activeLanguage === 'en' && appliedFilters.dateRange.selector === 'bulan ini'
             ? 'this month'
             : appliedFilters.dateRange.selector
         );
       } else if (appliedFilters?.dateRange?.label) {
         filterTokens.push(appliedFilters.dateRange.label.toLowerCase());
+      }
+
+      if (appliedFilters?.searchQuery) {
+        filterTokens.push(
+          activeLanguage === 'en'
+            ? `search "${appliedFilters.searchQuery}"`
+            : `cari "${appliedFilters.searchQuery}"`
+        );
       }
     }
 
@@ -529,6 +543,13 @@ export function formatTransactionHistoryMessage(
         sort: historyPage.sort,
         filterTokens: filterTokens.length > 0 ? filterTokens : undefined,
       })
+    );
+  } else if (historyPage.continuationUnknown) {
+    messageParts.push('');
+    messageParts.push(
+      activeLanguage === 'en'
+        ? '_More matching transactions may still exist. Retry the same search to continue scanning from the saved position._'
+        : '_Transaksi yang cocok mungkin masih ada. Ulangi pencarian yang sama untuk melanjutkan pemindaian dari posisi tersimpan._'
     );
   }
 

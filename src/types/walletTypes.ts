@@ -86,6 +86,7 @@ export interface TransactionHistoryFilters {
   endDate?: string;
   dateRange?: string[] | TransactionDateRangeFilter;
   datePeriod?: RelativeDatePeriod;
+  searchQuery?: string;
 }
 
 export interface TransactionHistoryQueryOptions extends TransactionHistoryFilters {
@@ -116,16 +117,17 @@ export interface AppliedTransactionHistoryFilters {
     label?: string;
     selector?: string;
   };
+  searchQuery?: string;
   navigationTokens?: string[];
 }
 
 export interface UnresolvedFilterIssue {
-  filterKey: 'account' | 'category' | 'recordType' | 'dateRange';
+  filterKey: 'account' | 'category' | 'recordType' | 'dateRange' | 'searchQuery';
   rawValue: string;
   reason: 'NOT_FOUND' | 'INVALID_FORMAT' | 'INVALID_RANGE' | 'UNSUPPORTED' | 'UNRESOLVED' | 'AMBIGUOUS';
   message: string;
   candidates?: string[];
-  subType?: 'bank_account' | 'name' | 'operator_prefix' | 'calendar_date' | 'start_after_end';
+  subType?: 'bank_account' | 'name' | 'operator_prefix' | 'calendar_date' | 'start_after_end' | 'unsupported_upstream_search';
 }
 
 export interface WalletRecordItem {
@@ -167,6 +169,7 @@ export interface TransactionHistoryPage {
   totalPages?: number;
   nextOffset: number | null;
   hasMore: boolean;
+  continuationUnknown?: boolean;
   sort: TransactionSortOrder;
   appliedFilters?: AppliedTransactionHistoryFilters;
   unresolvedFilters?: UnresolvedFilterIssue[];

@@ -53,6 +53,8 @@ const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
   { filePath: 'tests/categoryContextService.test.ts', description: 'Custom category semantics, user context loader & disambiguation (Issue #21)' },
   { filePath: 'tests/transactionHistory.test.ts', description: 'Transaction history retrieval, bounded pagination & deterministic sorting (Issue #100)' },
   { filePath: 'tests/transactionHistoryFilters.test.ts', description: 'Composable transaction history filters across category, account, type, and date range (Issue #101)' },
+  { filePath: 'tests/transactionHistorySearch.test.ts', description: 'Transaction history free-text search across merchant/payee and notes (Issue #102)' },
+  { filePath: 'tests/transactionHistorySearchReviewRegression.test.ts', description: 'PR #114 quoted literal and search pagination regressions (Issue #102)' },
 ];
 
 const isVerboseMode = process.argv.includes('--verbose') || process.argv.includes('-v');
