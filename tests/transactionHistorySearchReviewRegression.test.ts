@@ -46,7 +46,7 @@ test('dedicated single-token search keeps filter-like words literal', () => {
   assert.strictEqual((literalNumber as any)?.options.limit, undefined);
 });
 
-test('bounded local search scan keeps records and pagination on the same semantics', async () => {
+test('incremental local search keeps records and pagination on the same semantics', async () => {
   const client = new WalletMcpClientService('http://localhost:8080', 'mock-token');
   const capturedOffsets: number[] = [];
 
@@ -100,13 +100,14 @@ test('bounded local search scan keeps records and pagination on the same semanti
 
   const firstPage = await client.fetchRecords({ searchQuery: 'target merchant', limit: 2, page: 1 });
   assert.strictEqual(firstPage.records.length, 2);
-  assert.strictEqual(firstPage.total, 3);
-  assert.strictEqual(firstPage.totalPages, 2);
+  assert.strictEqual(firstPage.total, undefined);
+  assert.strictEqual(firstPage.totalPages, undefined);
   assert.strictEqual(firstPage.hasMore, true);
   assert.strictEqual(firstPage.nextOffset, 2);
+  assert.deepStrictEqual(capturedOffsets, [0, 10]);
 
   const secondPage = await client.fetchRecords({ searchQuery: 'target merchant', limit: 2, page: 2 });
-  assert.deepStrictEqual(capturedOffsets, [0, 10, 20, 0, 10, 20]);
+  assert.deepStrictEqual(capturedOffsets, [0, 10, 20]);
   assert.strictEqual(secondPage.page, 2);
   assert.strictEqual(secondPage.offset, 2);
   assert.strictEqual(secondPage.records.length, 1);
@@ -115,6 +116,46 @@ test('bounded local search scan keeps records and pagination on the same semanti
   assert.strictEqual(secondPage.totalPages, 2);
   assert.strictEqual(secondPage.hasMore, false);
   assert.strictEqual(secondPage.nextOffset, null);
+});
+
+test('broad search stops after page lookahead and reuses cached candidates', async () => {
+  const client = new WalletMcpClientService('http://localhost:8080', 'mock-token');
+  const capturedOffsets: number[] = [];
+
+  client.callMcpTool = async <T>(_toolName: string, args: Record<string, unknown> = {}): Promise<T> => {
+    const offset = Number(args.offset ?? 0);
+    const limit = Number(args.limit ?? 10);
+    capturedOffsets.push(offset);
+
+    return {
+      records: Array.from({ length: limit }, (_, index) => ({
+        id: `broad-${offset + index}`,
+        accountId: 'acc-1',
+        amount: -(offset + index + 1),
+        currency: 'IDR',
+        recordDate: '2026-09-11T10:00:00Z',
+        recordType: 'expense',
+        counterParty: `Target Merchant ${offset + index}`,
+      })),
+      total: 1000,
+    } as T;
+  };
+
+  const firstPage = await client.fetchRecords({ searchQuery: 'target merchant', limit: 5, page: 1 });
+  assert.strictEqual(firstPage.records.length, 5);
+  assert.strictEqual(firstPage.records[0].id, 'broad-0');
+  assert.strictEqual(firstPage.total, undefined);
+  assert.strictEqual(firstPage.totalPages, undefined);
+  assert.strictEqual(firstPage.hasMore, true);
+  assert.deepStrictEqual(capturedOffsets, [0, 5]);
+
+  const callsAfterFirstPage = capturedOffsets.length;
+  const secondPage = await client.fetchRecords({ searchQuery: 'target merchant', limit: 5, page: 2 });
+  assert.strictEqual(secondPage.records.length, 5);
+  assert.strictEqual(secondPage.records[0].id, 'broad-5');
+  assert.strictEqual(secondPage.hasMore, true);
+  assert.strictEqual(capturedOffsets.length, callsAfterFirstPage);
+  assert.deepStrictEqual(capturedOffsets, [0, 5]);
 });
 
 console.log('[SUCCESS] PR #114 transaction search review regression tests passed.');
