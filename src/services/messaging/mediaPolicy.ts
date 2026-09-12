@@ -69,7 +69,12 @@ export function isMediaPayloadSizeLimitExceeded(error: unknown): boolean {
   const isGenericLimitCode =
     (error as { code?: string })?.code === 'ERR_FR_MAX_BODY_LENGTH_EXCEEDED';
 
-  const rawErrorMessage = error instanceof Error ? error.message : String(error);
+  const rawErrorMessage =
+    error instanceof Error
+      ? error.message
+      : typeof (error as { message?: unknown })?.message === 'string'
+        ? (error as { message: string }).message
+        : String(error);
   const normalizedErrorMessage = rawErrorMessage.toLowerCase();
   const containsLimitSubstring =
     normalizedErrorMessage.includes('maxcontentlength') ||

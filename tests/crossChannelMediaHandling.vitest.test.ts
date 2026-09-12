@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import axios from 'axios';
+import { Bot } from 'grammy';
 import {
   formatBytesToMegabytes,
   formatBytesToMegabytesDisplay,
@@ -235,32 +236,351 @@ describe('Cross-Channel Media Handling (Issue #109)', () => {
   });
 
   describe('Telegram Adapter Integration', () => {
-    it('uses shared policy for internal oversized rejection helper', async () => {
+    const dummyToken = '123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ';
+    const dummyUserId = '123456789';
+    const dummyBotInfo = {
+      id: 123456789,
+      is_bot: true as const,
+      first_name: 'TestBot',
+      username: 'test_bot',
+      can_join_groups: true,
+      can_read_all_group_messages: false,
+      supports_inline_queries: false,
+    };
+
+    it('rejects oversized photo variants pre-download without triggering getFile or axios', async () => {
       const sentMessages: string[] = [];
-      const dummyToken = '123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ';
-      const dummyUserId = '123456789';
+      const receivedEvents: any[] = [];
 
       const adapter = new TelegramMessagingAdapter(
         dummyToken,
         dummyUserId,
-        async () => {},
+        async event => { receivedEvents.push(event); },
         { maxMediaDownloadBytes: 5 * 1024 * 1024 }
       );
-
-      vi.spyOn(adapter, 'sendTextMessage').mockImplementation(async (_chatId, messageText) => {
-        sentMessages.push(messageText);
+      vi.spyOn(adapter, 'sendTextMessage').mockImplementation(async (_chatId, text) => {
+        sentMessages.push(text);
       });
 
-      // Call private rejectOversizedPhoto helper
-      await (adapter as any).rejectOversizedPhoto(
-        '123456789',
-        '123456789',
-        12 * 1024 * 1024,
-        'declared_size'
-      );
+      const bot = new Bot(dummyToken, { botInfo: dummyBotInfo });
+      adapter.setupBotHandlers(bot);
+      let getFileCalled = false;
+      bot.api.config.use(async (prev, method, payload, signal) => {
+        if (method === 'getFile') {
+          getFileCalled = true;
+          return {
+            ok: true,
+            result: { file_id: 'any', file_unique_id: 'u1', file_path: 'p.jpg', file_size: 100 } as any,
+          };
+        }
+        return prev(method, payload, signal);
+      });
+      const axiosGetSpy = vi.spyOn(axios, 'get');
 
+      const oversizedPhotoUpdate = {
+        update_id: 1,
+        message: {
+          message_id: 101,
+          date: Math.floor(Date.now() / 1000),
+          chat: { id: Number(dummyUserId), type: 'private' as const },
+          from: { id: Number(dummyUserId), is_bot: false, first_name: 'Owner' },
+          photo: [
+            { file_id: 'small-id', file_unique_id: 'u1', width: 100, height: 100, file_size: 500 },
+            { file_id: 'oversized-id', file_unique_id: 'u2', width: 1200, height: 1200, file_size: 6 * 1024 * 1024 },
+          ],
+        },
+      };
+
+      await bot.handleUpdate(oversizedPhotoUpdate);
+
+      expect(getFileCalled).toBe(false);
+      expect(axiosGetSpy).not.toHaveBeenCalled();
+      expect(receivedEvents).toHaveLength(0);
       expect(sentMessages).toHaveLength(1);
       expect(sentMessages[0]).toContain('Ukuran foto melebihi batas maksimal (5 MB)');
+    });
+
+    it('rejects oversized photo when fileMetadata exceeds limit', async () => {
+      const sentMessages: string[] = [];
+      const receivedEvents: any[] = [];
+
+      const adapter = new TelegramMessagingAdapter(
+        dummyToken,
+        dummyUserId,
+        async event => { receivedEvents.push(event); },
+        { maxMediaDownloadBytes: 5 * 1024 * 1024 }
+      );
+      vi.spyOn(adapter, 'sendTextMessage').mockImplementation(async (_chatId, text) => {
+        sentMessages.push(text);
+      });
+
+      const bot = new Bot(dummyToken, { botInfo: dummyBotInfo });
+      adapter.setupBotHandlers(bot);
+      bot.api.config.use(async (prev, method, payload, signal) => {
+        if (method === 'getFile') {
+          return {
+            ok: true,
+            result: {
+              file_id: 'large-meta-id',
+              file_unique_id: 'u2',
+              file_path: 'photos/large.jpg',
+              file_size: 10 * 1024 * 1024,
+            } as any,
+          };
+        }
+        return prev(method, payload, signal);
+      });
+      const axiosGetSpy = vi.spyOn(axios, 'get');
+
+      const photoUpdate = {
+        update_id: 2,
+        message: {
+          message_id: 102,
+          date: Math.floor(Date.now() / 1000),
+          chat: { id: Number(dummyUserId), type: 'private' as const },
+          from: { id: Number(dummyUserId), is_bot: false, first_name: 'Owner' },
+          photo: [
+            { file_id: 'large-meta-id', file_unique_id: 'u2', width: 800, height: 800, file_size: 1000 },
+          ],
+        },
+      };
+
+      await bot.handleUpdate(photoUpdate);
+
+      expect(axiosGetSpy).not.toHaveBeenCalled();
+      expect(receivedEvents).toHaveLength(0);
+      expect(sentMessages).toHaveLength(1);
+      expect(sentMessages[0]).toContain('Ukuran foto melebihi batas maksimal (5 MB)');
+    });
+
+    it('handles stream limit payload error in axios download as oversized media', async () => {
+      const sentMessages: string[] = [];
+      const receivedEvents: any[] = [];
+
+      const adapter = new TelegramMessagingAdapter(
+        dummyToken,
+        dummyUserId,
+        async event => { receivedEvents.push(event); },
+        { maxMediaDownloadBytes: 10 * 1024 * 1024 }
+      );
+      vi.spyOn(adapter, 'sendTextMessage').mockImplementation(async (_chatId, text) => {
+        sentMessages.push(text);
+      });
+
+      const bot = new Bot(dummyToken, { botInfo: dummyBotInfo });
+      adapter.setupBotHandlers(bot);
+      bot.api.config.use(async (prev, method, payload, signal) => {
+        if (method === 'getFile') {
+          return {
+            ok: true,
+            result: {
+              file_id: 'stream-id',
+              file_unique_id: 'u3',
+              file_path: 'photos/stream.jpg',
+              file_size: 2000,
+            } as any,
+          };
+        }
+        return prev(method, payload, signal);
+      });
+      vi.spyOn(axios, 'get').mockRejectedValue({
+        isAxiosError: true,
+        code: 'ERR_FR_MAX_BODY_LENGTH_EXCEEDED',
+        message: 'maxContentLength size of 10485760 exceeded',
+      });
+
+      const photoUpdate = {
+        update_id: 3,
+        message: {
+          message_id: 103,
+          date: Math.floor(Date.now() / 1000),
+          chat: { id: Number(dummyUserId), type: 'private' as const },
+          from: { id: Number(dummyUserId), is_bot: false, first_name: 'Owner' },
+          photo: [
+            { file_id: 'stream-id', file_unique_id: 'u3', width: 800, height: 800, file_size: 2000 },
+          ],
+        },
+      };
+
+      await bot.handleUpdate(photoUpdate);
+
+      expect(receivedEvents).toHaveLength(0);
+      expect(sentMessages).toHaveLength(1);
+      expect(sentMessages[0]).toContain('Ukuran foto melebihi batas maksimal (10 MB)');
+    });
+
+    it('handles normal photo download failure with bot token redaction and failure notice', async () => {
+      const sentMessages: string[] = [];
+      const receivedEvents: any[] = [];
+      const errorLoggerSpy = vi.spyOn(applicationLogger, 'error').mockImplementation(() => {});
+
+      const adapter = new TelegramMessagingAdapter(
+        dummyToken,
+        dummyUserId,
+        async event => { receivedEvents.push(event); },
+        { maxMediaDownloadBytes: 10 * 1024 * 1024 }
+      );
+      vi.spyOn(adapter, 'sendTextMessage').mockImplementation(async (_chatId, text) => {
+        sentMessages.push(text);
+      });
+
+      const bot = new Bot(dummyToken, { botInfo: dummyBotInfo });
+      adapter.setupBotHandlers(bot);
+      bot.api.config.use(async (prev, method, payload, signal) => {
+        if (method === 'getFile') {
+          return {
+            ok: true,
+            result: {
+              file_id: 'fail-id',
+              file_unique_id: 'u4',
+              file_path: 'photos/fail.jpg',
+              file_size: 2000,
+            } as any,
+          };
+        }
+        return prev(method, payload, signal);
+      });
+      vi.spyOn(axios, 'get').mockRejectedValue(
+        new Error(`connect ETIMEDOUT https://api.telegram.org/file/bot${dummyToken}/photos/fail.jpg`)
+      );
+
+      const photoUpdate = {
+        update_id: 4,
+        message: {
+          message_id: 104,
+          date: Math.floor(Date.now() / 1000),
+          chat: { id: Number(dummyUserId), type: 'private' as const },
+          from: { id: Number(dummyUserId), is_bot: false, first_name: 'Owner' },
+          photo: [
+            { file_id: 'fail-id', file_unique_id: 'u4', width: 800, height: 800, file_size: 2000 },
+          ],
+        },
+      };
+
+      await bot.handleUpdate(photoUpdate);
+
+      expect(receivedEvents).toHaveLength(0);
+      expect(sentMessages).toHaveLength(1);
+      expect(sentMessages[0]).toBe('⚠️ Gagal mengunduh foto struk dari Telegram. Silakan coba kirim ulang ya!');
+
+      expect(errorLoggerSpy).toHaveBeenCalledWith(expect.not.stringContaining(dummyToken));
+      expect(errorLoggerSpy).toHaveBeenCalledWith(expect.stringContaining('[REDACTED_TOKEN]'));
+    });
+
+    it('rejects oversized downloaded buffer in Telegram adapter', async () => {
+      const sentMessages: string[] = [];
+      const receivedEvents: any[] = [];
+
+      const adapter = new TelegramMessagingAdapter(
+        dummyToken,
+        dummyUserId,
+        async event => { receivedEvents.push(event); },
+        { maxMediaDownloadBytes: 5 * 1024 * 1024 }
+      );
+      vi.spyOn(adapter, 'sendTextMessage').mockImplementation(async (_chatId, text) => {
+        sentMessages.push(text);
+      });
+
+      const bot = new Bot(dummyToken, { botInfo: dummyBotInfo });
+      adapter.setupBotHandlers(bot);
+      bot.api.config.use(async (prev, method, payload, signal) => {
+        if (method === 'getFile') {
+          return {
+            ok: true,
+            result: {
+              file_id: 'buffer-id',
+              file_unique_id: 'u5',
+              file_path: 'photos/buffer.jpg',
+              file_size: 1000,
+            } as any,
+          };
+        }
+        return prev(method, payload, signal);
+      });
+      vi.spyOn(axios, 'get').mockResolvedValue({
+        data: Buffer.alloc(8 * 1024 * 1024),
+      });
+
+      const photoUpdate = {
+        update_id: 5,
+        message: {
+          message_id: 105,
+          date: Math.floor(Date.now() / 1000),
+          chat: { id: Number(dummyUserId), type: 'private' as const },
+          from: { id: Number(dummyUserId), is_bot: false, first_name: 'Owner' },
+          photo: [
+            { file_id: 'buffer-id', file_unique_id: 'u5', width: 800, height: 800, file_size: 1000 },
+          ],
+        },
+      };
+
+      await bot.handleUpdate(photoUpdate);
+
+      expect(receivedEvents).toHaveLength(0);
+      expect(sentMessages).toHaveLength(1);
+      expect(sentMessages[0]).toContain('Ukuran foto melebihi batas maksimal (5 MB)');
+    });
+
+    it('successfully downloads and delivers photo within size limits', async () => {
+      const sentMessages: string[] = [];
+      const receivedEvents: any[] = [];
+
+      const adapter = new TelegramMessagingAdapter(
+        dummyToken,
+        dummyUserId,
+        async event => { receivedEvents.push(event); },
+        { maxMediaDownloadBytes: 10 * 1024 * 1024 }
+      );
+      vi.spyOn(adapter, 'sendTextMessage').mockImplementation(async (_chatId, text) => {
+        sentMessages.push(text);
+      });
+
+      const bot = new Bot(dummyToken, { botInfo: dummyBotInfo });
+      adapter.setupBotHandlers(bot);
+      bot.api.config.use(async (prev, method, payload, signal) => {
+        if (method === 'getFile') {
+          return {
+            ok: true,
+            result: {
+              file_id: 'success-id',
+              file_unique_id: 'u6',
+              file_path: 'photos/success.jpg',
+              file_size: 2048,
+            } as any,
+          };
+        }
+        return prev(method, payload, signal);
+      });
+      const sampleImageData = Buffer.from('mock-jpeg-binary-data');
+      vi.spyOn(axios, 'get').mockResolvedValue({
+        data: sampleImageData,
+      });
+
+      const photoUpdate = {
+        update_id: 6,
+        message: {
+          message_id: 106,
+          date: Math.floor(Date.now() / 1000),
+          chat: { id: Number(dummyUserId), type: 'private' as const },
+          from: { id: Number(dummyUserId), is_bot: false, first_name: 'Owner' },
+          photo: [
+            { file_id: 'success-id', file_unique_id: 'u6', width: 800, height: 800, file_size: 2048 },
+          ],
+          caption: 'Lunch Receipt',
+        },
+      };
+
+      await bot.handleUpdate(photoUpdate);
+
+      expect(sentMessages).toHaveLength(0);
+      expect(receivedEvents).toHaveLength(1);
+      expect(receivedEvents[0]).toMatchObject({
+        channel: 'telegram',
+        messageType: 'image',
+        textPayload: 'Lunch Receipt',
+        imageBuffer: sampleImageData,
+        imageMimeType: 'image/jpeg',
+      });
     });
   });
 
@@ -280,7 +600,7 @@ describe('Cross-Channel Media Handling (Issue #109)', () => {
           updateMediaMessage: async () => {},
         } as any),
         outgoingTracker,
-        5 * 1024 * 1024, // 5 MB
+        5 * 1024 * 1024,
         async (_chatId, text) => {
           sentMessages.push(text);
         }
@@ -294,7 +614,7 @@ describe('Cross-Channel Media Handling (Issue #109)', () => {
         },
         message: {
           imageMessage: {
-            fileLength: 15 * 1024 * 1024, // 15 MB
+            fileLength: 15 * 1024 * 1024,
             mimetype: 'image/jpeg',
             caption: 'Oversized Receipt',
           },
@@ -306,6 +626,49 @@ describe('Cross-Channel Media Handling (Issue #109)', () => {
       expect(receivedEvents).toHaveLength(0);
       expect(sentMessages).toHaveLength(1);
       expect(sentMessages[0]).toContain('Ukuran foto melebihi batas maksimal (5 MB)');
+    });
+
+    it('handles download failure during WhatsApp image download and dispatches localized notice', async () => {
+      const sentMessages: string[] = [];
+      const receivedEvents: unknown[] = [];
+      const outgoingTracker = new MessageIdTracker();
+
+      const processor = new WhatsappInboundMessageProcessor(
+        '6281234567890',
+        async event => {
+          receivedEvents.push(event);
+        },
+        () => ({
+          user: { id: '6281234567890:1@s.whatsapp.net' },
+          updateMediaMessage: async () => {},
+        } as any),
+        outgoingTracker,
+        10 * 1024 * 1024,
+        async (_chatId, text) => {
+          sentMessages.push(text);
+        }
+      );
+
+      const failingImageMessage = {
+        key: {
+          remoteJid: '6281234567890@s.whatsapp.net',
+          id: 'failing-image-msg-001',
+          fromMe: false,
+        },
+        message: {
+          imageMessage: {
+            fileLength: 5000,
+            mimetype: 'image/jpeg',
+            caption: 'Receipt that will fail download',
+          },
+        },
+      };
+
+      await processor.process([failingImageMessage]);
+
+      expect(receivedEvents).toHaveLength(0);
+      expect(sentMessages).toHaveLength(1);
+      expect(sentMessages[0]).toBe('⚠️ Gagal mengunduh foto struk dari WhatsApp. Silakan coba kirim ulang ya!');
     });
 
     it('respects English language setting during WhatsApp oversized media rejection', async () => {

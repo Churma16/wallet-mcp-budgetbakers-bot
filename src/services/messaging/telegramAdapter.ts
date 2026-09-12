@@ -88,145 +88,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     }
 
     this.botInstance = new Bot(this.botToken);
-
-    // 1. Security Whitelist Middleware
-    this.botInstance.use(async (ctx, next) => {
-      await this.handleInboundMiddleware(ctx, next);
-    });
-
-    // 2. Handle Text Messages
-    this.botInstance.on('message:text', async ctx => {
-      const textContent = ctx.message.text?.trim();
-      if (!textContent) {
-        return;
-      }
-
-      const chatId = String(ctx.chat.id);
-      const senderIdentifier = ctx.from?.id ? String(ctx.from.id) : chatId;
-
-      await this.onUserMessageReceived({
-        channel: 'telegram',
-        chatIdentifier: chatId,
-        senderIdentifier,
-        messageType: 'text',
-        textPayload: textContent,
-      });
-    });
-
-    // 3. Handle Photo Messages (e.g. Receipt Photo for Vision)
-    this.botInstance.on('message:photo', async ctx => {
-      const photoVariants = ctx.message.photo;
-      if (!photoVariants || photoVariants.length === 0) {
-        return;
-      }
-
-      const chatId = String(ctx.chat.id);
-      const senderIdentifier = ctx.from?.id ? String(ctx.from.id) : chatId;
-      const captionText = ctx.message.caption || '';
-
-      try {
-        // Pick the highest resolution photo variant (last in array)
-        const highestResolutionPhoto = photoVariants[photoVariants.length - 1];
-
-        if (
-          highestResolutionPhoto.file_size &&
-          isMediaSizeExceeded(highestResolutionPhoto.file_size, this.maxMediaDownloadBytes)
-        ) {
-          await this.rejectOversizedPhoto(
-            chatId,
-            senderIdentifier,
-            highestResolutionPhoto.file_size,
-            'declared_size'
-          );
-          return;
-        }
-
-        const fileMetadata = await ctx.api.getFile(highestResolutionPhoto.file_id);
-
-        if (!fileMetadata.file_path) {
-          throw new Error('Telegram file_path is unavailable');
-        }
-
-        if (
-          fileMetadata.file_size &&
-          isMediaSizeExceeded(fileMetadata.file_size, this.maxMediaDownloadBytes)
-        ) {
-          await this.rejectOversizedPhoto(
-            chatId,
-            senderIdentifier,
-            fileMetadata.file_size,
-            'metadata'
-          );
-          return;
-        }
-
-        const downloadFileUrl = `https://api.telegram.org/file/bot${this.botToken}/${fileMetadata.file_path}`;
-        const fileDownloadResponse = await axios.get<ArrayBuffer>(downloadFileUrl, {
-          responseType: 'arraybuffer',
-          timeout: 30000,
-          maxContentLength: this.maxMediaDownloadBytes,
-          maxBodyLength: this.maxMediaDownloadBytes,
-        });
-
-        const imageBuffer = Buffer.from(fileDownloadResponse.data);
-
-        if (isMediaSizeExceeded(imageBuffer.length, this.maxMediaDownloadBytes)) {
-          await this.rejectOversizedPhoto(
-            chatId,
-            senderIdentifier,
-            imageBuffer.length,
-            'buffer'
-          );
-          return;
-        }
-
-        await this.onUserMessageReceived({
-          channel: 'telegram',
-          chatIdentifier: chatId,
-          senderIdentifier,
-          messageType: 'image',
-          textPayload: captionText,
-          imageBuffer,
-          imageMimeType: 'image/jpeg',
-        });
-      } catch (downloadError: unknown) {
-        if (isMediaPayloadSizeLimitExceeded(downloadError)) {
-          await this.rejectOversizedPhoto(
-            chatId,
-            senderIdentifier,
-            undefined,
-            'download_stream',
-            {
-              error:
-                downloadError instanceof Error
-                  ? { name: downloadError.name, message: downloadError.message }
-                  : String(downloadError),
-            }
-          );
-          return;
-        }
-
-        await handleMediaDownloadFailure({
-          channel: 'telegram',
-          chatIdentifier: chatId,
-          senderIdentifier,
-          downloadError,
-          sendTextMessage: (targetChatIdentifier, messageText) =>
-            this.sendTextMessage(targetChatIdentifier, messageText),
-          redactToken: this.botToken,
-        });
-      }
-    });
-
-    // Global Telegram Error Handler
-    this.botInstance.catch(botError => {
-      applicationLogger.error(`Telegram Bot encountered an unhandled error: ${botError.message}`);
-      applicationLogger.fileDetail('error', 'Telegram Bot Internal Error', {
-        error: botError instanceof Error
-          ? { name: botError.name, message: botError.message, stack: botError.stack }
-          : String(botError),
-      });
-    });
+    this.setupBotHandlers(this.botInstance);
 
     // 4. Verify Bot Credentials & Start Long Polling
     try {
@@ -447,6 +309,147 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     }
 
     await this.sendTextMessage(this.normalizedAllowedUserId, messageText);
+  }
+
+  public setupBotHandlers(bot: Bot): void {
+    // 1. Security Whitelist Middleware
+    bot.use(async (ctx, next) => {
+      await this.handleInboundMiddleware(ctx, next);
+    });
+
+    // 2. Handle Text Messages
+    bot.on('message:text', async ctx => {
+      const textContent = ctx.message.text?.trim();
+      if (!textContent) {
+        return;
+      }
+
+      const chatId = String(ctx.chat.id);
+      const senderIdentifier = ctx.from?.id ? String(ctx.from.id) : chatId;
+
+      await this.onUserMessageReceived({
+        channel: 'telegram',
+        chatIdentifier: chatId,
+        senderIdentifier,
+        messageType: 'text',
+        textPayload: textContent,
+      });
+    });
+
+    // 3. Handle Photo Messages (e.g. Receipt Photo for Vision)
+    bot.on('message:photo', async ctx => {
+      const photoVariants = ctx.message.photo;
+      if (!photoVariants || photoVariants.length === 0) {
+        return;
+      }
+
+      const chatId = String(ctx.chat.id);
+      const senderIdentifier = ctx.from?.id ? String(ctx.from.id) : chatId;
+      const captionText = ctx.message.caption || '';
+
+      try {
+        // Pick the highest resolution photo variant (last in array)
+        const highestResolutionPhoto = photoVariants[photoVariants.length - 1];
+
+        if (
+          highestResolutionPhoto.file_size &&
+          isMediaSizeExceeded(highestResolutionPhoto.file_size, this.maxMediaDownloadBytes)
+        ) {
+          await this.rejectOversizedPhoto(
+            chatId,
+            senderIdentifier,
+            highestResolutionPhoto.file_size,
+            'declared_size'
+          );
+          return;
+        }
+
+        const fileMetadata = await ctx.api.getFile(highestResolutionPhoto.file_id);
+
+        if (!fileMetadata.file_path) {
+          throw new Error('Telegram file_path is unavailable');
+        }
+
+        if (
+          fileMetadata.file_size &&
+          isMediaSizeExceeded(fileMetadata.file_size, this.maxMediaDownloadBytes)
+        ) {
+          await this.rejectOversizedPhoto(
+            chatId,
+            senderIdentifier,
+            fileMetadata.file_size,
+            'metadata'
+          );
+          return;
+        }
+
+        const downloadFileUrl = `https://api.telegram.org/file/bot${this.botToken}/${fileMetadata.file_path}`;
+        const fileDownloadResponse = await axios.get<ArrayBuffer>(downloadFileUrl, {
+          responseType: 'arraybuffer',
+          timeout: 30000,
+          maxContentLength: this.maxMediaDownloadBytes,
+          maxBodyLength: this.maxMediaDownloadBytes,
+        });
+
+        const imageBuffer = Buffer.from(fileDownloadResponse.data);
+
+        if (isMediaSizeExceeded(imageBuffer.length, this.maxMediaDownloadBytes)) {
+          await this.rejectOversizedPhoto(
+            chatId,
+            senderIdentifier,
+            imageBuffer.length,
+            'buffer'
+          );
+          return;
+        }
+
+        await this.onUserMessageReceived({
+          channel: 'telegram',
+          chatIdentifier: chatId,
+          senderIdentifier,
+          messageType: 'image',
+          textPayload: captionText,
+          imageBuffer,
+          imageMimeType: 'image/jpeg',
+        });
+      } catch (downloadError: unknown) {
+        if (isMediaPayloadSizeLimitExceeded(downloadError)) {
+          await this.rejectOversizedPhoto(
+            chatId,
+            senderIdentifier,
+            undefined,
+            'download_stream',
+            {
+              error:
+                downloadError instanceof Error
+                  ? { name: downloadError.name, message: downloadError.message }
+                  : String(downloadError),
+            }
+          );
+          return;
+        }
+
+        await handleMediaDownloadFailure({
+          channel: 'telegram',
+          chatIdentifier: chatId,
+          senderIdentifier,
+          downloadError,
+          sendTextMessage: (targetChatIdentifier, messageText) =>
+            this.sendTextMessage(targetChatIdentifier, messageText),
+          redactToken: this.botToken,
+        });
+      }
+    });
+
+    // Global Telegram Error Handler
+    bot.catch(botError => {
+      applicationLogger.error(`Telegram Bot encountered an unhandled error: ${botError.message}`);
+      applicationLogger.fileDetail('error', 'Telegram Bot Internal Error', {
+        error: botError instanceof Error
+          ? { name: botError.name, message: botError.message, stack: botError.stack }
+          : String(botError),
+      });
+    });
   }
 
   private async rejectOversizedPhoto(
