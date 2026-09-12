@@ -56,6 +56,7 @@ const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
   { filePath: 'tests/transactionHistorySearch.test.ts', description: 'Transaction history free-text search across merchant/payee and notes (Issue #102)' },
   { filePath: 'tests/transactionHistorySearchReviewRegression.test.ts', description: 'PR #114 quoted literal and search pagination regressions (Issue #102)' },
   { filePath: 'tests/transactionSummary.test.ts', description: 'Transaction totals, grouped breakdowns, filters, empty data, and currency isolation (Issue #103)' },
+  { filePath: 'tests/transactionSummaryHandler.test.ts', description: 'Transaction summary fast-path dispatch, service delegation, formatting, and message delivery (Issue #103)' },
 ];
 
 const isVerboseMode = process.argv.includes('--verbose') || process.argv.includes('-v');
