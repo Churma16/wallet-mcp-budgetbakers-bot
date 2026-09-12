@@ -13,7 +13,10 @@ export interface ParsedFinancialAmountResult {
  *
  * Fails closed (returns null) on ambiguous separator patterns or invalid structures.
  */
-export function parseFinancialAmount(rawInput: string): ParsedFinancialAmountResult | null {
+export function parseFinancialAmount(
+  rawInput: string,
+  externalCurrencyHint?: string
+): ParsedFinancialAmountResult | null {
   if (typeof rawInput !== 'string') {
     return null;
   }
@@ -65,9 +68,20 @@ export function parseFinancialAmount(rawInput: string): ParsedFinancialAmountRes
     return null;
   }
 
-  const detectedCurrency: string | undefined = detectedCurrencies.size === 1
+  const embeddedCurrency: string | undefined = detectedCurrencies.size === 1
     ? Array.from(detectedCurrencies)[0]
     : undefined;
+
+  const normalizedExternalCurrency = typeof externalCurrencyHint === 'string' && externalCurrencyHint.trim()
+    ? externalCurrencyHint.trim().toUpperCase()
+    : undefined;
+
+  // If both embedded currency and external currency are present and they conflict, fail closed
+  if (embeddedCurrency && normalizedExternalCurrency && embeddedCurrency !== normalizedExternalCurrency) {
+    return null;
+  }
+
+  const detectedCurrency: string | undefined = embeddedCurrency || normalizedExternalCurrency;
 
   const isIdr = detectedCurrency === 'IDR';
   const isDecimalCurrency = detectedCurrency !== undefined && detectedCurrency !== 'IDR';
@@ -252,6 +266,9 @@ export function parseFinancialAmount(rawInput: string): ParsedFinancialAmountRes
 /**
  * Convenience wrapper returning only the numeric amount, or null if unparseable/ambiguous.
  */
-export function parseFinancialAmountString(rawInput: string): number | null {
-  return parseFinancialAmount(rawInput)?.amount ?? null;
+export function parseFinancialAmountString(
+  rawInput: string,
+  externalCurrencyHint?: string
+): number | null {
+  return parseFinancialAmount(rawInput, externalCurrencyHint)?.amount ?? null;
 }

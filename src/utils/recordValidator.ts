@@ -283,30 +283,42 @@ export function validateAndSanitizeFinancialRecords(
 
     // 1. Amount Validation
     const rawAmountValue: unknown = currentRecord.amount;
-    let parsedAmount = Number(rawAmountValue);
     const rawRecordCurrency: string | undefined =
       typeof currentRecord.currency === 'string' && currentRecord.currency.trim()
         ? currentRecord.currency.trim().toUpperCase()
         : undefined;
 
+    let parsedAmount: number | null = null;
     let stringAmountCurrencyHint: string | undefined = undefined;
 
-    if ((!Number.isFinite(parsedAmount) || Number.isNaN(parsedAmount)) && typeof rawAmountValue === 'string') {
-      const parsedFinancialResult = parseFinancialAmount(rawAmountValue);
+    if (typeof rawAmountValue === 'number') {
+      parsedAmount = Number.isFinite(rawAmountValue) ? rawAmountValue : null;
+    } else if (typeof rawAmountValue === 'string') {
+      // First check if the raw string amount embeds an explicit currency marker
+      const embeddedMarkerResult = parseFinancialAmount(rawAmountValue);
+      if (embeddedMarkerResult?.explicitCurrencyHint) {
+        stringAmountCurrencyHint = embeddedMarkerResult.explicitCurrencyHint.trim().toUpperCase();
+      }
+
+      // Reconcile currency hints: record currency vs explicit currency parsed from amount string
+      if (rawRecordCurrency && stringAmountCurrencyHint && rawRecordCurrency !== stringAmountCurrencyHint) {
+        validationErrors.push(
+          `${recordLabel}: Konflik mata uang terdeteksi antara data transaksi (${rawRecordCurrency}) dan nominal (${stringAmountCurrencyHint}).`
+        );
+        continue;
+      }
+
+      const effectiveCurrencyContext = rawRecordCurrency || stringAmountCurrencyHint;
+      const parsedFinancialResult = parseFinancialAmount(rawAmountValue, effectiveCurrencyContext);
       if (parsedFinancialResult !== null && Number.isFinite(parsedFinancialResult.amount)) {
         parsedAmount = parsedFinancialResult.amount;
         if (parsedFinancialResult.explicitCurrencyHint) {
           stringAmountCurrencyHint = parsedFinancialResult.explicitCurrencyHint.trim().toUpperCase();
         }
       }
-    } else if (typeof rawAmountValue === 'string') {
-      const parsedFinancialResult = parseFinancialAmount(rawAmountValue);
-      if (parsedFinancialResult?.explicitCurrencyHint) {
-        stringAmountCurrencyHint = parsedFinancialResult.explicitCurrencyHint.trim().toUpperCase();
-      }
     }
 
-    if (!Number.isFinite(parsedAmount) || Number.isNaN(parsedAmount)) {
+    if (parsedAmount === null || !Number.isFinite(parsedAmount) || Number.isNaN(parsedAmount)) {
       validationErrors.push(`${recordLabel}: Nominal tidak valid (${currentRecord.amount}).`);
       continue;
     }

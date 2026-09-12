@@ -242,6 +242,16 @@ test('parseFinancialAmountString preserves decimal scale and fails closed on amb
   assert.strictEqual(parseFinancialAmountString('abc'), null, 'abc is not a number');
   assert.strictEqual(parseFinancialAmountString('Rp10k'), null, 'Rp10k has unparsed letters');
   assert.strictEqual(parseFinancialAmountString(''), null, 'Empty string returns null');
+
+  // Currency-aware external hint parsing
+  assert.strictEqual(parseFinancialAmountString('-10.079', 'IDR'), -10079, '-10.079 with IDR hint parses as thousands');
+  assert.strictEqual(parseFinancialAmountString('15.100', 'IDR'), 15100, '15.100 with IDR hint parses as thousands');
+  assert.strictEqual(parseFinancialAmountString('-10.50', 'USD'), -10.5, '-10.50 with USD hint parses as decimal');
+  assert.strictEqual(parseFinancialAmountString('-10.079', 'USD'), null, '-10.079 with USD hint fails closed on 3 decimal digits');
+  assert.strictEqual(parseFinancialAmountString('-10.50', 'IDR'), null, '-10.50 with IDR hint fails closed on 2 decimal digits without comma');
+  assert.strictEqual(parseFinancialAmountString('-Rp10.079', 'USD'), null, '-Rp10.079 with conflicting USD hint fails closed');
+  assert.strictEqual(parseFinancialAmountString('-Rp10.079', 'IDR'), -10079, '-Rp10.079 with matching IDR hint succeeds');
+  assert.strictEqual(parseFinancialAmountString('10000', 'IDR'), 10000, '10000 with IDR hint parses integer');
 });
 
 test('validateAndSanitizeFinancialRecords normalizes currency strings and rejects ambiguous amounts', () => {
@@ -261,6 +271,34 @@ test('validateAndSanitizeFinancialRecords normalizes currency strings and reject
   assert.strictEqual(validResult.sanitizedRecords[1].amount, 1234.5);
   assert.strictEqual(validResult.sanitizedRecords[2].amount, -10079);
   assert.strictEqual(validResult.sanitizedRecords[3].amount, 15100);
+
+  // String amount with separate currency field normalizes accurately
+  const separateCurrencyResult = validateAndSanitizeFinancialRecords(
+    [
+      { accountId: 'acc-jago', amount: '-10.079' as any, currency: 'IDR', recordDate: '2026-09-08T04:54:00.000Z' },
+      { accountId: 'acc-usd', amount: '-10.50' as any, currency: 'USD', recordDate: '2026-09-08T04:54:00.000Z' },
+    ],
+    mockAccounts,
+    mockCategories
+  );
+  assert.strictEqual(separateCurrencyResult.isValid, true);
+  assert.strictEqual(separateCurrencyResult.sanitizedRecords[0].amount, -10079);
+  assert.strictEqual(separateCurrencyResult.sanitizedRecords[0].currency, 'IDR');
+  assert.strictEqual(separateCurrencyResult.sanitizedRecords[1].amount, -10.5);
+  assert.strictEqual(separateCurrencyResult.sanitizedRecords[1].currency, 'USD');
+
+  // String amount "-10.079" without currency context or under USD fails closed (never coerces via JavaScript Number())
+  const invalidStringCoercionResult = validateAndSanitizeFinancialRecords(
+    [
+      { accountId: 'acc-usd', amount: '-10.079' as any, currency: 'USD', recordDate: '2026-09-08T04:54:00.000Z' },
+      { accountId: 'acc-jago', amount: '-10.079' as any, recordDate: '2026-09-08T04:54:00.000Z' },
+    ],
+    mockAccounts,
+    mockCategories
+  );
+  assert.strictEqual(invalidStringCoercionResult.isValid, false);
+  assert.ok(invalidStringCoercionResult.validationErrors[0].includes('Nominal tidak valid (-10.079)'));
+  assert.ok(invalidStringCoercionResult.validationErrors[1].includes('Nominal tidak valid (-10.079)'));
 
   // Ambiguous currency amount in validator fails validation
   const ambiguousResult = validateAndSanitizeFinancialRecords(
@@ -782,6 +820,48 @@ test('Message flow returns receiptExtractionFailed on parseable-but-structurally
   assert.strictEqual(harnessM.mockMcpClient.calls.length, 1, 'Exactly one Wallet MCP write for matching USD record');
   assert.strictEqual(harnessM.mockMcpClient.calls[0][0].accountId, 'acc-usd');
   assert.strictEqual(harnessM.mockMcpClient.calls[0][0].amount, -10.5);
+
+  // Case N: Receipt string amount with separate currency "amount: -10.079, currency: IDR" normalizes to -10079 with 1 Wallet write
+  const harnessN = buildTestHarness();
+  harnessN.mockAiProvider.setImageHandler(async () => {
+    return validateReceiptFinancialIntentEnvelope({
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'Jago', amount: '-10.079' as any, currency: 'IDR', recordDate: '2026-09-08T04:54:00.000Z', note: 'Coffee IDR string' }],
+    });
+  });
+
+  await harnessN.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessN.mockMcpClient.calls.length, 1, 'Exactly one Wallet MCP write for string IDR amount');
+  assert.strictEqual(harnessN.mockMcpClient.calls[0][0].accountId, 'acc-jago');
+  assert.strictEqual(harnessN.mockMcpClient.calls[0][0].amount, -10079, 'String -10.079 normalized to -10079 in Wallet write');
+
+  // Case O: Receipt string amount with separate currency "amount: -10.50, currency: USD" normalizes to -10.5 with 1 Wallet write
+  const harnessO = buildTestHarness();
+  harnessO.mockAiProvider.setImageHandler(async () => {
+    return validateReceiptFinancialIntentEnvelope({
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'USD Account', amount: '-10.50' as any, currency: 'USD', recordDate: '2026-09-08T04:54:00.000Z', note: 'Coffee USD string' }],
+    });
+  });
+
+  await harnessO.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessO.mockMcpClient.calls.length, 1, 'Exactly one Wallet MCP write for string USD amount');
+  assert.strictEqual(harnessO.mockMcpClient.calls[0][0].accountId, 'acc-usd');
+  assert.strictEqual(harnessO.mockMcpClient.calls[0][0].amount, -10.5, 'String -10.50 normalized to -10.5 in Wallet write');
+
+  // Case P: Receipt string amount "amount: -10.079, currency: USD" fails closed with zero Wallet writes
+  const harnessP = buildTestHarness();
+  harnessP.mockAiProvider.setImageHandler(async () => {
+    return validateReceiptFinancialIntentEnvelope({
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'USD Account', amount: '-10.079' as any, currency: 'USD', recordDate: '2026-09-08T04:54:00.000Z', note: 'Ambiguous USD string' }],
+    });
+  });
+
+  await harnessP.userMessageHandler.handleIncomingUserMessage(createImageEvent());
+  assert.strictEqual(harnessP.mockMcpClient.calls.length, 0, 'Zero Wallet MCP writes on ambiguous string amount under USD');
+  const replyP = harnessP.mockGateway.lastMessage || '';
+  assert.ok(replyP.includes('Nominal tidak valid'), 'Fails validation on ambiguous string amount');
 });
 
 // =========================================================================
