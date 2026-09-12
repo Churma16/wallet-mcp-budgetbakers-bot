@@ -216,7 +216,7 @@ test('sparse search stops at the per-request MCP scan budget and returns an acti
   assert.strictEqual(secondAttempt.unresolvedFilters?.[0].reason, 'UNRESOLVED');
 });
 
-test('a complete page remains visible when only lookahead exhausts the scan budget', async () => {
+test('unknown lookahead stays resumable until the next match is verified', async () => {
   const client = new WalletMcpClientService('http://localhost:8080', 'mock-token');
   const capturedOffsets: number[] = [];
 
@@ -228,7 +228,9 @@ test('a complete page remains visible when only lookahead exhausts the scan budg
 
     return {
       records: Array.from({ length: limit }, (_, index) => {
-        const shouldMatch = callIndex === MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST && index < 10;
+        const shouldMatch =
+          (callIndex === MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST && index < 10) ||
+          (callIndex === MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST + 1 && index === 0);
         return {
           id: `lookahead-${offset + index}`,
           accountId: 'acc-1',
@@ -236,22 +238,44 @@ test('a complete page remains visible when only lookahead exhausts the scan budg
           currency: 'IDR',
           recordDate: '2026-09-11T10:00:00Z',
           recordType: 'expense',
-          counterParty: shouldMatch ? `Target Merchant ${index}` : `Other Merchant ${offset + index}`,
+          counterParty: shouldMatch ? `Target Merchant ${offset + index}` : `Other Merchant ${offset + index}`,
         };
       }),
       total: 10000,
     } as T;
   };
 
-  const page = await client.fetchRecords({ searchQuery: 'target merchant', limit: 10, page: 1 });
+  const firstAttempt = await client.fetchRecords({ searchQuery: 'target merchant', limit: 10, page: 1 });
   assert.strictEqual(capturedOffsets.length, MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST);
-  assert.strictEqual(page.records.length, 10);
-  assert.strictEqual(page.records[0].counterParty, 'Target Merchant 0');
-  assert.strictEqual(page.unresolvedFilters, undefined);
-  assert.strictEqual(page.total, undefined);
-  assert.strictEqual(page.totalPages, undefined);
-  assert.strictEqual(page.hasMore, false);
-  assert.strictEqual(page.nextOffset, null);
+  assert.strictEqual(firstAttempt.records.length, 10);
+  assert.strictEqual(firstAttempt.unresolvedFilters, undefined);
+  assert.strictEqual(firstAttempt.total, undefined);
+  assert.strictEqual(firstAttempt.totalPages, undefined);
+  assert.strictEqual(firstAttempt.hasMore, false);
+  assert.strictEqual(firstAttempt.nextOffset, null);
+  assert.strictEqual(firstAttempt.continuationUnknown, true);
+
+  setActiveLanguage('en');
+  const firstFormattedEn = formatTransactionHistoryMessage(firstAttempt);
+  assert.match(firstFormattedEn, /more matching transactions may still exist/i);
+  assert.match(firstFormattedEn, /retry the same search/i);
+
+  setActiveLanguage('id');
+  const firstFormattedId = formatTransactionHistoryMessage(firstAttempt);
+  assert.match(firstFormattedId, /transaksi yang cocok mungkin masih ada/i);
+  assert.match(firstFormattedId, /ulangi pencarian yang sama/i);
+
+  const retry = await client.fetchRecords({ searchQuery: 'target merchant', limit: 10, page: 1 });
+  assert.strictEqual(capturedOffsets.length, MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST + 1);
+  assert.strictEqual(retry.records.length, 10);
+  assert.strictEqual(retry.hasMore, true);
+  assert.strictEqual(retry.nextOffset, 10);
+  assert.strictEqual(retry.continuationUnknown, false);
+
+  setActiveLanguage('en');
+  const retryFormatted = formatTransactionHistoryMessage(retry);
+  assert.match(retryFormatted, /next page/i);
+  assert.doesNotMatch(retryFormatted, /more matching transactions may still exist/i);
 });
 
 console.log('[SUCCESS] PR #114 transaction search review regression tests passed.');
