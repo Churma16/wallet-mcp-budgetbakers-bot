@@ -17,6 +17,45 @@ export function serializeEnvValue(value: string): string {
   return JSON.stringify(value);
 }
 
+function extractInlineCommentSuffix(rawAssignmentValue: string): string {
+  let activeQuote: '"' | "'" | null = null;
+  let isEscaped = false;
+
+  for (let characterIndex = 0; characterIndex < rawAssignmentValue.length; characterIndex++) {
+    const currentCharacter = rawAssignmentValue[characterIndex];
+
+    if (isEscaped) {
+      isEscaped = false;
+      continue;
+    }
+
+    if (activeQuote === '"' && currentCharacter === '\\') {
+      isEscaped = true;
+      continue;
+    }
+
+    if (activeQuote) {
+      if (currentCharacter === activeQuote) {
+        activeQuote = null;
+      }
+      continue;
+    }
+
+    if (currentCharacter === '"' || currentCharacter === "'") {
+      activeQuote = currentCharacter;
+      continue;
+    }
+
+    if (currentCharacter === '#') {
+      const valuePrefix = rawAssignmentValue.slice(0, characterIndex);
+      const trailingWhitespace = valuePrefix.match(/\s*$/)?.[0] || '';
+      return `${trailingWhitespace}${rawAssignmentValue.slice(characterIndex)}`;
+    }
+  }
+
+  return '';
+}
+
 export function mergeEnvFileContent(
   existingContent: string,
   updates: EnvironmentValueMap
@@ -35,14 +74,15 @@ export function mergeEnvFileContent(
       return line;
     }
 
-    const [, prefix, variableName, assignmentSpacing] = assignmentMatch;
+    const [, prefix, variableName, assignmentSpacing, rawAssignmentValue] = assignmentMatch;
     const replacementValue = updates[variableName];
     if (replacementValue === undefined) {
       return line;
     }
 
     pendingKeys.delete(variableName);
-    return `${prefix}${variableName}${assignmentSpacing}${serializeEnvValue(replacementValue)}`;
+    const inlineCommentSuffix = extractInlineCommentSuffix(rawAssignmentValue);
+    return `${prefix}${variableName}${assignmentSpacing}${serializeEnvValue(replacementValue)}${inlineCommentSuffix}`;
   });
 
   const appendedLines = Array.from(pendingKeys).map(
