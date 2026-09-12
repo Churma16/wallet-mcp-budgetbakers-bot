@@ -80,6 +80,7 @@ export function formatTransactionSummaryMessage(
   const header = isEnglish ? '📊 *Transaction Summary*' : '📊 *Ringkasan Transaksi*';
   const messageParts: string[] = [header];
   const filterSummary = buildFilterSummary(summaryResult, activeLanguage);
+  const filteredRecordType = summaryResult.appliedFilters?.recordType;
   if (filterSummary) {
     messageParts.push(`_${filterSummary}_`);
   }
@@ -108,9 +109,15 @@ export function formatTransactionSummaryMessage(
     const expenseLabel = isEnglish ? 'Expenses' : 'Pengeluaran';
     const netLabel = 'Net';
 
-    messageParts.push(`💰 ${incomeLabel}: *${formatCurrencyAmount(currencyTotals.income, currencyTotals.currency, activeLanguage)}*`);
-    messageParts.push(`💸 ${expenseLabel}: *${formatCurrencyAmount(currencyTotals.expense, currencyTotals.currency, activeLanguage)}*`);
-    messageParts.push(`🧮 ${netLabel}: *${formatSignedAmount(currencyTotals.net, currencyTotals.currency, activeLanguage)}*`);
+    if (filteredRecordType !== 'expense') {
+      messageParts.push(`💰 ${incomeLabel}: *${formatCurrencyAmount(currencyTotals.income, currencyTotals.currency, activeLanguage)}*`);
+    }
+    if (filteredRecordType !== 'income') {
+      messageParts.push(`💸 ${expenseLabel}: *${formatCurrencyAmount(currencyTotals.expense, currencyTotals.currency, activeLanguage)}*`);
+    }
+    if (!filteredRecordType) {
+      messageParts.push(`🧮 ${netLabel}: *${formatSignedAmount(currencyTotals.net, currencyTotals.currency, activeLanguage)}*`);
+    }
 
     if (summaryResult.isMultiCurrency) {
       messageParts.push('');
@@ -151,11 +158,26 @@ export function formatTransactionSummaryMessage(
         const currencyPrefix = summaryResult.isMultiCurrency ? `${currencyTotals.currency}: ` : '';
         const expenseText = formatCurrencyAmount(currencyTotals.expense, currencyTotals.currency, activeLanguage);
         const incomeText = formatCurrencyAmount(currencyTotals.income, currencyTotals.currency, activeLanguage);
-        messageParts.push(
-          isEnglish
-            ? `   ${currencyPrefix}${expenseText} expenses • ${incomeText} income`
-            : `   ${currencyPrefix}${expenseText} pengeluaran • ${incomeText} pemasukan`
-        );
+
+        if (filteredRecordType === 'expense') {
+          messageParts.push(
+            isEnglish
+              ? `   ${currencyPrefix}${expenseText} expenses`
+              : `   ${currencyPrefix}${expenseText} pengeluaran`
+          );
+        } else if (filteredRecordType === 'income') {
+          messageParts.push(
+            isEnglish
+              ? `   ${currencyPrefix}${incomeText} income`
+              : `   ${currencyPrefix}${incomeText} pemasukan`
+          );
+        } else {
+          messageParts.push(
+            isEnglish
+              ? `   ${currencyPrefix}${expenseText} expenses • ${incomeText} income`
+              : `   ${currencyPrefix}${expenseText} pengeluaran • ${incomeText} pemasukan`
+          );
+        }
       }
     });
   }
