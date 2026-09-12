@@ -6,6 +6,14 @@ import { TransactionSummaryService } from '../services/transactionSummaryService
 import { MessagingGatewayService, IncomingUserMessageEvent } from '../services/messaging/index.js';
 import { FinancialActionExecutor } from '../services/financialActionExecutor.js';
 import {
+  FinancialActionRegistry,
+  CheckBalanceActionHandler,
+  CheckBudgetActionHandler,
+  HelpMenuActionHandler,
+  TransactionHistoryActionHandler,
+  TransactionSummaryActionHandler,
+} from '../actions/index.js';
+import {
   TransactionHistoryQueryOptions,
   TransactionSummaryQueryOptions,
 } from '../types/walletTypes.js';
@@ -15,6 +23,7 @@ export class FastPathHandler {
   private readonly transactionHistoryService: TransactionHistoryService;
   private readonly transactionSummaryService: TransactionSummaryService;
   private readonly financialActionExecutor: FinancialActionExecutor;
+  private readonly financialActionRegistry: FinancialActionRegistry;
 
   constructor(
     private readonly walletMcpClient: WalletMcpClientService,
@@ -22,7 +31,8 @@ export class FastPathHandler {
     private readonly messagingGateway: MessagingGatewayService,
     transactionHistoryService?: TransactionHistoryService,
     transactionSummaryService?: TransactionSummaryService,
-    financialActionExecutor?: FinancialActionExecutor
+    financialActionExecutor?: FinancialActionExecutor,
+    financialActionRegistry?: FinancialActionRegistry
   ) {
     this.transactionHistoryService =
       transactionHistoryService ||
@@ -39,11 +49,22 @@ export class FastPathHandler {
         this.transactionHistoryService,
         this.transactionSummaryService
       );
+
+    if (financialActionRegistry) {
+      this.financialActionRegistry = financialActionRegistry;
+    } else {
+      this.financialActionRegistry = new FinancialActionRegistry();
+      this.financialActionRegistry.register(new CheckBalanceActionHandler(this.financialActionExecutor));
+      this.financialActionRegistry.register(new CheckBudgetActionHandler(this.financialActionExecutor));
+      this.financialActionRegistry.register(new HelpMenuActionHandler(this.financialActionExecutor));
+      this.financialActionRegistry.register(new TransactionHistoryActionHandler(this.financialActionExecutor));
+      this.financialActionRegistry.register(new TransactionSummaryActionHandler(this.financialActionExecutor));
+    }
   }
 
   /**
    * Handles zero-token instant actions like balance checks, budget status,
-   * transaction history, transaction summaries, and help menu.
+   * transaction history, transaction summaries, and help menu via the financial action registry.
    */
   public async handleFastPath(
     event: IncomingUserMessageEvent,
@@ -56,11 +77,13 @@ export class FastPathHandler {
       fastPathAction.type === 'TRANSACTION_SUMMARY'
     ) {
       applicationLogger.info('Fast-path matched: TRANSACTION_SUMMARY (0 AI tokens consumed)');
-      await this.financialActionExecutor.executeTransactionSummary(
+      await this.financialActionRegistry.execute({
+        action: 'TRANSACTION_SUMMARY',
         event,
-        fastPathAction.options,
-        { processingStartTimestamp, routingSource: 'fast-path' }
-      );
+        summaryOptions: fastPathAction.options,
+        processingStartTimestamp,
+        routingSource: 'fast-path',
+      });
       return true;
     }
 
@@ -74,41 +97,49 @@ export class FastPathHandler {
         typeof fastPathAction === 'object' &&
         fastPathAction !== null &&
         'options' in fastPathAction
-          ? fastPathAction.options as TransactionHistoryQueryOptions
+          ? (fastPathAction.options as TransactionHistoryQueryOptions)
           : undefined;
       applicationLogger.info('Fast-path matched: TRANSACTION_HISTORY (0 AI tokens consumed)');
-      await this.financialActionExecutor.executeTransactionHistory(
+      await this.financialActionRegistry.execute({
+        action: 'TRANSACTION_HISTORY',
         event,
-        options,
-        { processingStartTimestamp, routingSource: 'fast-path' }
-      );
+        queryOptions: options,
+        processingStartTimestamp,
+        routingSource: 'fast-path',
+      });
       return true;
     }
 
     if (fastPathAction === 'CHECK_BALANCE') {
       applicationLogger.info('Fast-path matched: CHECK_BALANCE (0 AI tokens consumed)');
-      await this.financialActionExecutor.executeCheckBalance(
+      await this.financialActionRegistry.execute({
+        action: 'CHECK_BALANCE',
         event,
-        { processingStartTimestamp, routingSource: 'fast-path' }
-      );
+        processingStartTimestamp,
+        routingSource: 'fast-path',
+      });
       return true;
     }
 
     if (fastPathAction === 'CHECK_BUDGET') {
       applicationLogger.info('Fast-path matched: CHECK_BUDGET (0 AI tokens consumed)');
-      await this.financialActionExecutor.executeCheckBudget(
+      await this.financialActionRegistry.execute({
+        action: 'CHECK_BUDGET',
         event,
-        { processingStartTimestamp, routingSource: 'fast-path' }
-      );
+        processingStartTimestamp,
+        routingSource: 'fast-path',
+      });
       return true;
     }
 
     if (fastPathAction === 'HELP_MENU') {
       applicationLogger.info('Fast-path matched: HELP_MENU (0 AI tokens consumed)');
-      await this.financialActionExecutor.executeHelpMenu(
+      await this.financialActionRegistry.execute({
+        action: 'HELP_MENU',
         event,
-        { processingStartTimestamp, routingSource: 'fast-path' }
-      );
+        processingStartTimestamp,
+        routingSource: 'fast-path',
+      });
       return true;
     }
 

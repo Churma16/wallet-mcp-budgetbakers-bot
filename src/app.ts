@@ -26,6 +26,9 @@ import {
 import { TransactionHistoryService } from './services/transactionHistoryService.js';
 import { TransactionSummaryService } from './services/transactionSummaryService.js';
 import { FinancialActionExecutor } from './services/financialActionExecutor.js';
+import { FinancialActionRegistry, createDefaultFinancialActionRegistry } from './actions/index.js';
+import { WalletRecordPreparationService } from './services/walletRecordPreparationService.js';
+import { AccountClarificationHandler } from './handlers/accountClarificationHandler.js';
 import { applicationLogger, installConsoleInterceptors, purgeExpiredLogFiles } from './utils/logger.js';
 import { setActiveLanguage } from './i18n/index.js';
 
@@ -45,6 +48,7 @@ export class Application {
   private readonly pendingActionHandler: PendingActionHandler;
   private readonly fastPathHandler: FastPathHandler;
   private readonly userMessageHandler: UserMessageHandler;
+  private readonly financialActionRegistry: FinancialActionRegistry;
   private isRunning: boolean = false;
 
   constructor(customConfig?: ApplicationEnvironmentConfiguration) {
@@ -100,13 +104,36 @@ export class Application {
       this.transactionSummaryService
     );
 
+    const recordPreparationService = new WalletRecordPreparationService(
+      this.walletCacheService,
+      this.walletMcpClient
+    );
+
+    const accountClarificationHandler = new AccountClarificationHandler(
+      this.pendingTransactionManager,
+      this.walletMcpClient,
+      this.walletCacheService,
+      this.messagingGateway,
+      recordPreparationService
+    );
+
+    this.financialActionRegistry = createDefaultFinancialActionRegistry({
+      financialActionExecutor: this.financialActionExecutor,
+      walletMcpClient: this.walletMcpClient,
+      walletCacheService: this.walletCacheService,
+      messagingGateway: this.messagingGateway,
+      recordPreparationService,
+      accountClarificationHandler,
+    });
+
     this.fastPathHandler = new FastPathHandler(
       this.walletMcpClient,
       this.walletCacheService,
       this.messagingGateway,
       this.transactionHistoryService,
       this.transactionSummaryService,
-      this.financialActionExecutor
+      this.financialActionExecutor,
+      this.financialActionRegistry
     );
 
     this.userMessageHandler = new UserMessageHandler(
@@ -117,7 +144,10 @@ export class Application {
       this.financialAiProvider,
       this.walletCacheService,
       this.walletMcpClient,
-      this.financialActionExecutor
+      this.financialActionExecutor,
+      recordPreparationService,
+      this.financialActionRegistry,
+      accountClarificationHandler
     );
   }
 

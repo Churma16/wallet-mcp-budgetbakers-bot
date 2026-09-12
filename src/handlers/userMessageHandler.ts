@@ -8,38 +8,24 @@ import { AccountClarificationHandler } from './accountClarificationHandler.js';
 import { PendingActionHandler } from './pendingActionHandler.js';
 import { FastPathHandler } from './fastPathHandler.js';
 import { FinancialActionExecutor } from '../services/financialActionExecutor.js';
+import {
+  FinancialActionRegistry,
+  createDefaultFinancialActionRegistry,
+} from '../actions/index.js';
 import { detectFastPathAction, detectPendingConfirmationAction } from '../utils/fastPathIntentDetector.js';
 import {
-  AccountResolutionIssue,
-  validateAndSanitizeFinancialRecords,
-} from '../utils/recordValidator.js';
-import {
-  formatRecordSuccessMessage,
   formatErrorMessageForHuman,
   getHumanReadableTimestamp,
 } from '../utils/humanResponseFormatter.js';
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../utils/logger.js';
-import { extractHashtags } from '../utils/hashtagParser.js';
 import { WalletRecordPreparationService } from '../services/walletRecordPreparationService.js';
-
-function formatAccountResolutionIssueMessage(issue: AccountResolutionIssue): string {
-  const dictionary = getDictionary();
-  if (issue.reason === 'AMBIGUOUS') {
-    return dictionary.errors.accountResolutionAmbiguous(
-      issue.recordIndex + 1,
-      issue.accountHint,
-      issue.candidates.map(candidate => candidate.name)
-    );
-  }
-
-  return dictionary.errors.accountResolutionUnresolved(issue.recordIndex + 1, issue.accountHint);
-}
 
 export class UserMessageHandler {
   private readonly accountClarificationHandler: AccountClarificationHandler;
   private readonly financialActionExecutor: FinancialActionExecutor;
   private readonly recordPreparationService: WalletRecordPreparationService;
+  private readonly financialActionRegistry: FinancialActionRegistry;
 
   constructor(
     private readonly messagingGateway: MessagingGatewayService,
@@ -50,7 +36,9 @@ export class UserMessageHandler {
     private readonly walletCacheService: WalletCacheService,
     private readonly walletMcpClient: WalletMcpClientService,
     financialActionExecutor?: FinancialActionExecutor,
-    recordPreparationService?: WalletRecordPreparationService
+    recordPreparationService?: WalletRecordPreparationService,
+    financialActionRegistry?: FinancialActionRegistry,
+    accountClarificationHandler?: AccountClarificationHandler
   ) {
     this.financialActionExecutor =
       financialActionExecutor ||
@@ -62,13 +50,28 @@ export class UserMessageHandler {
     this.recordPreparationService =
       recordPreparationService ||
       new WalletRecordPreparationService(walletCacheService, walletMcpClient);
-    this.accountClarificationHandler = new AccountClarificationHandler(
-      pendingTransactionManager,
-      walletMcpClient,
-      walletCacheService,
-      messagingGateway,
-      this.recordPreparationService
-    );
+    this.accountClarificationHandler =
+      accountClarificationHandler ||
+      new AccountClarificationHandler(
+        pendingTransactionManager,
+        walletMcpClient,
+        walletCacheService,
+        messagingGateway,
+        this.recordPreparationService
+      );
+
+    if (financialActionRegistry) {
+      this.financialActionRegistry = financialActionRegistry;
+    } else {
+      this.financialActionRegistry = createDefaultFinancialActionRegistry({
+        financialActionExecutor: this.financialActionExecutor,
+        walletMcpClient: this.walletMcpClient,
+        walletCacheService: this.walletCacheService,
+        messagingGateway: this.messagingGateway,
+        recordPreparationService: this.recordPreparationService,
+        accountClarificationHandler: this.accountClarificationHandler,
+      });
+    }
   }
 
   /**
@@ -256,120 +259,21 @@ export class UserMessageHandler {
       }
 
       if (extractedIntent.action === 'CREATE_RECORD' && extractedIntent.records && extractedIntent.records.length > 0) {
-        const validationResult = validateAndSanitizeFinancialRecords(
-          extractedIntent.records,
-          cachedAccounts,
-          cachedCategories,
-          event.textPayload,
-          requestReferenceInstant
-        );
-
-        if (
-          validationResult.validationErrors.length === 0 &&
-          validationResult.accountResolutionIssues.length > 0
-        ) {
-          const drafted = await this.accountClarificationHandler.createPendingAccountSelectionDraft(
-            event,
-            extractedIntent.records,
-            validationResult.accountResolutionIssues,
-            cachedAccounts,
-            cachedCategories,
-            requestReferenceInstant
-          );
-          if (drafted) {
-            return;
-          }
-        }
-
-        if (!validationResult.isValid || validationResult.sanitizedRecords.length === 0) {
-          const accountResolutionMessages = validationResult.accountResolutionIssues.map(
-            formatAccountResolutionIssueMessage
-          );
-          const validationErrorMessage = [
-            ...validationResult.validationErrors,
-            ...accountResolutionMessages,
-          ].join('\n') || getDictionary().errors.accountResolutionFallback;
-          const totalValidationIssueCount =
-            validationResult.validationErrors.length + validationResult.accountResolutionIssues.length;
-
-          applicationLogger.warn(
-            `Financial record validation rejected (${totalValidationIssueCount} issue(s)).`
-          );
-
-          applicationLogger.fileDetail('error', 'Financial Record Validation Failure', {
-            originalRecords: extractedIntent.records,
-            validationErrors: validationResult.validationErrors,
-            accountResolutionIssues: validationResult.accountResolutionIssues,
-          });
-
-          await this.messagingGateway.sendMessage(
-            event.channel,
-            event.chatIdentifier,
-            getDictionary().errors.validationRejected(validationErrorMessage)
-          );
-          const processingDurationMs = Date.now() - processingStartTimestamp;
-          applicationLogger.warn(
-            `[${event.channel.toUpperCase()}] Validation rejected with ${totalValidationIssueCount} issue(s) (${processingDurationMs}ms).`
-          );
-          return;
-        }
-
-        const validRecordsToCreate = validationResult.sanitizedRecords;
-
-        // Fallback: if single record has no labels but raw user message contained hashtags, associate them
-        if (
-          validRecordsToCreate.length === 1 &&
-          (!validRecordsToCreate[0].labels || validRecordsToCreate[0].labels.length === 0) &&
-          event.textPayload
-        ) {
-          const userMessageHashtags = extractHashtags(event.textPayload).tags;
-          if (userMessageHashtags.length > 0) {
-            validRecordsToCreate[0].labels = userMessageHashtags;
-          }
-        }
-
-        // Resolve and auto-create labels for all records
-        await this.recordPreparationService.prepareRecordsForDispatch(validRecordsToCreate);
-
-        applicationLogger.mcp(`Creating ${validRecordsToCreate.length} record(s) in Wallet...`);
-
-        applicationLogger.fileDetail('mcp', 'Dispatching Record Creation to Wallet MCP', {
-          recordsCount: validRecordsToCreate.length,
-          records: validRecordsToCreate,
-        });
-
-        await this.walletMcpClient.createRecords(validRecordsToCreate);
-
-        const replyMessage = formatRecordSuccessMessage(
-          validRecordsToCreate,
-          cachedAccounts,
-          cachedCategories
-        );
-
-        applicationLogger.fileDetail('chat', 'Dispatched Record Creation Success Reply', {
-          channel: event.channel,
-          recipientChatId: event.chatIdentifier,
-          replyText: replyMessage,
-        });
-
-        await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage.trim());
-        const processingDurationMs = Date.now() - processingStartTimestamp;
-        applicationLogger.success(
-          `[${event.channel.toUpperCase()}] Successfully recorded ${validRecordsToCreate.length} transaction(s) to Wallet & sent confirmation (${processingDurationMs}ms).`
-        );
-        return;
-      }
-
-      if (extractedIntent.action === 'CHECK_BALANCE') {
-        await this.financialActionExecutor.executeCheckBalance(event, {
+        await this.financialActionRegistry.execute({
+          action: 'CREATE_RECORD',
+          event,
+          records: extractedIntent.records,
           processingStartTimestamp,
           routingSource: 'ai',
+          requestReferenceInstant,
         });
         return;
       }
 
-      if (extractedIntent.action === 'CHECK_BUDGET') {
-        await this.financialActionExecutor.executeCheckBudget(event, {
+      if (this.financialActionRegistry.hasHandler(extractedIntent.action)) {
+        await this.financialActionRegistry.execute({
+          action: extractedIntent.action as any,
+          event,
           processingStartTimestamp,
           routingSource: 'ai',
         });

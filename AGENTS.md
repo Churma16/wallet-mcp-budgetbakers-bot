@@ -109,3 +109,9 @@ Following the Vitest bootstrap (Issue #113), all new hermetic unit, integration,
 - **No Expansion of Legacy Runner**: Do **NOT** register new test suites into `tests/runOfflineTests.ts`. That legacy runner is frozen and reserved strictly for existing offline test suites pending eventual migration.
 - **Verification Requirement**: PRs introducing new capabilities or refactorings must verify both `npm run test:vitest` and `npm run test:offline`.
 
+## Complexity-Based Handler & File Splitting Guidelines
+To maintain codebase maintainability without premature fragmentation or unnecessary navigation overhead:
+- **Co-locate Thin Wrappers**: Group simple, thin delegating handlers (typically <= ~50 lines with no complex business logic, no heavy dependencies, and identical structural patterns—e.g. read-only forwarders like `CHECK_BALANCE`, `CHECK_BUDGET`, `HELP_MENU`) into a single cohesive file (e.g. `readActionHandlers.ts`).
+- **Separate Dedicated Files for Complex Workflows**: Extract a handler/class into its own dedicated file ONLY when it is non-trivial (e.g., > ~50 lines, has multi-step validation, manages clarification/draft states, calls preparation/side-effect services, or possesses unique heavy dependencies like `createRecordActionHandler.ts`).
+- **Pragmatic Evolution**: Keep read-only actions consolidated until an individual action grows substantial independent logic (e.g., advanced filtering, pagination UI, or export capabilities), at which point it may be extracted into its own file.
+
