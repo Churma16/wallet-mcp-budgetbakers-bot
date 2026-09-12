@@ -16,6 +16,7 @@ import { matchesTransactionRecordSearch } from '../utils/transactionSearchMatche
 
 export const DEFAULT_TRANSACTION_HISTORY_LIMIT = 10;
 export const MAX_TRANSACTION_HISTORY_LIMIT = 50;
+export const MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST = 5;
 
 interface TransactionSearchScanCacheEntry {
   matchedRecords: WalletRecordItem[];
@@ -577,8 +578,13 @@ export class WalletMcpClientService {
 
       const requestedPageEndOffset = resolvedOffset + resolvedLimit;
       const lookaheadTargetCount = requestedPageEndOffset + 1;
+      let scanCallCount = 0;
 
-      while (!searchCacheEntry.exhausted && searchCacheEntry.matchedRecords.length < lookaheadTargetCount) {
+      while (
+        !searchCacheEntry.exhausted &&
+        searchCacheEntry.matchedRecords.length < lookaheadTargetCount &&
+        scanCallCount < MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST
+      ) {
         const scanOffset = searchCacheEntry.nextOffset ?? 0;
         const isFreshScan = scanOffset === 0 && searchCacheEntry.matchedRecords.length === 0;
         const scanLimit = isFreshScan ? resolvedLimit : MAX_TRANSACTION_HISTORY_LIMIT;
@@ -588,6 +594,7 @@ export class WalletMcpClientService {
           offset: scanOffset,
         };
 
+        scanCallCount += 1;
         const rawResponse = await callGetRecords(scanPayload);
         const rawRecordArray: any[] = Array.isArray(rawResponse)
           ? rawResponse
@@ -650,7 +657,35 @@ export class WalletMcpClientService {
         searchCacheEntry.updatedAt = Date.now();
       }
 
+      const scanBudgetReached =
+        !searchCacheEntry.exhausted &&
+        searchCacheEntry.matchedRecords.length < lookaheadTargetCount &&
+        scanCallCount >= MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST;
+
       const pageNumber = Math.floor(resolvedOffset / resolvedLimit) + 1;
+
+      if (scanBudgetReached) {
+        return {
+          records: [],
+          total: undefined,
+          limit: resolvedLimit,
+          offset: resolvedOffset,
+          page: pageNumber,
+          totalPages: undefined,
+          nextOffset: null,
+          hasMore: false,
+          sort: resolvedSort,
+          unresolvedFilters: [
+            {
+              filterKey: 'searchQuery',
+              rawValue: queryOptions.searchQuery,
+              reason: 'UNRESOLVED',
+              message: 'Search verification reached its per-request scan budget. Add account, category, or date filters, or retry the same search to continue from the cached scan position.',
+            },
+          ],
+        };
+      }
+
       const pageRecords = searchCacheEntry.matchedRecords.slice(resolvedOffset, requestedPageEndOffset);
       const hasBufferedLookahead = searchCacheEntry.matchedRecords.length > requestedPageEndOffset;
       const hasMore = hasBufferedLookahead || !searchCacheEntry.exhausted;
