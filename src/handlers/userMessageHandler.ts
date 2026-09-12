@@ -7,6 +7,7 @@ import { WalletCacheService } from '../services/walletCacheService.js';
 import { AccountClarificationHandler } from './accountClarificationHandler.js';
 import { PendingActionHandler } from './pendingActionHandler.js';
 import { FastPathHandler } from './fastPathHandler.js';
+import { FinancialActionExecutor } from '../services/financialActionExecutor.js';
 import { detectFastPathAction, detectPendingConfirmationAction } from '../utils/fastPathIntentDetector.js';
 import {
   AccountResolutionIssue,
@@ -14,8 +15,6 @@ import {
 } from '../utils/recordValidator.js';
 import {
   formatRecordSuccessMessage,
-  formatBalanceSummaryMessage,
-  formatBudgetSummaryMessage,
   formatErrorMessageForHuman,
   getHumanReadableTimestamp,
 } from '../utils/humanResponseFormatter.js';
@@ -39,6 +38,7 @@ function formatAccountResolutionIssueMessage(issue: AccountResolutionIssue): str
 
 export class UserMessageHandler {
   private readonly accountClarificationHandler: AccountClarificationHandler;
+  private readonly financialActionExecutor: FinancialActionExecutor;
 
   constructor(
     private readonly messagingGateway: MessagingGatewayService,
@@ -47,8 +47,16 @@ export class UserMessageHandler {
     private readonly fastPathHandler: FastPathHandler,
     private readonly financialAiProvider: FinancialAiProvider,
     private readonly walletCacheService: WalletCacheService,
-    private readonly walletMcpClient: WalletMcpClientService
+    private readonly walletMcpClient: WalletMcpClientService,
+    financialActionExecutor?: FinancialActionExecutor
   ) {
+    this.financialActionExecutor =
+      financialActionExecutor ||
+      new FinancialActionExecutor(
+        walletMcpClient,
+        walletCacheService,
+        messagingGateway
+      );
     this.accountClarificationHandler = new AccountClarificationHandler(
       pendingTransactionManager,
       walletMcpClient,
@@ -357,47 +365,18 @@ export class UserMessageHandler {
       }
 
       if (extractedIntent.action === 'CHECK_BALANCE') {
-        applicationLogger.mcp('Fetching updated balances...');
-        const freshAccounts = await this.walletCacheService.refreshAccounts();
-
-        const replyMessage = formatBalanceSummaryMessage(freshAccounts);
-
-        applicationLogger.fileDetail('mcp', 'Dispatched Balance Summary Reply', {
-          channel: event.channel,
-          freshAccountsCount: freshAccounts.length,
-          balanceList: freshAccounts.map(account => ({
-            name: account.name,
-            balance: account.balance,
-            currency: account.currency,
-          })),
-          replyText: replyMessage,
+        await this.financialActionExecutor.executeCheckBalance(event, {
+          processingStartTimestamp,
+          routingSource: 'ai',
         });
-
-        await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
-        const processingDurationMs = Date.now() - processingStartTimestamp;
-        applicationLogger.success(
-          `[${event.channel.toUpperCase()}] Sent balance summary for ${freshAccounts.length} account(s) (${processingDurationMs}ms).`
-        );
         return;
       }
 
       if (extractedIntent.action === 'CHECK_BUDGET') {
-        applicationLogger.mcp('Fetching budget status...');
-        const budgetList = await this.walletMcpClient.fetchBudgets();
-        const replyMessage = formatBudgetSummaryMessage(budgetList);
-
-        applicationLogger.fileDetail('mcp', 'Dispatched Budget Summary Reply', {
-          channel: event.channel,
-          budgetCount: budgetList.length,
-          budgets: budgetList,
-          replyText: replyMessage,
+        await this.financialActionExecutor.executeCheckBudget(event, {
+          processingStartTimestamp,
+          routingSource: 'ai',
         });
-
-        await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
-        const processingDurationMs = Date.now() - processingStartTimestamp;
-        applicationLogger.success(
-          `[${event.channel.toUpperCase()}] Sent budget status summary for ${budgetList.length} budget(s) (${processingDurationMs}ms).`
-        );
         return;
       }
 

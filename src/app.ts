@@ -23,6 +23,8 @@ import {
   UserMessageHandler,
 } from './handlers/index.js';
 import { TransactionHistoryService } from './services/transactionHistoryService.js';
+import { TransactionSummaryService } from './services/transactionSummaryService.js';
+import { FinancialActionExecutor } from './services/financialActionExecutor.js';
 import { applicationLogger, installConsoleInterceptors, purgeExpiredLogFiles } from './utils/logger.js';
 import { setActiveLanguage } from './i18n/index.js';
 
@@ -31,6 +33,8 @@ export class Application {
   private readonly walletMcpClient: WalletMcpClientService;
   private readonly walletCacheService: WalletCacheService;
   private readonly transactionHistoryService: TransactionHistoryService;
+  private readonly transactionSummaryService: TransactionSummaryService;
+  private readonly financialActionExecutor: FinancialActionExecutor;
   private readonly categoryContextService: CategoryContextService;
   private readonly financialAiProvider: FinancialAiProvider;
   private readonly pendingTransactionManager: PendingTransactionService;
@@ -82,11 +86,25 @@ export class Application {
       this.walletCacheService
     );
 
+    this.transactionSummaryService = new TransactionSummaryService(
+      this.transactionHistoryService
+    );
+
+    this.financialActionExecutor = new FinancialActionExecutor(
+      this.walletMcpClient,
+      this.walletCacheService,
+      this.messagingGateway,
+      this.transactionHistoryService,
+      this.transactionSummaryService
+    );
+
     this.fastPathHandler = new FastPathHandler(
       this.walletMcpClient,
       this.walletCacheService,
       this.messagingGateway,
-      this.transactionHistoryService
+      this.transactionHistoryService,
+      this.transactionSummaryService,
+      this.financialActionExecutor
     );
 
     this.userMessageHandler = new UserMessageHandler(
@@ -96,7 +114,8 @@ export class Application {
       this.fastPathHandler,
       this.financialAiProvider,
       this.walletCacheService,
-      this.walletMcpClient
+      this.walletMcpClient,
+      this.financialActionExecutor
     );
   }
 
