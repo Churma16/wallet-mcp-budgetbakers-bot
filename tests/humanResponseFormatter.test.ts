@@ -6,6 +6,11 @@ import {
   formatErrorMessageForHuman,
   formatTransactionDate,
   getHumanReadableTimestamp,
+  formatTransactionHistoryMessage,
+  truncateTransactionTitle,
+  formatCompactTransactionDate,
+  formatCompactTransactionAmount,
+  MAX_TRANSACTION_HISTORY_TITLE_LENGTH,
 } from '../src/utils/humanResponseFormatter.js';
 import { formatConciseErrorMessage } from '../src/utils/logger.js';
 import { AiResponseParseError } from '../src/services/ai/jsonExtractionHelper.js';
@@ -146,5 +151,141 @@ console.log('Invalid Date object formatted:', invalidDateObjectFormatted);
 const emptyDateFormatted = formatTransactionDate(undefined);
 console.log('Empty date formatted:', emptyDateFormatted);
 
+console.log('\n=== TEST 10: COMPACT TRANSACTION HISTORY FORMATTING (ISSUE #115) ===');
+
+// 10.1 Title truncation tests
+const shortTitle = 'Biaya admin tf';
+assert.strictEqual(truncateTransactionTitle(shortTitle, MAX_TRANSACTION_HISTORY_TITLE_LENGTH), shortTitle, 'Short title is not truncated');
+
+const exactLengthTitle = 'A'.repeat(MAX_TRANSACTION_HISTORY_TITLE_LENGTH);
+assert.strictEqual(truncateTransactionTitle(exactLengthTitle, MAX_TRANSACTION_HISTORY_TITLE_LENGTH), exactLengthTitle, 'Exact length title is not truncated');
+
+const longTitle = 'Pengkreditan otomatis PEMAGANGAN ANGKATAN 2 KEMENTERIAN KETENAGAKERJAAN REPUBLIK INDONESIA';
+const truncatedTitle = truncateTransactionTitle(longTitle, MAX_TRANSACTION_HISTORY_TITLE_LENGTH);
+assert.strictEqual(truncatedTitle, 'Pengkreditan otomatis PEMAGANGAN ANGKATAN 2...', 'Long title is deterministically truncated with ellipsis at 43 chars');
+assert.strictEqual(longTitle.startsWith('Pengkreditan otomatis'), true, 'Original title data is not mutated');
+
+// 10.2 Compact signed amount formatting tests
+const idrExpense = formatCompactTransactionAmount(-20895, 'expense', 'IDR', 'id');
+assert.strictEqual(idrExpense, '-Rp20.895', 'IDR expense amount is formatted with minus prefix and no whitespace');
+
+const idrIncome = formatCompactTransactionAmount(5729876, 'income', 'IDR', 'id');
+assert.strictEqual(idrIncome, '+Rp5.729.876', 'IDR income amount is formatted with plus prefix and no whitespace');
+
+const usdExpense = formatCompactTransactionAmount(-25, 'expense', 'USD', 'en');
+assert.strictEqual(usdExpense, '-$25.00', 'USD expense amount is formatted with minus prefix and two decimals');
+
+const usdIncome = formatCompactTransactionAmount(100.5, 'income', 'USD', 'en');
+assert.strictEqual(usdIncome, '+$100.50', 'USD income amount is formatted with plus prefix and two decimals');
+
+// 10.3 Compact transaction date formatting tests
+const sampleDateCurrentYear = new Date();
+sampleDateCurrentYear.setHours(13, 52, 0, 0);
+const compactDateCurrentYear = formatCompactTransactionDate(sampleDateCurrentYear, 'id');
+assert.doesNotMatch(compactDateCurrentYear, new RegExp(String(sampleDateCurrentYear.getFullYear())), 'Current year should be omitted from compact date');
+assert.match(compactDateCurrentYear, /13:52/, 'Time HH:mm should be preserved in compact date');
+
+const sampleDatePastYear = new Date('2024-05-10T10:15:00.000Z');
+const compactDatePastYear = formatCompactTransactionDate(sampleDatePastYear, 'id');
+assert.match(compactDatePastYear, /2024/, 'Past year should be included in compact date');
+
+// 10.4 3-line item layout, lighter header, bold amount, and emoji-free items
+const sampleHistoryPage = {
+  records: [
+    {
+      id: 'rec-1',
+      accountId: 'acc-1',
+      accountName: 'Cash',
+      amount: -1000,
+      currency: 'IDR',
+      recordDate: '2026-09-11T06:53:00.000Z',
+      recordType: 'expense' as const,
+      note: 'Biaya admin tf',
+      category: { id: 'cat-1', name: 'Charges, fees' },
+    },
+    {
+      id: 'rec-2',
+      accountId: 'acc-2',
+      accountName: 'Gopay',
+      amount: -20895,
+      currency: 'IDR',
+      recordDate: '2026-09-11T06:52:00.000Z',
+      recordType: 'expense' as const,
+      note: 'Pembayaran ke Nodus Digital Store',
+      category: { id: 'cat-2', name: 'Pengeluaran Digital' },
+    },
+    {
+      id: 'rec-3',
+      accountId: 'acc-3',
+      accountName: 'Mandiri Debit Card',
+      amount: 5729876,
+      currency: 'IDR',
+      recordDate: '2026-09-10T14:31:00.000Z',
+      recordType: 'income' as const,
+      note: 'Pengkreditan otomatis PEMAGANGAN ANGKATAN 2 KEMENTERIAN KETENAGAKERJAAN',
+      category: { id: 'cat-3', name: 'Wage, invoices' },
+      labels: [{ id: 'lbl-1', name: 'salary' }],
+    },
+  ],
+  total: 3741,
+  limit: 10,
+  offset: 0,
+  page: 1,
+  totalPages: 375,
+  nextOffset: 10,
+  hasMore: true,
+  sort: 'newest' as const,
+};
+
+const historyFormattedId = formatTransactionHistoryMessage(sampleHistoryPage, 'id');
+console.log('Formatted Indonesian History (Issue #115):\n', historyFormattedId);
+
+// Verify lighter header
+assert.match(historyFormattedId, /^📋 \*Riwayat Transaksi\*\nHal\. 1\/375 • 3 item/m, 'Header has lighter 2-line layout with item count');
+
+// Verify 3-line layout without indentation
+assert.match(historyFormattedId, /1\. Biaya admin tf\n\*-Rp1\.000\* • Cash\nCharges, fees • \d+ Sep \d\d:\d\d/m, 'Item 1 matches 3-line non-indented layout with bold amount');
+assert.match(historyFormattedId, /2\. Pembayaran ke Nodus Digital Store\n\*-Rp20\.895\* • Gopay\nPengeluaran Digital • \d+ Sep \d\d:\d\d/m, 'Item 2 matches 3-line layout');
+assert.match(historyFormattedId, /3\. Pengkreditan otomatis PEMAGANGAN ANGKATAN 2\.\.\.\n\*\+Rp5\.729\.876\* • Mandiri Debit Card\nWage, invoices • \d+ Sep \d\d:\d\d • #salary/m, 'Item 3 is truncated at 42 chars and displays bold positive amount');
+
+// Verify exactly one blank line between items
+assert.ok(historyFormattedId.includes('\n\n1. Biaya admin tf'), 'Blank line before first item');
+assert.ok(historyFormattedId.includes('\n\n2. Pembayaran ke Nodus Digital Store'), 'Blank line between item 1 and 2');
+assert.ok(historyFormattedId.includes('\n\n3. Pengkreditan otomatis'), 'Blank line between item 2 and 3');
+
+// Verify zero decorative per-item emojis
+const itemsBodyOnly = historyFormattedId.split('\n\n').slice(1, -1).join('\n\n');
+assert.doesNotMatch(itemsBodyOnly, /[💸💰🔄🏷️🔖]/u, 'Items body must not contain decorative emojis');
+
+// Verify English symmetry
+const historyFormattedEn = formatTransactionHistoryMessage(sampleHistoryPage, 'en');
+console.log('\nFormatted English History (Issue #115):\n', historyFormattedEn);
+assert.match(historyFormattedEn, /^📋 \*Transaction History\*\nPage 1\/375 • 3 items/m, 'English header has lighter 2-line layout with plural items');
+assert.match(historyFormattedEn, /1\. Biaya admin tf\n\*-Rp1,000\* • Cash/m, 'English item 1 formatted with comma thousands separator');
+assert.match(historyFormattedEn, /3\. Pengkreditan otomatis PEMAGANGAN ANGKATAN 2\.\.\.\n\*\+Rp5,729,876\* • Mandiri Debit Card/m, 'English item 3 formatted with comma thousands separator');
+
+// 10.5 Missing optional fields fallback
+const fallbackHistoryPage = {
+  records: [
+    {
+      id: 'rec-fallback',
+      amount: -15000,
+      currency: 'IDR',
+      recordDate: '2026-09-11T10:00:00.000Z',
+    },
+  ],
+  total: 1,
+  limit: 10,
+  offset: 0,
+  page: 1,
+  totalPages: 1,
+  nextOffset: null,
+  hasMore: false,
+  sort: 'newest' as const,
+};
+const fallbackFormattedId = formatTransactionHistoryMessage(fallbackHistoryPage, 'id');
+assert.match(fallbackFormattedId, /1\. Pengeluaran\n\*-Rp15\.000\* • Akun\nUmum • \d+ Sep \d\d:\d\d/m, 'Missing note, account, and category resolve to defaults');
+
 console.log('\n[PASS] All humanResponseFormatter tests completed with assertions!');
+
 
