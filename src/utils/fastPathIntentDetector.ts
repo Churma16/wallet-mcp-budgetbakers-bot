@@ -1,8 +1,16 @@
-import { TransactionHistoryQueryOptions } from '../types/walletTypes.js';
+import {
+  TransactionHistoryQueryOptions,
+  TransactionSummaryQueryOptions,
+} from '../types/walletTypes.js';
 
 export interface FastPathTransactionHistoryAction {
   type: 'TRANSACTION_HISTORY';
   options: TransactionHistoryQueryOptions;
+}
+
+export interface FastPathTransactionSummaryAction {
+  type: 'TRANSACTION_SUMMARY';
+  options: TransactionSummaryQueryOptions;
 }
 
 export type FastPathAction =
@@ -10,6 +18,7 @@ export type FastPathAction =
   | 'CHECK_BUDGET'
   | 'HELP_MENU'
   | FastPathTransactionHistoryAction
+  | FastPathTransactionSummaryAction
   | null;
 
 const KNOWN_ACCOUNT_KEYWORDS = new Set([
@@ -96,9 +105,6 @@ function extractHistoryQueryOptionsFromTokens(
   let resolvedCategoryName: string | undefined = undefined;
   let resolvedSearchQuery: string | undefined = undefined;
 
-  // A dedicated one-token search must remain literal even when the token also
-  // belongs to the structured-filter vocabulary (e.g. income, today, bca, 5).
-  // Quoted literals are handled by the quote-aware parser below so quotes are stripped.
   const isWholeRemainderQuotedLiteral = /^(?:"[^"]*"|'[^']*')$/.test(remainingTokens);
   if (
     isDedicatedSearchCommand &&
@@ -114,8 +120,6 @@ function extractHistoryQueryOptionsFromTokens(
     };
   }
 
-  // Protect quoted search literals before structured-token parsing so reserved
-  // filter words inside quotes remain part of the literal search query.
   const explicitQuotedSearchMatch = remainingTokens.match(
     /\b(?:cari|search|find|keyword|q)(?::\s*|=\s*|\s+)(?:"([^"]+)"|'([^']+)')/i
   );
@@ -130,7 +134,6 @@ function extractHistoryQueryOptionsFromTokens(
     }
   }
 
-  // 1. Extract sort token
   const sortMatch = remainingTokens.match(/\b(terlama|oldest|terbaru|newest)\b/i);
   if (sortMatch) {
     const matchedSortWord = sortMatch[1].toLowerCase();
@@ -138,7 +141,6 @@ function extractHistoryQueryOptionsFromTokens(
     remainingTokens = remainingTokens.replace(sortMatch[0], ' ').trim();
   }
 
-  // 2. Extract page token (e.g. "hal 2", "halaman 3", "page 4", "p 5")
   const pageMatch = remainingTokens.match(/\b(?:hal(?:aman)?|page|p)\s*(\d+)\b/i);
   if (pageMatch) {
     const parsedPage = Number.parseInt(pageMatch[1], 10);
@@ -149,7 +151,6 @@ function extractHistoryQueryOptionsFromTokens(
     remainingTokens = remainingTokens.replace(pageMatch[0], ' ').trim();
   }
 
-  // 3. Extract explicit dates or ISO datetimes with optional comparison operators (e.g. >= 2024-01-01, > 2024-01-01T12:00:00Z, gte.2024-01-01, etc.)
   const operatorDateRegex =
     /(?:(>=|>|<=|<|gte\.|gt\.|lte\.|lt\.|eq\.)\s*)?(\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:?\d{2}))?)/gi;
   const operatorMatches: Array<{ fullMatch: string; operator?: string; dateString: string }> = [];
@@ -200,7 +201,6 @@ function extractHistoryQueryOptionsFromTokens(
       .trim();
   }
 
-  // 4. Extract limit token (standalone positive integer) if not already set
   if (!resolvedLimit) {
     const limitMatch = remainingTokens.match(/\b(\d+)\b/);
     if (limitMatch) {
@@ -213,7 +213,6 @@ function extractHistoryQueryOptionsFromTokens(
     }
   }
 
-  // 5. Extract record type (expense / income)
   const expenseMatch = remainingTokens.match(/\b(pengeluaran|keluar|expenses?|spending)\b/i);
   if (expenseMatch) {
     resolvedRecordType = 'expense';
@@ -226,7 +225,6 @@ function extractHistoryQueryOptionsFromTokens(
     }
   }
 
-  // 6. Extract relative date period (optionally preceded by preposition: pada, di, on, in, untuk, for)
   const datePeriodPattern = /\b(?:pada|di|on|in|untuk|for)?\s*(hari\s+ini|today|kemarin|yesterday|semalam|minggu\s+ini|this\s+week|minggu\s+lalu|last\s+week|bulan\s+ini|this\s+month|bulan\s+lalu|last\s+month|tahun\s+ini|this\s+year)\b/i;
   const datePeriodMatch = remainingTokens.match(datePeriodPattern);
   if (datePeriodMatch) {
@@ -241,13 +239,11 @@ function extractHistoryQueryOptionsFromTokens(
     remainingTokens = remainingTokens.replace(datePeriodMatch[0], ' ').trim();
   }
 
-  // 7. Extract explicit account and category prefixes (supports unquoted or quoted strings)
   const explicitAccountMatch = remainingTokens.match(/\b(?:dari|di|for|in|pada)?\s*(?:akun|account|rekening)\s+(?:"([^"]+)"|'([^']+)'|([a-zA-Z0-9_-]+)\b)/i);
   if (explicitAccountMatch) {
     resolvedAccountName = (explicitAccountMatch[1] || explicitAccountMatch[2] || explicitAccountMatch[3]).toLowerCase();
     remainingTokens = remainingTokens.replace(explicitAccountMatch[0], ' ').trim();
   } else {
-    // Connector followed by known account keyword (e.g. "di bca", "dari mandiri", "for jago")
     const connectorAccountMatch = remainingTokens.match(/\b(?:dari|di|for|in|pada)\s+([a-zA-Z0-9_-]+)\b/i);
     if (connectorAccountMatch && KNOWN_ACCOUNT_KEYWORDS.has(connectorAccountMatch[1].toLowerCase())) {
       resolvedAccountName = connectorAccountMatch[1].toLowerCase();
@@ -260,7 +256,6 @@ function extractHistoryQueryOptionsFromTokens(
     resolvedCategoryName = (explicitCategoryMatch[1] || explicitCategoryMatch[2] || explicitCategoryMatch[3]).toLowerCase();
     remainingTokens = remainingTokens.replace(explicitCategoryMatch[0], ' ').trim();
   } else {
-    // Connector followed by known category keyword (e.g. "untuk makanan", "for transport")
     const connectorCategoryMatch = remainingTokens.match(/\b(?:untuk|for|pada)\s+([a-zA-Z0-9_-]+)\b/i);
     if (connectorCategoryMatch && KNOWN_CATEGORY_KEYWORDS.has(connectorCategoryMatch[1].toLowerCase())) {
       resolvedCategoryName = connectorCategoryMatch[1].toLowerCase();
@@ -268,7 +263,6 @@ function extractHistoryQueryOptionsFromTokens(
     }
   }
 
-  // 7b. Extract explicit search query (e.g. cari "starbucks", search 'coffee', cari:indomaret, q:starbucks, or cari starbucks)
   const explicitSearchMatch = remainingTokens.match(
     /\b(?:cari|search|find|keyword|q)(?::\s*|=\s*|\s+)(?:"([^"]+)"|'([^']+)'|([a-zA-Z0-9_-]+)\b)/i
   );
@@ -277,7 +271,6 @@ function extractHistoryQueryOptionsFromTokens(
     remainingTokens = remainingTokens.replace(explicitSearchMatch[0], ' ').trim();
   }
 
-  // 7c. Extract standalone quoted string if not already set (e.g. "kopi kenangan" or 'starbucks')
   if (!resolvedSearchQuery) {
     const standaloneQuotedMatch = remainingTokens.match(/(?:"([^"]+)"|'([^']+)')/);
     if (standaloneQuotedMatch) {
@@ -286,7 +279,6 @@ function extractHistoryQueryOptionsFromTokens(
     }
   }
 
-  // 9. Inspect leftover tokens
   if (remainingTokens.length > 0) {
     const leftoverWords = remainingTokens.split(/\s+/).filter(word => word.length > 0);
     const searchWords: string[] = [];
@@ -307,11 +299,9 @@ function extractHistoryQueryOptionsFromTokens(
         if (!resolvedSearchQuery) {
           resolvedSearchQuery = searchWords.join(' ');
         } else {
-          // Unknown token when search query is already set; fail safe to LLM intent analysis
           return null;
         }
       } else {
-        // Unknown token in general history command without search prefix or quotes; fail safe to LLM intent analysis
         return null;
       }
     }
@@ -327,24 +317,12 @@ function extractHistoryQueryOptionsFromTokens(
     sort: resolvedSort,
   };
 
-  if (resolvedRecordType !== undefined) {
-    resultOptions.recordType = resolvedRecordType;
-  }
-  if (resolvedDatePeriod !== undefined) {
-    resultOptions.datePeriod = resolvedDatePeriod;
-  }
-  if (resolvedDateRange !== undefined) {
-    resultOptions.dateRange = resolvedDateRange;
-  }
-  if (resolvedAccountName !== undefined) {
-    resultOptions.accountName = resolvedAccountName;
-  }
-  if (resolvedCategoryName !== undefined) {
-    resultOptions.categoryName = resolvedCategoryName;
-  }
-  if (resolvedSearchQuery !== undefined) {
-    resultOptions.searchQuery = resolvedSearchQuery;
-  }
+  if (resolvedRecordType !== undefined) resultOptions.recordType = resolvedRecordType;
+  if (resolvedDatePeriod !== undefined) resultOptions.datePeriod = resolvedDatePeriod;
+  if (resolvedDateRange !== undefined) resultOptions.dateRange = resolvedDateRange;
+  if (resolvedAccountName !== undefined) resultOptions.accountName = resolvedAccountName;
+  if (resolvedCategoryName !== undefined) resultOptions.categoryName = resolvedCategoryName;
+  if (resolvedSearchQuery !== undefined) resultOptions.searchQuery = resolvedSearchQuery;
 
   return resultOptions;
 }
@@ -353,30 +331,22 @@ function parseTransactionHistoryIntent(userMessageText: string): FastPathTransac
   const trimmedText = userMessageText.trim();
   const trimmedLowerText = trimmedText.toLowerCase();
 
-  // Price indicator check: if text contains transaction amounts (e.g. 25rb, 50k, 100 ribu, 1jt, 50000rp, rp 50000)
-  // or currency words, it is almost certainly a transaction recording, not a history query.
   const hasTransactionAmountPattern =
     /\d+\s*(?:k|rb|jt|ribu|juta)\b|(?:rp|idr)\.?\s*\d+|\d+\s*(?:rp|idr)\b|(?:^|\s)(?:rb|k|jt|ribu|juta|rp|idr)(?:$|\s)/i.test(
       trimmedLowerText
     );
-  if (hasTransactionAmountPattern) {
-    return null;
-  }
+  if (hasTransactionAmountPattern) return null;
 
-  // Common recording verbs: if text starts with explicit transaction recording keywords
   if (/^(?:beli|bayar|catat|transfer|topup|top\s*up)\b/i.test(trimmedLowerText)) {
     return null;
   }
 
-  // 1. Pattern matching "X transaksi terakhir" or "X last/recent transactions"
   const leadingCountMatch = trimmedLowerText.match(
     /^(?:cek|lihat|show|view)?\s*(\d+)\s+(?:transaksi\s+terakhir|last\s+transactions?|recent\s+transactions?)(?:\s+(.*))?$/i
   );
   if (leadingCountMatch) {
     const parsedLimit = Number.parseInt(leadingCountMatch[1], 10);
-    if (Number.isNaN(parsedLimit) || parsedLimit <= 0) {
-      return null;
-    }
+    if (Number.isNaN(parsedLimit) || parsedLimit <= 0) return null;
 
     let trailingTokens = (leadingCountMatch[2] || '').trim();
     let resolvedSort: 'newest' | 'oldest' = 'newest';
@@ -393,17 +363,12 @@ function parseTransactionHistoryIntent(userMessageText: string): FastPathTransac
       const pageMatch = trailingTokens.match(/\b(?:hal(?:aman)?|page|p)\s*(\d+)\b/i);
       if (pageMatch) {
         const parsedPage = Number.parseInt(pageMatch[1], 10);
-        if (Number.isNaN(parsedPage) || parsedPage <= 0) {
-          return null;
-        }
+        if (Number.isNaN(parsedPage) || parsedPage <= 0) return null;
         resolvedPage = parsedPage;
         trailingTokens = trailingTokens.replace(pageMatch[0], ' ').trim();
       }
 
-      // If unknown trailing tokens remain, reject
-      if (trailingTokens.length > 0) {
-        return null;
-      }
+      if (trailingTokens.length > 0) return null;
     }
 
     return {
@@ -416,43 +381,23 @@ function parseTransactionHistoryIntent(userMessageText: string): FastPathTransac
     };
   }
 
-  // 2. Pattern matching history commands with optional parameters:
-  // e.g. "riwayat", "cek riwayat", "history", "transaksi terakhir", "daftar transaksi", "recent transactions", "last transactions"
   const historyCommandPattern =
     /^(?:cek|lihat|info|daftar|show|view|check|get|my)?\s*(?:riwayat\s+transaksi|transaction\s+history|daftar\s+transaksi|transaksi\s+terakhir|last\s+transactions?|recent\s+transactions?|riwayat|history)(?:\s+(.*))?$/i;
   const historyMatch = trimmedLowerText.match(historyCommandPattern);
   if (historyMatch) {
     const rawRemainderLower = historyMatch[1];
     if (!rawRemainderLower || !rawRemainderLower.trim()) {
-      return {
-        type: 'TRANSACTION_HISTORY',
-        options: {
-          sort: 'newest',
-        },
-      };
+      return { type: 'TRANSACTION_HISTORY', options: { sort: 'newest' } };
     }
 
     const matchPrefixLength = trimmedText.length - rawRemainderLower.length;
     const rawRemainder = trimmedText.slice(matchPrefixLength);
-
-    const parsedOptions = extractHistoryQueryOptionsFromTokens(
-      rawRemainder,
-      {
-        sort: 'newest',
-      },
-      false
-    );
-
+    const parsedOptions = extractHistoryQueryOptionsFromTokens(rawRemainder, { sort: 'newest' }, false);
     if (parsedOptions) {
-      return {
-        type: 'TRANSACTION_HISTORY',
-        options: parsedOptions,
-      };
+      return { type: 'TRANSACTION_HISTORY', options: parsedOptions };
     }
   }
 
-  // 3. Pattern matching dedicated search commands:
-  // e.g. "cari starbucks", "cari transaksi indomaret", "search coffee", "search transactions starbucks", "find kopi"
   const searchPrefixPattern =
     /^(?:cari\s+(?:transaksi|riwayat)|search\s+(?:transactions?|history)|cari|search|find)\s+/i;
   const searchPrefixMatch = trimmedLowerText.match(searchPrefixPattern);
@@ -461,16 +406,11 @@ function parseTransactionHistoryIntent(userMessageText: string): FastPathTransac
     if (rawSearchRemainder) {
       const parsedSearchOptions = extractHistoryQueryOptionsFromTokens(
         rawSearchRemainder,
-        {
-          sort: 'newest',
-        },
+        { sort: 'newest' },
         true
       );
       if (parsedSearchOptions) {
-        return {
-          type: 'TRANSACTION_HISTORY',
-          options: parsedSearchOptions,
-        };
+        return { type: 'TRANSACTION_HISTORY', options: parsedSearchOptions };
       }
     }
   }
@@ -478,17 +418,133 @@ function parseTransactionHistoryIntent(userMessageText: string): FastPathTransac
   return null;
 }
 
-/**
- * Fast-path deterministic classifier that intercepts common repetitive commands
- * (e.g. balance check, budget check, transaction history, help menu) directly in code to save 100% of AI tokens.
- * Supports both Indonesian and English keywords.
- */
+function normalizeSummaryRecordType(rawValue: string | undefined): 'expense' | 'income' | undefined {
+  if (!rawValue) return undefined;
+  return /^(?:pengeluaran|expenses?|spending)$/i.test(rawValue) ? 'expense' : 'income';
+}
+
+function parseTransactionSummaryIntent(userMessageText: string): FastPathTransactionSummaryAction | null {
+  const trimmedText = userMessageText.trim();
+  const trimmedLowerText = trimmedText.toLowerCase();
+
+  const hasTransactionAmountPattern =
+    /\d+\s*(?:k|rb|jt|ribu|juta)\b|(?:rp|idr)\.?\s*\d+|\d+\s*(?:rp|idr)\b|(?:^|\s)(?:rb|k|jt|ribu|juta|rp|idr)(?:$|\s)/i.test(trimmedLowerText);
+  if (hasTransactionAmountPattern) return null;
+  if (/^(?:beli|bayar|catat|transfer|topup|top\s*up)\b/i.test(trimmedLowerText)) return null;
+
+  let remainder = trimmedText;
+  let explicitRecordType: 'expense' | 'income' | undefined;
+  let matchedPrefix = false;
+
+  const slashCommandMatch = remainder.match(/^\/(?:summary|ringkasan|rekap)\b/i);
+  if (slashCommandMatch) {
+    matchedPrefix = true;
+    remainder = remainder.slice(slashCommandMatch[0].length).trim();
+  }
+
+  if (!matchedPrefix) {
+    const genericSummaryMatch = remainder.match(
+      /^(?:cek|lihat|info|show|view|check|get|my)?\s*(?:ringkasan|summary|rekap)(?:\s+transaksi|\s+transactions?)?\b/i
+    );
+    if (genericSummaryMatch) {
+      matchedPrefix = true;
+      remainder = remainder.slice(genericSummaryMatch[0].length).trim();
+    }
+  }
+
+  if (!matchedPrefix) {
+    const totalTypeMatch = remainder.match(
+      /^(?:cek|lihat|info|show|view|check|get|my)?\s*(?:total|jumlah)\s+(pengeluaran|pemasukan|expenses?|income|spending)\b/i
+    );
+    if (totalTypeMatch) {
+      matchedPrefix = true;
+      explicitRecordType = normalizeSummaryRecordType(totalTypeMatch[1]);
+      remainder = remainder.slice(totalTypeMatch[0].length).trim();
+    }
+  }
+
+  if (!matchedPrefix) {
+    const typeSummaryMatch = remainder.match(
+      /^(pengeluaran|pemasukan|expenses?|income|spending)\s+(?:total|summary|ringkasan)\b/i
+    );
+    if (typeSummaryMatch) {
+      matchedPrefix = true;
+      explicitRecordType = normalizeSummaryRecordType(typeSummaryMatch[1]);
+      remainder = remainder.slice(typeSummaryMatch[0].length).trim();
+    }
+  }
+
+  if (!matchedPrefix) {
+    const groupedTypeMatch = remainder.match(
+      /^(pengeluaran|pemasukan|expenses?|income|spending)\s+(?=(?:per\s+(?:kategori|akun|rekening)|by\s+(?:category|account))\b)/i
+    );
+    if (groupedTypeMatch) {
+      matchedPrefix = true;
+      explicitRecordType = normalizeSummaryRecordType(groupedTypeMatch[1]);
+      remainder = remainder.slice(groupedTypeMatch[0].length).trim();
+    }
+  }
+
+  if (!matchedPrefix) return null;
+
+  let groupBy: TransactionSummaryQueryOptions['groupBy'] = 'none';
+  const categoryBreakdownPattern = /\b(?:per\s+kategori|berdasarkan\s+kategori|by\s+category|category\s+breakdown|breakdown\s+(?:per\s+)?kategori)\b/i;
+  const accountBreakdownPattern = /\b(?:per\s+(?:akun|rekening)|berdasarkan\s+(?:akun|rekening)|by\s+account|account\s+breakdown|breakdown\s+(?:per\s+)?(?:akun|rekening))\b/i;
+  const hasCategoryBreakdown = categoryBreakdownPattern.test(remainder);
+  const hasAccountBreakdown = accountBreakdownPattern.test(remainder);
+  if (hasCategoryBreakdown && hasAccountBreakdown) return null;
+  if (hasCategoryBreakdown) {
+    groupBy = 'category';
+    remainder = remainder.replace(categoryBreakdownPattern, ' ').trim();
+  } else if (hasAccountBreakdown) {
+    groupBy = 'account';
+    remainder = remainder.replace(accountBreakdownPattern, ' ').trim();
+  } else {
+    const leadingGroupMatch = remainder.match(/^(kategori|category|akun|account|rekening)\b/i);
+    if (leadingGroupMatch) {
+      groupBy = /^(?:kategori|category)$/i.test(leadingGroupMatch[1]) ? 'category' : 'account';
+      remainder = remainder.slice(leadingGroupMatch[0].length).trim();
+    }
+  }
+
+  remainder = remainder.replace(/^(?:transaksi|transactions?)\b/i, ' ').trim();
+
+  const parsedHistoryOptions = remainder
+    ? extractHistoryQueryOptionsFromTokens(remainder, { sort: 'newest' }, false)
+    : { sort: 'newest' as const };
+  if (!parsedHistoryOptions) return null;
+
+  const {
+    limit: _limit,
+    offset: _offset,
+    page: _page,
+    sort: _sort,
+    ...summaryFilters
+  } = parsedHistoryOptions;
+
+  if (explicitRecordType) {
+    summaryFilters.recordType = explicitRecordType;
+  }
+
+  return {
+    type: 'TRANSACTION_SUMMARY',
+    options: {
+      ...summaryFilters,
+      groupBy,
+    },
+  };
+}
+
 export function detectFastPathAction(userMessageText: string): FastPathAction {
   if (!userMessageText || typeof userMessageText !== 'string') {
     return null;
   }
 
-  // 0. Transaction history checks (supports parameterized limits, pages, and sorting)
+  const transactionSummaryIntent = parseTransactionSummaryIntent(userMessageText);
+  if (transactionSummaryIntent) {
+    return transactionSummaryIntent;
+  }
+
   const transactionHistoryIntent = parseTransactionHistoryIntent(userMessageText);
   if (transactionHistoryIntent) {
     return transactionHistoryIntent;
@@ -496,9 +552,6 @@ export function detectFastPathAction(userMessageText: string): FastPathAction {
 
   const trimmedLowerText = userMessageText.toLowerCase().trim();
 
-  // If the message contains numeric digits or common price indicators (e.g. 50k, 25rb, 10000),
-  // it is almost certainly a transaction recording (e.g. "tambah saldo 50rb" or "beli bensin 25k").
-  // Do NOT intercept as fast-path to prevent suppressing transaction recordings.
   const hasNumericOrPricePattern =
     /\d|\d+\s*(?:k|rb|jt|ribu|juta)\b|(?:rp|idr)\.?\s*\d+|\d+\s*(?:rp|idr)\b|(?:^|\s)(?:rb|k|jt|ribu|juta|rp|idr)(?:$|\s)/i.test(
       trimmedLowerText
@@ -507,19 +560,16 @@ export function detectFastPathAction(userMessageText: string): FastPathAction {
     return null;
   }
 
-  // 1. Balance Checks (Indonesian: "saldo", "cek saldo", "rekening"; English: "balance", "check balance", "balances", "my balance")
   const balancePattern = /^(?:cek|lihat|info|total|check|view|show|my)?\s*(?:saldo|balance|balances|rekening|total\s+saldo|account\s+balance|account\s+balances)(?:\s+(?:saya|rekening|accounts))?$/i;
   if (balancePattern.test(trimmedLowerText)) {
     return 'CHECK_BALANCE';
   }
 
-  // 2. Budget Checks (Indonesian: "budget", "cek budget", "anggaran"; English: "budget", "check budget", "budget status", "budgets")
   const budgetPattern = /^(?:cek|lihat|info|status|check|view|show|my)?\s*(?:budget|budgets|anggaran|sisa\s+budget|status\s+budget|status\s+anggaran|budget\s+status)(?:\s+(?:saya|aktif|active))?$/i;
   if (budgetPattern.test(trimmedLowerText)) {
     return 'CHECK_BUDGET';
   }
 
-  // 3. Help / Greetings / Menu (Indonesian: "halo", "bantuan", "panduan"; English: "hello", "hi", "help", "menu", "guide", "start")
   const helpPattern = /^(?:halo|hello|hi|hai|menu|help|bantuan|ping|p|panduan|guide|mulai|start|commands)$/i;
   if (helpPattern.test(trimmedLowerText)) {
     return 'HELP_MENU';
@@ -533,11 +583,6 @@ export interface PendingConfirmationIntent {
   targetScope: 'LATEST' | 'ALL' | number;
 }
 
-/**
- * Detects confirmation/cancellation replies for pending transaction tickets.
- * Supports Indonesian ("ya", "catat", "batal", "ya semua", "batal semua")
- * and English ("yes", "record", "confirm", "cancel", "reject", "yes all", "cancel all").
- */
 export function detectPendingConfirmationAction(userMessageText: string): PendingConfirmationIntent | null {
   if (!userMessageText || typeof userMessageText !== 'string') {
     return null;
@@ -545,17 +590,14 @@ export function detectPendingConfirmationAction(userMessageText: string): Pendin
 
   const trimmedText = userMessageText.toLowerCase().trim();
 
-  // 1. Confirm All (e.g. "ya semua", "catat semua", "ok semua", "yes all", "confirm all")
   if (/^(?:ya|catat|ok|oke|y|yes|confirm|record)\s+(?:semua|all)$/i.test(trimmedText)) {
     return { actionType: 'CONFIRM', targetScope: 'ALL' };
   }
 
-  // 2. Reject All (e.g. "batal semua", "abaikan semua", "cancel all", "reject all")
   if (/^(?:batal|abaikan|gak|ga|gajadi|cancel|tolak|reject)\s+(?:semua|all)$/i.test(trimmedText)) {
     return { actionType: 'REJECT', targetScope: 'ALL' };
   }
 
-  // 3. Confirm Specific Ticket (e.g. "ya 1", "catat #2", "yes 3", "record 1")
   const confirmSpecificMatch = trimmedText.match(/^(?:ya|catat|ok|oke|y|yes|confirm|record)\s+#?(\d+)$/i);
   if (confirmSpecificMatch && confirmSpecificMatch[1]) {
     const ticketNumber = Number.parseInt(confirmSpecificMatch[1], 10);
@@ -564,7 +606,6 @@ export function detectPendingConfirmationAction(userMessageText: string): Pendin
     }
   }
 
-  // 4. Reject Specific Ticket (e.g. "batal 1", "cancel 2", "reject 3")
   const rejectSpecificMatch = trimmedText.match(/^(?:batal|abaikan|gak|ga|gajadi|cancel|tolak|reject)\s+#?(\d+)$/i);
   if (rejectSpecificMatch && rejectSpecificMatch[1]) {
     const ticketNumber = Number.parseInt(rejectSpecificMatch[1], 10);
@@ -573,12 +614,10 @@ export function detectPendingConfirmationAction(userMessageText: string): Pendin
     }
   }
 
-  // 5. Confirm Latest Single (e.g. "ya", "catat", "ok", "oke", "y", "yes", "confirm", "record")
   if (/^(?:ya|catat|ok|oke|y|yes|confirm|record)$/i.test(trimmedText)) {
     return { actionType: 'CONFIRM', targetScope: 'LATEST' };
   }
 
-  // 6. Reject Latest Single (e.g. "batal", "abaikan", "gak", "ga", "gajadi", "cancel", "tolak", "reject")
   if (/^(?:batal|abaikan|gak|ga|gajadi|cancel|tolak|reject)$/i.test(trimmedText)) {
     return { actionType: 'REJECT', targetScope: 'LATEST' };
   }
