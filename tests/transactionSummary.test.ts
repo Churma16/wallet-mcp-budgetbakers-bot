@@ -298,6 +298,16 @@ console.log('\n[Suite 5] Fast-path summary intents reuse history-style filters..
   assert.strictEqual((naturalIndonesianAction as any)?.options.categoryName, 'makanan');
   assert.strictEqual((naturalIndonesianAction as any)?.options.datePeriod, 'this_month');
 
+  const categoryRankingAction = detectFastPathAction('which category did I spend the most on?');
+  assert.strictEqual((categoryRankingAction as any)?.type, 'TRANSACTION_SUMMARY');
+  assert.strictEqual((categoryRankingAction as any)?.options.recordType, 'expense');
+  assert.strictEqual((categoryRankingAction as any)?.options.groupBy, 'category');
+
+  const indonesianCategoryRankingAction = detectFastPathAction('kategori mana yang paling banyak pengeluarannya?');
+  assert.strictEqual((indonesianCategoryRankingAction as any)?.type, 'TRANSACTION_SUMMARY');
+  assert.strictEqual((indonesianCategoryRankingAction as any)?.options.recordType, 'expense');
+  assert.strictEqual((indonesianCategoryRankingAction as any)?.options.groupBy, 'category');
+
   assert.strictEqual(detectFastPathAction('bayar 50rb makan siang'), null);
 
   console.log('  [PASS] Command and natural-language summary questions route through deterministic parsing.');
