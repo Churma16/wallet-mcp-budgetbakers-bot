@@ -16,6 +16,7 @@ import { matchesTransactionRecordSearch } from '../utils/transactionSearchMatche
 
 export const DEFAULT_TRANSACTION_HISTORY_LIMIT = 10;
 export const MAX_TRANSACTION_HISTORY_LIMIT = 50;
+export const MAX_TRANSACTION_SEARCH_SCAN_RECORDS = 500;
 
 export type WalletMcpDispatchOutcome = 'DEFINITIVE_FAILURE' | 'UNKNOWN';
 
@@ -436,28 +437,7 @@ export class WalletMcpClientService {
       mcpCallPayload.query = queryOptions.searchQuery;
     }
 
-    applicationLogger.fileDetail('mcp', 'Dispatching fetchRecords to Wallet MCP', {
-      limit: resolvedLimit,
-      offset: resolvedOffset,
-      sort: resolvedSort,
-      sortBy: upstreamSortBy,
-      filters: {
-        accountId: mcpCallPayload.accountId,
-        categoryId: mcpCallPayload.categoryId,
-        categoryGroup: mcpCallPayload.categoryGroup,
-        recordType: mcpCallPayload.recordType,
-        recordDate: mcpCallPayload.recordDate,
-        query: mcpCallPayload.query,
-      },
-    });
-
-    const rawResponse = await this.callMcpTool<any>('get_records', mcpCallPayload);
-
-    const rawRecordArray: any[] = Array.isArray(rawResponse)
-      ? rawResponse
-      : (rawResponse?.records || rawResponse?.items || []);
-
-    const normalizedRecords: WalletRecordItem[] = rawRecordArray.map(item => {
+    const normalizeRawRecords = (rawRecordArray: any[]): WalletRecordItem[] => rawRecordArray.map(item => {
       let resolvedAmount = 0;
       let resolvedCurrency = 'IDR';
 
@@ -528,14 +508,135 @@ export class WalletMcpClientService {
       };
     });
 
-    const filteredRecords = queryOptions?.searchQuery
-      ? normalizedRecords.filter(recordItem =>
-          matchesTransactionRecordSearch(recordItem, queryOptions.searchQuery!)
-        )
-      : normalizedRecords;
+    const callGetRecords = async (payload: Record<string, unknown>): Promise<any> => {
+      applicationLogger.fileDetail('mcp', 'Dispatching fetchRecords to Wallet MCP', {
+        limit: payload.limit,
+        offset: payload.offset,
+        sort: resolvedSort,
+        sortBy: upstreamSortBy,
+        filters: {
+          accountId: payload.accountId,
+          categoryId: payload.categoryId,
+          categoryGroup: payload.categoryGroup,
+          recordType: payload.recordType,
+          recordDate: payload.recordDate,
+          query: payload.query,
+        },
+      });
 
-    // Local matching verifies each upstream page, but pagination must remain based on
-    // the upstream dataset so matches on later pages never become unreachable.
+      return await this.callMcpTool<any>('get_records', payload);
+    };
+
+    if (queryOptions?.searchQuery) {
+      const matchedRecords: WalletRecordItem[] = [];
+      const seenMatchedRecordIds = new Set<string>();
+      let scanOffset = 0;
+      let scannedCandidateCount = 0;
+
+      while (true) {
+        if (scannedCandidateCount >= MAX_TRANSACTION_SEARCH_SCAN_RECORDS) {
+          throw new WalletMcpRequestError(
+            `[error] Transaction search verification exceeded the bounded scan limit of ${MAX_TRANSACTION_SEARCH_SCAN_RECORDS} candidate records`,
+            'DEFINITIVE_FAILURE'
+          );
+        }
+
+        const remainingScanCapacity = MAX_TRANSACTION_SEARCH_SCAN_RECORDS - scannedCandidateCount;
+        const scanLimit = Math.min(MAX_TRANSACTION_HISTORY_LIMIT, remainingScanCapacity);
+        const scanPayload: Record<string, unknown> = {
+          ...mcpCallPayload,
+          limit: scanLimit,
+          offset: scanOffset,
+        };
+
+        const rawResponse = await callGetRecords(scanPayload);
+        const rawRecordArray: any[] = Array.isArray(rawResponse)
+          ? rawResponse
+          : (rawResponse?.records || rawResponse?.items || []);
+
+        if (rawRecordArray.length === 0) {
+          break;
+        }
+
+        const normalizedRecords = normalizeRawRecords(rawRecordArray);
+        for (const recordItem of normalizedRecords) {
+          if (!matchesTransactionRecordSearch(recordItem, queryOptions.searchQuery)) {
+            continue;
+          }
+
+          if (recordItem.id) {
+            if (seenMatchedRecordIds.has(recordItem.id)) {
+              continue;
+            }
+            seenMatchedRecordIds.add(recordItem.id);
+          }
+
+          matchedRecords.push(recordItem);
+        }
+
+        scannedCandidateCount += rawRecordArray.length;
+
+        const hasExplicitTotal = typeof rawResponse?.total === 'number' && Number.isFinite(rawResponse.total);
+        const upstreamTotal = hasExplicitTotal ? Math.max(0, rawResponse.total) : undefined;
+        const hasExplicitNextOffset = typeof rawResponse?.nextOffset === 'number' && Number.isFinite(rawResponse.nextOffset);
+
+        let nextScanOffset: number | null = null;
+        if (hasExplicitNextOffset) {
+          nextScanOffset = rawResponse.nextOffset;
+        } else if (rawResponse?.nextOffset === null) {
+          nextScanOffset = null;
+        } else if (typeof upstreamTotal === 'number' && scanOffset + rawRecordArray.length < upstreamTotal) {
+          nextScanOffset = scanOffset + rawRecordArray.length;
+        } else if (Array.isArray(rawResponse) && rawRecordArray.length === scanLimit) {
+          nextScanOffset = scanOffset + rawRecordArray.length;
+        }
+
+        if (nextScanOffset === null) {
+          break;
+        }
+
+        if (nextScanOffset <= scanOffset) {
+          throw new WalletMcpRequestError(
+            '[error] Wallet MCP search pagination did not make forward progress',
+            'DEFINITIVE_FAILURE'
+          );
+        }
+
+        if (scannedCandidateCount >= MAX_TRANSACTION_SEARCH_SCAN_RECORDS) {
+          throw new WalletMcpRequestError(
+            `[error] Transaction search verification exceeded the bounded scan limit of ${MAX_TRANSACTION_SEARCH_SCAN_RECORDS} candidate records`,
+            'DEFINITIVE_FAILURE'
+          );
+        }
+
+        scanOffset = nextScanOffset;
+      }
+
+      const resolvedTotalCount = matchedRecords.length;
+      const pageNumber = Math.floor(resolvedOffset / resolvedLimit) + 1;
+      const totalPagesCount = Math.max(1, Math.ceil(resolvedTotalCount / resolvedLimit));
+      const pageRecords = matchedRecords.slice(resolvedOffset, resolvedOffset + resolvedLimit);
+      const hasMore = resolvedOffset + pageRecords.length < resolvedTotalCount;
+
+      return {
+        records: pageRecords,
+        total: resolvedTotalCount,
+        limit: resolvedLimit,
+        offset: resolvedOffset,
+        page: pageNumber,
+        totalPages: totalPagesCount,
+        nextOffset: hasMore ? resolvedOffset + resolvedLimit : null,
+        hasMore,
+        sort: resolvedSort,
+      };
+    }
+
+    const rawResponse = await callGetRecords(mcpCallPayload);
+    const rawRecordArray: any[] = Array.isArray(rawResponse)
+      ? rawResponse
+      : (rawResponse?.records || rawResponse?.items || []);
+    const normalizedRecords = normalizeRawRecords(rawRecordArray);
+
     const hasExplicitTotal = typeof rawResponse?.total === 'number' && Number.isFinite(rawResponse.total);
     const resolvedTotalCount = hasExplicitTotal ? Math.max(0, rawResponse.total) : undefined;
 
@@ -560,7 +661,7 @@ export class WalletMcpClientService {
       : undefined;
 
     return {
-      records: filteredRecords,
+      records: normalizedRecords,
       total: resolvedTotalCount,
       limit: resolvedLimit,
       offset: resolvedOffset,
