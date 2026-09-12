@@ -1,4 +1,5 @@
 import {
+  isValidIanaTimezone,
   normalizePhoneNumber,
   SupportedAiProviderType,
 } from '../config/environmentConfig.js';
@@ -221,6 +222,53 @@ async function normalizeWhatsAppPhoneNumber(
   }
 }
 
+async function promptTelegramAllowedUserId(
+  prompter: SetupPrompter,
+  existingValue?: string
+): Promise<string> {
+  let defaultValue = existingValue?.trim().replace(/^@/, '');
+
+  while (true) {
+    const enteredValue = await promptRequiredText(
+      prompter,
+      'Authorized Telegram user ID',
+      defaultValue
+    );
+    const canonicalValue = enteredValue.trim().replace(/^@/, '');
+    if (/^\d+$/.test(canonicalValue)) {
+      return canonicalValue;
+    }
+
+    prompter.info(
+      '[WARN] Enter the immutable numeric Telegram user ID only (for example 123456789); usernames are not supported.'
+    );
+    defaultValue = undefined;
+  }
+}
+
+async function promptValidIanaTimezone(
+  prompter: SetupPrompter,
+  existingValue?: string
+): Promise<string> {
+  let defaultValue: string | undefined = existingValue || 'Asia/Jakarta';
+
+  while (true) {
+    const enteredValue = await promptRequiredText(
+      prompter,
+      'Application timezone (IANA identifier)',
+      defaultValue
+    );
+    if (isValidIanaTimezone(enteredValue)) {
+      return enteredValue;
+    }
+
+    prompter.info(
+      '[WARN] Enter a valid IANA timezone identifier (for example Asia/Jakarta, America/New_York, or UTC).'
+    );
+    defaultValue = undefined;
+  }
+}
+
 function resolveExistingProviderKey(
   provider: SupportedAiProviderType,
   existingValues: EnvironmentValueMap,
@@ -324,7 +372,12 @@ async function configureAiProviders(
             : PROVIDER_DEFAULT_MODEL.gemini
         );
       } else {
-        const defaultBaseUrl = PROVIDER_DEFAULT_BASE_URL[provider] || existingValues.AI_BASE_URL || '';
+        const defaultBaseUrl =
+          provider === 'custom'
+            ? existingPrimaryProvider === 'custom'
+              ? existingValues.AI_BASE_URL || ''
+              : ''
+            : PROVIDER_DEFAULT_BASE_URL[provider] || '';
         updates.AI_BASE_URL = await promptRequiredText(
           prompter,
           `${provider} base URL`,
@@ -438,9 +491,8 @@ export async function collectSetupConfiguration(
     }
 
     prompter.info('Find your immutable numeric Telegram user ID with @userinfobot or @raw_data_bot.');
-    updates.TELEGRAM_ALLOWED_USER_ID = await promptRequiredText(
+    updates.TELEGRAM_ALLOWED_USER_ID = await promptTelegramAllowedUserId(
       prompter,
-      'Authorized Telegram user ID',
       existingValues.TELEGRAM_ALLOWED_USER_ID
     );
   }
@@ -462,10 +514,9 @@ export async function collectSetupConfiguration(
     )
   ).toUpperCase();
 
-  updates.APP_TIMEZONE = await promptRequiredText(
+  updates.APP_TIMEZONE = await promptValidIanaTimezone(
     prompter,
-    'Application timezone (IANA identifier)',
-    existingValues.APP_TIMEZONE || 'Asia/Jakarta'
+    existingValues.APP_TIMEZONE
   );
 
   if (whatsappPhoneNumberCandidate !== undefined) {

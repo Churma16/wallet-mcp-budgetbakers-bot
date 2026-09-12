@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { loadEnvironmentConfiguration } from '../src/config/environmentConfig.js';
+import {
+  loadEnvironmentConfiguration,
+  validateApplicationConfiguration,
+} from '../src/config/environmentConfig.js';
 import {
   collectSetupConfiguration,
   SetupChoice,
@@ -94,7 +97,12 @@ function withEnvironment<T>(values: Record<string, string>, callback: () => T): 
     'GROQ_API_KEY',
     'OPENAI_API_KEY',
     'GEMINI_API_KEY',
+    'WALLET_MCP_BASE_URL',
     'WALLET_MCP_ACCESS_TOKEN',
+    'ALLOWED_PHONE_NUMBER',
+    'TELEGRAM_BOT_TOKEN',
+    'TELEGRAM_ALLOWED_USER_ID',
+    'EMAIL_SYNC_ENABLED',
     'ENABLED_MESSENGER_CHANNELS',
     'APP_LANGUAGE',
     'DEFAULT_CURRENCY',
@@ -233,11 +241,12 @@ describe('setup wizard', () => {
     expect(loadedConfig.aiApiKey).toBe('groq-provider-secret');
   });
 
-  it('requires a fresh generic key when switching from a named provider to custom', async () => {
+  it('requires fresh custom credentials and endpoint when switching from a named provider', async () => {
     const existingValues = {
       WALLET_MCP_ACCESS_TOKEN: 'wallet-existing-secret',
       AI_PROVIDER: 'openrouter',
       AI_API_KEY: 'stale-openrouter-generic-secret',
+      AI_BASE_URL: 'https://openrouter.ai/api/v1',
       OPENROUTER_API_KEY: 'openrouter-provider-secret',
       ENABLED_MESSENGER_CHANNELS: 'console',
       APP_LANGUAGE: 'id',
@@ -252,7 +261,7 @@ describe('setup wizard', () => {
         AI_API_KEY: 'custom-new-secret',
       },
       questionAnswers: {
-        'custom base URL': ['https://custom.example/v1'],
+        'custom base URL': ['', 'https://custom.example/v1'],
         'custom model': ['custom-model'],
       },
     });
@@ -261,7 +270,9 @@ describe('setup wizard', () => {
 
     expect(result.updates.AI_API_KEY).toBe('custom-new-secret');
     expect(result.updates.AI_BASE_URL).toBe('https://custom.example/v1');
+    expect(result.updates.AI_BASE_URL).not.toBe('https://openrouter.ai/api/v1');
     expect(result.updates.AI_MODEL).toBe('custom-model');
+    expect(prompter.infoMessages).toContain('[WARN] A value is required.');
   });
 
   it('reprompts invalid WhatsApp numbers and stores only the runtime-normalized value', async () => {
@@ -286,6 +297,53 @@ describe('setup wizard', () => {
     expect(result.updates.ALLOWED_PHONE_NUMBER).toBe('6281234567890');
     expect(
       prompter.infoMessages.some(message => message.includes('valid WhatsApp phone number'))
+    ).toBe(true);
+  });
+
+  it('reprompts invalid Telegram IDs and timezones until runtime-valid values are entered', async () => {
+    const existingValues = {
+      WALLET_MCP_BASE_URL: 'https://mcp.wallet.budgetbakers.com',
+      WALLET_MCP_ACCESS_TOKEN: 'wallet-existing-secret',
+      AI_PROVIDER: 'gemini',
+      GEMINI_API_KEY: 'gemini-existing-secret',
+      ENABLED_MESSENGER_CHANNELS: 'console',
+      APP_LANGUAGE: 'id',
+      DEFAULT_CURRENCY: 'IDR',
+      APP_TIMEZONE: 'Asia/Jakarta',
+      EMAIL_SYNC_ENABLED: 'false',
+    };
+    const prompter = new FakeSetupPrompter({
+      aiProviders: ['gemini'],
+      channels: ['telegram', 'console'],
+      secrets: {
+        TELEGRAM_BOT_TOKEN: 'telegram-new-secret',
+      },
+      questionAnswers: {
+        'Authorized Telegram user ID': ['@fathan', '@123456789'],
+        'Application timezone': ['Jakarta', 'Asia/Jakarta'],
+      },
+    });
+
+    const result = await collectSetupConfiguration(prompter, existingValues);
+    const mergedValues = parseEnvFileContent(
+      mergeEnvFileContent(
+        Object.entries(existingValues)
+          .map(([key, value]) => `${key}=${value}`)
+          .join('\n'),
+        result.updates
+      )
+    );
+    const loadedConfig = withEnvironment(mergedValues, () => loadEnvironmentConfiguration());
+    const validationResult = validateApplicationConfiguration(loadedConfig);
+
+    expect(result.updates.TELEGRAM_ALLOWED_USER_ID).toBe('123456789');
+    expect(result.updates.APP_TIMEZONE).toBe('Asia/Jakarta');
+    expect(validationResult.isValid).toBe(true);
+    expect(
+      prompter.infoMessages.some(message => message.includes('numeric Telegram user ID'))
+    ).toBe(true);
+    expect(
+      prompter.infoMessages.some(message => message.includes('valid IANA timezone identifier'))
     ).toBe(true);
   });
 
