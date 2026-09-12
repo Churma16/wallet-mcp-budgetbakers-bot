@@ -8,24 +8,15 @@ import {
   ExtractedEmailTransactionData,
   TokenUsageStatistics,
 } from './financialAiProvider.js';
-import {
-  extractAndParseJsonObject,
-  validateReceiptFinancialIntentEnvelope,
-  isAiResponseParseError,
-} from './jsonExtractionHelper.js';
-import { getApplicationTimezone } from '../../utils/humanResponseFormatter.js';
-import { getCurrentLocalDateString } from '../../utils/relativeTimeParser.js';
-import {
-  buildCompactSystemInstruction,
-  buildReceiptSystemInstruction,
-  buildEmailSystemInstruction,
-  buildTextMessagePrompt,
-  buildReceiptExtractionPrompt,
-  buildEmailEvaluationPrompt,
-  resolveEmailExtractedEntities,
-  buildFailedEmailTransactionFallback,
-} from './aiPromptBuilder.js';
+import { isAiResponseParseError } from './jsonExtractionHelper.js';
 import { CategoryContextService } from '../categoryContextService.js';
+import {
+  SystemInstructionCache,
+  executeTextWorkflow,
+  executeReceiptWorkflow,
+  executeEmailTransactionWorkflow,
+  isRecoverableModelExecutionError,
+} from './aiProviderWorkflow.js';
 
 export interface OpenAiCompatibleProviderConfiguration {
   providerName?: string;
@@ -73,11 +64,13 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
   private readonly candidateModelList: string[];
   private readonly requestTimeoutMilliseconds: number;
   private readonly categoryContextService?: CategoryContextService;
+  private readonly systemInstructionCache: SystemInstructionCache;
 
   constructor(configuration: OpenAiCompatibleProviderConfiguration) {
     this.providerName = configuration.providerName || 'openai-compatible';
     this.requestTimeoutMilliseconds = configuration.requestTimeoutMilliseconds || 25000;
     this.categoryContextService = configuration.categoryContextService;
+    this.systemInstructionCache = new SystemInstructionCache(configuration.categoryContextService);
     this.candidateModelList = Array.from(
       new Set([configuration.primaryModelName, ...(configuration.fallbackModelList || [])])
     );
@@ -204,16 +197,7 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
         const executionDurationMilliseconds = Date.now() - startExecutionTimestamp;
         const errorMessage = error?.response?.data?.error?.message || error?.message || String(error);
 
-        const isRecoverableModelError =
-          errorMessage.includes('503') ||
-          errorMessage.includes('429') ||
-          errorMessage.includes('404') ||
-          errorMessage.includes('500') ||
-          errorMessage.includes('high demand') ||
-          errorMessage.includes('rate limit') ||
-          errorMessage.includes('overloaded') ||
-          errorMessage.includes('timeout') ||
-          errorMessage.includes('ECONNABORTED');
+        const isRecoverableModelError = isRecoverableModelExecutionError(error);
 
         const hasNextFallbackModel = modelIndex + 1 < this.candidateModelList.length;
 
@@ -253,48 +237,23 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     availableCategoryList: WalletCategoryItem[],
     referenceInstant: Date = new Date()
   ): Promise<ExtractedFinancialIntent> {
-    const applicationTimezone = getApplicationTimezone();
-    const currentDateIso = getCurrentLocalDateString(referenceInstant, applicationTimezone);
-    const formattedCategoryContext = this.categoryContextService?.formatCompactContext(availableCategoryList);
-    const systemInstruction = buildCompactSystemInstruction(
-      availableAccountList,
-      availableCategoryList,
-      currentDateIso,
-      applicationTimezone,
-      referenceInstant,
-      formattedCategoryContext
+    return executeTextWorkflow(
+      {
+        userMessageText,
+        availableAccountList,
+        availableCategoryList,
+        referenceInstant,
+        systemInstructionCache: this.systemInstructionCache,
+        providerLabel: this.providerName,
+      },
+      (prepared) => {
+        const messages = [
+          { role: 'system', content: prepared.systemInstruction },
+          { role: 'user', content: prepared.promptText },
+        ];
+        return this.executeChatCompletionWithFallback(messages, prepared.requestContextDescription);
+      }
     );
-
-    const trimmedUserMessage = userMessageText.trim();
-    const currentTransactionTimestampIso = referenceInstant.toISOString();
-    const promptTextWithTimestamp = buildTextMessagePrompt(
-      trimmedUserMessage,
-      currentTransactionTimestampIso,
-      applicationTimezone
-    );
-
-    const messages = [
-      { role: 'system', content: systemInstruction },
-      { role: 'user', content: promptTextWithTimestamp },
-    ];
-
-    const generationResult = await this.executeChatCompletionWithFallback(
-      messages,
-      `Text message: "${trimmedUserMessage}"`
-    );
-
-    try {
-      const parsedIntent = extractAndParseJsonObject<ExtractedFinancialIntent>(generationResult.responseText);
-      parsedIntent.tokenUsage = generationResult.tokenUsage;
-      applicationLogger.fileDetail('ai', `Parsed Financial Intent from ${this.providerName}`, parsedIntent);
-      return parsedIntent;
-    } catch {
-      return {
-        action: 'GENERAL_REPLY',
-        explanation: generationResult.responseText,
-        tokenUsage: generationResult.tokenUsage,
-      };
-    }
   }
 
   /**
@@ -308,50 +267,38 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     availableCategoryList: WalletCategoryItem[],
     referenceInstant: Date = new Date()
   ): Promise<ExtractedFinancialIntent> {
-    const applicationTimezoneIdentifier = getApplicationTimezone();
-    const currentDateIso = getCurrentLocalDateString(referenceInstant, applicationTimezoneIdentifier);
-    const formattedCategoryContext = this.categoryContextService?.formatCompactContext(availableCategoryList);
-    const systemInstruction = buildReceiptSystemInstruction(
-      availableAccountList,
-      availableCategoryList,
-      currentDateIso,
-      applicationTimezoneIdentifier,
-      referenceInstant,
-      formattedCategoryContext
-    );
-
-    const currentTransactionTimestampIso = referenceInstant.toISOString();
-    const promptText = buildReceiptExtractionPrompt(optionalCaption, currentTransactionTimestampIso);
-
-    const base64ImageUrl = `data:${mimeType};base64,${imageBuffer.toString('base64')}`;
-
-    const messages = [
-      { role: 'system', content: systemInstruction },
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: promptText },
-          {
-            type: 'image_url',
-            image_url: {
-              url: base64ImageUrl,
-            },
-          },
-        ],
-      },
-    ];
-
     try {
-      const generationResult = await this.executeChatCompletionWithFallback(
-        messages,
-        `Receipt photo (size: ${imageBuffer.length} bytes, caption: "${optionalCaption}")`
+      return await executeReceiptWorkflow(
+        {
+          imageBuffer,
+          mimeType,
+          optionalCaption,
+          availableAccountList,
+          availableCategoryList,
+          referenceInstant,
+          categoryContextService: this.categoryContextService,
+          providerLabel: this.providerName,
+        },
+        (prepared) => {
+          const base64ImageUrl = `data:${mimeType};base64,${imageBuffer.toString('base64')}`;
+          const messages = [
+            { role: 'system', content: prepared.systemInstruction },
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: prepared.promptText },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: base64ImageUrl,
+                  },
+                },
+              ],
+            },
+          ];
+          return this.executeChatCompletionWithFallback(messages, prepared.requestContextDescription);
+        }
       );
-
-      const parsedJsonObject = extractAndParseJsonObject<unknown>(generationResult.responseText);
-      const parsedIntent = validateReceiptFinancialIntentEnvelope(parsedJsonObject, generationResult.responseText);
-      parsedIntent.tokenUsage = generationResult.tokenUsage;
-      applicationLogger.fileDetail('ai', `Parsed Financial Intent from ${this.providerName} Vision`, parsedIntent);
-      return parsedIntent;
     } catch (visionError: any) {
       if (isAiResponseParseError(visionError)) {
         throw visionError;
@@ -388,44 +335,25 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     availableAccountList: WalletAccountItem[],
     availableCategoryList: WalletCategoryItem[]
   ): Promise<ExtractedEmailTransactionData> {
-    const formattedCategoryContext = this.categoryContextService?.formatCompactContext(availableCategoryList);
-    const emailSystemInstruction = buildEmailSystemInstruction(
-      availableAccountList,
-      availableCategoryList,
-      formattedCategoryContext
-    );
-    const promptText = buildEmailEvaluationPrompt(gateResult, emailSubject, emailSender, emailBodyText, emailDate);
-
-    const messages = [
-      { role: 'system', content: emailSystemInstruction },
-      { role: 'user', content: promptText },
-    ];
-
-    const generationResult = await this.executeChatCompletionWithFallback(
-      messages,
-      `Email transaction parsing: "${emailSubject}" from ${emailSender}`
-    );
-
-    try {
-      const parsedData = extractAndParseJsonObject<ExtractedEmailTransactionData>(generationResult.responseText);
-      parsedData.tokenUsage = generationResult.tokenUsage;
-
-      return resolveEmailExtractedEntities(
-        parsedData,
+    return executeEmailTransactionWorkflow(
+      {
         gateResult,
         emailSubject,
+        emailSender,
+        emailBodyText,
         emailDate,
         availableAccountList,
-        availableCategoryList
-      );
-    } catch {
-      return buildFailedEmailTransactionFallback(
-        gateResult,
-        emailSubject,
-        emailDate,
-        'Failed to parse JSON response for email transaction',
-        generationResult.tokenUsage
-      );
-    }
+        availableCategoryList,
+        categoryContextService: this.categoryContextService,
+        providerLabel: this.providerName,
+      },
+      (prepared) => {
+        const messages = [
+          { role: 'system', content: prepared.systemInstruction },
+          { role: 'user', content: prepared.promptText },
+        ];
+        return this.executeChatCompletionWithFallback(messages, prepared.requestContextDescription);
+      }
+    );
   }
 }

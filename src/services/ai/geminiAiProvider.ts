@@ -8,22 +8,14 @@ import {
   ExtractedEmailTransactionData,
   TokenUsageStatistics,
 } from './financialAiProvider.js';
-import { extractAndParseJsonObject, validateReceiptFinancialIntentEnvelope } from './jsonExtractionHelper.js';
-import { getActiveLanguage } from '../../i18n/index.js';
-
-import { getApplicationTimezone } from '../../utils/humanResponseFormatter.js';
-import { getCurrentLocalDateString, getTimezoneOffsetDetails } from '../../utils/relativeTimeParser.js';
-import {
-  buildCompactSystemInstruction,
-  buildReceiptSystemInstruction,
-  buildEmailSystemInstruction,
-  buildTextMessagePrompt,
-  buildReceiptExtractionPrompt,
-  buildEmailEvaluationPrompt,
-  resolveEmailExtractedEntities,
-  buildFailedEmailTransactionFallback,
-} from './aiPromptBuilder.js';
 import { CategoryContextService } from '../categoryContextService.js';
+import {
+  SystemInstructionCache,
+  executeTextWorkflow,
+  executeReceiptWorkflow,
+  executeEmailTransactionWorkflow,
+  isRecoverableModelExecutionError,
+} from './aiProviderWorkflow.js';
 
 interface GenerationExecutionResult {
   responseText: string;
@@ -35,9 +27,7 @@ export class GeminiAiProvider implements FinancialAiProvider {
 
   private readonly googleGenAiClient: GoogleGenAI;
   private readonly candidateModelList: string[];
-
-  private cachedSystemInstruction: string = '';
-  private systemInstructionCacheKey: string = '';
+  private readonly systemInstructionCache: SystemInstructionCache;
 
   constructor(
     apiKey: string,
@@ -48,6 +38,7 @@ export class GeminiAiProvider implements FinancialAiProvider {
   ) {
     this.googleGenAiClient = new GoogleGenAI({ apiKey });
     this.candidateModelList = Array.from(new Set([primaryModelName, ...fallbackModelList]));
+    this.systemInstructionCache = new SystemInstructionCache(categoryContextService);
   }
 
   /**
@@ -58,33 +49,15 @@ export class GeminiAiProvider implements FinancialAiProvider {
     availableCategoryList: WalletCategoryItem[],
     referenceDate: Date = new Date()
   ): string {
-    const applicationTimezone = getApplicationTimezone();
-    const currentDateIso = getCurrentLocalDateString(referenceDate, applicationTimezone);
-    const timezoneOffsetDetails = getTimezoneOffsetDetails(applicationTimezone, referenceDate);
-    const activeLanguage = getActiveLanguage();
-    const contextFingerprint = this.categoryContextService?.getContextFingerprint() || '';
-    const cacheKey = `${activeLanguage}|${currentDateIso}|${applicationTimezone}|${timezoneOffsetDetails.formattedOffset}|${availableAccountList.map(account => account.id).join(',')}|${availableCategoryList.map(category => category.id).join(',')}|${contextFingerprint}`;
-
-    if (this.systemInstructionCacheKey === cacheKey && this.cachedSystemInstruction) {
-      return this.cachedSystemInstruction;
-    }
-
-    const formattedCategoryContext = this.categoryContextService?.formatCompactContext(availableCategoryList);
-
-    this.cachedSystemInstruction = buildCompactSystemInstruction(
+    return this.systemInstructionCache.getSystemInstruction(
       availableAccountList,
       availableCategoryList,
-      currentDateIso,
-      applicationTimezone,
-      referenceDate,
-      formattedCategoryContext
+      referenceDate
     );
-    this.systemInstructionCacheKey = cacheKey;
-    return this.cachedSystemInstruction;
   }
 
   public getSystemInstructionCacheKey(): string {
-    return this.systemInstructionCacheKey;
+    return this.systemInstructionCache.getCacheKey();
   }
 
   /**
@@ -215,21 +188,7 @@ export class GeminiAiProvider implements FinancialAiProvider {
         const executionDurationMilliseconds = Date.now() - startExecutionTimestamp;
         const errorMessage = error instanceof Error ? error.message : String(error);
 
-        const isRecoverableModelError =
-          errorMessage.includes('504') ||
-          errorMessage.includes('503') ||
-          errorMessage.includes('429') ||
-          errorMessage.includes('404') ||
-          errorMessage.includes('500') ||
-          errorMessage.includes('DEADLINE_EXCEEDED') ||
-          errorMessage.includes('high demand') ||
-          errorMessage.includes('UNAVAILABLE') ||
-          errorMessage.includes('RESOURCE_EXHAUSTED') ||
-          errorMessage.includes('NOT_FOUND') ||
-          errorMessage.includes('overloaded') ||
-          errorMessage.toLowerCase().includes('time') ||
-          errorMessage.toLowerCase().includes('deadline') ||
-          errorMessage.toLowerCase().includes('abort');
+        const isRecoverableModelError = isRecoverableModelExecutionError(error);
 
         const hasNextFallbackModel = modelIndex + 1 < this.candidateModelList.length;
 
@@ -270,44 +229,27 @@ export class GeminiAiProvider implements FinancialAiProvider {
     availableCategoryList: WalletCategoryItem[],
     referenceInstant: Date = new Date()
   ): Promise<ExtractedFinancialIntent> {
-    const systemInstructionContent = this.getSystemInstruction(
-      availableAccountList,
-      availableCategoryList,
-      referenceInstant
+    return executeTextWorkflow(
+      {
+        userMessageText,
+        availableAccountList,
+        availableCategoryList,
+        referenceInstant,
+        systemInstructionCache: this.systemInstructionCache,
+        providerLabel: 'Gemini',
+      },
+      (prepared) =>
+        this.executeGenerationWithFallback({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: prepared.promptText }],
+            },
+          ],
+          systemInstruction: prepared.systemInstruction,
+          requestContextDescription: prepared.requestContextDescription,
+        })
     );
-
-    const trimmedUserMessage = userMessageText.trim();
-    const currentTransactionTimestampIso = referenceInstant.toISOString();
-    const applicationTimezone = getApplicationTimezone();
-    const promptTextWithTimestamp = buildTextMessagePrompt(
-      trimmedUserMessage,
-      currentTransactionTimestampIso,
-      applicationTimezone
-    );
-
-    const generationResult = await this.executeGenerationWithFallback({
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: promptTextWithTimestamp }],
-        },
-      ],
-      systemInstruction: systemInstructionContent,
-      requestContextDescription: `Text message: "${trimmedUserMessage}"`,
-    });
-
-    try {
-      const parsedIntent = extractAndParseJsonObject<ExtractedFinancialIntent>(generationResult.responseText);
-      parsedIntent.tokenUsage = generationResult.tokenUsage;
-      applicationLogger.fileDetail('ai', 'Parsed Financial Intent from Gemini', parsedIntent);
-      return parsedIntent;
-    } catch {
-      return {
-        action: 'GENERAL_REPLY',
-        explanation: generationResult.responseText,
-        tokenUsage: generationResult.tokenUsage,
-      };
-    }
   }
 
   /**
@@ -321,44 +263,37 @@ export class GeminiAiProvider implements FinancialAiProvider {
     availableCategoryList: WalletCategoryItem[],
     referenceInstant: Date = new Date()
   ): Promise<ExtractedFinancialIntent> {
-    const applicationTimezoneIdentifier = getApplicationTimezone();
-    const currentDateIso = getCurrentLocalDateString(referenceInstant, applicationTimezoneIdentifier);
-    const formattedCategoryContext = this.categoryContextService?.formatCompactContext(availableCategoryList);
-    const systemInstructionContent = buildReceiptSystemInstruction(
-      availableAccountList,
-      availableCategoryList,
-      currentDateIso,
-      applicationTimezoneIdentifier,
-      referenceInstant,
-      formattedCategoryContext
-    );
-    const currentTransactionTimestampIso = referenceInstant.toISOString();
-    const promptText = buildReceiptExtractionPrompt(optionalCaption, currentTransactionTimestampIso);
-
-    const generationResult = await this.executeGenerationWithFallback({
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            { text: promptText },
+    return executeReceiptWorkflow(
+      {
+        imageBuffer,
+        mimeType,
+        optionalCaption,
+        availableAccountList,
+        availableCategoryList,
+        referenceInstant,
+        categoryContextService: this.categoryContextService,
+        providerLabel: 'Gemini',
+      },
+      (prepared) =>
+        this.executeGenerationWithFallback({
+          contents: [
             {
-              inlineData: {
-                data: imageBuffer.toString('base64'),
-                mimeType,
-              },
+              role: 'user',
+              parts: [
+                { text: prepared.promptText },
+                {
+                  inlineData: {
+                    data: imageBuffer.toString('base64'),
+                    mimeType,
+                  },
+                },
+              ],
             },
           ],
-        },
-      ],
-      systemInstruction: systemInstructionContent,
-      requestContextDescription: `Receipt photo message (mime: ${mimeType}, size: ${imageBuffer.length} bytes, caption: "${optionalCaption}")`,
-    });
-
-    const parsedJsonObject = extractAndParseJsonObject<unknown>(generationResult.responseText);
-    const parsedIntent = validateReceiptFinancialIntentEnvelope(parsedJsonObject, generationResult.responseText);
-    parsedIntent.tokenUsage = generationResult.tokenUsage;
-    applicationLogger.fileDetail('ai', 'Parsed Financial Intent from Gemini Vision', parsedIntent);
-    return parsedIntent;
+          systemInstruction: prepared.systemInstruction,
+          requestContextDescription: prepared.requestContextDescription,
+        })
+    );
   }
 
   /**
@@ -373,40 +308,24 @@ export class GeminiAiProvider implements FinancialAiProvider {
     availableAccountList: WalletAccountItem[],
     availableCategoryList: WalletCategoryItem[]
   ): Promise<ExtractedEmailTransactionData> {
-    const formattedCategoryContext = this.categoryContextService?.formatCompactContext(availableCategoryList);
-    const emailSystemInstruction = buildEmailSystemInstruction(
-      availableAccountList,
-      availableCategoryList,
-      formattedCategoryContext
-    );
-    const promptText = buildEmailEvaluationPrompt(gateResult, emailSubject, emailSender, emailBodyText, emailDate);
-
-    const generationResult = await this.executeGenerationWithFallback({
-      contents: [{ role: 'user', parts: [{ text: promptText }] }],
-      systemInstruction: emailSystemInstruction,
-      requestContextDescription: `Email transaction parsing: "${emailSubject}" from ${emailSender}`,
-    });
-
-    try {
-      const parsedData = extractAndParseJsonObject<ExtractedEmailTransactionData>(generationResult.responseText);
-      parsedData.tokenUsage = generationResult.tokenUsage;
-
-      return resolveEmailExtractedEntities(
-        parsedData,
+    return executeEmailTransactionWorkflow(
+      {
         gateResult,
         emailSubject,
+        emailSender,
+        emailBodyText,
         emailDate,
         availableAccountList,
-        availableCategoryList
-      );
-    } catch {
-      return buildFailedEmailTransactionFallback(
-        gateResult,
-        emailSubject,
-        emailDate,
-        'Failed to parse JSON response from Gemini for email transaction',
-        generationResult.tokenUsage
-      );
-    }
+        availableCategoryList,
+        categoryContextService: this.categoryContextService,
+        providerLabel: 'Gemini',
+      },
+      (prepared) =>
+        this.executeGenerationWithFallback({
+          contents: [{ role: 'user', parts: [{ text: prepared.promptText }] }],
+          systemInstruction: prepared.systemInstruction,
+          requestContextDescription: prepared.requestContextDescription,
+        })
+    );
   }
 }
