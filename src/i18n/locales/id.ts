@@ -154,6 +154,9 @@ export const indonesianDictionary: ResponseDictionary = {
             }
             return `• Kata kunci pencarian "${issue.rawValue}" tidak valid atau melebihi batas 100 karakter.`;
           }
+          if (issue.reason === 'UNRESOLVED') {
+            return `• Verifikasi pencarian dijeda pada batas pemindaian aman. Ulangi pencarian yang sama untuk melanjutkan dari posisi cache, atau persempit dengan filter akun, kategori, atau tanggal.`;
+          }
           return `• Kata kunci pencarian "${issue.rawValue}" tidak dapat diproses.`;
         }
         return `• ${issue.message}`;
