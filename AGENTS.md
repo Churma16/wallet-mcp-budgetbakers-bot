@@ -100,3 +100,12 @@ To prevent Windows PowerShell string truncation and backtick escaping failures:
 ### 3. Title & Branch Parity
 - PR title must follow Conventional Commits format without JIRA ID prefix (e.g., `feat(messaging): ...`, `fix(security): ...`).
 - Branch names must follow standard kebab-cased format `<branch-type>/<short-kebab-description>` without JIRA prefixes.
+
+## Vitest Invariant for New Test Suites
+Following the Vitest bootstrap (Issue #113), all new hermetic unit, integration, and regression test suites in this repository MUST be authored directly in Vitest:
+- **File Naming & Discovery**: New test files must be named `tests/**/*.vitest.test.ts` to match the include pattern in `vitest.config.ts`.
+- **Test Authoring API**: Import and use Vitest APIs explicitly (`describe`, `it`, `expect`, `vi`, `beforeEach`, `afterEach` from `'vitest'`). Do not write custom procedural runners or ad-hoc `assert` scripts.
+- **Execution**: Run with `npm run test:vitest` or `npx vitest run tests/<filename>.vitest.test.ts`.
+- **No Expansion of Legacy Runner**: Do **NOT** register new test suites into `tests/runOfflineTests.ts`. That legacy runner is frozen and reserved strictly for existing offline test suites pending eventual migration.
+- **Verification Requirement**: PRs introducing new capabilities or refactorings must verify both `npm run test:vitest` and `npm run test:offline`.
+
