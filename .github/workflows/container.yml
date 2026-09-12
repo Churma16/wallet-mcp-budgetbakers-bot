@@ -12,7 +12,6 @@ on:
     paths:
       - 'Dockerfile'
       - '.dockerignore'
-      - 'compose.yaml'
       - 'package.json'
       - 'package-lock.json'
       - 'tsconfig.json'
