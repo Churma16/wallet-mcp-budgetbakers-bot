@@ -1,6 +1,9 @@
 import assert from 'node:assert';
 import test from 'node:test';
-import { WalletMcpClientService } from '../src/services/walletMcpService.js';
+import {
+  WalletMcpClientService,
+  MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST,
+} from '../src/services/walletMcpService.js';
 import { detectFastPathAction } from '../src/utils/fastPathIntentDetector.js';
 
 console.log('[TEST] Starting PR #114 transaction search review regression tests...');
@@ -156,6 +159,49 @@ test('broad search stops after page lookahead and reuses cached candidates', asy
   assert.strictEqual(secondPage.hasMore, true);
   assert.strictEqual(capturedOffsets.length, callsAfterFirstPage);
   assert.deepStrictEqual(capturedOffsets, [0, 5]);
+});
+
+test('sparse search stops at the per-request MCP scan budget and returns an actionable unresolved state', async () => {
+  const client = new WalletMcpClientService('http://localhost:8080', 'mock-token');
+  const capturedOffsets: number[] = [];
+
+  client.callMcpTool = async <T>(_toolName: string, args: Record<string, unknown> = {}): Promise<T> => {
+    const offset = Number(args.offset ?? 0);
+    const limit = Number(args.limit ?? 10);
+    capturedOffsets.push(offset);
+
+    return {
+      records: Array.from({ length: limit }, (_, index) => ({
+        id: `sparse-${offset + index}`,
+        accountId: 'acc-1',
+        amount: -(offset + index + 1),
+        currency: 'IDR',
+        recordDate: '2026-09-11T10:00:00Z',
+        recordType: 'expense',
+        counterParty: `Other Merchant ${offset + index}`,
+      })),
+      total: 10000,
+    } as T;
+  };
+
+  const firstAttempt = await client.fetchRecords({ searchQuery: 'needle merchant', limit: 10, page: 1 });
+  assert.strictEqual(capturedOffsets.length, MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST);
+  assert.deepStrictEqual(capturedOffsets, [0, 10, 60, 110, 160]);
+  assert.strictEqual(firstAttempt.records.length, 0);
+  assert.strictEqual(firstAttempt.total, undefined);
+  assert.strictEqual(firstAttempt.totalPages, undefined);
+  assert.strictEqual(firstAttempt.hasMore, false);
+  assert.strictEqual(firstAttempt.nextOffset, null);
+  assert.strictEqual(firstAttempt.unresolvedFilters?.length, 1);
+  assert.strictEqual(firstAttempt.unresolvedFilters?.[0].filterKey, 'searchQuery');
+  assert.strictEqual(firstAttempt.unresolvedFilters?.[0].reason, 'UNRESOLVED');
+  assert.match(firstAttempt.unresolvedFilters?.[0].message || '', /scan budget/i);
+
+  const firstAttemptCallCount = capturedOffsets.length;
+  const secondAttempt = await client.fetchRecords({ searchQuery: 'needle merchant', limit: 10, page: 1 });
+  assert.strictEqual(capturedOffsets.length, firstAttemptCallCount + MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST);
+  assert.strictEqual(capturedOffsets[firstAttemptCallCount], 210);
+  assert.strictEqual(secondAttempt.unresolvedFilters?.[0].reason, 'UNRESOLVED');
 });
 
 console.log('[SUCCESS] PR #114 transaction search review regression tests passed.');
