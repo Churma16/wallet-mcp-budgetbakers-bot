@@ -178,14 +178,15 @@ assert.strictEqual(usdExpense, '-$25.00', 'USD expense amount is formatted with 
 const usdIncome = formatCompactTransactionAmount(100.5, 'income', 'USD', 'en');
 assert.strictEqual(usdIncome, '+$100.50', 'USD income amount is formatted with plus prefix and two decimals');
 
-// 10.3 Compact transaction date formatting tests
-const sampleDateCurrentYear = new Date();
-sampleDateCurrentYear.setHours(13, 52, 0, 0);
+// 10.3 Compact transaction date formatting tests (deterministic across runners/timezones)
+const currentCalendarYear = new Date().getFullYear();
+// 06:52:00 UTC corresponds to 13:52:00 in Asia/Jakarta (UTC+7)
+const sampleDateCurrentYear = new Date(Date.UTC(currentCalendarYear, 8, 11, 6, 52, 0, 0));
 const compactDateCurrentYear = formatCompactTransactionDate(sampleDateCurrentYear, 'id');
-assert.doesNotMatch(compactDateCurrentYear, new RegExp(String(sampleDateCurrentYear.getFullYear())), 'Current year should be omitted from compact date');
+assert.doesNotMatch(compactDateCurrentYear, new RegExp(String(currentCalendarYear)), 'Current year should be omitted from compact date');
 assert.match(compactDateCurrentYear, /13:52/, 'Time HH:mm should be preserved in compact date');
 
-const sampleDatePastYear = new Date('2024-05-10T10:15:00.000Z');
+const sampleDatePastYear = new Date('2024-05-10T03:15:00.000Z');
 const compactDatePastYear = formatCompactTransactionDate(sampleDatePastYear, 'id');
 assert.match(compactDatePastYear, /2024/, 'Past year should be included in compact date');
 
