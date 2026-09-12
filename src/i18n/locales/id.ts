@@ -88,13 +88,13 @@ export const indonesianDictionary: ResponseDictionary = {
       sortOrderLabel?: string,
       filterSummary?: string
     ): string {
+      const pageInfo = typeof totalPages === 'number' ? `Hal. ${page}/${totalPages}` : `Hal. ${page}`;
+      const countInfo = typeof displayedCount === 'number' && displayedCount > 0
+        ? ` • ${displayedCount} item`
+        : '';
       const sortSuffix = sortOrderLabel ? ` [${sortOrderLabel}]` : '';
       const filterSuffix = filterSummary ? ` [${filterSummary}]` : '';
-      const pageInfo = typeof totalPages === 'number' ? `Hal. ${page}/${totalPages}` : `Hal. ${page}`;
-      const countInfo = typeof totalCount === 'number'
-        ? ` • ${displayedCount ?? 0} dari ${totalCount}`
-        : (typeof displayedCount === 'number' && displayedCount > 0 ? ` • ${displayedCount} transaksi` : '');
-      return `📋 *Riwayat Transaksi* (${pageInfo}${countInfo})${filterSuffix}${sortSuffix}`;
+      return `📋 *Riwayat Transaksi*\n${pageInfo}${countInfo}${sortSuffix}${filterSuffix}`;
     },
     emptyState: 'Belum ada transaksi yang tercatat.',
     emptyFilteredState(filterSummary: string): string {

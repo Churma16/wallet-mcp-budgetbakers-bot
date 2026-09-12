@@ -88,13 +88,14 @@ export const englishDictionary: ResponseDictionary = {
       sortOrderLabel?: string,
       filterSummary?: string
     ): string {
+      const pageInfo = typeof totalPages === 'number' ? `Page ${page}/${totalPages}` : `Page ${page}`;
+      const countLabel = displayedCount === 1 ? 'item' : 'items';
+      const countInfo = typeof displayedCount === 'number' && displayedCount > 0
+        ? ` • ${displayedCount} ${countLabel}`
+        : '';
       const sortSuffix = sortOrderLabel ? ` [${sortOrderLabel}]` : '';
       const filterSuffix = filterSummary ? ` [${filterSummary}]` : '';
-      const pageInfo = typeof totalPages === 'number' ? `Page ${page}/${totalPages}` : `Page ${page}`;
-      const countInfo = typeof totalCount === 'number'
-        ? ` • ${displayedCount ?? 0} of ${totalCount}`
-        : (typeof displayedCount === 'number' && displayedCount > 0 ? ` • ${displayedCount} transactions` : '');
-      return `📋 *Transaction History* (${pageInfo}${countInfo})${filterSuffix}${sortSuffix}`;
+      return `📋 *Transaction History*\n${pageInfo}${countInfo}${sortSuffix}${filterSuffix}`;
     },
     emptyState: 'No transactions recorded yet.',
     emptyFilteredState(filterSummary: string): string {

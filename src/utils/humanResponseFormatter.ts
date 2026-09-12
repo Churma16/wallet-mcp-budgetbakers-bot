@@ -139,6 +139,85 @@ export function formatTransactionDate(dateInput?: string | Date, languageCode?: 
   return `${formattedDate}, ${timeString}`;
 }
 
+export const MAX_TRANSACTION_HISTORY_TITLE_LENGTH = 43;
+
+/**
+ * Deterministically truncates excessively long transaction descriptions for compact chat history.
+ * Collapses internal line breaks into a single line and truncates by Unicode graphemes to prevent broken surrogates.
+ */
+export function truncateTransactionTitle(
+  title: string,
+  maxLength: number = MAX_TRANSACTION_HISTORY_TITLE_LENGTH
+): string {
+  const singleLineTitle = title.replace(/\s+/g, ' ').trim();
+
+  if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+    const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    const graphemes = Array.from(segmenter.segment(singleLineTitle), segment => segment.segment);
+    if (graphemes.length <= maxLength) {
+      return singleLineTitle;
+    }
+    return `${graphemes.slice(0, maxLength).join('').trimEnd()}...`;
+  }
+
+  const codePoints = Array.from(singleLineTitle);
+  if (codePoints.length <= maxLength) {
+    return singleLineTitle;
+  }
+  return `${codePoints.slice(0, maxLength).join('').trimEnd()}...`;
+}
+
+/**
+ * Formats a transaction timestamp into compact local date and time for chat history (e.g. "11 Sep 13:52").
+ */
+export function formatCompactTransactionDate(
+  dateInput?: string | Date,
+  languageCode?: SupportedLanguage,
+  referenceDate: Date = new Date()
+): string {
+  const parsedDate = typeof dateInput === 'string' ? new Date(dateInput) : (dateInput || new Date());
+  if (Number.isNaN(parsedDate.getTime())) {
+    return getHumanReadableTimestamp(new Date(), languageCode);
+  }
+
+  const dictionary = getDictionary(languageCode);
+  const timeZone = getApplicationTimezone();
+  const timeString = new Intl.DateTimeFormat(dictionary.localeIdentifier, {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(parsedDate).replace('.', ':');
+
+  const nowYear = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric' }).format(referenceDate);
+  const dateYear = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric' }).format(parsedDate);
+
+  const dateString = new Intl.DateTimeFormat(dictionary.localeIdentifier, {
+    timeZone,
+    day: 'numeric',
+    month: 'short',
+    ...(dateYear === nowYear ? {} : { year: 'numeric' }),
+  }).format(parsedDate);
+
+  return `${dateString} ${timeString}`.trim();
+}
+
+/**
+ * Formats a signed compact currency amount for history lists (e.g. "-Rp20.895", "+Rp5.729.876", "-$20.00").
+ */
+export function formatCompactTransactionAmount(
+  amount: number,
+  recordType?: 'expense' | 'income',
+  currencyCode?: string,
+  languageCode?: SupportedLanguage
+): string {
+  const isExpense = recordType === 'expense' || amount < 0;
+  const sign = isExpense ? '-' : '+';
+  const rawFormattedAmount = formatCurrencyAmount(amount, currencyCode, languageCode);
+  const compactFormattedAmount = rawFormattedAmount.replace(/^Rp\s+/, 'Rp');
+  return `${sign}${compactFormattedAmount}`;
+}
+
 /**
  * Formats numeric currency to clean string preserving decimals for subunits (e.g. "$5.75" or "Rp 35.000")
  */
@@ -439,26 +518,28 @@ export function formatTransactionHistoryMessage(
     const globalItemIndex = historyPage.offset + itemIndex + 1;
     const isTransfer = Boolean(recordItem.transfer);
     const isExpense = recordItem.recordType === 'expense' || recordItem.amount < 0;
-    let typeIcon = '💰';
-    if (isTransfer) {
-      typeIcon = '🔄';
-    } else if (isExpense) {
-      typeIcon = '💸';
+    const defaultTitle = isTransfer
+      ? dictionary.labels.transfer
+      : (isExpense ? dictionary.labels.expense : dictionary.labels.income);
+    let rawTitle = recordItem.note || recordItem.counterParty || defaultTitle;
+    if (isTransfer && (recordItem.note || recordItem.counterParty) && !rawTitle.toLowerCase().includes('transfer')) {
+      rawTitle = `[Transfer] ${rawTitle}`;
     }
-    const amountPrefix = isExpense ? '-' : '+';
-    const formattedAmount = formatCurrencyAmount(recordItem.amount, recordItem.currency, activeLanguage);
-    const resolvedTitle = recordItem.note || recordItem.counterParty || (isExpense ? dictionary.labels.expense : dictionary.labels.income);
+    const displayTitle = truncateTransactionTitle(rawTitle, MAX_TRANSACTION_HISTORY_TITLE_LENGTH);
+    const formattedAmount = formatCompactTransactionAmount(recordItem.amount, recordItem.recordType, recordItem.currency, activeLanguage);
     const accountDisplay = recordItem.accountName || dictionary.labels.defaultAccount;
-    const categoryDisplay = recordItem.category?.name || dictionary.labels.defaultCategory;
-    const timestampDisplay = formatTransactionDate(recordItem.recordDate, activeLanguage);
+    const defaultCategory = isTransfer ? dictionary.labels.transfer : dictionary.labels.defaultCategory;
+    const categoryDisplay = recordItem.category?.name || defaultCategory;
+    const timestampDisplay = formatCompactTransactionDate(recordItem.recordDate, activeLanguage);
 
     const labelSuffix = recordItem.labels && recordItem.labels.length > 0
-      ? `  •  🔖 ${recordItem.labels.map(labelItem => `#${labelItem.name}`).join(' ')}`
+      ? ` • ${recordItem.labels.map(labelItem => `#${labelItem.name}`).join(' ')}`
       : '';
 
     return [
-      `${globalItemIndex}. ${typeIcon} *${resolvedTitle}* — *${amountPrefix}${formattedAmount}* (${accountDisplay})`,
-      `   🏷️ ${categoryDisplay}  •  ${timestampDisplay}${labelSuffix}`,
+      `${globalItemIndex}. ${displayTitle}`,
+      `*${formattedAmount}* • ${accountDisplay}`,
+      `${categoryDisplay} • ${timestampDisplay}${labelSuffix}`,
     ].join('\n');
   });
 
