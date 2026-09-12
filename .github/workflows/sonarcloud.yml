@@ -79,6 +79,6 @@ jobs:
             -Dsonar.organization=churma16
             -Dsonar.sources=src
             -Dsonar.tests=tests
-            -Dsonar.coverage.exclusions=tests/**
+            -Dsonar.coverage.exclusions=src/cli/**
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
           projectBaseDir: .
