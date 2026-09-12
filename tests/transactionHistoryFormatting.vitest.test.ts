@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import {
   formatTransactionHistoryMessage,
   truncateTransactionTitle,
@@ -6,7 +6,7 @@ import {
   formatCompactTransactionDate,
   MAX_TRANSACTION_HISTORY_TITLE_LENGTH,
 } from '../src/utils/humanResponseFormatter.js';
-import type { TransactionHistoryPage } from '../src/services/transactionHistoryService.js';
+import type { TransactionHistoryPage } from '../src/types/walletTypes.js';
 
 describe('Transaction History Formatting (Issue #115)', () => {
   describe('Title Truncation (Unicode- and line-safe)', () => {
@@ -56,7 +56,15 @@ describe('Transaction History Formatting (Issue #115)', () => {
     });
   });
 
-  describe('Compact Date Formatting (Year-boundary safe)', () => {
+  describe('Compact Date Formatting (Year-boundary safe & env-isolated)', () => {
+    beforeEach(() => {
+      vi.stubEnv('APP_TIMEZONE', 'Asia/Jakarta');
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
     it('omits year when transaction is in the same year as the reference date in Asia/Jakarta', () => {
       const fixedReference = new Date('2026-06-15T12:00:00.000Z');
       // 06:52 UTC = 13:52 WIB (Asia/Jakarta)
@@ -89,9 +97,37 @@ describe('Transaction History Formatting (Issue #115)', () => {
       const txPriorYear = new Date('2026-12-31T16:00:00.000Z');
       expect(formatCompactTransactionDate(txPriorYear, 'id', newYearRefJakarta)).toContain('2026');
     });
+
+    it('formats deterministically across alternate configured timezones with explicit env isolation', () => {
+      const fixedReference = new Date('2026-06-15T12:00:00.000Z');
+      const sampleTx = new Date('2026-09-11T06:52:00.000Z');
+
+      // Explicit UTC timezone
+      vi.stubEnv('APP_TIMEZONE', 'UTC');
+      const formattedUtc = formatCompactTransactionDate(sampleTx, 'en', fixedReference);
+      expect(formattedUtc).toBe('Sep 11 06:52');
+
+      // Explicit America/New_York timezone (EDT, UTC-4 in September)
+      vi.stubEnv('APP_TIMEZONE', 'America/New_York');
+      const formattedNy = formatCompactTransactionDate(sampleTx, 'en', fixedReference);
+      expect(formattedNy).toBe('Sep 11 02:52');
+
+      // Explicit Asia/Tokyo timezone (JST, UTC+9)
+      vi.stubEnv('APP_TIMEZONE', 'Asia/Tokyo');
+      const formattedTokyo = formatCompactTransactionDate(sampleTx, 'en', fixedReference);
+      expect(formattedTokyo).toBe('Sep 11 15:52');
+    });
   });
 
   describe('Compact 3-Line Transaction History Layout', () => {
+    beforeEach(() => {
+      vi.stubEnv('APP_TIMEZONE', 'Asia/Jakarta');
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
     const samplePage: TransactionHistoryPage = {
       records: [
         {
@@ -178,6 +214,14 @@ describe('Transaction History Formatting (Issue #115)', () => {
   });
 
   describe('Transfer Semantics Preservation', () => {
+    beforeEach(() => {
+      vi.stubEnv('APP_TIMEZONE', 'Asia/Jakarta');
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
     it('clearly identifies transfer records without note or category as transfers', () => {
       const transferPage: TransactionHistoryPage = {
         records: [
@@ -189,7 +233,7 @@ describe('Transaction History Formatting (Issue #115)', () => {
             currency: 'IDR',
             recordDate: '2026-09-11T06:50:00.000Z',
             recordType: 'expense',
-            transfer: true,
+            transfer: { type: 'transfer' },
             // note and category intentionally omitted
           },
         ],
@@ -227,7 +271,7 @@ describe('Transaction History Formatting (Issue #115)', () => {
             currency: 'IDR',
             recordDate: '2026-09-11T06:50:00.000Z',
             recordType: 'expense',
-            transfer: true,
+            transfer: { type: 'transfer' },
             note: 'Pindah ke tabungan darurat',
           },
         ],
@@ -248,3 +292,4 @@ describe('Transaction History Formatting (Issue #115)', () => {
     });
   });
 });
+

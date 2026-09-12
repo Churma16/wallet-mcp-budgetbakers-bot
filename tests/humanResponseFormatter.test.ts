@@ -305,7 +305,7 @@ const transferPage = {
       currency: 'IDR',
       recordDate: '2026-09-11T06:50:00.000Z',
       recordType: 'expense' as const,
-      transfer: true,
+      transfer: { type: 'transfer' },
     },
   ],
   total: 1,
