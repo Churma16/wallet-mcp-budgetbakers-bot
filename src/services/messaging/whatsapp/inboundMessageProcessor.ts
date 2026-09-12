@@ -4,6 +4,12 @@ import { applicationLogger } from '../../../utils/logger.js';
 import { UserMessageCallback } from '../types.js';
 import { MessageIdTracker } from './messageIdTracker.js';
 import { WhatsappSocketProvider } from './types.js';
+import {
+  isMediaSizeExceeded,
+  rejectOversizedMedia,
+  handleMediaDownloadFailure,
+  MediaRejectionStage,
+} from '../mediaPolicy.js';
 
 export class WhatsappInboundMessageProcessor {
   private readonly incomingMessageIds = new MessageIdTracker();
@@ -121,8 +127,8 @@ export class WhatsappInboundMessageProcessor {
     }
 
     const declaredFileLength = imageMessage.fileLength ? Number(imageMessage.fileLength) : 0;
-    if (declaredFileLength > this.maxMediaDownloadBytes) {
-      await this.rejectOversizedMedia(remoteJid, senderIdentifier, declaredFileLength, 'declaredFileLength');
+    if (isMediaSizeExceeded(declaredFileLength, this.maxMediaDownloadBytes)) {
+      await this.rejectOversizedMedia(remoteJid, senderIdentifier, declaredFileLength, 'declared_size');
       return;
     }
 
@@ -130,8 +136,8 @@ export class WhatsappInboundMessageProcessor {
       const imageBuffer = await downloadMediaMessage(rawMessage as WAMessage, 'buffer', {}, {
         logger: pino({ level: 'silent' }), reuploadRequest: socket.updateMediaMessage,
       }) as Buffer;
-      if (imageBuffer.length > this.maxMediaDownloadBytes) {
-        await this.rejectOversizedMedia(remoteJid, senderIdentifier, imageBuffer.length, 'bufferLength');
+      if (isMediaSizeExceeded(imageBuffer.length, this.maxMediaDownloadBytes)) {
+        await this.rejectOversizedMedia(remoteJid, senderIdentifier, imageBuffer.length, 'buffer');
         return;
       }
       await this.onUserMessageReceived({
@@ -140,14 +146,13 @@ export class WhatsappInboundMessageProcessor {
         imageMimeType: imageMessage.mimetype || 'image/jpeg',
       });
     } catch (downloadError: unknown) {
-      applicationLogger.error(`Failed to download incoming WhatsApp image media from ${senderIdentifier}: ${downloadError}`);
-      applicationLogger.fileDetail('error', 'WhatsApp Media Download Failure', {
-        remoteJid, senderIdentifier,
-        error: downloadError instanceof Error
-          ? { name: downloadError.name, message: downloadError.message, stack: downloadError.stack }
-          : String(downloadError),
+      await handleMediaDownloadFailure({
+        channel: 'whatsapp',
+        chatIdentifier: remoteJid,
+        senderIdentifier,
+        downloadError,
+        sendTextMessage: this.sendTextMessage,
       });
-      await this.sendTextMessage(remoteJid, '⚠️ Gagal mengunduh foto struk dari WhatsApp. Silakan coba kirim ulang ya!');
     }
   }
 
@@ -155,18 +160,16 @@ export class WhatsappInboundMessageProcessor {
     remoteJid: string,
     senderIdentifier: string,
     actualBytes: number,
-    sizeField: 'declaredFileLength' | 'bufferLength'
+    rejectionStage: MediaRejectionStage
   ): Promise<void> {
-    const maxMegabytes = Math.round(this.maxMediaDownloadBytes / (1024 * 1024));
-    applicationLogger.warn(
-      `[WARN] WhatsApp image media from ${senderIdentifier} exceeds size limit (${(actualBytes / (1024 * 1024)).toFixed(1)} MB > ${maxMegabytes} MB). Media rejected.`
-    );
-    applicationLogger.fileDetail('warn', 'WhatsApp Oversized Media Rejected', {
-      remoteJid, senderIdentifier, [sizeField]: actualBytes, maxMediaDownloadBytes: this.maxMediaDownloadBytes,
+    await rejectOversizedMedia({
+      channel: 'whatsapp',
+      chatIdentifier: remoteJid,
+      senderIdentifier,
+      maxMediaDownloadBytes: this.maxMediaDownloadBytes,
+      actualBytes,
+      rejectionStage,
+      sendTextMessage: this.sendTextMessage,
     });
-    await this.sendTextMessage(
-      remoteJid,
-      `⚠️ Ukuran foto melebihi batas maksimal (${maxMegabytes} MB). Silakan kirim foto dengan ukuran lebih kecil ya!`
-    );
   }
 }

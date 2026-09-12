@@ -9,6 +9,13 @@ import {
   UserMessageCallback,
 } from './types.js';
 import { convertWhatsAppMarkupToTelegramHtml } from './messageFormatHelper.js';
+import {
+  isMediaSizeExceeded,
+  isMediaPayloadSizeLimitExceeded,
+  rejectOversizedMedia,
+  handleMediaDownloadFailure,
+  MediaRejectionStage,
+} from './mediaPolicy.js';
 
 export interface TelegramSafeguardConfiguration {
   maxStartupAttempts?: number;
@@ -121,21 +128,15 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
         // Pick the highest resolution photo variant (last in array)
         const highestResolutionPhoto = photoVariants[photoVariants.length - 1];
 
-        if (highestResolutionPhoto.file_size && highestResolutionPhoto.file_size > this.maxMediaDownloadBytes) {
-          const maxAllowedMegabytes = Math.round(this.maxMediaDownloadBytes / (1024 * 1024));
-          applicationLogger.warn(
-            `[WARN] Incoming Telegram photo size (${highestResolutionPhoto.file_size} bytes) exceeds limit of ${this.maxMediaDownloadBytes} bytes. Download aborted.`
-          );
-          applicationLogger.fileDetail('warn', 'Telegram Oversized Media Rejected', {
+        if (
+          highestResolutionPhoto.file_size &&
+          isMediaSizeExceeded(highestResolutionPhoto.file_size, this.maxMediaDownloadBytes)
+        ) {
+          await this.rejectOversizedPhoto(
             chatId,
             senderIdentifier,
-            fileSize: highestResolutionPhoto.file_size,
-            maxMediaDownloadBytes: this.maxMediaDownloadBytes,
-          });
-
-          await this.sendTextMessage(
-            chatId,
-            `⚠️ Ukuran foto melebihi batas maksimal (${maxAllowedMegabytes} MB). Silakan kirim foto dengan ukuran lebih kecil ya!`
+            highestResolutionPhoto.file_size,
+            'declared_size'
           );
           return;
         }
@@ -146,21 +147,15 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
           throw new Error('Telegram file_path is unavailable');
         }
 
-        if (fileMetadata.file_size && fileMetadata.file_size > this.maxMediaDownloadBytes) {
-          const maxAllowedMegabytes = Math.round(this.maxMediaDownloadBytes / (1024 * 1024));
-          applicationLogger.warn(
-            `[WARN] Incoming Telegram photo metadata size (${fileMetadata.file_size} bytes) exceeds limit of ${this.maxMediaDownloadBytes} bytes. Download aborted.`
-          );
-          applicationLogger.fileDetail('warn', 'Telegram Oversized Media Rejected', {
+        if (
+          fileMetadata.file_size &&
+          isMediaSizeExceeded(fileMetadata.file_size, this.maxMediaDownloadBytes)
+        ) {
+          await this.rejectOversizedPhoto(
             chatId,
             senderIdentifier,
-            fileSize: fileMetadata.file_size,
-            maxMediaDownloadBytes: this.maxMediaDownloadBytes,
-          });
-
-          await this.sendTextMessage(
-            chatId,
-            `⚠️ Ukuran foto melebihi batas maksimal (${maxAllowedMegabytes} MB). Silakan kirim foto dengan ukuran lebih kecil ya!`
+            fileMetadata.file_size,
+            'metadata'
           );
           return;
         }
@@ -175,14 +170,12 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
 
         const imageBuffer = Buffer.from(fileDownloadResponse.data);
 
-        if (imageBuffer.length > this.maxMediaDownloadBytes) {
-          const maxAllowedMegabytes = Math.round(this.maxMediaDownloadBytes / (1024 * 1024));
-          applicationLogger.warn(
-            `[WARN] Downloaded Telegram photo buffer (${imageBuffer.length} bytes) exceeds limit of ${this.maxMediaDownloadBytes} bytes. Discarded.`
-          );
-          await this.sendTextMessage(
+        if (isMediaSizeExceeded(imageBuffer.length, this.maxMediaDownloadBytes)) {
+          await this.rejectOversizedPhoto(
             chatId,
-            `⚠️ Ukuran foto melebihi batas maksimal (${maxAllowedMegabytes} MB). Silakan kirim foto dengan ukuran lebih kecil ya!`
+            senderIdentifier,
+            imageBuffer.length,
+            'buffer'
           );
           return;
         }
@@ -197,62 +190,31 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
           imageMimeType: 'image/jpeg',
         });
       } catch (downloadError: unknown) {
-        const isPayloadSizeLimitExceeded =
-          (axios.isAxiosError(downloadError) &&
-            (downloadError.code === 'ERR_FR_MAX_BODY_LENGTH_EXCEEDED' ||
-              downloadError.message?.toLowerCase().includes('maxcontentlength') ||
-              downloadError.message?.toLowerCase().includes('maxbodylength'))) ||
-          ((downloadError as any)?.code === 'ERR_FR_MAX_BODY_LENGTH_EXCEEDED') ||
-          (downloadError instanceof Error &&
-            (downloadError.message.toLowerCase().includes('maxcontentlength') ||
-              downloadError.message.toLowerCase().includes('maxbodylength')));
-
-        if (isPayloadSizeLimitExceeded) {
-          const maxAllowedMegabytes = Math.round(this.maxMediaDownloadBytes / (1024 * 1024));
-          applicationLogger.warn(
-            `[WARN] Telegram photo download rejected because file size exceeded ${this.maxMediaDownloadBytes} bytes limit: ${downloadError instanceof Error ? downloadError.message : String(downloadError)}`
-          );
-          applicationLogger.fileDetail('warn', 'Telegram Media Download Limit Exceeded', {
-            error: downloadError instanceof Error
-              ? { name: downloadError.name, message: downloadError.message }
-              : String(downloadError),
+        if (isMediaPayloadSizeLimitExceeded(downloadError)) {
+          await this.rejectOversizedPhoto(
             chatId,
             senderIdentifier,
-            maxMediaDownloadBytes: this.maxMediaDownloadBytes,
-          });
-
-          await this.sendTextMessage(
-            chatId,
-            `⚠️ Ukuran foto melebihi batas maksimal (${maxAllowedMegabytes} MB). Silakan kirim foto dengan ukuran lebih kecil ya!`
+            undefined,
+            'download_stream',
+            {
+              error:
+                downloadError instanceof Error
+                  ? { name: downloadError.name, message: downloadError.message }
+                  : String(downloadError),
+            }
           );
           return;
         }
 
-        const rawErrorMessage = downloadError instanceof Error ? downloadError.message : String(downloadError);
-        const sanitizedDownloadError = this.botToken
-          ? rawErrorMessage.replaceAll(this.botToken, '[REDACTED_TELEGRAM_TOKEN]')
-          : rawErrorMessage;
-        applicationLogger.error(`Failed to download incoming Telegram photo: ${sanitizedDownloadError}`);
-        applicationLogger.fileDetail('error', 'Telegram Media Download Failure', {
-          error: downloadError instanceof Error
-            ? {
-                name: downloadError.name,
-                message: this.botToken
-                  ? downloadError.message.replaceAll(this.botToken, '[REDACTED_TELEGRAM_TOKEN]')
-                  : downloadError.message,
-                stack: downloadError.stack
-                  ? (this.botToken ? downloadError.stack.replaceAll(this.botToken, '[REDACTED_TELEGRAM_TOKEN]') : downloadError.stack)
-                  : undefined,
-              }
-            : sanitizedDownloadError,
-          chatId,
+        await handleMediaDownloadFailure({
+          channel: 'telegram',
+          chatIdentifier: chatId,
           senderIdentifier,
+          downloadError,
+          sendTextMessage: (targetChatIdentifier, messageText) =>
+            this.sendTextMessage(targetChatIdentifier, messageText),
+          redactToken: this.botToken,
         });
-
-        await this.sendTextMessage(
-          chatId,
-          '⚠️ Gagal mengunduh foto struk dari Telegram. Silakan coba kirim ulang ya!'
-        );
       }
     });
 
@@ -485,6 +447,26 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     }
 
     await this.sendTextMessage(this.normalizedAllowedUserId, messageText);
+  }
+
+  private async rejectOversizedPhoto(
+    chatIdentifier: string,
+    senderIdentifier: string,
+    actualBytes: number | undefined,
+    rejectionStage: MediaRejectionStage,
+    additionalMetadata?: Record<string, unknown>
+  ): Promise<void> {
+    await rejectOversizedMedia({
+      channel: 'telegram',
+      chatIdentifier,
+      senderIdentifier,
+      maxMediaDownloadBytes: this.maxMediaDownloadBytes,
+      actualBytes,
+      rejectionStage,
+      sendTextMessage: (targetChatIdentifier, messageText) =>
+        this.sendTextMessage(targetChatIdentifier, messageText),
+      additionalMetadata,
+    });
   }
 
   public async stopConnection(): Promise<void> {
