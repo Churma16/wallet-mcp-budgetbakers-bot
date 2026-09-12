@@ -4,29 +4,25 @@ import { WalletCacheService } from '../services/walletCacheService.js';
 import { TransactionHistoryService } from '../services/transactionHistoryService.js';
 import { TransactionSummaryService } from '../services/transactionSummaryService.js';
 import { MessagingGatewayService, IncomingUserMessageEvent } from '../services/messaging/index.js';
-import {
-  formatBalanceSummaryMessage,
-  formatBudgetSummaryMessage,
-  formatTransactionHistoryMessage,
-} from '../utils/humanResponseFormatter.js';
-import { formatTransactionSummaryMessage } from '../utils/transactionSummaryFormatter.js';
+import { FinancialActionExecutor } from '../services/financialActionExecutor.js';
 import {
   TransactionHistoryQueryOptions,
   TransactionSummaryQueryOptions,
 } from '../types/walletTypes.js';
-import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../utils/logger.js';
 
 export class FastPathHandler {
   private readonly transactionHistoryService: TransactionHistoryService;
   private readonly transactionSummaryService: TransactionSummaryService;
+  private readonly financialActionExecutor: FinancialActionExecutor;
 
   constructor(
     private readonly walletMcpClient: WalletMcpClientService,
     private readonly walletCacheService: WalletCacheService,
     private readonly messagingGateway: MessagingGatewayService,
     transactionHistoryService?: TransactionHistoryService,
-    transactionSummaryService?: TransactionSummaryService
+    transactionSummaryService?: TransactionSummaryService,
+    financialActionExecutor?: FinancialActionExecutor
   ) {
     this.transactionHistoryService =
       transactionHistoryService ||
@@ -34,6 +30,15 @@ export class FastPathHandler {
     this.transactionSummaryService =
       transactionSummaryService ||
       new TransactionSummaryService(this.transactionHistoryService);
+    this.financialActionExecutor =
+      financialActionExecutor ||
+      new FinancialActionExecutor(
+        walletMcpClient,
+        walletCacheService,
+        messagingGateway,
+        this.transactionHistoryService,
+        this.transactionSummaryService
+      );
   }
 
   /**
@@ -50,11 +55,13 @@ export class FastPathHandler {
       fastPathAction !== null &&
       fastPathAction.type === 'TRANSACTION_SUMMARY'
     ) {
-      return await this.handleTransactionSummary(
+      applicationLogger.info('Fast-path matched: TRANSACTION_SUMMARY (0 AI tokens consumed)');
+      await this.financialActionExecutor.executeTransactionSummary(
         event,
         fastPathAction.options,
-        processingStartTimestamp
+        { processingStartTimestamp, routingSource: 'fast-path' }
       );
+      return true;
     }
 
     if (
@@ -69,171 +76,42 @@ export class FastPathHandler {
         'options' in fastPathAction
           ? fastPathAction.options as TransactionHistoryQueryOptions
           : undefined;
-      return await this.handleTransactionHistory(event, options, processingStartTimestamp);
+      applicationLogger.info('Fast-path matched: TRANSACTION_HISTORY (0 AI tokens consumed)');
+      await this.financialActionExecutor.executeTransactionHistory(
+        event,
+        options,
+        { processingStartTimestamp, routingSource: 'fast-path' }
+      );
+      return true;
     }
 
     if (fastPathAction === 'CHECK_BALANCE') {
-      return await this.handleCheckBalance(event, processingStartTimestamp);
+      applicationLogger.info('Fast-path matched: CHECK_BALANCE (0 AI tokens consumed)');
+      await this.financialActionExecutor.executeCheckBalance(
+        event,
+        { processingStartTimestamp, routingSource: 'fast-path' }
+      );
+      return true;
     }
 
     if (fastPathAction === 'CHECK_BUDGET') {
-      return await this.handleCheckBudget(event, processingStartTimestamp);
+      applicationLogger.info('Fast-path matched: CHECK_BUDGET (0 AI tokens consumed)');
+      await this.financialActionExecutor.executeCheckBudget(
+        event,
+        { processingStartTimestamp, routingSource: 'fast-path' }
+      );
+      return true;
     }
 
     if (fastPathAction === 'HELP_MENU') {
-      return await this.handleHelpMenu(event, processingStartTimestamp);
+      applicationLogger.info('Fast-path matched: HELP_MENU (0 AI tokens consumed)');
+      await this.financialActionExecutor.executeHelpMenu(
+        event,
+        { processingStartTimestamp, routingSource: 'fast-path' }
+      );
+      return true;
     }
 
     return false;
-  }
-
-  private async handleCheckBalance(
-    event: IncomingUserMessageEvent,
-    processingStartTimestamp: number
-  ): Promise<boolean> {
-    applicationLogger.info('Fast-path matched: CHECK_BALANCE (0 AI tokens consumed)');
-    applicationLogger.mcp('Fetching updated balances...');
-
-    const freshAccounts = await this.walletCacheService.refreshAccounts();
-    const replyMessage = formatBalanceSummaryMessage(freshAccounts);
-
-    applicationLogger.fileDetail('mcp', 'Dispatched Balance Summary Reply (Fast-path)', {
-      channel: event.channel,
-      freshAccountsCount: freshAccounts.length,
-      replyText: replyMessage,
-    });
-
-    await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
-    const processingDurationMs = Date.now() - processingStartTimestamp;
-    applicationLogger.success(
-      `[${event.channel.toUpperCase()}] Sent balance summary for ${freshAccounts.length} account(s) via Fast-path (${processingDurationMs}ms).`
-    );
-
-    return true;
-  }
-
-  private async handleCheckBudget(
-    event: IncomingUserMessageEvent,
-    processingStartTimestamp: number
-  ): Promise<boolean> {
-    applicationLogger.info('Fast-path matched: CHECK_BUDGET (0 AI tokens consumed)');
-    applicationLogger.mcp('Fetching budget status...');
-
-    const budgetList = await this.walletMcpClient.fetchBudgets();
-    const replyMessage = formatBudgetSummaryMessage(budgetList);
-
-    applicationLogger.fileDetail('mcp', 'Dispatched Budget Summary Reply (Fast-path)', {
-      channel: event.channel,
-      budgetCount: budgetList.length,
-      replyText: replyMessage,
-    });
-
-    await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
-    const processingDurationMs = Date.now() - processingStartTimestamp;
-    applicationLogger.success(
-      `[${event.channel.toUpperCase()}] Sent budget status summary for ${budgetList.length} budget(s) via Fast-path (${processingDurationMs}ms).`
-    );
-
-    return true;
-  }
-
-  private async handleTransactionHistory(
-    event: IncomingUserMessageEvent,
-    options: TransactionHistoryQueryOptions | undefined,
-    processingStartTimestamp: number
-  ): Promise<boolean> {
-    applicationLogger.info('Fast-path matched: TRANSACTION_HISTORY (0 AI tokens consumed)');
-    applicationLogger.mcp('Fetching transaction history...');
-
-    const requestReferenceInstant = new Date(processingStartTimestamp);
-    const historyPage = await this.transactionHistoryService.getTransactionHistory(
-      options,
-      requestReferenceInstant
-    );
-    const replyMessage = formatTransactionHistoryMessage(historyPage);
-
-    applicationLogger.fileDetail('mcp', 'Dispatched Transaction History Reply (Fast-path)', {
-      channel: event.channel,
-      recordCount: historyPage.records.length,
-      total: historyPage.total,
-      page: historyPage.page,
-      totalPages: historyPage.totalPages,
-      sort: historyPage.sort,
-      replyText: replyMessage,
-    });
-
-    await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
-    const processingDurationMs = Date.now() - processingStartTimestamp;
-    const totalCountSuffix = typeof historyPage.total === 'number' ? ` of ${historyPage.total}` : '';
-    applicationLogger.success(
-      `[${event.channel.toUpperCase()}] Sent transaction history (${historyPage.records.length}${totalCountSuffix}) via Fast-path (${processingDurationMs}ms).`
-    );
-
-    return true;
-  }
-
-  private async handleTransactionSummary(
-    event: IncomingUserMessageEvent,
-    options: TransactionSummaryQueryOptions,
-    processingStartTimestamp: number
-  ): Promise<boolean> {
-    applicationLogger.info('Fast-path matched: TRANSACTION_SUMMARY (0 AI tokens consumed)');
-    applicationLogger.mcp('Fetching transaction summary...');
-
-    const requestReferenceInstant = new Date(processingStartTimestamp);
-    const summaryResult = await this.transactionSummaryService.getTransactionSummary(
-      options,
-      requestReferenceInstant
-    );
-    const replyMessage = formatTransactionSummaryMessage(summaryResult);
-
-    applicationLogger.fileDetail('mcp', 'Dispatched Transaction Summary Reply (Fast-path)', {
-      channel: event.channel,
-      transactionCount: summaryResult.transactionCount,
-      excludedTransferCount: summaryResult.excludedTransferCount,
-      currencyCount: summaryResult.totals.length,
-      groupBy: summaryResult.groupBy,
-      isComplete: summaryResult.isComplete,
-      replyText: replyMessage,
-    });
-
-    await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
-    const processingDurationMs = Date.now() - processingStartTimestamp;
-    applicationLogger.success(
-      `[${event.channel.toUpperCase()}] Sent transaction summary for ${summaryResult.transactionCount} transaction(s) via Fast-path (${processingDurationMs}ms).`
-    );
-
-    return true;
-  }
-
-  private async handleHelpMenu(
-    event: IncomingUserMessageEvent,
-    processingStartTimestamp: number
-  ): Promise<boolean> {
-    applicationLogger.info('Fast-path matched: HELP_MENU (0 AI tokens consumed)');
-    const dictionary = getDictionary();
-    const helpGuidanceMessage = [
-      dictionary.help.welcomeGuidance,
-      '',
-      dictionary.help.quickCommandsTitle,
-      dictionary.help.commandBalance,
-      dictionary.help.commandBudget,
-      dictionary.help.commandHistory,
-      dictionary.help.commandMenu,
-    ].join('\n');
-
-    applicationLogger.fileDetail('chat', 'Dispatched Fast-path Help Guidance Reply', {
-      channel: event.channel,
-      recipientChatId: event.chatIdentifier,
-      replyText: helpGuidanceMessage,
-    });
-
-    await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, helpGuidanceMessage);
-    const processingDurationMs = Date.now() - processingStartTimestamp;
-    applicationLogger.success(
-      `[${event.channel.toUpperCase()}] Sent help guidance menu via Fast-path (${processingDurationMs}ms).`
-    );
-
-    return true;
   }
 }
