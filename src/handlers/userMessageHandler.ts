@@ -11,6 +11,7 @@ import { FinancialActionExecutor } from '../services/financialActionExecutor.js'
 import {
   FinancialActionRegistry,
   createDefaultFinancialActionRegistry,
+  FinancialActionContext,
 } from '../actions/index.js';
 import { detectFastPathAction, detectPendingConfirmationAction } from '../utils/fastPathIntentDetector.js';
 import {
@@ -20,6 +21,53 @@ import {
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../utils/logger.js';
 import { WalletRecordPreparationService } from '../services/walletRecordPreparationService.js';
+
+/**
+ * Builds a strongly-typed FinancialActionContext from an extracted AI intent.
+ * Ensures CREATE_RECORD actions cannot reach the registry unless records are present and non-empty,
+ * allowing incomplete intents (e.g. text queries with records: [] or undefined) to fall through safely
+ * to the default explanation or guidance response.
+ */
+function buildAiFinancialActionContext(
+  intent: ExtractedFinancialIntent,
+  event: IncomingUserMessageEvent,
+  processingStartTimestamp: number,
+  requestReferenceInstant: Date
+): FinancialActionContext | null {
+  if (intent.action === 'CREATE_RECORD') {
+    if (intent.records && intent.records.length > 0) {
+      return {
+        action: 'CREATE_RECORD',
+        event,
+        records: intent.records,
+        processingStartTimestamp,
+        routingSource: 'ai',
+        requestReferenceInstant,
+      };
+    }
+    return null;
+  }
+
+  if (intent.action === 'CHECK_BALANCE') {
+    return {
+      action: 'CHECK_BALANCE',
+      event,
+      processingStartTimestamp,
+      routingSource: 'ai',
+    };
+  }
+
+  if (intent.action === 'CHECK_BUDGET') {
+    return {
+      action: 'CHECK_BUDGET',
+      event,
+      processingStartTimestamp,
+      routingSource: 'ai',
+    };
+  }
+
+  return null;
+}
 
 export class UserMessageHandler {
   private readonly accountClarificationHandler: AccountClarificationHandler;
@@ -258,25 +306,15 @@ export class UserMessageHandler {
         return;
       }
 
-      if (extractedIntent.action === 'CREATE_RECORD' && extractedIntent.records && extractedIntent.records.length > 0) {
-        await this.financialActionRegistry.execute({
-          action: 'CREATE_RECORD',
-          event,
-          records: extractedIntent.records,
-          processingStartTimestamp,
-          routingSource: 'ai',
-          requestReferenceInstant,
-        });
-        return;
-      }
+      const financialActionContext = buildAiFinancialActionContext(
+        extractedIntent,
+        event,
+        processingStartTimestamp,
+        requestReferenceInstant
+      );
 
-      if (this.financialActionRegistry.hasHandler(extractedIntent.action)) {
-        await this.financialActionRegistry.execute({
-          action: extractedIntent.action as any,
-          event,
-          processingStartTimestamp,
-          routingSource: 'ai',
-        });
+      if (financialActionContext && this.financialActionRegistry.hasHandler(financialActionContext.action)) {
+        await this.financialActionRegistry.execute(financialActionContext);
         return;
       }
 

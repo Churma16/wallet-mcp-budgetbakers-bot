@@ -262,7 +262,7 @@ describe('FinancialActionRegistry & Action Handlers (Issue #116)', () => {
       mockAccountClarificationHandler = { createPendingAccountSelectionDraft: vi.fn().mockResolvedValue(false) };
     });
 
-    it('handles empty records safely by sending an extraction failed notice', async () => {
+    it('handles empty records safely by sending a fallback error notice', async () => {
       const handler = new CreateRecordActionHandler(
         mockWalletMcpClient as any,
         mockWalletCacheService as any,
@@ -555,6 +555,217 @@ describe('FinancialActionRegistry & Action Handlers (Issue #116)', () => {
       const aiRecordEvent = createMockIncomingEvent('beli snack 10000');
       await userMessageHandler.handleIncomingUserMessage(aiRecordEvent);
       expect(executedActions).toEqual(['CREATE_RECORD']);
+    });
+  });
+
+  describe('Incomplete Text CREATE_RECORD Intent Fallback Regression', () => {
+    it('preserves explanation fallback when text AI returns CREATE_RECORD with records: [] without invoking registry handler or wallet write', async () => {
+      const registry = new FinancialActionRegistry();
+      const mockCreateRecordHandler = {
+        action: 'CREATE_RECORD' as const,
+        execute: vi.fn(),
+      };
+      registry.register(mockCreateRecordHandler);
+
+      const mockGateway = {
+        sendMessage: vi.fn().mockResolvedValue(undefined),
+        sendTypingPresence: vi.fn().mockResolvedValue(undefined),
+        clearTypingPresence: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const mockAiProvider = {
+        providerName: 'mock-ai',
+        processTextMessage: vi.fn().mockResolvedValue({
+          action: 'CREATE_RECORD',
+          records: [],
+          explanation: 'Saya belum punya cukup detail untuk mencatat transaksi ini. Tolong sebutkan nominalnya.',
+        }),
+      };
+
+      const mockWalletMcpClient = {
+        createRecords: vi.fn(),
+      };
+
+      const userMessageHandler = new UserMessageHandler(
+        mockGateway as any,
+        { hasPendingTransactions: () => false } as any,
+        {} as any,
+        { handleFastPath: vi.fn().mockResolvedValue(false) } as any,
+        mockAiProvider as any,
+        { getAccounts: () => [], getCategories: () => [] } as any,
+        mockWalletMcpClient as any,
+        undefined,
+        undefined,
+        registry
+      );
+
+      const textEvent = createMockIncomingEvent('beli makan tapi belum ada nominal');
+      await userMessageHandler.handleIncomingUserMessage(textEvent);
+
+      expect(mockCreateRecordHandler.execute).not.toHaveBeenCalled();
+      expect(mockWalletMcpClient.createRecords).not.toHaveBeenCalled();
+      expect(mockGateway.sendMessage).toHaveBeenCalledWith(
+        textEvent.channel,
+        textEvent.chatIdentifier,
+        'Saya belum punya cukup detail untuk mencatat transaksi ini. Tolong sebutkan nominalnya.'
+      );
+      expect(mockGateway.sendMessage).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.stringMatching(/struk|receipt/i)
+      );
+    });
+
+    it('preserves explanation fallback when text AI returns CREATE_RECORD with records: undefined', async () => {
+      const registry = new FinancialActionRegistry();
+      const mockCreateRecordHandler = {
+        action: 'CREATE_RECORD' as const,
+        execute: vi.fn(),
+      };
+      registry.register(mockCreateRecordHandler);
+
+      const mockGateway = {
+        sendMessage: vi.fn().mockResolvedValue(undefined),
+        sendTypingPresence: vi.fn().mockResolvedValue(undefined),
+        clearTypingPresence: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const mockAiProvider = {
+        providerName: 'mock-ai',
+        processTextMessage: vi.fn().mockResolvedValue({
+          action: 'CREATE_RECORD',
+          records: undefined,
+          explanation: 'Mohon sebutkan nama akun dan kategori.',
+        }),
+      };
+
+      const mockWalletMcpClient = {
+        createRecords: vi.fn(),
+      };
+
+      const userMessageHandler = new UserMessageHandler(
+        mockGateway as any,
+        { hasPendingTransactions: () => false } as any,
+        {} as any,
+        { handleFastPath: vi.fn().mockResolvedValue(false) } as any,
+        mockAiProvider as any,
+        { getAccounts: () => [], getCategories: () => [] } as any,
+        mockWalletMcpClient as any,
+        undefined,
+        undefined,
+        registry
+      );
+
+      const textEvent = createMockIncomingEvent('catat pengeluaran');
+      await userMessageHandler.handleIncomingUserMessage(textEvent);
+
+      expect(mockCreateRecordHandler.execute).not.toHaveBeenCalled();
+      expect(mockWalletMcpClient.createRecords).not.toHaveBeenCalled();
+      expect(mockGateway.sendMessage).toHaveBeenCalledWith(
+        textEvent.channel,
+        textEvent.chatIdentifier,
+        'Mohon sebutkan nama akun dan kategori.'
+      );
+    });
+
+    it('falls back to welcome guidance when text AI returns CREATE_RECORD with empty records and no explanation', async () => {
+      const registry = new FinancialActionRegistry();
+      const mockCreateRecordHandler = {
+        action: 'CREATE_RECORD' as const,
+        execute: vi.fn(),
+      };
+      registry.register(mockCreateRecordHandler);
+
+      const mockGateway = {
+        sendMessage: vi.fn().mockResolvedValue(undefined),
+        sendTypingPresence: vi.fn().mockResolvedValue(undefined),
+        clearTypingPresence: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const mockAiProvider = {
+        providerName: 'mock-ai',
+        processTextMessage: vi.fn().mockResolvedValue({
+          action: 'CREATE_RECORD',
+          records: [],
+        }),
+      };
+
+      const userMessageHandler = new UserMessageHandler(
+        mockGateway as any,
+        { hasPendingTransactions: () => false } as any,
+        {} as any,
+        { handleFastPath: vi.fn().mockResolvedValue(false) } as any,
+        mockAiProvider as any,
+        { getAccounts: () => [], getCategories: () => [] } as any,
+        {} as any,
+        undefined,
+        undefined,
+        registry
+      );
+
+      const textEvent = createMockIncomingEvent('halo');
+      await userMessageHandler.handleIncomingUserMessage(textEvent);
+
+      expect(mockCreateRecordHandler.execute).not.toHaveBeenCalled();
+      expect(mockGateway.sendMessage).toHaveBeenCalledWith(
+        textEvent.channel,
+        textEvent.chatIdentifier,
+        expect.stringContaining('Halo!')
+      );
+    });
+
+    it('preserves receipt extraction failure path when image message returns CREATE_RECORD with 0 records', async () => {
+      const registry = new FinancialActionRegistry();
+      const mockCreateRecordHandler = {
+        action: 'CREATE_RECORD' as const,
+        execute: vi.fn(),
+      };
+      registry.register(mockCreateRecordHandler);
+
+      const mockGateway = {
+        sendMessage: vi.fn().mockResolvedValue(undefined),
+        sendTypingPresence: vi.fn().mockResolvedValue(undefined),
+        clearTypingPresence: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const mockAiProvider = {
+        providerName: 'mock-ai',
+        processImageMessage: vi.fn().mockResolvedValue({
+          action: 'CREATE_RECORD',
+          records: [],
+        }),
+      };
+
+      const userMessageHandler = new UserMessageHandler(
+        mockGateway as any,
+        { hasPendingTransactions: () => false } as any,
+        {} as any,
+        { handleFastPath: vi.fn().mockResolvedValue(false) } as any,
+        mockAiProvider as any,
+        { getAccounts: () => [], getCategories: () => [] } as any,
+        {} as any,
+        undefined,
+        undefined,
+        registry
+      );
+
+      const imageEvent: IncomingUserMessageEvent = {
+        channel: 'whatsapp',
+        senderIdentifier: 'user-phone-12345',
+        chatIdentifier: '12345@s.whatsapp.net',
+        messageType: 'image',
+        imageBuffer: Buffer.from('fake-image-bytes'),
+        imageMimeType: 'image/jpeg',
+      };
+
+      await userMessageHandler.handleIncomingUserMessage(imageEvent);
+
+      expect(mockCreateRecordHandler.execute).not.toHaveBeenCalled();
+      expect(mockGateway.sendMessage).toHaveBeenCalledWith(
+        imageEvent.channel,
+        imageEvent.chatIdentifier,
+        expect.stringMatching(/foto struk/i)
+      );
     });
   });
 });

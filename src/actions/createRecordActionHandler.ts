@@ -51,11 +51,11 @@ export class CreateRecordActionHandler implements FinancialActionHandler<'CREATE
     const requestReferenceInstant = context.requestReferenceInstant ?? new Date(processingStartTimestamp);
 
     if (!context.records || context.records.length === 0) {
-      applicationLogger.warn('Receipt extraction returned CREATE_RECORD with 0 records.');
+      applicationLogger.warn('[CreateRecordActionHandler] Received CREATE_RECORD action with 0 records.');
       await this.messagingGateway.sendMessage(
         event.channel,
         event.chatIdentifier,
-        getDictionary().errors.receiptExtractionFailed(getHumanReadableTimestamp())
+        getDictionary().errors.accountResolutionFallback
       );
       return;
     }
