@@ -10,8 +10,10 @@
         "start": "tsx src/index.ts",
         "test": "tsx tests/runOfflineTests.ts",
         "test:offline": "tsx tests/runOfflineTests.ts",
+        "test:vitest": "vitest run",
+        "test:vitest:watch": "vitest",
         "test:coverage": "c8 tsx tests/runOfflineTests.ts",
-        "test:format": "tsx tests/messageFormatHelper.test.ts",
+        "test:format": "vitest run tests/messageFormatHelper.vitest.test.ts",
         "test:formatter": "tsx tests/humanResponseFormatter.test.ts",
         "test:i18n": "tsx tests/responseDictionary.test.ts",
         "test:budget": "tsx tests/budgetParsing.test.ts",
@@ -62,6 +64,7 @@
         "@types/qrcode-terminal": "^0.12.2",
         "c8": "^12.0.0",
         "tsx": "^4.23.13",
-        "typescript": "^7.0.2"
+        "typescript": "^7.0.2",
+        "vitest": "^5.0.0"
     }
 }
