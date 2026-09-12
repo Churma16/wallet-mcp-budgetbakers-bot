@@ -1,5 +1,5 @@
-import { randomInt } from 'node:crypto';
 import { applicationLogger } from '../../utils/logger.js';
+import { calculateExponentialBackoff } from '../../utils/exponentialBackoff.js';
 import {
   AdapterConnectionState,
   MessagingAdapter,
@@ -83,15 +83,18 @@ export class MessagingGatewayService {
   }
 
   public calculateReconnectDelay(attemptIndex: number): number {
-    const exponentialDelay = this.backgroundReconnectBaseDelayMs * Math.pow(2, attemptIndex);
-    const boundedDelay = Math.min(this.backgroundReconnectMaxDelayMs, exponentialDelay);
     const maximumJitter = Math.min(2000, this.backgroundReconnectBaseDelayMs);
     const minimumJitter = Math.min(500, Math.floor(this.backgroundReconnectBaseDelayMs / 4));
     const jitterRange = Math.max(1, maximumJitter - minimumJitter);
-    const randomJitterMilliseconds = randomInt(minimumJitter, minimumJitter + jitterRange);
-    return boundedDelay + randomJitterMilliseconds;
-  }
 
+    return calculateExponentialBackoff({
+      attempt: attemptIndex,
+      baseMs: this.backgroundReconnectBaseDelayMs,
+      maxMs: this.backgroundReconnectMaxDelayMs,
+      jitterMinMs: minimumJitter,
+      jitterMaxMs: minimumJitter + jitterRange,
+    });
+  }
 
   public async startAll(): Promise<void> {
     const channelList = this.getActiveChannels();
@@ -305,4 +308,3 @@ export class MessagingGatewayService {
     await Promise.allSettled(broadcastPromises);
   }
 }
-

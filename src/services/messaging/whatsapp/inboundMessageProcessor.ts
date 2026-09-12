@@ -1,6 +1,7 @@
 import { downloadMediaMessage, proto, WAMessage } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import { applicationLogger } from '../../../utils/logger.js';
+import { digitsOnly } from '../../../utils/digitNormalization.js';
 import { UserMessageCallback } from '../types.js';
 import { MessageIdTracker } from './messageIdTracker.js';
 import { WhatsappSocketProvider } from './types.js';
@@ -29,7 +30,7 @@ export class WhatsappInboundMessageProcessor {
     botUserLinkedDeviceIdentifier?: string
   ): boolean {
     const [senderRawIdentifier] = remoteJid.split('@');
-    const normalizedSenderDigits = senderRawIdentifier.replace(/[^0-9]/g, '');
+    const normalizedSenderDigits = digitsOnly(senderRawIdentifier);
     return Boolean(
       (botUserPhoneNumber && normalizedSenderDigits === botUserPhoneNumber) ||
       (botUserLinkedDeviceIdentifier && senderRawIdentifier === botUserLinkedDeviceIdentifier) ||
@@ -46,7 +47,7 @@ export class WhatsappInboundMessageProcessor {
     }
     const [senderRawIdentifier, jidDomain] = remoteJid.split('@');
     return jidDomain === 's.whatsapp.net' &&
-      senderRawIdentifier.replace(/[^0-9]/g, '') === this.normalizedAllowedPhoneNumber;
+      digitsOnly(senderRawIdentifier) === this.normalizedAllowedPhoneNumber;
   }
 
   public async process(incomingMessages: proto.IWebMessageInfo[]): Promise<void> {
@@ -66,7 +67,7 @@ export class WhatsappInboundMessageProcessor {
       }
 
       const socket = this.getSocket();
-      const botPhoneNumber = socket?.user?.id?.split(':')[0]?.split('@')[0]?.replace(/[^0-9]/g, '') || '';
+      const botPhoneNumber = digitsOnly(socket?.user?.id?.split(':')[0]?.split('@')[0] || '');
       const botLinkedDeviceIdentifier = (socket?.user as { lid?: string } | undefined)?.lid
         ?.split(':')[0]?.split('@')[0] || '';
       const targetsSelf = this.isTargetingSelf(remoteJid, botPhoneNumber, botLinkedDeviceIdentifier);

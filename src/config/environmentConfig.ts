@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import { applicationLogger } from '../utils/logger.js';
+import { digitsOnly } from '../utils/digitNormalization.js';
 
 dotenv.config();
 
@@ -140,9 +141,9 @@ export function normalizePhoneNumber(
     return '';
   }
 
-  const sanitizedDigits = trimmedRawNumber
-    .replace(/\(0(\d*)\)/g, '$1')
-    .replace(/[^0-9]/g, '');
+  const sanitizedDigits = digitsOnly(
+    trimmedRawNumber.replace(/\(0(\d*)\)/g, '$1')
+  );
 
   if (sanitizedDigits.startsWith('0')) {
     const isIndonesianRegionalContext =

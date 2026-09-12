@@ -1,7 +1,7 @@
 import fs from 'fs';
-import { randomInt } from 'node:crypto';
 import { DisconnectReason } from '@whiskeysockets/baileys';
 import { applicationLogger } from '../../../utils/logger.js';
+import { calculateExponentialBackoff } from '../../../utils/exponentialBackoff.js';
 
 export class WhatsappConnectionResilience {
   private consecutiveFailureCount = 0;
@@ -33,8 +33,13 @@ export class WhatsappConnectionResilience {
   }
 
   public calculateBackoffDelayMilliseconds(attemptIndex: number = this.consecutiveFailureCount): number {
-    const exponentialSeconds = 5 * Math.pow(2, attemptIndex);
-    return Math.min(this.maxBackoffSeconds, exponentialSeconds) * 1000 + randomInt(500, 2500);
+    return calculateExponentialBackoff({
+      attempt: attemptIndex,
+      baseMs: 5000,
+      maxMs: this.maxBackoffSeconds * 1000,
+      jitterMinMs: 500,
+      jitterMaxMs: 2500,
+    });
   }
 
   public reset(): void {
