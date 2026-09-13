@@ -19,8 +19,6 @@ interface TestSuiteExecutionResult {
 }
 
 const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
-  { filePath: 'tests/bankEmailRules.test.ts', description: 'Bank email parsing rules, currency parser & confirmation intent detector' },
-  { filePath: 'tests/emailSenderDomainValidation.test.ts', description: 'Bank email sender domain spoofing & malformed angle-bracket rejection' },
   { filePath: 'tests/budgetParsing.test.ts', description: 'Budget schema normalization & closed budget filtering' },
   { filePath: 'tests/emailListenerPersistence.test.ts', description: 'Email transactional dedup persistence & downstream failure recovery (Issue #75)' },
   { filePath: 'tests/fallbackAiProvider.test.ts', description: 'Fallback AI provider cascading failover & error classification' },
@@ -36,7 +34,6 @@ const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
   { filePath: 'tests/accountClarificationPendingRouting.test.ts', description: 'Ticket-specific standard pending commands bypass unrelated clarification drafts (Issue #81)' },
   { filePath: 'tests/accountClarificationSafetyRegression.test.ts', description: 'Clarification cancellation and messaging failure safety regressions (Issue #81)' },
   { filePath: 'tests/pendingActionHandler.test.ts', description: 'Pending transaction data integrity & MCP failure recovery (Issue #72)' },
-  { filePath: 'tests/promptInjectionDefense.test.ts', description: 'Prompt trust boundaries for email-derived Gate 1 fields (Issue #76)' },
   { filePath: 'tests/receiptOcrPrompt.test.ts', description: 'Receipt vision OCR system instructions, timezone offset & QRIS rules' },
   { filePath: 'tests/recordValidator.test.ts', description: 'Deterministic account resolution & fail-closed ambiguity handling (Issue #73)' },
   { filePath: 'tests/relativeTimeExpressions.test.ts', description: 'Indonesian and English natural language relative time expressions & timezone conversion (Issue #4)' },
