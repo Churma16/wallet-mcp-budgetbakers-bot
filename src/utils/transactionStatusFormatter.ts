@@ -85,13 +85,18 @@ export function formatTransactionAttentionSummary(
 
 /**
  * Formats the response sent when one or more transactions end in an UNKNOWN dispatch outcome.
+ * totalUncertainCount is the global UNKNOWN count, not merely the number of items being rendered.
+ * This prevents a single-item response from advertising an unnumbered command that would be
+ * ambiguous against another UNKNOWN item elsewhere in the pending service.
  */
 export function formatUncertainOutcomeResponse(
   items: TransactionAttentionItemViewModel[] | TransactionAttentionItemViewModel,
-  languageCode?: SupportedLanguage
+  languageCode?: SupportedLanguage,
+  totalUncertainCount?: number
 ): string {
   const dictionary = getDictionary(languageCode);
   const itemList = Array.isArray(items) ? items : [items];
+  const globalUncertainCount = totalUncertainCount ?? itemList.length;
   const parts: string[] = [dictionary.uncertain.title, ''];
 
   if (itemList.length === 1) {
@@ -105,7 +110,11 @@ export function formatUncertainOutcomeResponse(
     parts.push('');
     parts.push(dictionary.uncertain.riskWarning);
     parts.push('');
-    parts.push(dictionary.uncertain.actionPromptSingle);
+    if (globalUncertainCount > 1) {
+      parts.push(dictionary.uncertain.actionPromptMultiple([single.ticketId]));
+    } else {
+      parts.push(dictionary.uncertain.actionPromptSingle);
+    }
   } else {
     for (const item of itemList) {
       const ticketSuffix = ` (#${item.ticketId})`;
