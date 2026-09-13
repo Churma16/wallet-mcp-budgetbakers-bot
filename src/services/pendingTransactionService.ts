@@ -440,11 +440,11 @@ export class PendingTransactionService {
   }
 
   /**
-   * Rejects a pending/unknown transaction. PROCESSING tickets cannot be removed concurrently.
+   * Rejects a PENDING transaction. PROCESSING and UNKNOWN tickets are preserved.
    */
   public rejectPendingTransaction(ticketId: number): PendingTransactionItem | undefined {
     const item = this.pendingTransactionMap.get(ticketId);
-    if (!item || this.dispatchStateMap.get(ticketId) === 'PROCESSING') {
+    if (!item || this.dispatchStateMap.get(ticketId) !== 'PENDING') {
       return undefined;
     }
 
@@ -456,7 +456,7 @@ export class PendingTransactionService {
     ticketId: number
   ): PendingAccountSelectionDraft | undefined {
     const draft = this.pendingAccountSelectionDraftMap.get(ticketId);
-    if (!draft || this.dispatchStateMap.get(ticketId) === 'PROCESSING') {
+    if (!draft || this.dispatchStateMap.get(ticketId) !== 'PENDING') {
       return undefined;
     }
 
@@ -465,13 +465,13 @@ export class PendingTransactionService {
   }
 
   /**
-   * Rejects all tickets that are not currently PROCESSING.
+   * Rejects all PENDING transactions while preserving PROCESSING and UNKNOWN tickets.
    */
   public rejectAllPendingTransactions(): PendingTransactionItem[] {
     const rejectedItems: PendingTransactionItem[] = [];
 
     for (const [ticketId, item] of Array.from(this.pendingTransactionMap.entries())) {
-      if (this.dispatchStateMap.get(ticketId) !== 'PROCESSING') {
+      if (this.dispatchStateMap.get(ticketId) === 'PENDING') {
         rejectedItems.push(item);
         this.removeTicketMetadata(ticketId);
       }
