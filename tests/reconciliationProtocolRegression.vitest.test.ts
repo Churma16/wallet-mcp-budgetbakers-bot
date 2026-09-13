@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
 import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
+import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
+import { formatAccountSelectionUnknownOutcome } from '../src/utils/accountClarificationFormatter.js';
 
 class MockMessagingGateway {
   public readonly messages: string[] = [];
@@ -30,7 +32,7 @@ function event(text: string): IncomingUserMessageEvent {
   };
 }
 
-function addUnknownStandardTransaction(service: PendingTransactionService): number {
+function addPendingStandardTransaction(service: PendingTransactionService): number {
   const item = service.addPendingTransaction({
     sourceType: 'WHATSAPP',
     counterParty: 'Regression Merchant',
@@ -40,8 +42,13 @@ function addUnknownStandardTransaction(service: PendingTransactionService): numb
     currency: 'IDR',
     recordDate: '2026-09-13',
   });
-  service.markPendingTransactionUnknown(item.ticketId);
   return item.ticketId;
+}
+
+function addUnknownStandardTransaction(service: PendingTransactionService): number {
+  const ticketId = addPendingStandardTransaction(service);
+  service.markPendingTransactionUnknown(ticketId);
+  return ticketId;
 }
 
 function addUnknownAccountDraft(service: PendingTransactionService): number {
@@ -254,6 +261,163 @@ describe('PR #155 reconciliation protocol regressions', () => {
 
       expect(gateway.lastMessage).toContain(`Choose Transaction Account (#${ticketId})`);
       expect(gateway.lastMessage).toContain('Reply with the account number or name');
+    });
+  });
+
+  describe('UNKNOWN cancellation safety', () => {
+    function createPendingActionHandler(service: PendingTransactionService, gateway: MockMessagingGateway) {
+      return new PendingActionHandler(
+        service,
+        { createRecords: vi.fn() } as any,
+        gateway as any,
+        () => null
+      );
+    }
+
+    function createAccountClarificationHandler(
+      service: PendingTransactionService,
+      gateway: MockMessagingGateway
+    ) {
+      return new AccountClarificationHandler(
+        service,
+        { createRecords: vi.fn() } as any,
+        { getAccounts: () => [], getCategories: () => [] } as any,
+        gateway as any,
+        { prepareRecordsForDispatch: vi.fn() } as any
+      );
+    }
+
+    it('service reject methods preserve UNKNOWN standard transactions and account drafts', () => {
+      const service = new PendingTransactionService();
+      const transactionTicketId = addUnknownStandardTransaction(service);
+      const draftTicketId = addUnknownAccountDraft(service);
+
+      expect(service.rejectPendingTransaction(transactionTicketId)).toBeUndefined();
+      expect(service.rejectPendingAccountSelectionDraft(draftTicketId)).toBeUndefined();
+      expect(service.getPendingTransactionState(transactionTicketId)).toBe('UNKNOWN');
+      expect(service.getPendingAccountSelectionDraftState(draftTicketId)).toBe('UNKNOWN');
+    });
+
+    it('bulk cancellation removes only PENDING transactions and preserves UNKNOWN transactions', () => {
+      const service = new PendingTransactionService();
+      const pendingTicketId = addPendingStandardTransaction(service);
+      const unknownTicketId = addUnknownStandardTransaction(service);
+
+      const rejectedItems = service.rejectAllPendingTransactions();
+
+      expect(rejectedItems.map(item => item.ticketId)).toEqual([pendingTicketId]);
+      expect(service.getPendingTransaction(pendingTicketId)).toBeUndefined();
+      expect(service.getPendingTransactionState(unknownTicketId)).toBe('UNKNOWN');
+    });
+
+    it('targeted cancel on an UNKNOWN standard transaction keeps the ticket and repeats reconciliation actions', async () => {
+      const service = new PendingTransactionService();
+      const gateway = new MockMessagingGateway();
+      const handler = createPendingActionHandler(service, gateway);
+      const ticketId = addUnknownStandardTransaction(service);
+
+      await handler.handlePendingAction(
+        event(`batal #${ticketId}`),
+        { actionType: 'REJECT', targetScope: ticketId },
+        Date.now()
+      );
+
+      expect(service.getPendingTransactionState(ticketId)).toBe('UNKNOWN');
+      expect(service.getPendingTransaction(ticketId)).toBeDefined();
+      expect(gateway.lastMessage).toContain('Belum bisa memastikan transaksi sudah tercatat');
+      expect(gateway.lastMessage).toContain('Sudah ada');
+      expect(gateway.lastMessage).toContain('Belum ada');
+      expect(gateway.lastMessage).not.toContain('Dibatalkan');
+    });
+
+    it('generic cancel on the latest UNKNOWN standard transaction also preserves reconciliation state', async () => {
+      const service = new PendingTransactionService();
+      const gateway = new MockMessagingGateway();
+      const handler = createPendingActionHandler(service, gateway);
+      const ticketId = addUnknownStandardTransaction(service);
+
+      await handler.handlePendingAction(
+        event('batal'),
+        { actionType: 'REJECT' },
+        Date.now()
+      );
+
+      expect(service.getPendingTransactionState(ticketId)).toBe('UNKNOWN');
+      expect(gateway.lastMessage).toContain('Cek Wallet, lalu balas:');
+    });
+
+    it('batal semua cancels PENDING items but explicitly keeps UNKNOWN items for reconciliation', async () => {
+      const service = new PendingTransactionService();
+      const gateway = new MockMessagingGateway();
+      const handler = createPendingActionHandler(service, gateway);
+      const pendingTicketId = addPendingStandardTransaction(service);
+      const unknownTicketId = addUnknownStandardTransaction(service);
+
+      await handler.handlePendingAction(
+        event('batal semua'),
+        { actionType: 'REJECT', targetScope: 'ALL' },
+        Date.now()
+      );
+
+      expect(service.getPendingTransaction(pendingTicketId)).toBeUndefined();
+      expect(service.getPendingTransactionState(unknownTicketId)).toBe('UNKNOWN');
+      expect(gateway.lastMessage).toContain('Dibatalkan');
+      expect(gateway.lastMessage).toContain('Belum bisa memastikan transaksi sudah tercatat');
+      expect(gateway.lastMessage).toContain(`(#${unknownTicketId})`);
+    });
+
+    it('targeted cancel on an UNKNOWN account-selection draft keeps the draft and repeats reconciliation actions', async () => {
+      const service = new PendingTransactionService();
+      const gateway = new MockMessagingGateway();
+      const handler = createAccountClarificationHandler(service, gateway);
+      const ticketId = addUnknownAccountDraft(service);
+
+      const handled = await handler.handlePendingAccountSelectionReply(
+        event(`batal #${ticketId}`),
+        `batal #${ticketId}`,
+        Date.now()
+      );
+
+      expect(handled).toBe(true);
+      expect(service.getPendingAccountSelectionDraftState(ticketId)).toBe('UNKNOWN');
+      expect(service.getPendingAccountSelectionDraft(ticketId)).toBeDefined();
+      expect(gateway.lastMessage).toContain('Sudah ada');
+      expect(gateway.lastMessage).toContain('Belum ada');
+      expect(gateway.lastMessage).not.toContain('dibatalkan');
+    });
+
+    it('generic cancel on a lone UNKNOWN account-selection draft does not dismiss it', async () => {
+      const service = new PendingTransactionService();
+      const gateway = new MockMessagingGateway();
+      const handler = createAccountClarificationHandler(service, gateway);
+      const ticketId = addUnknownAccountDraft(service);
+
+      const handled = await handler.handlePendingAccountSelectionReply(
+        event('batal'),
+        'batal',
+        Date.now()
+      );
+
+      expect(handled).toBe(true);
+      expect(service.getPendingAccountSelectionDraftState(ticketId)).toBe('UNKNOWN');
+      expect(gateway.lastMessage).toContain('Cek Wallet, lalu balas:');
+    });
+
+    it('UNKNOWN account-selection prompts never advertise cancel as a safe exit', () => {
+      const service = new PendingTransactionService();
+      const ticketId = addUnknownAccountDraft(service);
+      const draft = service.getPendingAccountSelectionDraft(ticketId)!;
+
+      const idMessage = formatAccountSelectionUnknownOutcome(draft);
+      expect(idMessage).toContain('Sudah ada');
+      expect(idMessage).toContain('Belum ada');
+      expect(idMessage.toLowerCase()).not.toContain('batal');
+
+      setActiveLanguage('en');
+      const enMessage = formatAccountSelectionUnknownOutcome(draft);
+      expect(enMessage).toContain('Already exists');
+      expect(enMessage).toContain('Not there');
+      expect(enMessage.toLowerCase()).not.toContain('cancel');
     });
   });
 });
