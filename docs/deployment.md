@@ -65,6 +65,24 @@ Then set `CATEGORY_CONTEXT_PATH=/app/config/category-context.json` if you do not
 
 The default Ollama URL `http://localhost:11434/v1` works when the bot runs directly on the same host as Ollama. Inside the bot container, `localhost` points to the container itself. Set `AI_BASE_URL` to an address reachable from the container when Ollama runs elsewhere.
 
+## GHCR image tags and promotion channels
+
+The `Container` GitHub Actions workflow publishes traceable image tags for non-pull-request builds and supports explicit mutable aliases for deployment.
+
+- `sha-*` identifies the exact source commit used to build the image.
+- `vX.Y.Z` is published when the container workflow runs for an official version tag.
+- `latest` is updated only by a manual `Container` workflow dispatch with channel `latest`. That dispatch always builds the newest `main` revision, regardless of which workflow ref was selected in the Actions UI.
+- `stable` is updated only by a manual dispatch with channel `stable` and an explicit existing official release tag such as `v0.1.6`. The workflow validates the tag, builds that tagged source, republishes the version and `sha-*` tags for that source, and moves the `stable` alias to it.
+
+Routine pushes to `main` do not move `stable`, and publishing a new `vX.Y.Z` tag does not automatically promote it to `stable`. This keeps stable promotion deliberate.
+
+When running the workflow manually:
+
+1. Choose `latest` to promote the current `main` build. Leave the version input empty.
+2. Choose `stable` to promote an approved release. Enter an existing `vX.Y.Z` tag in the version input.
+
+Use `latest` when a deployment should follow the newest manually promoted main build, `stable` when it should follow the deliberately approved release, or pin an immutable `sha-*` or explicit `vX.Y.Z` tag when reproducibility is more important than following a mutable channel.
+
 ## Upgrade
 
 For source builds:
