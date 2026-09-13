@@ -152,6 +152,9 @@ export class FastPathHandler {
     }
 
     if (fastPathAction === 'CHECK_QUEUE') {
+      if (!this.financialActionRegistry.hasHandler('CHECK_QUEUE')) {
+        return false;
+      }
       applicationLogger.info('Fast-path matched: CHECK_QUEUE (0 AI tokens consumed)');
       await this.financialActionRegistry.execute({
         action: 'CHECK_QUEUE',
