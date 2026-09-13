@@ -2,6 +2,8 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const COVERAGE_CANARY_TEST_PATH = 'tests/sharedUtilities.vitest.test.ts';
+
 const toPosixPath = (filePath: string): string => filePath.replaceAll('\\', '/');
 
 function collectVitestTestFiles(directoryPath: string): string[] {
@@ -100,19 +102,37 @@ function resolveProductionImport(
   return null;
 }
 
+export function discoverProductionImportsFromTestFile(
+  relativeTestFilePath: string,
+  repositoryRoot = process.cwd()
+): string[] {
+  const testFilePath = path.join(repositoryRoot, relativeTestFilePath);
+  const sourceText = readFileSync(testFilePath, 'utf8');
+  const productionImports = new Set<string>();
+
+  for (const moduleSpecifier of extractRuntimeStaticImportSpecifiers(sourceText)) {
+    const productionImport = resolveProductionImport(repositoryRoot, testFilePath, moduleSpecifier);
+
+    if (productionImport) {
+      productionImports.add(productionImport);
+    }
+  }
+
+  return [...productionImports].sort();
+}
+
 export function discoverDirectProductionImports(repositoryRoot = process.cwd()): string[] {
   const testsDirectory = path.join(repositoryRoot, 'tests');
   const productionImports = new Set<string>();
 
   for (const testFilePath of collectVitestTestFiles(testsDirectory)) {
-    const sourceText = readFileSync(testFilePath, 'utf8');
+    const relativeTestFilePath = toPosixPath(path.relative(repositoryRoot, testFilePath));
 
-    for (const moduleSpecifier of extractRuntimeStaticImportSpecifiers(sourceText)) {
-      const productionImport = resolveProductionImport(repositoryRoot, testFilePath, moduleSpecifier);
-
-      if (productionImport) {
-        productionImports.add(productionImport);
-      }
+    for (const productionImport of discoverProductionImportsFromTestFile(
+      relativeTestFilePath,
+      repositoryRoot
+    )) {
+      productionImports.add(productionImport);
     }
   }
 
@@ -126,9 +146,14 @@ export function verifyVitestCoverage(repositoryRoot = process.cwd()): void {
     throw new Error(`Vitest LCOV report was not generated at ${coverageFilePath}`);
   }
 
-  const directlyImportedProductionSources = discoverDirectProductionImports(repositoryRoot);
-  if (directlyImportedProductionSources.length === 0) {
-    throw new Error('No direct production imports were discovered in Vitest suites.');
+  const canaryProductionSources = discoverProductionImportsFromTestFile(
+    COVERAGE_CANARY_TEST_PATH,
+    repositoryRoot
+  );
+  if (canaryProductionSources.length === 0) {
+    throw new Error(
+      `Coverage canary suite ${COVERAGE_CANARY_TEST_PATH} has no direct production imports.`
+    );
   }
 
   const normalizedSourceEntries = readFileSync(coverageFilePath, 'utf8')
@@ -146,18 +171,18 @@ export function verifyVitestCoverage(repositoryRoot = process.cwd()): void {
       )
     );
 
-  const missingSourcePaths = directlyImportedProductionSources.filter(
+  const missingSourcePaths = canaryProductionSources.filter(
     sourcePath => !normalizedSourceEntries.includes(sourcePath)
   );
 
   if (missingSourcePaths.length > 0) {
     throw new Error(
-      `Vitest LCOV report is missing directly imported production sources: ${missingSourcePaths.join(', ')}`
+      `Vitest LCOV auto-discovery is missing coverage-canary production sources: ${missingSourcePaths.join(', ')}`
     );
   }
 
   console.log(
-    `[SUCCESS] Vitest LCOV includes all ${directlyImportedProductionSources.length} directly imported production sources.`
+    `[SUCCESS] Vitest LCOV auto-discovery includes all ${canaryProductionSources.length} production imports from ${COVERAGE_CANARY_TEST_PATH}.`
   );
 }
 
