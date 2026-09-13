@@ -10,13 +10,6 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov'],
       reportsDirectory: 'coverage/vitest',
-      include: [
-        'src/setup/**/*.ts',
-        'src/diagnostics/**/*.ts',
-        'src/utils/logger.ts',
-        'src/config/environmentConfig.ts',
-        'src/services/messaging/messageFormatHelper.ts',
-      ],
     },
   },
 });
