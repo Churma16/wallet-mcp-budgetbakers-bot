@@ -78,13 +78,13 @@ describe('container workflow manual GHCR promotions', () => {
     expect(workflowContent).toContain('"refs/tags/${VERSION}"');
   });
 
-  it('builds main for latest and the requested version tag for stable', () => {
+  it('builds main for latest and the fully qualified requested version tag for stable', () => {
     const workflowContent = getWorkflowContent();
 
     expect(workflowContent).toContain('Checkout latest main revision');
     expect(workflowContent).toContain('ref: main');
     expect(workflowContent).toContain('Checkout stable release revision');
-    expect(workflowContent).toContain('ref: ${{ inputs.version }}');
+    expect(workflowContent).toContain('ref: refs/tags/${{ inputs.version }}');
   });
 
   it('derives the immutable SHA tag from the checked-out source commit', () => {
