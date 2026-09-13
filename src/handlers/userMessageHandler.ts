@@ -89,7 +89,7 @@ function hasUncertainTransactions(manager: PendingTransactionService): boolean {
   const managerWithUncertainQueries = manager as Partial<PendingTransactionService>;
   return typeof managerWithUncertainQueries.hasUncertainTransactions === 'function'
     ? managerWithUncertainQueries.hasUncertainTransactions.call(manager)
-    : false;
+    : true;
 }
 
 export class UserMessageHandler {
