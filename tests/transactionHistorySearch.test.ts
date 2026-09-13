@@ -285,7 +285,11 @@ test('Suite 6: fast-path search parsing preserves literals and structured modifi
   assert.strictEqual((detectFastPathAction('cari "Kopi Kenangan"') as any)?.options.searchQuery, 'Kopi Kenangan');
   assert.strictEqual((detectFastPathAction('riwayat cari starbucks') as any)?.options.searchQuery, 'starbucks');
   assert.strictEqual((detectFastPathAction('riwayat "starbucks"') as any)?.options.searchQuery, 'starbucks');
-  assert.strictEqual(detectFastPathAction('riwayat starbucks'), null);
+
+  const prefixedCategoryFallback = detectFastPathAction('riwayat starbucks') as any;
+  assert.strictEqual(prefixedCategoryFallback?.type, 'TRANSACTION_HISTORY');
+  assert.strictEqual(prefixedCategoryFallback?.options.categoryName, 'starbucks');
+  assert.strictEqual(prefixedCategoryFallback?.options.searchQuery, undefined);
 
   const composed = detectFastPathAction('cari indomaret di bca bulan ini') as any;
   assert.strictEqual(composed?.options.searchQuery, 'indomaret');

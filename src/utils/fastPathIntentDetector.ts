@@ -92,7 +92,8 @@ const KNOWN_CATEGORY_KEYWORDS = new Set([
 function extractHistoryQueryOptionsFromTokens(
   rawTokens: string,
   baseOptions: Partial<TransactionHistoryQueryOptions> = {},
-  isDedicatedSearchCommand: boolean = false
+  isDedicatedSearchCommand: boolean = false,
+  allowNaturalCategoryPhrase: boolean = false
 ): TransactionHistoryQueryOptions | null {
   let remainingTokens = rawTokens.trim();
   let resolvedLimit: number | undefined = baseOptions.limit;
@@ -282,16 +283,28 @@ function extractHistoryQueryOptionsFromTokens(
   if (remainingTokens.length > 0) {
     const leftoverWords = remainingTokens.split(/\s+/).filter(word => word.length > 0);
     const searchWords: string[] = [];
+    const categoryPhraseWords: string[] = [];
+    const canConsumeNaturalCategoryPhrase =
+      allowNaturalCategoryPhrase && !isDedicatedSearchCommand;
 
     for (const rawWord of leftoverWords) {
       const cleanWord = rawWord.toLowerCase();
       if (KNOWN_ACCOUNT_KEYWORDS.has(cleanWord) && !resolvedAccountName) {
         resolvedAccountName = cleanWord;
+      } else if (canConsumeNaturalCategoryPhrase && /[A-Za-z]/.test(rawWord)) {
+        categoryPhraseWords.push(rawWord);
       } else if (KNOWN_CATEGORY_KEYWORDS.has(cleanWord) && !resolvedCategoryName) {
         resolvedCategoryName = cleanWord;
       } else {
         searchWords.push(rawWord);
       }
+    }
+
+    if (categoryPhraseWords.length > 0) {
+      const categoryPhrase = categoryPhraseWords.join(' ').toLowerCase();
+      resolvedCategoryName = resolvedCategoryName
+        ? `${resolvedCategoryName} ${categoryPhrase}`.trim()
+        : categoryPhrase;
     }
 
     if (searchWords.length > 0) {
@@ -382,7 +395,7 @@ function parseTransactionHistoryIntent(userMessageText: string): FastPathTransac
   }
 
   const historyCommandPattern =
-    /^(?:cek|lihat|info|daftar|show|view|check|get|my)?\s*(?:riwayat\s+transaksi|transaction\s+history|daftar\s+transaksi|transaksi\s+terakhir|last\s+transactions?|recent\s+transactions?|riwayat|history)(?:\s+(.*))?$/i;
+    /^(?:cek|lihat|info|daftar|show|view|check|get|my|semua|all)?\s*(?:riwayat\s+transaksi|transaction\s+history|daftar\s+transaksi|transaksi\s+terakhir|last\s+transactions?|recent\s+transactions?|riwayat|history)(?:\s+(.*))?$/i;
   const historyMatch = trimmedLowerText.match(historyCommandPattern);
   if (historyMatch) {
     const rawRemainderLower = historyMatch[1];
@@ -392,7 +405,12 @@ function parseTransactionHistoryIntent(userMessageText: string): FastPathTransac
 
     const matchPrefixLength = trimmedText.length - rawRemainderLower.length;
     const rawRemainder = trimmedText.slice(matchPrefixLength);
-    const parsedOptions = extractHistoryQueryOptionsFromTokens(rawRemainder, { sort: 'newest' }, false);
+    const parsedOptions = extractHistoryQueryOptionsFromTokens(
+      rawRemainder,
+      { sort: 'newest' },
+      false,
+      true
+    );
     if (parsedOptions) {
       return { type: 'TRANSACTION_HISTORY', options: parsedOptions };
     }
