@@ -706,33 +706,66 @@ export interface ReconciliationIntent {
   targetTicketId?: number;
 }
 
+const LEGACY_RECORDED_RECONCILIATION_ALIASES = new Set([
+  'sudah masuk',
+  'already recorded',
+  'already there',
+  'already in wallet',
+  'sudah',
+  'ada',
+]);
+const LEGACY_ABSENT_RECONCILIATION_ALIASES = new Set([
+  'belum masuk',
+  'tidak ada',
+  'ga ada',
+  'gak ada',
+  'not yet',
+  'not recorded',
+  'not in wallet',
+  'missing',
+  'not found',
+  'belum',
+]);
+
 export function detectReconciliationAction(userMessageText: string): ReconciliationIntent | null {
   if (!userMessageText || typeof userMessageText !== 'string') {
     return null;
   }
 
-  const match = userMessageText.trim().toLowerCase().match(
+  const trimmedText = userMessageText.trim().toLowerCase();
+  const canonicalMatch = trimmedText.match(
     /^(sudah\s+ada|belum\s+ada|already\s+exists?|not\s+there)(?:\s+#?(\d+))?$/i
   );
-  if (!match) {
-    return null;
+  if (canonicalMatch) {
+    const actionPhrase = canonicalMatch[1];
+    const actionType: ReconciliationIntent['actionType'] =
+      actionPhrase === 'sudah ada' || actionPhrase.startsWith('already exist')
+        ? 'CONFIRM_RECORDED'
+        : 'CONFIRM_ABSENT';
+    const targetTicketId = canonicalMatch[2] ? Number.parseInt(canonicalMatch[2], 10) : undefined;
+    return targetTicketId !== undefined && targetTicketId <= 0
+      ? null
+      : { actionType, ...(targetTicketId === undefined ? {} : { targetTicketId }) };
   }
 
-  const actionPhrase = match[1];
-  const actionType: ReconciliationIntent['actionType'] =
-    actionPhrase === 'sudah ada' || actionPhrase.startsWith('already exist')
-      ? 'CONFIRM_RECORDED'
-      : 'CONFIRM_ABSENT';
-
-  const rawTicketId = match[2];
-  if (!rawTicketId) {
-    return { actionType };
+  const legacySpecificMatch = trimmedText.match(
+    /^(sudah|ada|exists?|belum|confirm\s+recorded|confirm\s+absent)\s+#?(\d+)$/i
+  );
+  if (legacySpecificMatch) {
+    const targetTicketId = Number.parseInt(legacySpecificMatch[2], 10);
+    if (targetTicketId <= 0) return null;
+    const phrase = legacySpecificMatch[1];
+    const actionType: ReconciliationIntent['actionType'] =
+      phrase === 'belum' || phrase === 'confirm absent' ? 'CONFIRM_ABSENT' : 'CONFIRM_RECORDED';
+    return { actionType, targetTicketId };
   }
 
-  const targetTicketId = Number.parseInt(rawTicketId, 10);
-  if (targetTicketId <= 0) {
-    return null;
+  if (LEGACY_RECORDED_RECONCILIATION_ALIASES.has(trimmedText)) {
+    return { actionType: 'CONFIRM_RECORDED' };
+  }
+  if (LEGACY_ABSENT_RECONCILIATION_ALIASES.has(trimmedText)) {
+    return { actionType: 'CONFIRM_ABSENT' };
   }
 
-  return { actionType, targetTicketId };
+  return null;
 }
