@@ -146,7 +146,10 @@ export function formatAccountSelectionRetry(draft: PendingAccountSelectionDraft)
     : `⚠️ Transaction #${draft.ticketId} was not recorded. The transaction is still saved and can be retried safely by replying with the same account choice.`;
 }
 
-export function formatAccountSelectionUnknownOutcome(draft: PendingAccountSelectionDraft): string {
+export function formatAccountSelectionUnknownOutcome(
+  draft: PendingAccountSelectionDraft,
+  totalUncertainCount: number = 1
+): string {
   const dictionary = getDictionary();
   const formattedAmount = formatDraftAmount(draft);
   const record = draft.records[draft.pendingRecordIndex] || draft.records[0];
@@ -154,6 +157,7 @@ export function formatAccountSelectionUnknownOutcome(draft: PendingAccountSelect
     record?.note || record?.counterParty || (dictionary.languageCode === 'id' ? 'Transaksi' : 'Transaction');
   const accountName =
     draft.accountHint || draft.candidateAccounts[0]?.name || (dictionary.languageCode === 'id' ? 'Akun' : 'Account');
+  const mustQualifyTicket = totalUncertainCount > 1;
 
   if (dictionary.languageCode === 'id') {
     return [
@@ -165,8 +169,8 @@ export function formatAccountSelectionUnknownOutcome(draft: PendingAccountSelect
       'Jangan kirim ulang transaksi ini dulu agar tidak tercatat dua kali. Transaksi ini tidak akan dikirim ulang otomatis.',
       '',
       'Cek Wallet, lalu balas:',
-      '• *Sudah ada*',
-      '• *Belum ada*',
+      mustQualifyTicket ? `• *Sudah ada #${draft.ticketId}*` : '• *Sudah ada*',
+      mustQualifyTicket ? `• *Belum ada #${draft.ticketId}*` : '• *Belum ada*',
     ].join('\n');
   }
 
@@ -179,8 +183,8 @@ export function formatAccountSelectionUnknownOutcome(draft: PendingAccountSelect
     'Do not retry this transaction yet to avoid duplicate records. This transaction will not be retried automatically.',
     '',
     'Check Wallet, then reply:',
-    '• *Already exists*',
-    '• *Not there*',
+    mustQualifyTicket ? `• *Already exists #${draft.ticketId}*` : '• *Already exists*',
+    mustQualifyTicket ? `• *Not there #${draft.ticketId}*` : '• *Not there*',
   ].join('\n');
 }
 
