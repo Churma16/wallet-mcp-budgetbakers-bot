@@ -94,7 +94,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.channel == 'stable'
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.version }}
+          ref: refs/tags/${{ inputs.version }}
 
       - name: Resolve checked-out source commit
         id: source
