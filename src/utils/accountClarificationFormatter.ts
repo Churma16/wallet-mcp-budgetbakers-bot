@@ -190,10 +190,3 @@ export function formatAccountSelectionUnknownOutcome(
     mustQualifyTicket ? `• *Not there #${draft.ticketId}*` : '• *Not there*',
   ].join('\n');
 }
-
-export function formatAccountSelectionUnknownDismissal(draft: PendingAccountSelectionDraft): string {
-  const dictionary = getDictionary();
-  return dictionary.languageCode === 'id'
-    ? `🧾 *Status transaksi #${draft.ticketId} ditutup.*\nTidak ada pengiriman ulang ke Wallet. Status pengiriman sebelumnya tetap belum dapat dipastikan. Periksa Wallet sebelum memasukkan transaksi ini lagi.`
-    : `🧾 *Transaction #${draft.ticketId} status closed.*\nNo retry was sent to Wallet. The previous write outcome is still uncertain. Check Wallet before entering this transaction again.`;
-}
