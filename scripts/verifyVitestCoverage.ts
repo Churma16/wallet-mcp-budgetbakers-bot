@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import * as ts from 'typescript';
+import ts from 'typescript';
 
 const toPosixPath = (filePath: string): string => filePath.replaceAll('\\', '/');
 
