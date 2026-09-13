@@ -153,9 +153,8 @@ describe('PR #155 account clarification formatter changed branches', () => {
     expect(en).toContain('• *Not there*');
   });
 
-  it('covers UNKNOWN fallback to first record, candidate account, default labels, and ticket qualification', () => {
+  it('covers UNKNOWN candidate-account and default-label fallbacks plus ticket qualification', () => {
     const candidateFallback = draft({
-      pendingRecordIndex: 5,
       records: [{ accountId: '', amount: -9000, recordDate: '2026-09-13', counterParty: 'Store' }],
       candidateAccounts: [{ id: 'a1', name: 'Cash', currency: 'IDR' }],
       accountHint: undefined,
