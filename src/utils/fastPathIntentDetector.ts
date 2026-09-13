@@ -284,12 +284,19 @@ function extractHistoryQueryOptionsFromTokens(
     const leftoverWords = remainingTokens.split(/\s+/).filter(word => word.length > 0);
     const searchWords: string[] = [];
     const categoryPhraseWords: string[] = [];
+    const hasKnownCategoryKeyword = leftoverWords.some(rawWord =>
+      KNOWN_CATEGORY_KEYWORDS.has(rawWord.toLowerCase())
+    );
+    const canConsumeNaturalCategoryPhrase =
+      allowNaturalCategoryPhrase &&
+      !isDedicatedSearchCommand &&
+      (resolvedCategoryName !== undefined || hasKnownCategoryKeyword || leftoverWords.length >= 2);
 
     for (const rawWord of leftoverWords) {
       const cleanWord = rawWord.toLowerCase();
       if (KNOWN_ACCOUNT_KEYWORDS.has(cleanWord) && !resolvedAccountName) {
         resolvedAccountName = cleanWord;
-      } else if (allowNaturalCategoryPhrase && !isDedicatedSearchCommand) {
+      } else if (canConsumeNaturalCategoryPhrase) {
         categoryPhraseWords.push(rawWord);
       } else if (KNOWN_CATEGORY_KEYWORDS.has(cleanWord) && !resolvedCategoryName) {
         resolvedCategoryName = cleanWord;
