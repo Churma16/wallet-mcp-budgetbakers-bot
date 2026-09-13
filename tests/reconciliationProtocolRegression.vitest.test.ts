@@ -102,7 +102,7 @@ describe('PR #155 reconciliation protocol regressions', () => {
       );
     }
 
-    it.each(['ada', 'sudah', 'belum', 'missing', 'not yet']) (
+    it.each(['ada', 'sudah', 'belum', 'missing', 'not yet'])(
       'does not consume free-form alias "%s" as reconciliation even with one UNKNOWN item',
       async alias => {
         const pendingService = new PendingTransactionService();
@@ -143,7 +143,7 @@ describe('PR #155 reconciliation protocol regressions', () => {
       expect(accountClarificationHandler).not.toHaveBeenCalled();
     });
 
-    it('does not consume canonical unnumbered text when there is no UNKNOWN workflow', async () => {
+    it('does not consume a bare alias when there is no UNKNOWN workflow', async () => {
       const pendingService = new PendingTransactionService();
       const reconciliationHandler = vi.fn().mockResolvedValue(true);
       const accountClarificationHandler = vi.fn().mockResolvedValue(true);
@@ -153,7 +153,7 @@ describe('PR #155 reconciliation protocol regressions', () => {
         accountClarificationHandler
       );
 
-      await handler.handleIncomingUserMessage(event('sudah ada'));
+      await handler.handleIncomingUserMessage(event('belum'));
 
       expect(reconciliationHandler).not.toHaveBeenCalled();
       expect(accountClarificationHandler).toHaveBeenCalledTimes(1);
