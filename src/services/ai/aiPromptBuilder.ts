@@ -200,7 +200,7 @@ CRITICAL RULES FOR RECEIPTS & QRIS:
    - Output recordDate:
      * For transactions with printed local time, output as a local ISO timestamp without timezone offset (e.g. "YYYY-MM-DDTHH:mm:ss") so the system deterministically resolves UTC at the transaction date, or convert to UTC using the specific offset on that transaction date. Never apply the request-time offset across DST date boundaries.
      * For receipts with only a printed date and no clock time, output date-only format "YYYY-MM-DD".
-     * If NO date or time is printed on the receipt, use the current transaction timestamp: ${referenceInstant.toISOString()}.
+     * If NO date or time is printed on the receipt, omit "recordDate" or set "recordDate": null. The application will automatically assign the current transaction reference timestamp. NEVER invent, copy, or manufacture a clock time when none is printed on the receipt.
    - NEVER simply append "Z" to the local receipt time without offset conversion.
 
 4. MERCHANT & NOTE:
@@ -219,7 +219,7 @@ CRITICAL RULES FOR RECEIPTS & QRIS:
 
 7. JSON OUTPUT SCHEMA:
 Respond with valid JSON ONLY matching schema:
-{"action":"CREATE_RECORD"|"GENERAL_REPLY","records":[{"accountId":"ID or Name","categoryId":"ID or Name (optional)","amount":number,"currency":"string (ISO 4217 code e.g. IDR, USD)","recordDate":"ISO 8601 string (e.g. YYYY-MM-DDTHH:mm:ss, ISO with offset/Z, or YYYY-MM-DD)","note":"string","counterParty":"string (optional)","labels":["string (optional)"]}],"explanation":"human friendly summary in ${summaryLanguageName}"}`;
+{"action":"CREATE_RECORD"|"GENERAL_REPLY","records":[{"accountId":"ID or Name","categoryId":"ID or Name (optional)","amount":number,"currency":"string (ISO 4217 code e.g. IDR, USD)","recordDate":"ISO 8601 string (e.g. YYYY-MM-DDTHH:mm:ss or YYYY-MM-DD) or null if no timestamp is printed on receipt","note":"string","counterParty":"string (optional)","labels":["string (optional)"]}],"explanation":"human friendly summary in ${summaryLanguageName}"}`;
 }
 
 /**

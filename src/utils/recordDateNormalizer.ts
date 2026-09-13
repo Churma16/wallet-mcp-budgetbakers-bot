@@ -11,7 +11,8 @@ const DATE_ONLY_REGEX = /^(\d{4}-\d{2}-\d{2})$/;
 const TIMEZONE_LESS_DATETIME_REGEX =
   /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?$/;
 
-const EXPLICIT_TIMEZONE_INDICATOR_REGEX = /(?:Z|[+-]\d{2}:?\d{2}|\b(?:UTC|GMT)\b)/i;
+const EXPLICIT_TIMEZONE_INDICATOR_REGEX =
+  /(?:Z|[+-]\d{2}:?\d{2}|\b(?:UTC|GMT)\b)\s*\)?\s*$/i;
 
 /**
  * Normalizes a raw recordDate string into a canonical UTC ISO 8601 string (e.g. YYYY-MM-DDTHH:mm:ss.sssZ).

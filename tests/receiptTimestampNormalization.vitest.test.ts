@@ -9,7 +9,10 @@ import {
 import {
   buildReceiptSystemInstruction,
 } from '../src/services/ai/aiPromptBuilder.js';
-import { prepareReceiptPrompt } from '../src/services/ai/aiProviderWorkflow.js';
+import {
+  prepareReceiptPrompt,
+  postProcessReceiptVisionResponse,
+} from '../src/services/ai/aiProviderWorkflow.js';
 import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload } from '../src/types/walletTypes.js';
 
 describe('Receipt Timestamp Normalization & Timezone Preservation (Issue #147)', () => {
@@ -286,13 +289,28 @@ describe('Receipt Timestamp Normalization & Timezone Preservation (Issue #147)',
         );
         expect(missingResult).toBe('2026-09-13T08:26:18.209Z');
 
-        // 5. Non-canonical timezone-less format (must not leak host TZ)
+        // 5. Non-canonical timezone-less slash format (must not leak host TZ)
         const nonCanonicalResult = normalizeTransactionRecordDate(
           '09/13/2026 15:26:18',
           referenceInstantUtc,
           applicationTimezoneJakarta
         );
         expect(nonCanonicalResult).toBe('2026-09-13T08:26:18.209Z');
+
+        // 5b. Non-canonical hyphen-separated date format (must not match timezone regex or leak host TZ)
+        const hyphenDateResult = normalizeTransactionRecordDate(
+          '09-13-2026 15:26:18',
+          referenceInstantUtc,
+          applicationTimezoneJakarta
+        );
+        expect(hyphenDateResult).toBe('2026-09-13T08:26:18.209Z');
+
+        const hyphenDayFirstResult = normalizeTransactionRecordDate(
+          '13-09-2026 15:26:18',
+          referenceInstantUtc,
+          applicationTimezoneJakarta
+        );
+        expect(hyphenDayFirstResult).toBe('2026-09-13T08:26:18.209Z');
 
         // 6. Explicit timezone indicator format
         const explicitTzResult = normalizeTransactionRecordDate(
@@ -497,7 +515,8 @@ describe('Receipt Timestamp Normalization & Timezone Preservation (Issue #147)',
       expect(instruction).toContain('RECEIPT DATE, TIME & TIMEZONE RESOLUTION:');
       expect(instruction).toContain('output as a local ISO timestamp without timezone offset');
       expect(instruction).toContain('Never apply the request-time offset across DST date boundaries');
-      expect(instruction).toContain('use the current transaction timestamp: 2026-09-13T08:26:18.209Z');
+      expect(instruction).toContain('omit "recordDate" or set "recordDate": null');
+      expect(instruction).toContain('NEVER invent, copy, or manufacture a clock time');
       expect(instruction).not.toContain('YYYY-MM-DDTHH:mm:ss+07:00');
     });
 
@@ -514,6 +533,171 @@ describe('Receipt Timestamp Normalization & Timezone Preservation (Issue #147)',
       expect(prepared.promptText).toContain('[Current Transaction Timestamp: 2026-09-13T08:26:18.209Z |');
       expect(prepared.promptText).toContain('15:26');
       expect(prepared.promptText).toContain('Asia/Jakarta');
+    });
+  });
+
+  describe('End-to-End Pipeline Verification with postProcessReceiptVisionResponse', () => {
+    it('handles receipt with omitted recordDate by applying referenceInstant downstream', () => {
+      const modelJsonOutput = JSON.stringify({
+        action: 'CREATE_RECORD',
+        records: [
+          {
+            accountId: 'Gopay',
+            categoryId: 'cat-groceries',
+            amount: -35000,
+            currency: 'IDR',
+            note: 'Receipt with omitted recordDate',
+            counterParty: 'Indomaret',
+          },
+        ],
+        explanation: 'Extracted receipt with no printed timestamp',
+      });
+
+      const parsedIntent = postProcessReceiptVisionResponse(
+        {
+          responseText: modelJsonOutput,
+          tokenUsage: { promptTokens: 100, candidatesTokens: 50, totalTokens: 150 },
+        },
+        'Gemini'
+      );
+
+      expect(parsedIntent.action).toBe('CREATE_RECORD');
+      expect(parsedIntent.records).toHaveLength(1);
+      expect(parsedIntent.records![0].recordDate).toBeUndefined();
+
+      const validationResult = validateAndSanitizeFinancialRecords(
+        parsedIntent.records as CreateRecordInputPayload[],
+        mockAccounts,
+        mockCategories,
+        undefined,
+        referenceInstantUtc
+      );
+
+      expect(validationResult.isValid).toBe(true);
+      expect(validationResult.sanitizedRecords).toHaveLength(1);
+      expect(validationResult.sanitizedRecords[0].recordDate).toBe('2026-09-13T08:26:18.209Z');
+      expect(validationResult.sanitizedRecords[0].amount).toBe(-35000);
+      expect(validationResult.sanitizedRecords[0].accountId).toBe('acc-gopay');
+    });
+
+    it('handles receipt with null recordDate by applying referenceInstant downstream', () => {
+      const modelJsonOutput = JSON.stringify({
+        action: 'CREATE_RECORD',
+        records: [
+          {
+            accountId: 'Gopay',
+            categoryId: 'cat-groceries',
+            amount: -45000,
+            currency: 'IDR',
+            recordDate: null,
+            note: 'Receipt with null recordDate',
+            counterParty: 'Indomaret',
+          },
+        ],
+        explanation: 'Extracted receipt with null timestamp',
+      });
+
+      const parsedIntent = postProcessReceiptVisionResponse(
+        {
+          responseText: modelJsonOutput,
+          tokenUsage: { promptTokens: 100, candidatesTokens: 50, totalTokens: 150 },
+        },
+        'Gemini'
+      );
+
+      expect(parsedIntent.action).toBe('CREATE_RECORD');
+      expect(parsedIntent.records).toHaveLength(1);
+      expect(parsedIntent.records![0].recordDate).toBeUndefined();
+
+      const validationResult = validateAndSanitizeFinancialRecords(
+        parsedIntent.records as CreateRecordInputPayload[],
+        mockAccounts,
+        mockCategories,
+        undefined,
+        referenceInstantUtc
+      );
+
+      expect(validationResult.isValid).toBe(true);
+      expect(validationResult.sanitizedRecords).toHaveLength(1);
+      expect(validationResult.sanitizedRecords[0].recordDate).toBe('2026-09-13T08:26:18.209Z');
+    });
+
+    it('handles receipt with printed local time 15:26:18 by resolving to UTC 08:26:18.000Z', () => {
+      const modelJsonOutput = JSON.stringify({
+        action: 'CREATE_RECORD',
+        records: [
+          {
+            accountId: 'Gopay',
+            categoryId: 'cat-groceries',
+            amount: -54200,
+            currency: 'IDR',
+            recordDate: '2026-09-13T15:26:18',
+            note: 'Afternoon receipt',
+            counterParty: 'Indomaret',
+          },
+        ],
+        explanation: 'Receipt with printed afternoon time',
+      });
+
+      const parsedIntent = postProcessReceiptVisionResponse(
+        {
+          responseText: modelJsonOutput,
+          tokenUsage: { promptTokens: 100, candidatesTokens: 50, totalTokens: 150 },
+        },
+        'Gemini'
+      );
+
+      expect(parsedIntent.records![0].recordDate).toBe('2026-09-13T15:26:18');
+
+      const validationResult = validateAndSanitizeFinancialRecords(
+        parsedIntent.records as CreateRecordInputPayload[],
+        mockAccounts,
+        mockCategories,
+        undefined,
+        referenceInstantUtc
+      );
+
+      expect(validationResult.isValid).toBe(true);
+      expect(validationResult.sanitizedRecords[0].recordDate).toBe('2026-09-13T08:26:18.000Z');
+    });
+
+    it('handles receipt with printed morning time 08:26:18 by resolving to UTC 01:26:18.000Z', () => {
+      const modelJsonOutput = JSON.stringify({
+        action: 'CREATE_RECORD',
+        records: [
+          {
+            accountId: 'Gopay',
+            categoryId: 'cat-groceries',
+            amount: -25000,
+            currency: 'IDR',
+            recordDate: '2026-09-13T08:26:18',
+            note: 'Breakfast receipt',
+            counterParty: 'Kantin',
+          },
+        ],
+        explanation: 'Morning receipt with printed time',
+      });
+
+      const parsedIntent = postProcessReceiptVisionResponse(
+        {
+          responseText: modelJsonOutput,
+          tokenUsage: { promptTokens: 100, candidatesTokens: 50, totalTokens: 150 },
+        },
+        'Gemini'
+      );
+
+      expect(parsedIntent.records![0].recordDate).toBe('2026-09-13T08:26:18');
+
+      const validationResult = validateAndSanitizeFinancialRecords(
+        parsedIntent.records as CreateRecordInputPayload[],
+        mockAccounts,
+        mockCategories,
+        undefined,
+        referenceInstantUtc
+      );
+
+      expect(validationResult.isValid).toBe(true);
+      expect(validationResult.sanitizedRecords[0].recordDate).toBe('2026-09-13T01:26:18.000Z');
     });
   });
 });

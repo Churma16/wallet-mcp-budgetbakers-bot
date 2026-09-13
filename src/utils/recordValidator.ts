@@ -409,7 +409,7 @@ export function validateAndSanitizeFinancialRecords(
     }
 
     // 4. Record Date Validation (already normalized into immutable UTC ISO string upfront)
-    let resolvedRecordDate = currentRecord.recordDate;
+    let resolvedRecordDate = currentRecord.recordDate || new Date(referenceDate).toISOString();
     const parsedDateTimestamp = Date.parse(resolvedRecordDate);
     if (Number.isNaN(parsedDateTimestamp)) {
       resolvedRecordDate = new Date(referenceDate).toISOString();
