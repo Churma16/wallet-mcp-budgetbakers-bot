@@ -152,7 +152,11 @@ export class FastPathHandler {
     }
 
     if (fastPathAction === 'CHECK_QUEUE') {
-      if (!this.financialActionRegistry.hasHandler('CHECK_QUEUE')) {
+      const registryWithCapabilities = this.financialActionRegistry as Partial<FinancialActionRegistry>;
+      if (
+        typeof registryWithCapabilities.hasHandler === 'function' &&
+        !registryWithCapabilities.hasHandler.call(this.financialActionRegistry, 'CHECK_QUEUE')
+      ) {
         return false;
       }
       applicationLogger.info('Fast-path matched: CHECK_QUEUE (0 AI tokens consumed)');
