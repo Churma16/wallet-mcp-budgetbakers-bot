@@ -291,7 +291,7 @@ function extractHistoryQueryOptionsFromTokens(
       const cleanWord = rawWord.toLowerCase();
       if (KNOWN_ACCOUNT_KEYWORDS.has(cleanWord) && !resolvedAccountName) {
         resolvedAccountName = cleanWord;
-      } else if (canConsumeNaturalCategoryPhrase) {
+      } else if (canConsumeNaturalCategoryPhrase && /[A-Za-z]/.test(rawWord)) {
         categoryPhraseWords.push(rawWord);
       } else if (KNOWN_CATEGORY_KEYWORDS.has(cleanWord) && !resolvedCategoryName) {
         resolvedCategoryName = cleanWord;
