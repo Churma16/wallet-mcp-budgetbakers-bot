@@ -13,7 +13,11 @@ import {
   createDefaultFinancialActionRegistry,
   FinancialActionContext,
 } from '../actions/index.js';
-import { detectFastPathAction, detectPendingConfirmationAction } from '../utils/fastPathIntentDetector.js';
+import {
+  detectFastPathAction,
+  detectPendingConfirmationAction,
+  detectReconciliationAction,
+} from '../utils/fastPathIntentDetector.js';
 import {
   formatErrorMessageForHuman,
   getHumanReadableTimestamp,
@@ -215,7 +219,22 @@ export class UserMessageHandler {
         }
       }
 
-      // 1. Account-clarification drafts consume free-form account replies before other routing.
+      // 1. Reconciliation commands (e.g. "Sudah ada #3", "Belum ada #3", "Sudah ada", "Belum ada")
+      if (event.messageType === 'text' && event.textPayload) {
+        const reconciliationIntent = detectReconciliationAction(event.textPayload);
+        if (reconciliationIntent) {
+          const handled = await this.pendingActionHandler.handleReconciliationAction(
+            event,
+            reconciliationIntent,
+            processingStartTimestamp
+          );
+          if (handled) {
+            return;
+          }
+        }
+      }
+
+      // 2. Account-clarification drafts consume free-form account replies before other routing.
       if (event.messageType === 'text' && event.textPayload) {
         const handled = await this.accountClarificationHandler.handlePendingAccountSelectionReply(
           event,

@@ -198,44 +198,85 @@ export const indonesianDictionary: ResponseDictionary = {
 
   emailPending: {
     formatNotification(params: PendingEmailNotificationParams): string {
+      const isTransfer = params.typeLabel.includes('Transfer');
+      const headline = isTransfer ? '🔄 *Transfer Baru*' : '📩 *Pembayaran Baru*';
+      const merchantOrTitle = isTransfer
+        ? `${params.accountNameHint || 'Akun'} ➔ ${params.destinationAccountNameHint || 'Tujuan'}`
+        : (params.counterParty || params.matchedCategoryName || params.bankDisplayName);
+
+      const ticketSuffix = params.totalPendingCount > 1 ? ` (#${params.ticketId})` : '';
       const lines = [
-        `📩 *Transaksi Email Baru Terdeteksi (#${params.ticketId})*`,
-        `🏦 *Sumber:* ${params.bankDisplayName}`,
-        `${params.typeIcon} *Nominal:* ${params.formattedAmount} (${params.typeLabel})`,
+        headline,
+        `*${params.formattedAmount}* • ${merchantOrTitle}${ticketSuffix}`,
       ];
 
-      if (params.typeLabel.includes('Transfer') && params.destinationAccountNameHint) {
-        lines.push(`🎯 *Tujuan:* ${params.destinationAccountNameHint}`);
-      } else if (params.counterParty) {
-        lines.push(`🏪 *Merchant/Pihak:* ${params.counterParty}`);
+      if (params.accountNameHint && !isTransfer) {
+        lines.push(`Akun: ${params.accountNameHint}`);
       }
-
-      if (params.matchedCategoryName) {
-        lines.push(`📂 *Kategori:* ${params.matchedCategoryName}`);
-      }
-
-      if (params.accountNameHint) {
-        lines.push(`💳 *Akun Wallet:* ${params.accountNameHint}`);
-      }
-
-      lines.push(`🕒 *Waktu:* ${params.formattedTime}`);
-
-      if (params.referenceNumber) {
-        lines.push(`🔢 *Ref ID:* \`${params.referenceNumber}\``);
+      if (params.matchedCategoryName && !isTransfer) {
+        lines.push(`Kategori: ${params.matchedCategoryName}`);
       }
 
       lines.push('');
+      lines.push('Catat transaksi ini?');
       if (params.totalPendingCount > 1) {
-        lines.push(`_Terdapat ${params.totalPendingCount} transaksi yang menunggu konfirmasi._`);
-        lines.push(`• Balas *Ya ${params.ticketId}* untuk mencatat tiket ini`);
-        lines.push(`• Balas *Ya semua* untuk mencatat semua tiket`);
-        lines.push(`• Balas *Batal ${params.ticketId}* untuk membatalkan`);
+        lines.push(`• Balas *Ya ${params.ticketId}* (atau *Ya semua*)`);
+        lines.push(`• Balas *Batal ${params.ticketId}*`);
+        const otherCount = params.totalPendingCount - 1;
+        lines.push('');
+        lines.push(`_Ada ${otherCount} transaksi lain yang juga menunggu konfirmasi._`);
       } else {
-        lines.push('• Balas *Ya* atau *Catat* untuk menyimpan ke Wallet');
-        lines.push('• Balas *Batal* untuk mengabaikan');
+        lines.push('• Balas *Ya* atau *Catat*');
+        lines.push('• Balas *Batal* atau *Abaikan*');
       }
 
       return lines.join('\n');
+    },
+  },
+
+  status: {
+    header: '📋 *Status Transaksi*',
+    emptyAttention: 'Tidak ada transaksi yang memerlukan perhatian saat ini.',
+    needsCheckHeader(count: number): string {
+      return `⚠️ *${count} transaksi perlu diperiksa:*`;
+    },
+    waitingConfirmationHeader(count: number): string {
+      return `⏳ *${count} transaksi menunggu konfirmasi:*`;
+    },
+    waitingAccountHeader(count: number): string {
+      return `⏳ *${count} transaksi menunggu pilihan akun:*`;
+    },
+    noOtherTransactionsWaiting: 'Tidak ada transaksi lain yang menunggu konfirmasi.',
+  },
+
+  uncertain: {
+    title: '⚠️ *Belum bisa memastikan transaksi sudah tercatat*',
+    riskWarning: 'Jangan kirim ulang transaksi ini dulu agar tidak tercatat dua kali. Transaksi ini tidak akan dikirim ulang otomatis.',
+    actionPromptSingle: 'Cek Wallet, lalu balas:\n• *Sudah ada*\n• *Belum ada*',
+    actionPromptMultiple(tickets: number[]): string {
+      const commandLines = tickets.map(
+        ticketId => `• *Sudah ada #${ticketId}* atau *Belum ada #${ticketId}*`
+      );
+      return `Cek Wallet, lalu balas:\n${commandLines.join('\n')}`;
+    },
+  },
+
+  reconciliation: {
+    recordedWithTicket(ticketId: number): string {
+      return `✅ Oke, transaksi #${ticketId} dianggap sudah tercatat di Wallet.\nTidak ada transaksi yang akan dikirim ulang.`;
+    },
+    recordedSingle: '✅ Oke, transaksi dianggap sudah tercatat di Wallet.\nTidak ada transaksi yang akan dikirim ulang.',
+    absentWithTicket(ticketId: number): string {
+      return `⚠️ Transaksi #${ticketId} belum tercatat di Wallet.\nStatus dikembalikan agar aman dicoba lagi.\nBalas *Ya #${ticketId}* untuk mencoba mencatat kembali, atau *Batal #${ticketId}* untuk membatalkan.`;
+    },
+    absentSingle: '⚠️ Transaksi belum tercatat di Wallet.\nStatus dikembalikan agar aman dicoba lagi.\nBalas *Ya* untuk mencoba mencatat kembali, atau *Batal* untuk membatalkan.',
+    notFoundWithTicket(ticketId: number): string {
+      return `⚠️ Transaksi #${ticketId} tidak ditemukan atau sudah selesai diperiksa.`;
+    },
+    notFoundNone: 'Tidak ada transaksi yang perlu diperiksa saat ini.',
+    ambiguous(ticketIds: number[]): string {
+      const ticketList = ticketIds.map(ticketId => `#${ticketId}`).join(', ');
+      return `⚠️ Ada beberapa transaksi yang perlu diperiksa (${ticketList}). Balas dengan nomor tiket, contoh: *Sudah ada #${ticketIds[0]}* atau *Belum ada #${ticketIds[0]}*.`;
     },
   },
 

@@ -1,7 +1,12 @@
 import { FinancialActionExecutor } from '../services/financialActionExecutor.js';
+import { PendingTransactionService } from '../services/pendingTransactionService.js';
+import { MessagingGatewayService } from '../services/messaging/index.js';
+import { buildTransactionAttentionSummary } from '../services/transactionStatusViewModel.js';
+import { formatTransactionAttentionSummary } from '../utils/transactionStatusFormatter.js';
 import {
   CheckBalanceActionContext,
   CheckBudgetActionContext,
+  CheckQueueActionContext,
   FinancialActionHandler,
   HelpMenuActionContext,
   TransactionHistoryActionContext,
@@ -93,5 +98,23 @@ export class TransactionSummaryActionHandler implements FinancialActionHandler<'
         routingSource: context.routingSource,
       }
     );
+  }
+}
+
+/**
+ * Handles transaction queue / attention status queries.
+ */
+export class CheckQueueActionHandler implements FinancialActionHandler<'CHECK_QUEUE'> {
+  public readonly action = 'CHECK_QUEUE' as const;
+
+  constructor(
+    private readonly pendingTransactionService: PendingTransactionService,
+    private readonly messagingGateway: MessagingGatewayService
+  ) {}
+
+  public async execute(context: CheckQueueActionContext): Promise<void> {
+    const summary = buildTransactionAttentionSummary(this.pendingTransactionService);
+    const replyMessage = formatTransactionAttentionSummary(summary);
+    await this.messagingGateway.sendMessage(context.event.channel, context.event.chatIdentifier, replyMessage);
   }
 }

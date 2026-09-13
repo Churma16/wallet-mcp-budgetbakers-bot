@@ -298,6 +298,52 @@ export class PendingTransactionService {
     }
   }
 
+  /**
+   * Reopens an UNKNOWN transaction or draft as PENDING after conservative reconciliation.
+   * Never triggers an automatic write.
+   */
+  public reopenUnknownTransactionAsPending(ticketId: number): boolean {
+    if (
+      this.pendingTransactionMap.has(ticketId) &&
+      this.dispatchStateMap.get(ticketId) === 'UNKNOWN'
+    ) {
+      this.dispatchStateMap.set(ticketId, 'PENDING');
+      return true;
+    }
+
+    if (
+      this.pendingAccountSelectionDraftMap.has(ticketId) &&
+      this.dispatchStateMap.get(ticketId) === 'UNKNOWN'
+    ) {
+      this.dispatchStateMap.set(ticketId, 'PENDING');
+      return true;
+    }
+
+    return false;
+  }
+
+  public getUncertainTransactions(): PendingTransactionItem[] {
+    this.purgeExpiredTransactions();
+    return Array.from(this.pendingTransactionMap.values()).filter(
+      item => this.dispatchStateMap.get(item.ticketId) === 'UNKNOWN'
+    );
+  }
+
+  public getUncertainAccountSelectionDrafts(): PendingAccountSelectionDraft[] {
+    this.purgeExpiredTransactions();
+    return Array.from(this.pendingAccountSelectionDraftMap.values()).filter(
+      draft => this.dispatchStateMap.get(draft.ticketId) === 'UNKNOWN'
+    );
+  }
+
+  public hasUncertainTransactions(): boolean {
+    this.purgeExpiredTransactions();
+    return (
+      this.getUncertainTransactions().length > 0 ||
+      this.getUncertainAccountSelectionDrafts().length > 0
+    );
+  }
+
   public getPendingTransactionState(ticketId: number): PendingTransactionDispatchState | undefined {
     this.purgeExpiredTransactions();
     if (!this.pendingTransactionMap.has(ticketId)) {

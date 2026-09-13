@@ -6,13 +6,27 @@ import {
 } from '../services/walletMcpService.js';
 import { MessagingGatewayService, IncomingUserMessageEvent } from '../services/messaging/index.js';
 import { EmailListenerService } from '../services/emailListenerService.js';
-import { PendingConfirmationIntent } from '../utils/fastPathIntentDetector.js';
+import {
+  PendingConfirmationIntent,
+  ReconciliationIntent,
+} from '../utils/fastPathIntentDetector.js';
 import { CreateRecordInputPayload } from '../types/walletTypes.js';
 import {
   formatPendingConfirmationSuccess,
   formatBulkPendingConfirmationSuccess,
   formatPendingCancellationMessage,
 } from '../utils/humanResponseFormatter.js';
+import {
+  buildItemViewModelFromPendingItem,
+  buildTransactionAttentionSummary,
+} from '../services/transactionStatusViewModel.js';
+import {
+  formatUncertainOutcomeResponse,
+  formatReconciliationRecordedResponse,
+  formatReconciliationAbsentResponse,
+  formatReconciliationNotFoundResponse,
+  formatReconciliationAmbiguousResponse,
+} from '../utils/transactionStatusFormatter.js';
 import { applicationLogger } from '../utils/logger.js';
 
 export class PendingActionHandler {
@@ -220,6 +234,20 @@ export class PendingActionHandler {
       return;
     }
 
+    if (
+      uncertainTickets.length > 0 &&
+      successfulTickets.length === 0 &&
+      retryableFailedTickets.length === 0
+    ) {
+      const uncertainItems = itemsToRecord.filter(item => uncertainTickets.includes(item.ticketId));
+      const viewModels = uncertainItems.map(item =>
+        buildItemViewModelFromPendingItem(item, 'NEEDS_CHECK')
+      );
+      const replyMessage = formatUncertainOutcomeResponse(viewModels);
+      await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
+      return;
+    }
+
     const messageLines: string[] = [];
 
     if (successfulTickets.length > 0) {
@@ -240,13 +268,11 @@ export class PendingActionHandler {
     }
 
     if (uncertainTickets.length > 0) {
-      const ticketList = uncertainTickets.map(ticketId => `#${ticketId}`).join(', ');
-      messageLines.push(
-        `[WARN] Status pencatatan tiket ${ticketList} belum dapat dipastikan karena respons server tidak diterima dengan pasti.`
+      const uncertainItems = itemsToRecord.filter(item => uncertainTickets.includes(item.ticketId));
+      const viewModels = uncertainItems.map(item =>
+        buildItemViewModelFromPendingItem(item, 'NEEDS_CHECK')
       );
-      messageLines.push(
-        'Demi mencegah duplikasi, tiket tersebut tidak akan dikirim ulang otomatis. Periksa Wallet terlebih dahulu sebelum membatalkan atau memasukkan ulang transaksi.'
-      );
+      messageLines.push(formatUncertainOutcomeResponse(viewModels));
     }
 
     await this.messagingGateway.sendMessage(
@@ -300,5 +326,113 @@ export class PendingActionHandler {
     );
 
     return true;
+  }
+
+  /**
+   * Handles user reconciliation commands (e.g. "Sudah ada #3", "Belum ada #3", "Sudah ada", "Belum ada").
+   */
+  public async handleReconciliationAction(
+    event: IncomingUserMessageEvent,
+    intent: ReconciliationIntent,
+    processingStartTimestamp: number
+  ): Promise<boolean> {
+    const uncertainTransactions = this.pendingTransactionManager.getUncertainTransactions();
+    const uncertainDrafts = this.pendingTransactionManager.getUncertainAccountSelectionDrafts();
+    const totalUncertainCount = uncertainTransactions.length + uncertainDrafts.length;
+
+    if (intent.targetTicketId !== undefined) {
+      const targetTicketId = intent.targetTicketId;
+      const matchedTransaction = uncertainTransactions.find(item => item.ticketId === targetTicketId);
+      const matchedDraft = uncertainDrafts.find(draft => draft.ticketId === targetTicketId);
+
+      if (!matchedTransaction && !matchedDraft) {
+        const notFoundMessage = formatReconciliationNotFoundResponse(targetTicketId);
+        await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, notFoundMessage);
+        return true;
+      }
+
+      if (intent.actionType === 'CONFIRM_RECORDED') {
+        if (matchedTransaction) {
+          this.pendingTransactionManager.resolvePendingTransaction(targetTicketId);
+          const activeEmailListener = this.emailListenerServiceGetter();
+          if (activeEmailListener) {
+            activeEmailListener.recordProcessedTransaction(undefined, matchedTransaction.referenceNumber);
+          }
+        } else if (matchedDraft) {
+          this.pendingTransactionManager.resolvePendingAccountSelectionDraft(targetTicketId);
+        }
+
+        const replyMessage = formatReconciliationRecordedResponse(targetTicketId);
+        await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
+        const durationMs = Date.now() - processingStartTimestamp;
+        applicationLogger.success(
+          `[Ticket #${targetTicketId}] Reconciled as recorded in Wallet; local state closed (${durationMs}ms).`
+        );
+        return true;
+      }
+
+      if (intent.actionType === 'CONFIRM_ABSENT') {
+        this.pendingTransactionManager.reopenUnknownTransactionAsPending(targetTicketId);
+        const replyMessage = formatReconciliationAbsentResponse(targetTicketId);
+        await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
+        const durationMs = Date.now() - processingStartTimestamp;
+        applicationLogger.info(
+          `[Ticket #${targetTicketId}] Reconciled as absent in Wallet; safely reset to PENDING (${durationMs}ms).`
+        );
+        return true;
+      }
+    } else {
+      // Unnumbered reconciliation command
+      if (totalUncertainCount === 0) {
+        const notFoundMessage = formatReconciliationNotFoundResponse();
+        await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, notFoundMessage);
+        return true;
+      }
+
+      if (totalUncertainCount === 1) {
+        const singleTransaction = uncertainTransactions[0];
+        const singleDraft = uncertainDrafts[0];
+        const singleTicketId = singleTransaction?.ticketId ?? singleDraft?.ticketId;
+
+        if (intent.actionType === 'CONFIRM_RECORDED') {
+          if (singleTransaction) {
+            this.pendingTransactionManager.resolvePendingTransaction(singleTicketId);
+            const activeEmailListener = this.emailListenerServiceGetter();
+            if (activeEmailListener) {
+              activeEmailListener.recordProcessedTransaction(undefined, singleTransaction.referenceNumber);
+            }
+          } else if (singleDraft) {
+            this.pendingTransactionManager.resolvePendingAccountSelectionDraft(singleTicketId);
+          }
+
+          const replyMessage = formatReconciliationRecordedResponse();
+          await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
+          const durationMs = Date.now() - processingStartTimestamp;
+          applicationLogger.success(
+            `[Ticket #${singleTicketId}] Reconciled as recorded via unnumbered reply (${durationMs}ms).`
+          );
+          return true;
+        }
+
+        if (intent.actionType === 'CONFIRM_ABSENT') {
+          this.pendingTransactionManager.reopenUnknownTransactionAsPending(singleTicketId);
+          const replyMessage = formatReconciliationAbsentResponse();
+          await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
+          const durationMs = Date.now() - processingStartTimestamp;
+          applicationLogger.info(
+            `[Ticket #${singleTicketId}] Reconciled as absent via unnumbered reply; reset to PENDING (${durationMs}ms).`
+          );
+          return true;
+        }
+      }
+
+      // Ambiguous: multiple uncertain items exist
+      const summary = buildTransactionAttentionSummary(this.pendingTransactionManager);
+      const ambiguousMessage = formatReconciliationAmbiguousResponse(summary.needsCheckItems);
+      await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, ambiguousMessage);
+      return true;
+    }
+
+    return false;
   }
 }

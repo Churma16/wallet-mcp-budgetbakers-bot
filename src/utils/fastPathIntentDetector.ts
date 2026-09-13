@@ -17,6 +17,7 @@ export type FastPathAction =
   | 'CHECK_BALANCE'
   | 'CHECK_BUDGET'
   | 'HELP_MENU'
+  | 'CHECK_QUEUE'
   | FastPathTransactionHistoryAction
   | FastPathTransactionSummaryAction
   | null;
@@ -644,6 +645,12 @@ export function detectFastPathAction(userMessageText: string): FastPathAction {
     return 'HELP_MENU';
   }
 
+  const queuePattern =
+    /^(?:cek|check|lihat|view|status)?\s*(?:antrean|antrian|queue|pending)(?:\s+transaksi)?$|^(?:cek|check|lihat|view)?\s*status(?:\s+(?:transaksi|antrean|antrian|queue))?$/i;
+  if (queuePattern.test(trimmedLowerText)) {
+    return 'CHECK_QUEUE';
+  }
+
   return null;
 }
 
@@ -689,6 +696,76 @@ export function detectPendingConfirmationAction(userMessageText: string): Pendin
 
   if (/^(?:batal|abaikan|gak|ga|gajadi|cancel|tolak|reject)$/i.test(trimmedText)) {
     return { actionType: 'REJECT', targetScope: 'LATEST' };
+  }
+
+  return null;
+}
+
+export interface ReconciliationIntent {
+  actionType: 'CONFIRM_RECORDED' | 'CONFIRM_ABSENT';
+  targetTicketId?: number;
+}
+
+export function detectReconciliationAction(userMessageText: string): ReconciliationIntent | null {
+  if (!userMessageText || typeof userMessageText !== 'string') {
+    return null;
+  }
+
+  const trimmedText = userMessageText.toLowerCase().trim();
+
+  // 1. Explicit ticket match: e.g. "sudah ada #3", "sudah ada 3", "already exists #3", "confirm recorded 3"
+  const recordedSpecificMatch = trimmedText.match(
+    /^(?:sudah\s+ada|sudah\s+masuk|already\s+exists?|already\s+recorded|already\s+there|already\s+in\s+wallet|confirm\s+recorded)\s+#?(\d+)$/i
+  );
+  if (recordedSpecificMatch && recordedSpecificMatch[1]) {
+    const ticketNumber = Number.parseInt(recordedSpecificMatch[1], 10);
+    if (!Number.isNaN(ticketNumber) && ticketNumber > 0) {
+      return { actionType: 'CONFIRM_RECORDED', targetTicketId: ticketNumber };
+    }
+  }
+
+  const absentSpecificMatch = trimmedText.match(
+    /^(?:belum\s+ada|belum\s+masuk|tidak\s+ada|ga\s+ada|gak\s+ada|not\s+there|not\s+yet|not\s+recorded|not\s+in\s+wallet|missing|not\s+found|confirm\s+absent)\s+#?(\d+)$/i
+  );
+  if (absentSpecificMatch && absentSpecificMatch[1]) {
+    const ticketNumber = Number.parseInt(absentSpecificMatch[1], 10);
+    if (!Number.isNaN(ticketNumber) && ticketNumber > 0) {
+      return { actionType: 'CONFIRM_ABSENT', targetTicketId: ticketNumber };
+    }
+  }
+
+  // 2. Shorter specific match: e.g. "sudah #3", "belum #3", "ada #3"
+  const shortRecordedMatch = trimmedText.match(/^(?:sudah|ada|exists?)\s+#?(\d+)$/i);
+  if (shortRecordedMatch && shortRecordedMatch[1]) {
+    const ticketNumber = Number.parseInt(shortRecordedMatch[1], 10);
+    if (!Number.isNaN(ticketNumber) && ticketNumber > 0) {
+      return { actionType: 'CONFIRM_RECORDED', targetTicketId: ticketNumber };
+    }
+  }
+
+  const shortAbsentMatch = trimmedText.match(/^(?:belum)\s+#?(\d+)$/i);
+  if (shortAbsentMatch && shortAbsentMatch[1]) {
+    const ticketNumber = Number.parseInt(shortAbsentMatch[1], 10);
+    if (!Number.isNaN(ticketNumber) && ticketNumber > 0) {
+      return { actionType: 'CONFIRM_ABSENT', targetTicketId: ticketNumber };
+    }
+  }
+
+  // 3. Bare unnumbered match: e.g. "sudah ada", "belum ada", "already exists", "not there"
+  if (
+    /^(?:sudah\s+ada|sudah\s+masuk|already\s+exists?|already\s+recorded|already\s+there|already\s+in\s+wallet|sudah|ada)$/i.test(
+      trimmedText
+    )
+  ) {
+    return { actionType: 'CONFIRM_RECORDED' };
+  }
+
+  if (
+    /^(?:belum\s+ada|belum\s+masuk|tidak\s+ada|ga\s+ada|gak\s+ada|not\s+there|not\s+yet|not\s+recorded|not\s+in\s+wallet|missing|not\s+found|belum)$/i.test(
+      trimmedText
+    )
+  ) {
+    return { actionType: 'CONFIRM_ABSENT' };
   }
 
   return null;

@@ -200,13 +200,15 @@ describe('response dictionaries and localized formatting', () => {
     };
 
     setActiveLanguage('id');
-    expect(formatPendingEmailTransactionNotification(pending, 1)).toContain('Transaksi Email Baru Terdeteksi (#101)');
+    expect(formatPendingEmailTransactionNotification(pending, 1)).toContain('Pembayaran Baru');
+    expect(formatPendingEmailTransactionNotification(pending, 2)).toContain('(#101)');
     expect(formatPendingEmailTransactionNotification(pending, 1)).toContain('Balas *Ya* atau *Catat*');
     expect(formatPendingConfirmationSuccess(pending)).toContain('Transaksi Dicatat ke Wallet!');
     expect(formatPendingCancellationMessage(pending)).toContain('Dibatalkan');
 
     setActiveLanguage('en');
-    expect(formatPendingEmailTransactionNotification(pending, 1)).toContain('New Email Transaction Detected (#101)');
+    expect(formatPendingEmailTransactionNotification(pending, 1)).toContain('New Payment');
+    expect(formatPendingEmailTransactionNotification(pending, 2)).toContain('(#101)');
     expect(formatPendingEmailTransactionNotification(pending, 1)).toContain('Reply *Yes* or *Record*');
     expect(formatPendingConfirmationSuccess(pending)).toContain('Transaction Recorded to Wallet!');
     expect(formatPendingCancellationMessage(pending)).toContain('Cancelled');

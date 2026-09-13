@@ -124,6 +124,7 @@ export class Application {
       messagingGateway: this.messagingGateway,
       recordPreparationService,
       accountClarificationHandler,
+      pendingTransactionService: this.pendingTransactionManager,
     });
 
     this.fastPathHandler = new FastPathHandler(

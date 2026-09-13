@@ -8,11 +8,13 @@ import { FinancialActionRegistry } from './financialActionRegistry.js';
 import {
   CheckBalanceActionHandler,
   CheckBudgetActionHandler,
+  CheckQueueActionHandler,
   HelpMenuActionHandler,
   TransactionHistoryActionHandler,
   TransactionSummaryActionHandler,
 } from './readActionHandlers.js';
 import { CreateRecordActionHandler } from './createRecordActionHandler.js';
+import { PendingTransactionService } from '../services/pendingTransactionService.js';
 
 export * from './types.js';
 export * from './financialActionRegistry.js';
@@ -26,6 +28,7 @@ export interface DefaultFinancialActionRegistryDependencies {
   readonly messagingGateway: MessagingGatewayService;
   readonly recordPreparationService: WalletRecordPreparationService;
   readonly accountClarificationHandler: AccountClarificationHandler;
+  readonly pendingTransactionService?: PendingTransactionService;
 }
 
 /**
@@ -42,6 +45,11 @@ export function createDefaultFinancialActionRegistry(
   registry.register(new HelpMenuActionHandler(dependencies.financialActionExecutor));
   registry.register(new TransactionHistoryActionHandler(dependencies.financialActionExecutor));
   registry.register(new TransactionSummaryActionHandler(dependencies.financialActionExecutor));
+  if (dependencies.pendingTransactionService) {
+    registry.register(
+      new CheckQueueActionHandler(dependencies.pendingTransactionService, dependencies.messagingGateway)
+    );
+  }
   registry.register(
     new CreateRecordActionHandler(
       dependencies.walletMcpClient,

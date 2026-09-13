@@ -200,44 +200,85 @@ export const englishDictionary: ResponseDictionary = {
 
   emailPending: {
     formatNotification(params: PendingEmailNotificationParams): string {
+      const isTransfer = params.typeLabel.includes('Transfer');
+      const headline = isTransfer ? '🔄 *New Transfer*' : '📩 *New Payment*';
+      const merchantOrTitle = isTransfer
+        ? `${params.accountNameHint || 'Account'} ➔ ${params.destinationAccountNameHint || 'Destination'}`
+        : (params.counterParty || params.matchedCategoryName || params.bankDisplayName);
+
+      const ticketSuffix = params.totalPendingCount > 1 ? ` (#${params.ticketId})` : '';
       const lines = [
-        `📩 *New Email Transaction Detected (#${params.ticketId})*`,
-        `🏦 *Source:* ${params.bankDisplayName}`,
-        `${params.typeIcon} *Amount:* ${params.formattedAmount} (${params.typeLabel})`,
+        headline,
+        `*${params.formattedAmount}* • ${merchantOrTitle}${ticketSuffix}`,
       ];
 
-      if (params.typeLabel.includes('Transfer') && params.destinationAccountNameHint) {
-        lines.push(`🎯 *Destination:* ${params.destinationAccountNameHint}`);
-      } else if (params.counterParty) {
-        lines.push(`🏪 *Merchant/Party:* ${params.counterParty}`);
+      if (params.accountNameHint && !isTransfer) {
+        lines.push(`Account: ${params.accountNameHint}`);
       }
-
-      if (params.matchedCategoryName) {
-        lines.push(`📂 *Category:* ${params.matchedCategoryName}`);
-      }
-
-      if (params.accountNameHint) {
-        lines.push(`💳 *Wallet Account:* ${params.accountNameHint}`);
-      }
-
-      lines.push(`🕒 *Time:* ${params.formattedTime}`);
-
-      if (params.referenceNumber) {
-        lines.push(`🔢 *Ref ID:* \`${params.referenceNumber}\``);
+      if (params.matchedCategoryName && !isTransfer) {
+        lines.push(`Category: ${params.matchedCategoryName}`);
       }
 
       lines.push('');
+      lines.push('Record this transaction?');
       if (params.totalPendingCount > 1) {
-        lines.push(`_There are ${params.totalPendingCount} transactions waiting for confirmation._`);
-        lines.push(`• Reply *Yes ${params.ticketId}* to record this ticket`);
-        lines.push(`• Reply *Yes all* to record all tickets`);
-        lines.push(`• Reply *Cancel ${params.ticketId}* to cancel`);
+        lines.push(`• Reply *Yes ${params.ticketId}* (or *Yes all*)`);
+        lines.push(`• Reply *Cancel ${params.ticketId}*`);
+        const otherCount = params.totalPendingCount - 1;
+        lines.push('');
+        lines.push(`_There is ${otherCount} other transaction waiting for confirmation._`);
       } else {
-        lines.push('• Reply *Yes* or *Record* to save to Wallet');
-        lines.push('• Reply *Cancel* to ignore');
+        lines.push('• Reply *Yes* or *Record*');
+        lines.push('• Reply *Cancel* or *Ignore*');
       }
 
       return lines.join('\n');
+    },
+  },
+
+  status: {
+    header: '📋 *Transaction Status*',
+    emptyAttention: 'There are no transactions requiring attention at this time.',
+    needsCheckHeader(count: number): string {
+      return `⚠️ *${count} transaction(s) need check:*`;
+    },
+    waitingConfirmationHeader(count: number): string {
+      return `⏳ *${count} transaction(s) waiting for confirmation:*`;
+    },
+    waitingAccountHeader(count: number): string {
+      return `⏳ *${count} transaction(s) waiting for account selection:*`;
+    },
+    noOtherTransactionsWaiting: 'No other transactions waiting for confirmation.',
+  },
+
+  uncertain: {
+    title: '⚠️ *Cannot confirm whether transaction was recorded*',
+    riskWarning: 'Do not retry this transaction yet to avoid duplicate records. This transaction will not be retried automatically.',
+    actionPromptSingle: 'Check Wallet, then reply:\n• *Already exists*\n• *Not there*',
+    actionPromptMultiple(tickets: number[]): string {
+      const commandLines = tickets.map(
+        ticketId => `• *Already exists #${ticketId}* or *Not there #${ticketId}*`
+      );
+      return `Check Wallet, then reply:\n${commandLines.join('\n')}`;
+    },
+  },
+
+  reconciliation: {
+    recordedWithTicket(ticketId: number): string {
+      return `✅ Transaction #${ticketId} is confirmed as already recorded in Wallet.\nNo retry will be sent.`;
+    },
+    recordedSingle: '✅ The transaction is confirmed as already recorded in Wallet.\nNo retry will be sent.',
+    absentWithTicket(ticketId: number): string {
+      return `⚠️ Transaction #${ticketId} is not recorded in Wallet.\nThe item is moved back to waiting for confirmation.\nReply *Yes #${ticketId}* to retry recording, or *Cancel #${ticketId}* to cancel.`;
+    },
+    absentSingle: '⚠️ The transaction is not recorded in Wallet.\nThe item is moved back to waiting for confirmation.\nReply *Yes* to retry recording, or *Cancel* to cancel.',
+    notFoundWithTicket(ticketId: number): string {
+      return `⚠️ Transaction #${ticketId} was not found or has already been resolved.`;
+    },
+    notFoundNone: 'There are no transactions requiring verification at this time.',
+    ambiguous(ticketIds: number[]): string {
+      const ticketList = ticketIds.map(ticketId => `#${ticketId}`).join(', ');
+      return `⚠️ Multiple transactions require checking (${ticketList}). Reply with the ticket number, e.g. *Already exists #${ticketIds[0]}* or *Not there #${ticketIds[0]}*.`;
     },
   },
 

@@ -5,10 +5,12 @@ import { TransactionHistoryService } from '../services/transactionHistoryService
 import { TransactionSummaryService } from '../services/transactionSummaryService.js';
 import { MessagingGatewayService, IncomingUserMessageEvent } from '../services/messaging/index.js';
 import { FinancialActionExecutor } from '../services/financialActionExecutor.js';
+import { PendingTransactionService } from '../services/pendingTransactionService.js';
 import {
   FinancialActionRegistry,
   CheckBalanceActionHandler,
   CheckBudgetActionHandler,
+  CheckQueueActionHandler,
   HelpMenuActionHandler,
   TransactionHistoryActionHandler,
   TransactionSummaryActionHandler,
@@ -32,7 +34,8 @@ export class FastPathHandler {
     transactionHistoryService?: TransactionHistoryService,
     transactionSummaryService?: TransactionSummaryService,
     financialActionExecutor?: FinancialActionExecutor,
-    financialActionRegistry?: FinancialActionRegistry
+    financialActionRegistry?: FinancialActionRegistry,
+    pendingTransactionService?: PendingTransactionService
   ) {
     this.transactionHistoryService =
       transactionHistoryService ||
@@ -59,6 +62,11 @@ export class FastPathHandler {
       this.financialActionRegistry.register(new HelpMenuActionHandler(this.financialActionExecutor));
       this.financialActionRegistry.register(new TransactionHistoryActionHandler(this.financialActionExecutor));
       this.financialActionRegistry.register(new TransactionSummaryActionHandler(this.financialActionExecutor));
+      if (pendingTransactionService) {
+        this.financialActionRegistry.register(
+          new CheckQueueActionHandler(pendingTransactionService, messagingGateway)
+        );
+      }
     }
   }
 
@@ -136,6 +144,17 @@ export class FastPathHandler {
       applicationLogger.info('Fast-path matched: HELP_MENU (0 AI tokens consumed)');
       await this.financialActionRegistry.execute({
         action: 'HELP_MENU',
+        event,
+        processingStartTimestamp,
+        routingSource: 'fast-path',
+      });
+      return true;
+    }
+
+    if (fastPathAction === 'CHECK_QUEUE') {
+      applicationLogger.info('Fast-path matched: CHECK_QUEUE (0 AI tokens consumed)');
+      await this.financialActionRegistry.execute({
+        action: 'CHECK_QUEUE',
         event,
         processingStartTimestamp,
         routingSource: 'fast-path',

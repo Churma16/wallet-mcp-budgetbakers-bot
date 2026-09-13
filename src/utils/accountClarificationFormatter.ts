@@ -95,7 +95,8 @@ export function formatAccountSelectionPrompt(
   if (dictionary.languageCode === 'id') {
     return [
       invalidSelection ? `⚠️ Pilihan akun "${invalidSelection.slice(0, 80)}" belum valid atau masih ambigu.` : undefined,
-      `📝 *Transaksi disiapkan sebagai draft (#${draft.ticketId})*`,
+      `📝 *Pilih Akun Transaksi (#${draft.ticketId})*`,
+      `_(Transaksi disiapkan sebagai draft)_`,
       batchLine,
       `💰 *Nominal:* ${formattedAmount}`,
       `🗒️ *Catatan:* ${description}`,
@@ -104,13 +105,14 @@ export function formatAccountSelectionPrompt(
       '*Pilih akun yang digunakan:*',
       ...candidateLines,
       '',
-      'Balas dengan nomor atau nama akun, atau ketik *batal*.',
+      `Balas dengan nomor atau nama akun, atau ketik *batal #${draft.ticketId}* untuk membatalkan.`,
     ].filter(line => line !== undefined).join('\n');
   }
 
   return [
     invalidSelection ? `⚠️ Account choice "${invalidSelection.slice(0, 80)}" is invalid or still ambiguous.` : undefined,
-    `📝 *Transaction prepared as draft (#${draft.ticketId})*`,
+    `📝 *Choose Transaction Account (#${draft.ticketId})*`,
+    `_(Transaction prepared as draft)_`,
     batchLine,
     `💰 *Amount:* ${formattedAmount}`,
     `🗒️ *Note:* ${description}`,
@@ -119,41 +121,74 @@ export function formatAccountSelectionPrompt(
     '*Choose the account to use:*',
     ...candidateLines,
     '',
-    'Reply with the account number or name, or type *cancel*.',
+    `Reply with the account number or name, or type *cancel #${draft.ticketId}* to cancel.`,
   ].filter(line => line !== undefined).join('\n');
 }
 
 export function formatAccountSelectionCancellation(draft: PendingAccountSelectionDraft): string {
   const dictionary = getDictionary();
   return dictionary.languageCode === 'id'
-    ? `❌ *Draft #${draft.ticketId} dibatalkan.*\nTransaksi tidak dicatat ke Wallet.`
-    : `❌ *Draft #${draft.ticketId} cancelled.*\nThe transaction was not recorded to Wallet.`;
+    ? `❌ *Transaksi #${draft.ticketId} dibatalkan.*\nTransaksi tidak dicatat ke Wallet.`
+    : `❌ *Transaction #${draft.ticketId} cancelled.*\nThe transaction was not recorded to Wallet.`;
 }
 
 export function formatAccountSelectionProcessing(draft: PendingAccountSelectionDraft): string {
   const dictionary = getDictionary();
   return dictionary.languageCode === 'id'
-    ? `⏳ Draft #${draft.ticketId} sedang diproses. Tunggu hasil transaksi ini sebelum memilih akun lagi.`
-    : `⏳ Draft #${draft.ticketId} is being processed. Wait for this transaction result before choosing an account again.`;
+    ? `⏳ Transaksi #${draft.ticketId} sedang diproses. Tunggu hasil transaksi ini sebelum memilih akun lagi.`
+    : `⏳ Transaction #${draft.ticketId} is being processed. Wait for this transaction result before choosing an account again.`;
 }
 
 export function formatAccountSelectionRetry(draft: PendingAccountSelectionDraft): string {
   const dictionary = getDictionary();
   return dictionary.languageCode === 'id'
-    ? `⚠️ Draft #${draft.ticketId} belum berhasil dicatat. Draft tetap tersimpan dan aman untuk dicoba lagi dengan membalas pilihan akun yang sama.`
-    : `⚠️ Draft #${draft.ticketId} was not recorded. The draft is still saved and can be retried safely by replying with the same account choice.`;
+    ? `⚠️ Transaksi #${draft.ticketId} belum berhasil dicatat. Transaksi tetap tersimpan dan aman untuk dicoba lagi dengan membalas pilihan akun yang sama.`
+    : `⚠️ Transaction #${draft.ticketId} was not recorded. The transaction is still saved and can be retried safely by replying with the same account choice.`;
 }
 
 export function formatAccountSelectionUnknownOutcome(draft: PendingAccountSelectionDraft): string {
   const dictionary = getDictionary();
-  return dictionary.languageCode === 'id'
-    ? `⚠️ Status pencatatan draft #${draft.ticketId} belum dapat dipastikan. Demi mencegah duplikasi, draft tidak akan dikirim ulang otomatis. Periksa Wallet terlebih dahulu. Setelah rekonsiliasi, tutup status lokal dengan *batal #${draft.ticketId}*.`
-    : `⚠️ The recording status of draft #${draft.ticketId} is uncertain. To prevent duplicates, the draft will not be sent again automatically. Check Wallet first. After reconciliation, dismiss the local status with *cancel #${draft.ticketId}*.`;
+  const formattedAmount = formatDraftAmount(draft);
+  const record = draft.records[draft.pendingRecordIndex] || draft.records[0];
+  const description =
+    record?.note || record?.counterParty || (dictionary.languageCode === 'id' ? 'Transaksi' : 'Transaction');
+  const accountName =
+    draft.accountHint || draft.candidateAccounts[0]?.name || (dictionary.languageCode === 'id' ? 'Akun' : 'Account');
+
+  if (dictionary.languageCode === 'id') {
+    return [
+      '⚠️ *Belum bisa memastikan transaksi sudah tercatat*',
+      '',
+      `*${formattedAmount}* • ${description} (#${draft.ticketId})`,
+      `Akun: ${accountName}`,
+      '',
+      'Jangan kirim ulang transaksi ini dulu agar tidak tercatat dua kali. Transaksi ini tidak akan dikirim ulang otomatis.',
+      '',
+      'Cek Wallet, lalu balas:',
+      '• *Sudah ada*',
+      '• *Belum ada*',
+      `_(atau ketik *batal #${draft.ticketId}* untuk membatalkan)_`,
+    ].join('\n');
+  }
+
+  return [
+    '⚠️ *Cannot confirm whether transaction was recorded*',
+    '',
+    `*${formattedAmount}* • ${description} (#${draft.ticketId})`,
+    `Account: ${accountName}`,
+    '',
+    'Do not retry this transaction yet to avoid duplicate records. This transaction will not be retried automatically.',
+    '',
+    'Check Wallet, then reply:',
+    '• *Already exists*',
+    '• *Not there*',
+    `_(or type *cancel #${draft.ticketId}* to cancel)_`,
+  ].join('\n');
 }
 
 export function formatAccountSelectionUnknownDismissal(draft: PendingAccountSelectionDraft): string {
   const dictionary = getDictionary();
   return dictionary.languageCode === 'id'
-    ? `🧾 *Rekonsiliasi draft #${draft.ticketId} ditutup.*\nTidak ada pengiriman ulang ke Wallet. Status pengiriman sebelumnya tetap belum dapat dipastikan. Periksa Wallet sebelum memasukkan transaksi ini lagi.`
-    : `🧾 *Reconciliation for draft #${draft.ticketId} dismissed.*\nNo retry was sent to Wallet. The previous write outcome is still uncertain. Check Wallet before entering this transaction again.`;
+    ? `🧾 *Status transaksi #${draft.ticketId} ditutup.*\nTidak ada pengiriman ulang ke Wallet. Status pengiriman sebelumnya tetap belum dapat dipastikan. Periksa Wallet sebelum memasukkan transaksi ini lagi.`
+    : `🧾 *Transaction #${draft.ticketId} status closed.*\nNo retry was sent to Wallet. The previous write outcome is still uncertain. Check Wallet before entering this transaction again.`;
 }
