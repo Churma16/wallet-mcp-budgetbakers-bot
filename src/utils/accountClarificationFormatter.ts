@@ -190,3 +190,16 @@ export function formatAccountSelectionUnknownOutcome(
     mustQualifyTicket ? `• *Not there #${draft.ticketId}*` : '• *Not there*',
   ].join('\n');
 }
+
+/**
+ * Compatibility formatter for callers that still reference the removed UNKNOWN dismissal action.
+ * UNKNOWN drafts remain open for reconciliation because the Wallet write may already have committed.
+ */
+export function formatAccountSelectionUnknownDismissal(
+  draft: PendingAccountSelectionDraft
+): string {
+  const dictionary = getDictionary();
+  return dictionary.languageCode === 'id'
+    ? `⚠️ Status transaksi #${draft.ticketId} tidak ditutup karena hasil Wallet belum pasti. Cek Wallet lalu balas *Sudah ada #${draft.ticketId}* atau *Belum ada #${draft.ticketId}*.`
+    : `⚠️ Transaction #${draft.ticketId} cannot have its status closed while the Wallet outcome is uncertain. Check Wallet, then reply *Already exists #${draft.ticketId}* or *Not there #${draft.ticketId}*.`;
+}
