@@ -196,12 +196,11 @@ CRITICAL RULES FOR RECEIPTS & QRIS:
 3. RECEIPT DATE, TIME & TIMEZONE RESOLUTION:
    - Receipts print local transaction timestamps (e.g. "8 September 2026, 11.54" or "15 July 2026, 11:54").
    - If the receipt explicitly specifies an external timezone indicator (e.g. "WITA" for UTC+8, "WIT" for UTC+9, "WIB" for UTC+7, "SGT" for UTC+8, "EDT" for UTC-4, "EST" for UTC-5), convert using that explicit indicator.
-   - If no timezone is specified on the receipt, assume the user's local timezone: ${applicationTimezoneIdentifier} (current offset: UTC${timezoneOffsetDetails.formattedOffset}).
-   - Output recordDate: MUST be an explicit ISO 8601 string with timezone offset or "Z", or date-only "YYYY-MM-DD":
-     * For transactions with printed local time, output with explicit offset (e.g. "YYYY-MM-DDTHH:mm:ss${timezoneOffsetDetails.formattedOffset}") or convert to the exact equivalent UTC instant with "Z" (e.g. "YYYY-MM-DDTHH:mm:ssZ").
+   - If no timezone is specified on the receipt, assume the user's local timezone: ${applicationTimezoneIdentifier} (current request reference offset: UTC${timezoneOffsetDetails.formattedOffset}).
+   - Output recordDate:
+     * For transactions with printed local time, output as a local ISO timestamp without timezone offset (e.g. "YYYY-MM-DDTHH:mm:ss") so the system deterministically resolves UTC at the transaction date, or convert to UTC using the specific offset on that transaction date. Never apply the request-time offset across DST date boundaries.
      * For receipts with only a printed date and no clock time, output date-only format "YYYY-MM-DD".
      * If NO date or time is printed on the receipt, use the current transaction timestamp: ${referenceInstant.toISOString()}.
-   - NEVER output a timezone-less datetime string (do NOT output "YYYY-MM-DDTHH:mm:ss" without "+HH:MM" or "Z").
    - NEVER simply append "Z" to the local receipt time without offset conversion.
 
 4. MERCHANT & NOTE:
@@ -220,7 +219,7 @@ CRITICAL RULES FOR RECEIPTS & QRIS:
 
 7. JSON OUTPUT SCHEMA:
 Respond with valid JSON ONLY matching schema:
-{"action":"CREATE_RECORD"|"GENERAL_REPLY","records":[{"accountId":"ID or Name","categoryId":"ID or Name (optional)","amount":number,"currency":"string (ISO 4217 code e.g. IDR, USD)","recordDate":"ISO 8601 with offset/Z or YYYY-MM-DD","note":"string","counterParty":"string (optional)","labels":["string (optional)"]}],"explanation":"human friendly summary in ${summaryLanguageName}"}`;
+{"action":"CREATE_RECORD"|"GENERAL_REPLY","records":[{"accountId":"ID or Name","categoryId":"ID or Name (optional)","amount":number,"currency":"string (ISO 4217 code e.g. IDR, USD)","recordDate":"ISO 8601 string (e.g. YYYY-MM-DDTHH:mm:ss, ISO with offset/Z, or YYYY-MM-DD)","note":"string","counterParty":"string (optional)","labels":["string (optional)"]}],"explanation":"human friendly summary in ${summaryLanguageName}"}`;
 }
 
 /**

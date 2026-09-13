@@ -1,8 +1,12 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { normalizeTransactionRecordDate } from '../src/utils/recordDateNormalizer.js';
 import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
 import {
-  buildReceiptExtractionPrompt,
+  setRuntimeApplicationConfig,
+  resetRuntimeApplicationConfig,
+  getRuntimeApplicationConfig,
+} from '../src/config/applicationConfig.js';
+import {
   buildReceiptSystemInstruction,
 } from '../src/services/ai/aiPromptBuilder.js';
 import { prepareReceiptPrompt } from '../src/services/ai/aiProviderWorkflow.js';
@@ -83,19 +87,25 @@ describe('Receipt Timestamp Normalization & Timezone Preservation (Issue #147)',
       expect(normalizedReceiptLocal).toBe('2026-09-13T08:26:18.000Z');
     });
 
-    it('prevents 7-hour backward shift when vision returns timezone-less output matching UTC reference instant (production reproduction)', () => {
-      // In production, referenceInstant was 2026-09-13T08:26:18.209Z (15:26 WIB).
-      // Gemini Vision echoed the UTC prompt timestamp without 'Z': "2026-09-13T08:26:18".
-      // Previous buggy behavior subtracted 7 hours: 08:26 - 7h = 01:26:00Z (storing 08:26 WIB instead of 15:26 WIB).
-      // Fixed behavior must recognize the UTC prompt echo and preserve the 08:26:18 UTC instant.
-      const normalizedAiEcho = normalizeTransactionRecordDate(
+    it('normalizes timezone-less morning receipt 2026-09-13T08:26:18 in Asia/Jakarta to 2026-09-13T01:26:18.000Z without false prompt-echo rewriting', () => {
+      const normalizedMorningReceipt = normalizeTransactionRecordDate(
         '2026-09-13T08:26:18',
         referenceInstantUtc,
         applicationTimezoneJakarta
       );
-      expect(normalizedAiEcho).not.toBe('2026-09-13T01:26:00.000Z');
-      expect(normalizedAiEcho).not.toBe('2026-09-13T01:26:18.000Z');
-      expect(normalizedAiEcho).toBe('2026-09-13T08:26:18.209Z');
+      // Legitimate morning receipt at 08:26:18 WIB must resolve to 01:26:18.000Z
+      // and NOT be falsely rewritten to the 15:26:18 WIB (08:26:18.209Z) reference instant
+      expect(normalizedMorningReceipt).toBe('2026-09-13T01:26:18.000Z');
+      expect(normalizedMorningReceipt).not.toBe('2026-09-13T08:26:18.209Z');
+    });
+
+    it('preserves reference instant when receipt has no printed time and model outputs referenceInstant.toISOString()', () => {
+      const normalizedNoTime = normalizeTransactionRecordDate(
+        referenceInstantUtc.toISOString(),
+        referenceInstantUtc,
+        applicationTimezoneJakarta
+      );
+      expect(normalizedNoTime).toBe('2026-09-13T08:26:18.209Z');
     });
 
     it('handles date-only receipt for today without gaining an unintended 7-hour shift', () => {
@@ -137,6 +147,24 @@ describe('Receipt Timestamp Normalization & Timezone Preservation (Issue #147)',
       expect(nonColonOffset).toBe('2026-09-13T08:26:18.000Z');
     });
 
+    it('safely parses formats with explicit timezone indicators (GMT, UTC)', () => {
+      const normalizedRfc = normalizeTransactionRecordDate(
+        'Sun, 13 Sep 2026 15:26:18 GMT',
+        referenceInstantUtc,
+        applicationTimezoneJakarta
+      );
+      expect(normalizedRfc).toBe('2026-09-13T15:26:18.000Z');
+    });
+
+    it('deterministically falls back to referenceInstant for non-canonical timezone-less formats without host-TZ leakage', () => {
+      const normalizedNonCanonical = normalizeTransactionRecordDate(
+        '09/13/2026 15:26:18',
+        referenceInstantUtc,
+        applicationTimezoneJakarta
+      );
+      expect(normalizedNonCanonical).toBe('2026-09-13T08:26:18.209Z');
+    });
+
     it('falls back safely to referenceInstant when given completely unparseable string', () => {
       const normalizedGarbage = normalizeTransactionRecordDate(
         'not-a-valid-date',
@@ -144,6 +172,34 @@ describe('Receipt Timestamp Normalization & Timezone Preservation (Issue #147)',
         applicationTimezoneJakarta
       );
       expect(normalizedGarbage).toBe('2026-09-13T08:26:18.209Z');
+    });
+  });
+
+  describe('Cross-DST Transition Safety (America/New_York)', () => {
+    // Reference instant in July (EDT, UTC-04:00)
+    const referenceInstantJulyEdt = new Date('2026-07-15T16:00:00.000Z'); // 12:00 EDT
+    const timezoneNewYork = 'America/New_York';
+
+    it('resolves winter receipt timestamp using winter standard time offset (EST, UTC-05:00)', () => {
+      // Receipt from January (EST, UTC-05:00) printed as 14:30:00 local
+      const resolvedWinterUtc = normalizeTransactionRecordDate(
+        '2026-01-15T14:30:00',
+        referenceInstantJulyEdt,
+        timezoneNewYork
+      );
+      // 14:30 EST + 5h = 19:30:00.000Z
+      expect(resolvedWinterUtc).toBe('2026-01-15T19:30:00.000Z');
+    });
+
+    it('resolves summer receipt timestamp using daylight saving time offset (EDT, UTC-04:00)', () => {
+      // Receipt from July (EDT, UTC-04:00) printed as 14:30:00 local
+      const resolvedSummerUtc = normalizeTransactionRecordDate(
+        '2026-07-10T14:30:00',
+        referenceInstantJulyEdt,
+        timezoneNewYork
+      );
+      // 14:30 EDT + 4h = 18:30:00.000Z
+      expect(resolvedSummerUtc).toBe('2026-07-10T18:30:00.000Z');
     });
   });
 
@@ -180,13 +236,13 @@ describe('Receipt Timestamp Normalization & Timezone Preservation (Issue #147)',
         );
         expect(localResult).toBe('2026-09-13T08:26:18.000Z');
 
-        // 3. Prompt UTC echo (production bug case)
-        const echoResult = normalizeTransactionRecordDate(
+        // 3. Morning receipt local wall-clock (not rewritten by echo heuristic)
+        const morningResult = normalizeTransactionRecordDate(
           '2026-09-13T08:26:18',
           referenceInstantUtc,
           applicationTimezoneJakarta
         );
-        expect(echoResult).toBe('2026-09-13T08:26:18.209Z');
+        expect(morningResult).toBe('2026-09-13T01:26:18.000Z');
 
         // 4. Missing timestamp
         const missingResult = normalizeTransactionRecordDate(
@@ -195,19 +251,35 @@ describe('Receipt Timestamp Normalization & Timezone Preservation (Issue #147)',
           applicationTimezoneJakarta
         );
         expect(missingResult).toBe('2026-09-13T08:26:18.209Z');
+
+        // 5. Non-canonical timezone-less format (must not leak host TZ)
+        const nonCanonicalResult = normalizeTransactionRecordDate(
+          '09/13/2026 15:26:18',
+          referenceInstantUtc,
+          applicationTimezoneJakarta
+        );
+        expect(nonCanonicalResult).toBe('2026-09-13T08:26:18.209Z');
+
+        // 6. Explicit timezone indicator format
+        const explicitTzResult = normalizeTransactionRecordDate(
+          'Sun, 13 Sep 2026 15:26:18 GMT',
+          referenceInstantUtc,
+          applicationTimezoneJakarta
+        );
+        expect(explicitTzResult).toBe('2026-09-13T15:26:18.000Z');
       });
     }
   });
 
   describe('Integration with validateAndSanitizeFinancialRecords', () => {
-    it('sanitizes production reproduction record without 7-hour backward shift', () => {
+    it('sanitizes receipt record when model returns referenceInstant without 7-hour backward shift', () => {
       const recordsToValidate: CreateRecordInputPayload[] = [
         {
           accountId: 'Gopay',
           categoryId: 'cat-groceries',
           amount: -54200,
           currency: 'IDR',
-          recordDate: '2026-09-13T08:26:18', // Ambiguous timezone-less echo from vision
+          recordDate: referenceInstantUtc.toISOString(),
           note: 'Belanja Xpress Klik Indomaret',
           counterParty: 'Indomaret',
         },
@@ -226,11 +298,34 @@ describe('Receipt Timestamp Normalization & Timezone Preservation (Issue #147)',
       expect(validationResult.sanitizedRecords).toHaveLength(1);
 
       const sanitizedRecord = validationResult.sanitizedRecords[0];
-      // Must NOT be shifted backward to 01:26:00.000Z
-      expect(sanitizedRecord.recordDate).not.toBe('2026-09-13T01:26:00.000Z');
       expect(sanitizedRecord.recordDate).toBe('2026-09-13T08:26:18.209Z');
       expect(sanitizedRecord.amount).toBe(-54200);
       expect(sanitizedRecord.accountId).toBe('acc-gopay');
+    });
+
+    it('sanitizes morning receipt 08:26:18 local to 01:26:18.000Z without rewriting to reference instant', () => {
+      const recordsToValidate: CreateRecordInputPayload[] = [
+        {
+          accountId: 'Gopay',
+          categoryId: 'cat-groceries',
+          amount: -25000,
+          currency: 'IDR',
+          recordDate: '2026-09-13T08:26:18', // Morning printed receipt time
+          note: 'Sarapan pagi',
+        },
+      ];
+
+      const validationResult = validateAndSanitizeFinancialRecords(
+        recordsToValidate,
+        mockAccounts,
+        mockCategories,
+        undefined,
+        referenceInstantUtc
+      );
+
+      expect(validationResult.isValid).toBe(true);
+      const sanitizedRecord = validationResult.sanitizedRecords[0];
+      expect(sanitizedRecord.recordDate).toBe('2026-09-13T01:26:18.000Z');
     });
 
     it('sanitizes receipt-local wall-clock 15:26:18 to 08:26:18.000Z preserving seconds', () => {
@@ -281,10 +376,82 @@ describe('Receipt Timestamp Normalization & Timezone Preservation (Issue #147)',
       // 13:00 on 2026-09-12 in Asia/Jakarta (UTC+7) is 06:00:00.000Z UTC
       expect(sanitizedRecord.recordDate).toBe('2026-09-12T06:00:00.000Z');
     });
+
+    it('handles nonexistent DST wall-clock times in recordDate by flagging validation error via RangeError catch', () => {
+      setRuntimeApplicationConfig({
+        ...getRuntimeApplicationConfig(),
+        appTimezone: 'America/New_York',
+      });
+      try {
+        // In America/New_York on 2026-03-08, 02:00 jumps to 03:00.
+        // 02:30:00 does not exist.
+        const recordsToValidate: CreateRecordInputPayload[] = [
+          {
+            accountId: 'Gopay',
+            categoryId: 'cat-groceries',
+            amount: -50000,
+            currency: 'IDR',
+            recordDate: '2026-03-08T02:30:00',
+            note: 'DST gap transaction',
+          },
+        ];
+
+        const validationResult = validateAndSanitizeFinancialRecords(
+          recordsToValidate,
+          mockAccounts,
+          mockCategories,
+          undefined,
+          referenceInstantUtc
+        );
+
+        expect(validationResult.isValid).toBe(false);
+        expect(validationResult.validationErrors).toHaveLength(1);
+        expect(validationResult.validationErrors[0]).toContain(
+          'Waktu transaksi tidak valid pada timezone America/New_York'
+        );
+      } finally {
+        resetRuntimeApplicationConfig();
+      }
+    });
+
+    it('handles nonexistent DST wall-clock times in contextual user message by flagging validation error', () => {
+      setRuntimeApplicationConfig({
+        ...getRuntimeApplicationConfig(),
+        appTimezone: 'America/New_York',
+      });
+      try {
+        // Nonexistent time in America/New_York on 2026-03-08: 02:30:00
+        const recordsToValidate: CreateRecordInputPayload[] = [
+          {
+            accountId: 'Gopay',
+            categoryId: 'cat-groceries',
+            amount: -50000,
+            currency: 'IDR',
+            note: 'Transaksi gap',
+          },
+        ];
+
+        const validationResult = validateAndSanitizeFinancialRecords(
+          recordsToValidate,
+          mockAccounts,
+          mockCategories,
+          'tadi subuh jam 2.30',
+          new Date('2026-03-08T15:00:00.000Z')
+        );
+
+        expect(validationResult.isValid).toBe(false);
+        expect(validationResult.validationErrors).toHaveLength(1);
+        expect(validationResult.validationErrors[0]).toContain(
+          'Waktu transaksi tidak valid pada timezone America/New_York'
+        );
+      } finally {
+        resetRuntimeApplicationConfig();
+      }
+    });
   });
 
   describe('Prompt Builder Directives for Vision Models', () => {
-    it('buildReceiptSystemInstruction instructs explicit offset or Z and forbids timezone-less output', () => {
+    it('buildReceiptSystemInstruction instructs local ISO output without offset and DST-safe resolution', () => {
       const instruction = buildReceiptSystemInstruction(
         mockAccounts,
         mockCategories,
@@ -294,9 +461,10 @@ describe('Receipt Timestamp Normalization & Timezone Preservation (Issue #147)',
       );
 
       expect(instruction).toContain('RECEIPT DATE, TIME & TIMEZONE RESOLUTION:');
-      expect(instruction).toContain('MUST be an explicit ISO 8601 string with timezone offset or "Z"');
-      expect(instruction).toContain('NEVER output a timezone-less datetime string');
+      expect(instruction).toContain('output as a local ISO timestamp without timezone offset');
+      expect(instruction).toContain('Never apply the request-time offset across DST date boundaries');
       expect(instruction).toContain('use the current transaction timestamp: 2026-09-13T08:26:18.209Z');
+      expect(instruction).not.toContain('YYYY-MM-DDTHH:mm:ss+07:00');
     });
 
     it('prepareReceiptPrompt injects local time anchor and current transaction timestamp into promptText', () => {

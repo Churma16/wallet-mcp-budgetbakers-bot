@@ -17,12 +17,11 @@ const TIMEZONE_LESS_DATETIME_REGEX =
  * Guarantees:
  * 1. Missing or empty timestamps fall back deterministically to referenceInstant.toISOString().
  * 2. Full timestamps with an explicit offset (+HH:MM, -HH:MM) or 'Z' are parsed to UTC without host TZ dependency.
- * 3. Timezone-less AI outputs matching the UTC reference instant provided in the prompt are detected as echoes
- *    and preserve the reference instant rather than suffering an unintended backward timezone offset shift.
- * 4. Timezone-less local datetimes (printed on receipts) are interpreted in applicationTimezone exactly once,
+ * 3. Timezone-less local datetimes (printed on receipts) are interpreted in applicationTimezone exactly once,
  *    preserving explicit seconds and milliseconds.
- * 5. Date-only values (YYYY-MM-DD) preserve today's reference instant or resolve to midday in applicationTimezone,
+ * 4. Date-only values (YYYY-MM-DD) preserve today's reference instant or resolve to midday in applicationTimezone,
  *    preventing accidental midnight shifts and date rollovers across container environments.
+ * 5. Timezone-less non-canonical formats avoid Date.parse() host-TZ leakage and fall back deterministically to referenceInstant.
  */
 export function normalizeTransactionRecordDate(
   rawRecordDate: string | undefined | null,
@@ -96,32 +95,7 @@ export function normalizeTransactionRecordDate(
       ? Number.parseInt(millisecondPart.padEnd(3, '0').slice(0, 3), 10)
       : 0;
 
-    const referenceUtcDateString = referenceInstant.toISOString().slice(0, 10);
-    const referenceUtcHour = referenceInstant.getUTCHours();
-    const referenceUtcMinute = referenceInstant.getUTCMinutes();
-    const referenceUtcSecond = referenceInstant.getUTCSeconds();
-
-    const referenceLocalParts = getLocalTimeParts(referenceInstant, applicationTimezoneIdentifier);
-
-    // Prompt Echo Detection:
-    // If the vision provider returned numeric clock components that match the UTC reference instant provided
-    // in the prompt (and differ from the local application wall-clock time), the AI echoed the UTC prompt timestamp
-    // without the trailing 'Z'. Treating this as local wall-clock time would subtract the timezone offset a second time.
-    const matchesUtcReferenceInstant =
-      datePart === referenceUtcDateString &&
-      parsedHour === referenceUtcHour &&
-      parsedMinute === referenceUtcMinute &&
-      (secondPart === undefined || Math.abs(parsedSecond - referenceUtcSecond) <= 5);
-
-    const differsFromLocalWallClock =
-      referenceUtcHour !== referenceLocalParts.hour ||
-      referenceUtcDateString !== referenceLocalParts.dateString;
-
-    if (matchesUtcReferenceInstant && differsFromLocalWallClock) {
-      return referenceInstant.toISOString();
-    }
-
-    // Otherwise, treat as receipt-local wall-clock time in applicationTimezoneIdentifier
+    // Timezone-less datetime is always interpreted as receipt-local wall-clock time in applicationTimezoneIdentifier
     return resolveTargetLocalToUtcIso(
       datePart,
       parsedHour,
@@ -132,10 +106,14 @@ export function normalizeTransactionRecordDate(
     );
   }
 
-  // Case 4: General fallback for any remaining parseable format
-  const fallbackParsedTimestamp = Date.parse(trimmedRecordDate);
-  if (!Number.isNaN(fallbackParsedTimestamp)) {
-    return new Date(fallbackParsedTimestamp).toISOString();
+  // Case 4: Fallback only for formats with explicit timezone indicators (Z, [+-]HH:mm, UTC, GMT).
+  // Timezone-less non-canonical formats must NEVER touch Date.parse() to guarantee host-timezone independence.
+  const EXPLICIT_TIMEZONE_INDICATOR_REGEX = /(?:Z|[+-]\d{2}:?\d{2}|\b(?:UTC|GMT)\b)/i;
+  if (EXPLICIT_TIMEZONE_INDICATOR_REGEX.test(trimmedRecordDate)) {
+    const fallbackParsedTimestamp = Date.parse(trimmedRecordDate);
+    if (!Number.isNaN(fallbackParsedTimestamp)) {
+      return new Date(fallbackParsedTimestamp).toISOString();
+    }
   }
 
   return referenceInstant.toISOString();

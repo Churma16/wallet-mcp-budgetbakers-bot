@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 function getWorkflowContent(): string {
   const workflowPath = path.resolve(process.cwd(), '.github/workflows/container.yml');
-  return readFileSync(workflowPath, 'utf8');
+  return readFileSync(workflowPath, 'utf8').replace(/\r\n/g, '\n');
 }
 
 function getPullRequestTriggerLines(): string[] {
