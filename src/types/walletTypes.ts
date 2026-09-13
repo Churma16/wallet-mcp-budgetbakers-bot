@@ -36,12 +36,19 @@ export interface WalletCreateRecordsResponse {
   summary?: {
     total: number;
     succeeded: number;
-    failed: number;
+    failed?: number;
+    clientErrors?: number;
+    serverErrors?: number;
+    documentsWritten?: number;
   };
   results?: Array<{
     id?: string;
+    inputIndex?: number;
     success: boolean;
     error?: string;
+    errorType?: string;
+    fields?: string[];
+    record?: Record<string, unknown>;
   }>;
 }
 

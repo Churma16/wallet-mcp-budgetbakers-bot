@@ -485,6 +485,98 @@ async function main(): Promise<void> {
     });
     const resultsOnlyResult = await resultsOnlySuccessClient.createRecords([sampleRecord]);
     assertCondition('Complete per-record results are accepted as positive evidence', resultsOnlyResult.results?.[0]?.success === true);
+
+    // Current-format full success (Issue #146)
+    const currentFormatSuccessClient = createWalletClientWithToolResult({
+      summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 1 },
+      results: [{ id: 'record-1', success: true }],
+    });
+    const currentFormatResult = await currentFormatSuccessClient.createRecords([sampleRecord]);
+    assertCondition('Current format success summary is accepted', currentFormatResult.summary?.succeeded === 1);
+
+    // Current-format client error yields DEFINITIVE_FAILURE
+    const currentClientErrorClient = createWalletClientWithToolResult({
+      summary: { total: 1, succeeded: 0, clientErrors: 1, serverErrors: 0, documentsWritten: 0 },
+      results: [{ success: false, error: 'invalid category' }],
+    });
+    await expectWalletMcpRequestError(() => currentClientErrorClient.createRecords([sampleRecord]), 'DEFINITIVE_FAILURE');
+
+    // Current-format server error yields UNKNOWN
+    const currentServerErrorClient = createWalletClientWithToolResult({
+      summary: { total: 1, succeeded: 0, clientErrors: 0, serverErrors: 1, documentsWritten: 0 },
+      results: [{ success: false, errorType: 'server_error', error: 'database error' }],
+    });
+    await expectWalletMcpRequestError(() => currentServerErrorClient.createRecords([sampleRecord]), 'UNKNOWN');
+
+    // Invalid optional field (negative integer)
+    const negativeFieldClient = createWalletClientWithToolResult({
+      summary: { total: 1, succeeded: 1, clientErrors: -1, serverErrors: 0 },
+    });
+    await expectWalletMcpRequestError(() => negativeFieldClient.createRecords([sampleRecord]), 'UNKNOWN');
+
+    // Incomplete error counters (clientErrors without serverErrors)
+    const partialErrorClient = createWalletClientWithToolResult({
+      summary: { total: 1, succeeded: 1, clientErrors: 0 },
+    });
+    await expectWalletMcpRequestError(() => partialErrorClient.createRecords([sampleRecord]), 'UNKNOWN');
+
+    // Conflicting failed vs clientErrors + serverErrors
+    const conflictingErrorClient = createWalletClientWithToolResult({
+      summary: { total: 2, succeeded: 1, failed: 2, clientErrors: 1, serverErrors: 0 },
+    });
+    await expectWalletMcpRequestError(() => conflictingErrorClient.createRecords([sampleRecord, sampleRecord]), 'UNKNOWN');
+
+    // Mismatched documentsWritten with succeeded
+    const mismatchedDocsClient = createWalletClientWithToolResult({
+      summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 0 },
+    });
+    await expectWalletMcpRequestError(() => mismatchedDocsClient.createRecords([sampleRecord]), 'UNKNOWN');
+
+    // Inconsistent documentsWritten with per-record results
+    const inconsistentDocsClient = createWalletClientWithToolResult({
+      summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 0 },
+      results: [{ id: 'rec-1', success: true }],
+    });
+    await expectWalletMcpRequestError(() => inconsistentDocsClient.createRecords([sampleRecord]), 'UNKNOWN');
+
+    // Invalid result item shape (missing boolean success)
+    const invalidResultShapeClient = createWalletClientWithToolResult({
+      summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 1 },
+      results: [{ id: 'rec-1' }],
+    });
+    await expectWalletMcpRequestError(() => invalidResultShapeClient.createRecords([sampleRecord]), 'UNKNOWN');
+
+    // Summary succeeded inconsistent with results success count
+    const inconsistentSuccessCountClient = createWalletClientWithToolResult({
+      summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 1 },
+      results: [{ id: 'rec-1', success: false }],
+    });
+    await expectWalletMcpRequestError(() => inconsistentSuccessCountClient.createRecords([sampleRecord]), 'UNKNOWN');
+
+    // Summary error count inconsistent with results failure count
+    const inconsistentErrorCountClient = createWalletClientWithToolResult({
+      summary: { total: 2, succeeded: 1, clientErrors: 1, serverErrors: 0, documentsWritten: 1 },
+      results: [{ id: 'rec-1', success: true }, { id: 'rec-2', success: true }],
+    });
+    await expectWalletMcpRequestError(() => inconsistentErrorCountClient.createRecords([sampleRecord, sampleRecord]), 'UNKNOWN');
+
+    // Summary-only failure without results array
+    const summaryOnlyFailureClient = createWalletClientWithToolResult({
+      summary: { total: 1, succeeded: 0, failed: 1 },
+    });
+    await expectWalletMcpRequestError(() => summaryOnlyFailureClient.createRecords([sampleRecord]), 'DEFINITIVE_FAILURE');
+
+    // Incomplete summary without error fields, results, or documentsWritten
+    const incompleteSummaryClient = createWalletClientWithToolResult({
+      summary: { total: 1, succeeded: 1 },
+    });
+    await expectWalletMcpRequestError(() => incompleteSummaryClient.createRecords([sampleRecord]), 'UNKNOWN');
+
+    // Mismatched summary total with expected record count
+    const mismatchedTotalClient = createWalletClientWithToolResult({
+      summary: { total: 2, succeeded: 1, failed: 1 },
+    });
+    await expectWalletMcpRequestError(() => mismatchedTotalClient.createRecords([sampleRecord]), 'UNKNOWN');
   });
 
   await runCase('Suite 13: generic unclassified handler errors become UNKNOWN instead of retryable', async () => {

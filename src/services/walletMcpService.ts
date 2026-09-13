@@ -841,7 +841,7 @@ export class WalletMcpClientService {
     return validatedResult;
   }
 
-  private validateCreateRecordsResponse(
+  public validateCreateRecordsResponse(
     createRecordsResult: unknown,
     expectedRecordCount: number
   ): WalletCreateRecordsResponse {
@@ -865,21 +865,75 @@ export class WalletMcpClientService {
       );
     }
 
-    if (hasSummary) {
-      const summaryNumbers = [summary?.total, summary?.succeeded, summary?.failed];
-      const summaryIsValid = summaryNumbers.every(
-        value => typeof value === 'number' && Number.isInteger(value) && value >= 0
-      );
+    let summaryResolvedErrors: number | undefined;
 
-      if (
-        !summaryIsValid ||
-        summary?.total !== expectedRecordCount ||
-        (summary?.succeeded ?? 0) + (summary?.failed ?? 0) !== summary?.total
-      ) {
+    if (hasSummary) {
+      const totalValid =
+        typeof summary?.total === 'number' && Number.isInteger(summary.total) && summary.total >= 0;
+      const succeededValid =
+        typeof summary?.succeeded === 'number' && Number.isInteger(summary.succeeded) && summary.succeeded >= 0;
+
+      if (!totalValid || !succeededValid || summary?.total !== expectedRecordCount) {
         throw new WalletMcpRequestError(
           `[error] MCP Tool 'create_records' returned an invalid or mismatched summary`,
           'UNKNOWN'
         );
+      }
+
+      const optionalFields = [
+        summary?.failed,
+        summary?.clientErrors,
+        summary?.serverErrors,
+        summary?.documentsWritten,
+      ];
+      for (const field of optionalFields) {
+        if (field !== undefined && (typeof field !== 'number' || !Number.isInteger(field) || field < 0)) {
+          throw new WalletMcpRequestError(
+            `[error] MCP Tool 'create_records' returned an invalid or mismatched summary`,
+            'UNKNOWN'
+          );
+        }
+      }
+
+      const hasClientErrors = summary?.clientErrors !== undefined;
+      const hasServerErrors = summary?.serverErrors !== undefined;
+      const hasFailed = summary?.failed !== undefined;
+
+      if (hasClientErrors !== hasServerErrors) {
+        throw new WalletMcpRequestError(
+          `[error] MCP Tool 'create_records' returned an invalid or mismatched summary`,
+          'UNKNOWN'
+        );
+      }
+
+      if (hasClientErrors && hasServerErrors) {
+        summaryResolvedErrors = (summary?.clientErrors ?? 0) + (summary?.serverErrors ?? 0);
+        if (hasFailed && summary?.failed !== summaryResolvedErrors) {
+          throw new WalletMcpRequestError(
+            `[error] MCP Tool 'create_records' returned an invalid or mismatched summary`,
+            'UNKNOWN'
+          );
+        }
+      } else if (hasFailed) {
+        summaryResolvedErrors = summary?.failed;
+      }
+
+      if (summaryResolvedErrors !== undefined) {
+        if ((summary?.succeeded ?? 0) + summaryResolvedErrors !== summary?.total) {
+          throw new WalletMcpRequestError(
+            `[error] MCP Tool 'create_records' returned an invalid or mismatched summary`,
+            'UNKNOWN'
+          );
+        }
+      }
+
+      if (summary?.documentsWritten !== undefined) {
+        if (summary.documentsWritten !== summary.succeeded) {
+          throw new WalletMcpRequestError(
+            `[error] MCP Tool 'create_records' returned an invalid or mismatched summary`,
+            'UNKNOWN'
+          );
+        }
       }
     }
 
@@ -906,39 +960,47 @@ export class WalletMcpClientService {
       resultFailureCount = results.length - resultSuccessCount;
     }
 
-    if (
-      hasSummary &&
-      hasResults &&
-      (
-        summary?.succeeded !== resultSuccessCount ||
-        summary?.failed !== resultFailureCount
-      )
-    ) {
-      throw new WalletMcpRequestError(
-        `[error] MCP Tool 'create_records' returned inconsistent summary and per-record results`,
-        'UNKNOWN'
-      );
+    if (hasSummary && hasResults) {
+      if (summary?.succeeded !== resultSuccessCount) {
+        throw new WalletMcpRequestError(
+          `[error] MCP Tool 'create_records' returned inconsistent summary and per-record results`,
+          'UNKNOWN'
+        );
+      }
     }
 
-    const definitiveFailureCount = hasSummary
-      ? summary?.failed ?? 0
+    const totalFailureCount = summaryResolvedErrors !== undefined
+      ? summaryResolvedErrors
       : resultFailureCount;
 
-    if (definitiveFailureCount > 0) {
-      const firstFailureDetail = hasResults
-        ? results.find(result => result.success === false)?.error
+    if (totalFailureCount > 0 || (hasResults && resultFailureCount > 0)) {
+      const failureCount = Math.max(totalFailureCount, resultFailureCount);
+      const firstFailureItem = hasResults
+        ? results.find(result => result.success === false)
         : undefined;
+      const firstFailureDetail = firstFailureItem?.error;
+
+      const hasServerErrors = (summary?.serverErrors !== undefined && summary.serverErrors > 0) ||
+        (hasResults && results.some(r => r.success === false && r.errorType === 'server_error'));
+
+      const hasPartialSuccess = (summary?.succeeded !== undefined && summary.succeeded > 0) ||
+        (hasResults && resultSuccessCount > 0);
+
+      const dispatchOutcome: WalletMcpDispatchOutcome = (hasServerErrors || hasPartialSuccess)
+        ? 'UNKNOWN'
+        : 'DEFINITIVE_FAILURE';
+
       throw new WalletMcpRequestError(
-        `[error] MCP Tool 'create_records' rejected ${definitiveFailureCount} record(s)` +
+        `[error] MCP Tool 'create_records' rejected ${failureCount} record(s)` +
           (firstFailureDetail ? `: ${firstFailureDetail}` : ''),
-        'DEFINITIVE_FAILURE'
+        dispatchOutcome
       );
     }
 
     const summaryConfirmsFullSuccess = Boolean(
       hasSummary &&
       summary?.succeeded === expectedRecordCount &&
-      summary?.failed === 0
+      (summaryResolvedErrors === 0 || (summaryResolvedErrors === undefined && summary?.documentsWritten === expectedRecordCount))
     );
     const resultsConfirmFullSuccess = Boolean(
       hasResults &&
