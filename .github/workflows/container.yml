@@ -17,6 +17,19 @@ on:
       - 'tsconfig.json'
       - '.github/workflows/container.yml'
   workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Mutable GHCR alias to publish'
+        required: true
+        default: 'latest'
+        type: choice
+        options:
+          - 'latest'
+          - 'stable'
+      version:
+        description: 'Existing stable release tag (vX.Y.Z); required only when channel is stable'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -30,8 +43,62 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout repository
+      - name: Validate manual promotion inputs
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          case "$CHANNEL" in
+            latest)
+              if [[ -n "$VERSION" ]]; then
+                echo "[ERROR] version must be empty when channel is latest."
+                exit 1
+              fi
+              ;;
+            stable)
+              if [[ -z "$VERSION" ]]; then
+                echo "[ERROR] version is required when channel is stable."
+                exit 1
+              fi
+
+              if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                echo "[ERROR] stable version must match the official release tag format vX.Y.Z."
+                exit 1
+              fi
+
+              if ! git ls-remote --exit-code --refs "https://github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${VERSION}" >/dev/null; then
+                echo "[ERROR] stable version tag '${VERSION}' does not exist in the repository."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "[ERROR] unsupported promotion channel '${CHANNEL}'."
+              exit 1
+              ;;
+          esac
+
+      - name: Checkout event revision
+        if: github.event_name != 'workflow_dispatch'
         uses: actions/checkout@v4
+
+      - name: Checkout latest main revision
+        if: github.event_name == 'workflow_dispatch' && inputs.channel == 'latest'
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Checkout stable release revision
+        if: github.event_name == 'workflow_dispatch' && inputs.channel == 'stable'
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.version }}
+
+      - name: Resolve checked-out source commit
+        id: source
+        run: echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -55,8 +122,11 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/wallet-mcp-budgetbakers-bot
           tags: |
-            type=sha,prefix=sha-
+            type=raw,value=sha-${{ steps.source.outputs.short_sha }}
             type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' && inputs.channel == 'latest' }}
+            type=raw,value=${{ inputs.version || 'unused-stable-version' }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.channel == 'stable' }}
+            type=raw,value=stable,enable=${{ github.event_name == 'workflow_dispatch' && inputs.channel == 'stable' }}
 
       - name: Build and optionally publish image
         uses: docker/build-push-action@v6
