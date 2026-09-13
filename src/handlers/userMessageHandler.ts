@@ -73,6 +73,18 @@ function buildAiFinancialActionContext(
   return null;
 }
 
+/**
+ * Reconciliation is a finite user protocol, not natural-language interpretation.
+ * Keep routing constrained to the explicit commands shown by the bot. The detector
+ * still supports legacy aliases for direct callers, but free-form chat must never
+ * reach it through this path.
+ */
+function isExplicitReconciliationProtocolCommand(messageText: string): boolean {
+  return /^(?:sudah\s+ada|belum\s+ada|already\s+exists?|not\s+there)(?:\s+#?\d+)?$/i.test(
+    messageText.trim()
+  );
+}
+
 export class UserMessageHandler {
   private readonly accountClarificationHandler: AccountClarificationHandler;
   private readonly financialActionExecutor: FinancialActionExecutor;
@@ -219,8 +231,14 @@ export class UserMessageHandler {
         }
       }
 
-      // 1. Reconciliation commands (e.g. "Sudah ada #3", "Belum ada #3", "Sudah ada", "Belum ada")
-      if (event.messageType === 'text' && event.textPayload) {
+      // 1. Reconciliation is only active while an uncertain item exists, and only for the
+      // explicit finite command grammar shown in the uncertain-outcome response.
+      if (
+        event.messageType === 'text' &&
+        event.textPayload &&
+        this.pendingTransactionManager.hasUncertainTransactions() &&
+        isExplicitReconciliationProtocolCommand(event.textPayload)
+      ) {
         const reconciliationIntent = detectReconciliationAction(event.textPayload);
         if (reconciliationIntent) {
           const handled = await this.pendingActionHandler.handleReconciliationAction(
