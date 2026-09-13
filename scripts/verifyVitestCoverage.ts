@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const coverageFilePath = path.resolve(process.cwd(), 'coverage/vitest/lcov.info');
-const requiredSourcePaths = [
+const representativeMigratedSourcePaths = [
   'src/utils/logger.ts',
   'src/config/environmentConfig.ts',
   'src/services/messaging/messageFormatHelper.ts',
@@ -17,7 +17,7 @@ const normalizedSourceEntries = readFileSync(coverageFilePath, 'utf8')
   .filter(line => line.startsWith('SF:'))
   .map(line => line.slice(3).replaceAll('\\', '/'));
 
-const missingSourcePaths = requiredSourcePaths.filter(requiredSourcePath =>
+const missingSourcePaths = representativeMigratedSourcePaths.filter(requiredSourcePath =>
   !normalizedSourceEntries.some(
     sourceEntry =>
       sourceEntry === requiredSourcePath || sourceEntry.endsWith(`/${requiredSourcePath}`)
@@ -26,8 +26,8 @@ const missingSourcePaths = requiredSourcePaths.filter(requiredSourcePath =>
 
 if (missingSourcePaths.length > 0) {
   throw new Error(
-    `Vitest LCOV report is missing migrated production sources: ${missingSourcePaths.join(', ')}`
+    `Vitest LCOV report is missing representative migrated production sources: ${missingSourcePaths.join(', ')}`
   );
 }
 
-console.log('[SUCCESS] Vitest LCOV includes all migrated production sources.');
+console.log('[SUCCESS] Vitest LCOV includes representative migrated production sources.');
