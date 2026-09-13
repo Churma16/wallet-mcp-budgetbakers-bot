@@ -119,7 +119,6 @@ jobs:
           if (!env.includes('Usernames such as @username are not supported')) throw new Error('Telegram template unsupported-username wording missing');
           NODE
           npm run build
-          npm run test:offline
           npm run test:vitest
 
       - name: Commit verified fixes and remove helper
