@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { normalizeTransactionRecordDate } from '../src/utils/recordDateNormalizer.js';
 import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
 import {
@@ -14,6 +14,7 @@ import {
   postProcessReceiptVisionResponse,
 } from '../src/services/ai/aiProviderWorkflow.js';
 import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload } from '../src/types/walletTypes.js';
+import { WalletMcpClientService } from '../src/services/walletMcpService.js';
 
 describe('Receipt Timestamp Normalization & Timezone Preservation (Issue #147)', () => {
   const referenceInstantUtc = new Date('2026-09-13T08:26:18.209Z');
@@ -311,6 +312,21 @@ describe('Receipt Timestamp Normalization & Timezone Preservation (Issue #147)',
           applicationTimezoneJakarta
         );
         expect(hyphenDayFirstResult).toBe('2026-09-13T08:26:18.209Z');
+
+        // 5c. Non-canonical hyphen-separated date-only format (must not match timezone regex or leak host TZ)
+        const hyphenDateOnlyResult = normalizeTransactionRecordDate(
+          '09-13-2026',
+          referenceInstantUtc,
+          applicationTimezoneJakarta
+        );
+        expect(hyphenDateOnlyResult).toBe('2026-09-13T08:26:18.209Z');
+
+        const hyphenDayFirstDateOnlyResult = normalizeTransactionRecordDate(
+          '13-09-2026',
+          referenceInstantUtc,
+          applicationTimezoneJakarta
+        );
+        expect(hyphenDayFirstDateOnlyResult).toBe('2026-09-13T08:26:18.209Z');
 
         // 6. Explicit timezone indicator format
         const explicitTzResult = normalizeTransactionRecordDate(
@@ -698,6 +714,62 @@ describe('Receipt Timestamp Normalization & Timezone Preservation (Issue #147)',
 
       expect(validationResult.isValid).toBe(true);
       expect(validationResult.sanitizedRecords[0].recordDate).toBe('2026-09-13T01:26:18.000Z');
+    });
+
+    it('handles receipt with 07:00:00 WIB (midnight UTC) and preserves exact 00:00:00.000Z in create_records dispatch payload', async () => {
+      const modelJsonOutput = JSON.stringify({
+        action: 'CREATE_RECORD',
+        records: [
+          {
+            accountId: 'Gopay',
+            categoryId: 'cat-groceries',
+            amount: -35000,
+            currency: 'IDR',
+            recordDate: '2026-09-13T07:00:00',
+            note: 'Morning transaction at 7 AM WIB',
+            counterParty: 'Indomaret',
+          },
+        ],
+        explanation: 'Receipt with printed 07:00:00 WIB time',
+      });
+
+      const parsedIntent = postProcessReceiptVisionResponse(
+        {
+          responseText: modelJsonOutput,
+          tokenUsage: { promptTokens: 100, candidatesTokens: 50, totalTokens: 150 },
+        },
+        'Gemini'
+      );
+
+      expect(parsedIntent.records![0].recordDate).toBe('2026-09-13T07:00:00');
+
+      const validationResult = validateAndSanitizeFinancialRecords(
+        parsedIntent.records as CreateRecordInputPayload[],
+        mockAccounts,
+        mockCategories,
+        undefined,
+        referenceInstantUtc
+      );
+
+      expect(validationResult.isValid).toBe(true);
+      expect(validationResult.sanitizedRecords).toHaveLength(1);
+      expect(validationResult.sanitizedRecords[0].recordDate).toBe('2026-09-13T00:00:00.000Z');
+
+      // Verify that WalletMcpClientService dispatch preserves the exact 00:00:00.000Z instant
+      const walletMcpClient = new WalletMcpClientService('https://example.invalid', 'test-token');
+      const toolCallSpy = vi.spyOn(walletMcpClient, 'callMcpTool').mockResolvedValue({
+        summary: { total: 1, succeeded: 1, failed: 0, documentsWritten: 1 },
+        results: [{ success: true, id: 'mock-rec-id' }],
+      } as any);
+
+      await walletMcpClient.createRecords(validationResult.sanitizedRecords);
+
+      expect(toolCallSpy).toHaveBeenCalledTimes(1);
+      const [calledToolName, calledArguments] = toolCallSpy.mock.calls[0];
+      expect(calledToolName).toBe('create_records');
+      const dispatchedRecords = (calledArguments as any).records;
+      expect(dispatchedRecords).toHaveLength(1);
+      expect(dispatchedRecords[0].recordDate).toBe('2026-09-13T00:00:00.000Z');
     });
   });
 });

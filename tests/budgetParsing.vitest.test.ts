@@ -188,5 +188,6 @@ describe('budget parsing and schema normalization', () => {
     expect(Number.isNaN(Date.parse(invalidDateNormalized))).toBe(false);
     expect(Number.isNaN(Date.parse(emptyDateNormalized))).toBe(false);
     expect(Number.isNaN(Date.parse(midnightNormalized))).toBe(false);
+    expect(midnightNormalized).toBe('2026-09-09T00:00:00.000Z');
   });
 });
