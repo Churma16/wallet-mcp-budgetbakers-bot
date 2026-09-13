@@ -711,62 +711,28 @@ export function detectReconciliationAction(userMessageText: string): Reconciliat
     return null;
   }
 
-  const trimmedText = userMessageText.toLowerCase().trim();
-
-  // 1. Explicit ticket match: e.g. "sudah ada #3", "sudah ada 3", "already exists #3", "confirm recorded 3"
-  const recordedSpecificMatch = trimmedText.match(
-    /^(?:sudah\s+ada|sudah\s+masuk|already\s+exists?|already\s+recorded|already\s+there|already\s+in\s+wallet|confirm\s+recorded)\s+#?(\d+)$/i
+  const match = userMessageText.trim().toLowerCase().match(
+    /^(sudah\s+ada|belum\s+ada|already\s+exists?|not\s+there)(?:\s+#?(\d+))?$/i
   );
-  if (recordedSpecificMatch && recordedSpecificMatch[1]) {
-    const ticketNumber = Number.parseInt(recordedSpecificMatch[1], 10);
-    if (!Number.isNaN(ticketNumber) && ticketNumber > 0) {
-      return { actionType: 'CONFIRM_RECORDED', targetTicketId: ticketNumber };
-    }
+  if (!match) {
+    return null;
   }
 
-  const absentSpecificMatch = trimmedText.match(
-    /^(?:belum\s+ada|belum\s+masuk|tidak\s+ada|ga\s+ada|gak\s+ada|not\s+there|not\s+yet|not\s+recorded|not\s+in\s+wallet|missing|not\s+found|confirm\s+absent)\s+#?(\d+)$/i
-  );
-  if (absentSpecificMatch && absentSpecificMatch[1]) {
-    const ticketNumber = Number.parseInt(absentSpecificMatch[1], 10);
-    if (!Number.isNaN(ticketNumber) && ticketNumber > 0) {
-      return { actionType: 'CONFIRM_ABSENT', targetTicketId: ticketNumber };
-    }
+  const actionPhrase = match[1];
+  const actionType: ReconciliationIntent['actionType'] =
+    actionPhrase === 'sudah ada' || actionPhrase.startsWith('already exist')
+      ? 'CONFIRM_RECORDED'
+      : 'CONFIRM_ABSENT';
+
+  const rawTicketId = match[2];
+  if (!rawTicketId) {
+    return { actionType };
   }
 
-  // 2. Shorter specific match: e.g. "sudah #3", "belum #3", "ada #3"
-  const shortRecordedMatch = trimmedText.match(/^(?:sudah|ada|exists?)\s+#?(\d+)$/i);
-  if (shortRecordedMatch && shortRecordedMatch[1]) {
-    const ticketNumber = Number.parseInt(shortRecordedMatch[1], 10);
-    if (!Number.isNaN(ticketNumber) && ticketNumber > 0) {
-      return { actionType: 'CONFIRM_RECORDED', targetTicketId: ticketNumber };
-    }
+  const targetTicketId = Number.parseInt(rawTicketId, 10);
+  if (targetTicketId <= 0) {
+    return null;
   }
 
-  const shortAbsentMatch = trimmedText.match(/^(?:belum)\s+#?(\d+)$/i);
-  if (shortAbsentMatch && shortAbsentMatch[1]) {
-    const ticketNumber = Number.parseInt(shortAbsentMatch[1], 10);
-    if (!Number.isNaN(ticketNumber) && ticketNumber > 0) {
-      return { actionType: 'CONFIRM_ABSENT', targetTicketId: ticketNumber };
-    }
-  }
-
-  // 3. Bare unnumbered match: e.g. "sudah ada", "belum ada", "already exists", "not there"
-  if (
-    /^(?:sudah\s+ada|sudah\s+masuk|already\s+exists?|already\s+recorded|already\s+there|already\s+in\s+wallet|sudah|ada)$/i.test(
-      trimmedText
-    )
-  ) {
-    return { actionType: 'CONFIRM_RECORDED' };
-  }
-
-  if (
-    /^(?:belum\s+ada|belum\s+masuk|tidak\s+ada|ga\s+ada|gak\s+ada|not\s+there|not\s+yet|not\s+recorded|not\s+in\s+wallet|missing|not\s+found|belum)$/i.test(
-      trimmedText
-    )
-  ) {
-    return { actionType: 'CONFIRM_ABSENT' };
-  }
-
-  return null;
+  return { actionType, targetTicketId };
 }
