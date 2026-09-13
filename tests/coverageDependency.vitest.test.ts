@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import vitestConfiguration from '../vitest.config';
 
 interface PackageManifest {
   scripts?: Record<string, string>;
@@ -14,6 +15,10 @@ interface PackageLock {
       version?: string;
     }
   >;
+}
+
+interface CoverageConfiguration {
+  include?: string[];
 }
 
 describe('coverage dependency wiring', () => {
@@ -32,16 +37,11 @@ describe('coverage dependency wiring', () => {
     expect(coverageScript).not.toContain('npm install');
   });
 
-  it('includes migrated production sources in Vitest coverage', () => {
-    const vitestConfiguration = readFileSync('vitest.config.ts', 'utf8');
-    const migratedProductionSources = [
-      'src/utils/logger.ts',
-      'src/config/environmentConfig.ts',
-      'src/services/messaging/messageFormatHelper.ts',
-    ];
+  it('discovers coverage from imported production modules without a per-file whitelist', () => {
+    const resolvedConfiguration = vitestConfiguration as unknown as {
+      test?: { coverage?: CoverageConfiguration };
+    };
 
-    for (const sourcePath of migratedProductionSources) {
-      expect(vitestConfiguration).toContain(`'${sourcePath}'`);
-    }
+    expect(resolvedConfiguration.test?.coverage?.include).toBeUndefined();
   });
 });
