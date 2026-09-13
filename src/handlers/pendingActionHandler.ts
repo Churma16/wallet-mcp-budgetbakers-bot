@@ -289,25 +289,55 @@ export class PendingActionHandler {
     processingStartTimestamp: number
   ): Promise<boolean> {
     let rejectedItems: PendingTransactionItem[] = [];
+    let protectedUncertainItems: PendingTransactionItem[] = [];
+    const manager = this.pendingTransactionManager as Partial<PendingTransactionService>;
+    const uncertainItems = typeof manager.getUncertainTransactions === 'function'
+      ? manager.getUncertainTransactions()
+      : [];
 
     if (confirmationIntent.targetScope === 'ALL') {
+      protectedUncertainItems = uncertainItems;
       rejectedItems = this.pendingTransactionManager.rejectAllPendingTransactions();
     } else if (typeof confirmationIntent.targetScope === 'number') {
-      const singleItem = this.pendingTransactionManager.rejectPendingTransaction(confirmationIntent.targetScope);
-      if (singleItem) {
-        rejectedItems.push(singleItem);
+      protectedUncertainItems = uncertainItems.filter(
+        item => item.ticketId === confirmationIntent.targetScope
+      );
+      if (protectedUncertainItems.length === 0) {
+        const singleItem = this.pendingTransactionManager.rejectPendingTransaction(
+          confirmationIntent.targetScope
+        );
+        if (singleItem) {
+          rejectedItems.push(singleItem);
+        }
       }
     } else {
       const latestItem = this.pendingTransactionManager.getLatestPendingTransaction();
       if (latestItem) {
-        const rejectedItem = this.pendingTransactionManager.rejectPendingTransaction(latestItem.ticketId);
-        if (rejectedItem) {
-          rejectedItems.push(rejectedItem);
+        protectedUncertainItems = uncertainItems.filter(item => item.ticketId === latestItem.ticketId);
+        if (protectedUncertainItems.length === 0) {
+          const rejectedItem = this.pendingTransactionManager.rejectPendingTransaction(latestItem.ticketId);
+          if (rejectedItem) {
+            rejectedItems.push(rejectedItem);
+          }
         }
       }
     }
 
-    if (rejectedItems.length === 0) {
+    const replyMessages: string[] = [];
+    if (rejectedItems.length > 0) {
+      replyMessages.push(formatPendingCancellationMessage(
+        rejectedItems.length === 1 ? rejectedItems[0] : rejectedItems
+      ));
+    }
+
+    if (protectedUncertainItems.length > 0) {
+      const viewModels = protectedUncertainItems.map(item =>
+        buildItemViewModelFromPendingItem(item, 'NEEDS_CHECK')
+      );
+      replyMessages.push(formatUncertainOutcomeResponse(viewModels));
+    }
+
+    if (replyMessages.length === 0) {
       await this.messagingGateway.sendMessage(
         event.channel,
         event.chatIdentifier,
@@ -316,15 +346,25 @@ export class PendingActionHandler {
       return true;
     }
 
-    const replyMessage = formatPendingCancellationMessage(
-      rejectedItems.length === 1 ? rejectedItems[0] : rejectedItems
+    await this.messagingGateway.sendMessage(
+      event.channel,
+      event.chatIdentifier,
+      replyMessages.join('\n\n')
     );
 
-    await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
-    const processingDurationMs = Date.now() - processingStartTimestamp;
-    applicationLogger.success(
-      `[${event.channel.toUpperCase()}] Cancelled ${rejectedItems.length} pending transaction(s) (${processingDurationMs}ms).`
-    );
+    if (rejectedItems.length > 0) {
+      const processingDurationMs = Date.now() - processingStartTimestamp;
+      applicationLogger.success(
+        `[${event.channel.toUpperCase()}] Cancelled ${rejectedItems.length} pending transaction(s) (${processingDurationMs}ms).`
+      );
+    }
+
+    if (protectedUncertainItems.length > 0) {
+      const ticketList = protectedUncertainItems.map(item => `#${item.ticketId}`).join(', ');
+      applicationLogger.info(
+        `[${event.channel.toUpperCase()}] Ignored cancellation for UNKNOWN transaction(s) ${ticketList}; reconciliation is still required.`
+      );
+    }
 
     return true;
   }
