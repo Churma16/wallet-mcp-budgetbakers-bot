@@ -27,6 +27,7 @@ import {
   formatReconciliationNotFoundResponse,
   formatReconciliationAmbiguousResponse,
 } from '../utils/transactionStatusFormatter.js';
+import { formatAccountSelectionPrompt } from '../utils/accountClarificationFormatter.js';
 import { applicationLogger } from '../utils/logger.js';
 
 export class PendingActionHandler {
@@ -373,7 +374,9 @@ export class PendingActionHandler {
 
       if (intent.actionType === 'CONFIRM_ABSENT') {
         this.pendingTransactionManager.reopenUnknownTransactionAsPending(targetTicketId);
-        const replyMessage = formatReconciliationAbsentResponse(targetTicketId);
+        const replyMessage = matchedDraft
+          ? formatAccountSelectionPrompt(matchedDraft, [])
+          : formatReconciliationAbsentResponse(targetTicketId);
         await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
         const durationMs = Date.now() - processingStartTimestamp;
         applicationLogger.info(
@@ -416,7 +419,9 @@ export class PendingActionHandler {
 
         if (intent.actionType === 'CONFIRM_ABSENT') {
           this.pendingTransactionManager.reopenUnknownTransactionAsPending(singleTicketId);
-          const replyMessage = formatReconciliationAbsentResponse();
+          const replyMessage = singleDraft
+            ? formatAccountSelectionPrompt(singleDraft, [])
+            : formatReconciliationAbsentResponse();
           await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
           const durationMs = Date.now() - processingStartTimestamp;
           applicationLogger.info(
