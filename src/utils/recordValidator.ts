@@ -3,9 +3,9 @@ import { getApplicationTimezone } from '../config/applicationConfig.js';
 import {
   getTimezoneOffsetDetails,
   parseRelativeTime,
-  resolveTargetLocalToUtcIso,
   ParsedRelativeTimeResult,
 } from './relativeTimeParser.js';
+import { normalizeTransactionRecordDate } from './recordDateNormalizer.js';
 import { extractHashtags, deduplicateTags, normalizeTagName } from './hashtagParser.js';
 import { parseFinancialAmount, parseFinancialAmountString } from './financialAmountParser.js';
 
@@ -232,42 +232,23 @@ export function validateAndSanitizeFinancialRecords(
 
     if (parsedRelativeTime) {
       normalizedRecordDate = parsedRelativeTime.resolvedUtcIso;
-    } else if (typeof normalizedRecordDate === 'string') {
-      const trimmedDateString = normalizedRecordDate.trim();
-      // Only apply application-IANA target-date resolution to local timestamps that do not contain an offset
-      // (e.g. 2026-07-15T11:54:00 or 2026-07-15 11:54).
-      // Explicit ISO offsets (e.g. 2026-07-15T11:54:00-05:00) are treated as authoritative source information
-      // and are preserved without being overwritten.
-      const localIsoWithoutOffsetMatch = trimmedDateString.match(
-        /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?$/
-      );
-      if (localIsoWithoutOffsetMatch) {
-        const [, datePart, hourPart, minutePart] = localIsoWithoutOffsetMatch;
-        try {
-          normalizedRecordDate = resolveTargetLocalToUtcIso(
-            datePart,
-            Number.parseInt(hourPart, 10),
-            Number.parseInt(minutePart, 10),
-            applicationTimezone
-          );
-        } catch (error) {
-          if (error instanceof RangeError) {
-            validationErrors.push(
-              `Transaksi #${recordIndex + 1}: Waktu transaksi tidak valid pada timezone ${applicationTimezone} (${trimmedDateString}).`
-            );
-            invalidRecordIndices.add(recordIndex);
-            continue;
-          }
-          throw error;
-        }
-      }
-    }
-
-    const parsedDateTimestamp = Date.parse(normalizedRecordDate);
-    if (Number.isNaN(parsedDateTimestamp)) {
-      normalizedRecordDate = new Date(referenceDate).toISOString();
     } else {
-      normalizedRecordDate = new Date(parsedDateTimestamp).toISOString();
+      try {
+        normalizedRecordDate = normalizeTransactionRecordDate(
+          normalizedRecordDate,
+          referenceDate,
+          applicationTimezone
+        );
+      } catch (error) {
+        if (error instanceof RangeError) {
+          validationErrors.push(
+            `Transaksi #${recordIndex + 1}: Waktu transaksi tidak valid pada timezone ${applicationTimezone} (${error.message}).`
+          );
+          invalidRecordIndices.add(recordIndex);
+          continue;
+        }
+        throw error;
+      }
     }
 
     // Mutate the incoming record upfront to preserve normalized UTC date across drafts & retries

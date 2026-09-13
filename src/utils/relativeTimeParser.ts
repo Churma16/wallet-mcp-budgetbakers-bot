@@ -295,15 +295,19 @@ export function resolveTargetLocalToUtcIso(
   targetDateString: string,
   targetHour: number,
   targetMinute: number,
-  targetTimezoneIdentifier: string = 'Asia/Jakarta'
+  targetTimezoneIdentifier: string = 'Asia/Jakarta',
+  targetSecond: number = 0,
+  targetMillisecond: number = 0
 ): string {
   const paddedHour = String(targetHour).padStart(2, '0');
   const paddedMinute = String(targetMinute).padStart(2, '0');
+  const paddedSecond = String(targetSecond).padStart(2, '0');
+  const paddedMillisecond = String(targetMillisecond).padStart(3, '0');
 
   // Estimate the target instant using midday UTC to get the approximate local date offset
   const middayEstimate = new Date(`${targetDateString}T12:00:00.000Z`);
   const initialOffsetDetails = getTimezoneOffsetDetails(targetTimezoneIdentifier, middayEstimate);
-  const candidateIso = `${targetDateString}T${paddedHour}:${paddedMinute}:00.000${initialOffsetDetails.formattedOffset}`;
+  const candidateIso = `${targetDateString}T${paddedHour}:${paddedMinute}:${paddedSecond}.${paddedMillisecond}${initialOffsetDetails.formattedOffset}`;
   const candidateTimestamp = Date.parse(candidateIso);
 
   if (Number.isNaN(candidateTimestamp)) {
@@ -318,7 +322,7 @@ export function resolveTargetLocalToUtcIso(
   if (refinedOffsetDetails.formattedOffset === initialOffsetDetails.formattedOffset) {
     resolvedUtcIso = candidateDate.toISOString();
   } else {
-    const refinedIso = `${targetDateString}T${paddedHour}:${paddedMinute}:00.000${refinedOffsetDetails.formattedOffset}`;
+    const refinedIso = `${targetDateString}T${paddedHour}:${paddedMinute}:${paddedSecond}.${paddedMillisecond}${refinedOffsetDetails.formattedOffset}`;
     const refinedTimestamp = Date.parse(refinedIso);
     resolvedUtcIso = Number.isNaN(refinedTimestamp)
       ? candidateDate.toISOString()
@@ -331,11 +335,12 @@ export function resolveTargetLocalToUtcIso(
   const matchesRequestedWallClock =
     roundTripLocalParts.dateString === targetDateString &&
     roundTripLocalParts.hour === targetHour &&
-    roundTripLocalParts.minute === targetMinute;
+    roundTripLocalParts.minute === targetMinute &&
+    (targetSecond === 0 || roundTripLocalParts.second === targetSecond);
 
   if (!matchesRequestedWallClock) {
     throw new RangeError(
-      `Nonexistent local wall-clock time '${targetDateString} ${paddedHour}:${paddedMinute}' in timezone '${targetTimezoneIdentifier}' (e.g. DST spring-forward gap).`
+      `Nonexistent local wall-clock time '${targetDateString} ${paddedHour}:${paddedMinute}:${paddedSecond}' in timezone '${targetTimezoneIdentifier}' (e.g. DST spring-forward gap).`
     );
   }
 
