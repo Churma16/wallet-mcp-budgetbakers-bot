@@ -4,11 +4,13 @@ The repository is migrating its hermetic test suite from the custom `tsx` runner
 
 ## Transition commands
 
-- `npm run test:offline` runs the legacy hermetic suites through `tests/runOfflineTests.ts`.
-- `npm run test:vitest` runs migrated Vitest suites once.
-- `npm run test:vitest:watch` runs migrated Vitest suites in watch mode for local development.
+- `npm run test:offline` runs the remaining legacy hermetic suites through `tests/runOfflineTests.ts`.
+- `npm run test:vitest` runs migrated and newly authored Vitest suites once.
+- `npm run test:vitest:watch` runs Vitest suites in watch mode for local development.
 - `npm run test:format` runs only the migrated message-format helper suite.
-- `npm run test:coverage` keeps the existing legacy coverage path available during the transition.
+- `npm run test:phone` runs only the migrated phone-number normalization suite.
+- `npm run test:redaction` runs only the migrated logger-redaction suite.
+- `npm run test:coverage` keeps both legacy and Vitest coverage paths available during the transition.
 
 `npm test` intentionally remains mapped to the legacy runner until all required offline suites have reached Vitest parity. CI runs both the legacy and Vitest commands during the migration.
 
@@ -32,7 +34,7 @@ For a bounded migration:
 1. Port the suite to a `*.vitest.test.ts` file without dropping scenarios.
 2. Run the legacy suite and its Vitest counterpart to verify behavioral parity.
 3. Keep live/integration entry points explicit and outside the default Vitest include pattern.
-4. Remove the legacy registration only when the migrated suite is proven equivalent and the PR scope remains reviewable.
+4. Remove the legacy registration and file only after the migrated suite is proven equivalent and the PR scope remains reviewable.
 5. Continue adding any new hermetic regression coverage for the migrated area in Vitest.
 
-The initial proof-of-concept is `tests/messageFormatHelper.vitest.test.ts`, ported from the existing message-format helper regression suite.
+The initial proof-of-concept was `tests/messageFormatHelper.vitest.test.ts`. After side-by-side parity validation, its legacy baseline has been retired. The first Phase 2 utility batch also migrates container workflow trigger validation, logger credential redaction, and phone-number normalization/environment parsing to native Vitest. Remaining legacy suites stay registered in `tests/runOfflineTests.ts` until they are migrated in bounded batches with the same parity process.
