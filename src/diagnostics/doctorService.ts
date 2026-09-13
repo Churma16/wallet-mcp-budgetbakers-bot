@@ -13,6 +13,9 @@ import { WalletMcpClientService } from '../services/walletMcpService.js';
 
 export type DoctorStatus = 'SUCCESS' | 'WARN' | 'ERROR';
 
+export const MINIMUM_SUPPORTED_NODE_MAJOR_VERSION = 22;
+
+
 export interface DoctorCheckResult {
   readonly status: DoctorStatus;
   readonly check: string;
@@ -204,7 +207,7 @@ export async function runDoctorDiagnostics(
   const results: DoctorCheckResult[] = [];
   const nodeMajorVersion = parseNodeMajorVersion(dependencies.nodeVersion);
 
-  if (Number.isFinite(nodeMajorVersion) && nodeMajorVersion >= 22) {
+  if (Number.isFinite(nodeMajorVersion) && nodeMajorVersion >= MINIMUM_SUPPORTED_NODE_MAJOR_VERSION) {
     results.push({
       status: 'SUCCESS',
       check: 'Runtime',
@@ -214,7 +217,7 @@ export async function runDoctorDiagnostics(
     results.push({
       status: 'ERROR',
       check: 'Runtime',
-      message: `Node.js 22 or newer is required; current version is ${dependencies.nodeVersion}.`,
+      message: `Node.js ${MINIMUM_SUPPORTED_NODE_MAJOR_VERSION} or newer is required; current version is ${dependencies.nodeVersion}.`,
     });
   }
 

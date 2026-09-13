@@ -1,5 +1,7 @@
 # Setup and Diagnostics
 
+> **Runtime prerequisite:** Node.js 22 or newer. This matches the package metadata, doctor diagnostic, CI runtime, and container image.
+
 ## Interactive setup
 
 Install dependencies, then run:
