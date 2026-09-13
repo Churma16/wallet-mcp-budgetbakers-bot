@@ -167,7 +167,6 @@ export function formatAccountSelectionUnknownOutcome(draft: PendingAccountSelect
       'Cek Wallet, lalu balas:',
       '• *Sudah ada*',
       '• *Belum ada*',
-      `_(atau ketik *batal #${draft.ticketId}* untuk membatalkan)_`,
     ].join('\n');
   }
 
@@ -182,7 +181,6 @@ export function formatAccountSelectionUnknownOutcome(draft: PendingAccountSelect
     'Check Wallet, then reply:',
     '• *Already exists*',
     '• *Not there*',
-    `_(or type *cancel #${draft.ticketId}* to cancel)_`,
   ].join('\n');
 }
 
