@@ -364,6 +364,10 @@ console.log('\n[Suite 5] Testing Fallback Start Timestamp Resolution When Contex
 
   try {
     const artificialOperationDelayMs = 25;
+    // Date.now() has millisecond granularity and timers can appear 1-2ms short on CI runners.
+    // A 5ms tolerance still proves the fallback timestamp is captured before the awaited work;
+    // a timestamp captured after the operation would report approximately 0ms.
+    const minimumExpectedDurationMs = artificialOperationDelayMs - 5;
 
     const mockGatewayWithDelay = {
       sendMessage: async (_channel: string, _chatId: string, _msg: string): Promise<void> => {
@@ -401,8 +405,8 @@ console.log('\n[Suite 5] Testing Fallback Start Timestamp Resolution When Contex
     assert.ok(balanceDurationMatch, 'Balance success log should contain duration in ms');
     const balanceDuration = Number(balanceDurationMatch[1]);
     assert.ok(
-      balanceDuration >= artificialOperationDelayMs,
-      `Balance duration (${balanceDuration}ms) should be at least ${artificialOperationDelayMs}ms, reflecting method entry timestamp`
+      balanceDuration >= minimumExpectedDurationMs,
+      `Balance duration (${balanceDuration}ms) should include the awaited work (minimum ${minimumExpectedDurationMs}ms)`
     );
 
     // 5.2 executeCheckBudget without context
@@ -413,8 +417,8 @@ console.log('\n[Suite 5] Testing Fallback Start Timestamp Resolution When Contex
     assert.ok(budgetDurationMatch, 'Budget success log should contain duration in ms');
     const budgetDuration = Number(budgetDurationMatch[1]);
     assert.ok(
-      budgetDuration >= artificialOperationDelayMs,
-      `Budget duration (${budgetDuration}ms) should be at least ${artificialOperationDelayMs}ms, reflecting method entry timestamp`
+      budgetDuration >= minimumExpectedDurationMs,
+      `Budget duration (${budgetDuration}ms) should include the awaited work (minimum ${minimumExpectedDurationMs}ms)`
     );
 
     // 5.3 executeHelpMenu without context
@@ -425,8 +429,8 @@ console.log('\n[Suite 5] Testing Fallback Start Timestamp Resolution When Contex
     assert.ok(helpDurationMatch, 'Help success log should contain duration in ms');
     const helpDuration = Number(helpDurationMatch[1]);
     assert.ok(
-      helpDuration >= artificialOperationDelayMs,
-      `Help duration (${helpDuration}ms) should be at least ${artificialOperationDelayMs}ms, reflecting method entry timestamp`
+      helpDuration >= minimumExpectedDurationMs,
+      `Help duration (${helpDuration}ms) should include the awaited work (minimum ${minimumExpectedDurationMs}ms)`
     );
 
     console.log('  [PASS] All executor methods establish fallback timestamp before work begins');
