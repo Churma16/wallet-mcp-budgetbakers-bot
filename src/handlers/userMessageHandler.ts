@@ -85,6 +85,13 @@ function isExplicitReconciliationProtocolCommand(messageText: string): boolean {
   );
 }
 
+function hasUncertainTransactions(manager: PendingTransactionService): boolean {
+  const managerWithUncertainQueries = manager as Partial<PendingTransactionService>;
+  return typeof managerWithUncertainQueries.hasUncertainTransactions === 'function'
+    ? managerWithUncertainQueries.hasUncertainTransactions.call(manager)
+    : false;
+}
+
 export class UserMessageHandler {
   private readonly accountClarificationHandler: AccountClarificationHandler;
   private readonly financialActionExecutor: FinancialActionExecutor;
@@ -236,7 +243,7 @@ export class UserMessageHandler {
       if (
         event.messageType === 'text' &&
         event.textPayload &&
-        this.pendingTransactionManager.hasUncertainTransactions() &&
+        hasUncertainTransactions(this.pendingTransactionManager) &&
         isExplicitReconciliationProtocolCommand(event.textPayload)
       ) {
         const reconciliationIntent = detectReconciliationAction(event.textPayload);
