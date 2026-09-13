@@ -190,4 +190,36 @@ describe('record validator account resolution', () => {
     expect(ambiguousWithoutCandidates).toContain('cannot be selected safely');
     expect(englishDictionary.errors.accountResolutionFallback).toContain('could not be determined safely');
   });
+
+  it('catches RangeError during recordDate normalization for invalid DST gap timestamps', () => {
+    const originalAppTimezone = process.env.APP_TIMEZONE;
+    try {
+      process.env.APP_TIMEZONE = 'America/New_York';
+      const recordInDstGap: CreateRecordInputPayload = {
+        accountId: 'acc-cash',
+        amount: -25000,
+        recordDate: '2026-03-08T02:30:00',
+      };
+
+      const result = validateAndSanitizeFinancialRecords(
+        [recordInDstGap],
+        accounts,
+        [],
+        undefined,
+        new Date('2026-03-08T12:00:00Z')
+      );
+
+      expect(result.isValid).toBe(false);
+      expect(result.sanitizedRecords).toHaveLength(0);
+      expect(result.validationErrors).toHaveLength(1);
+      expect(result.validationErrors[0]).toContain('Transaksi #1: Waktu transaksi tidak valid pada timezone America/New_York');
+      expect(result.validationErrors[0]).toContain("Nonexistent local wall-clock time '2026-03-08 02:30:00' in timezone 'America/New_York'");
+    } finally {
+      if (originalAppTimezone === undefined) {
+        delete process.env.APP_TIMEZONE;
+      } else {
+        process.env.APP_TIMEZONE = originalAppTimezone;
+      }
+    }
+  });
 });

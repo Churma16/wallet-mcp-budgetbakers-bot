@@ -15,6 +15,7 @@ import { getApplicationTimezone } from '../../config/applicationConfig.js';
 import {
   getCurrentLocalDateString,
   getTimezoneOffsetDetails,
+  formatLocalTimeAnchor,
 } from '../../utils/relativeTimeParser.js';
 import {
   buildCompactSystemInstruction,
@@ -158,7 +159,17 @@ export function prepareReceiptPrompt(
     formattedCategoryContext
   );
   const currentTransactionTimestampIso = referenceInstant.toISOString();
-  const promptText = buildReceiptExtractionPrompt(optionalCaption, currentTransactionTimestampIso);
+  const activeLanguage = getActiveLanguage();
+  const localTimeAnchor = formatLocalTimeAnchor(
+    referenceInstant,
+    applicationTimezoneIdentifier,
+    activeLanguage
+  );
+  const promptText = buildReceiptExtractionPrompt(
+    optionalCaption,
+    currentTransactionTimestampIso,
+    localTimeAnchor
+  );
 
   return {
     promptText,

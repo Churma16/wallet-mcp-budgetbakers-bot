@@ -13,6 +13,7 @@ import {
 } from '../types/walletTypes.js';
 import { applicationLogger } from '../utils/logger.js';
 import { matchesTransactionRecordSearch } from '../utils/transactionSearchMatcher.js';
+import { normalizeTransactionRecordDate } from '../utils/recordDateNormalizer.js';
 
 export const DEFAULT_TRANSACTION_HISTORY_LIMIT = 10;
 export const MAX_TRANSACTION_HISTORY_LIMIT = 50;
@@ -756,34 +757,12 @@ export class WalletMcpClientService {
   }
 
   /**
-   * Normalizes recordDate: if given timestamp has midnight UTC (00:00:00.000Z),
-   * injects current UTC hours/minutes/seconds so that Wallet timezone rendering (e.g. WIB / UTC+7)
-   * does not show 07:00 AM instead of the actual transaction time.
+   * Normalizes recordDate using the canonical normalizeTransactionRecordDate helper.
+   * Treating pre-normalized canonical UTC timestamps as authoritative prevents corrupting
+   * legitimate midnight UTC records (such as 07:00:00 WIB in Asia/Jakarta) with the dispatch clock.
    */
   private normalizeRecordDate(recordDateString?: string): string {
-    const currentTimestamp = new Date();
-    if (!recordDateString) {
-      return currentTimestamp.toISOString();
-    }
-
-    const parsedDate = new Date(recordDateString);
-    if (Number.isNaN(parsedDate.getTime())) {
-      return currentTimestamp.toISOString();
-    }
-
-    const isMidnightUtc =
-      parsedDate.getUTCHours() === 0 &&
-      parsedDate.getUTCMinutes() === 0 &&
-      parsedDate.getUTCSeconds() === 0;
-
-    if (isMidnightUtc) {
-      parsedDate.setUTCHours(currentTimestamp.getUTCHours());
-      parsedDate.setUTCMinutes(currentTimestamp.getUTCMinutes());
-      parsedDate.setUTCSeconds(currentTimestamp.getUTCSeconds());
-      parsedDate.setUTCMilliseconds(currentTimestamp.getUTCMilliseconds());
-    }
-
-    return parsedDate.toISOString();
+    return normalizeTransactionRecordDate(recordDateString);
   }
 
   /**

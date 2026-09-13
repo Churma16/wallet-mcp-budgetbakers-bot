@@ -13,7 +13,7 @@ export interface ExtractedFinancialRecordItem {
   accountId: string;
   categoryId?: string;
   amount: number;
-  recordDate: string;
+  recordDate?: string;
   note: string;
   counterParty?: string;
   labels?: string[];

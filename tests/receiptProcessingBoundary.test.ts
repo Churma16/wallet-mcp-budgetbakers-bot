@@ -518,14 +518,18 @@ test('validateReceiptFinancialIntentEnvelope validates runtime envelope and reje
     (error: unknown) => error instanceof AiResponseParseError && error.message.includes('must be a non-null object')
   );
 
-  // Missing recordDate
-  assert.throws(
-    () => validateReceiptFinancialIntentEnvelope({
-      action: 'CREATE_RECORD',
-      records: [{ accountId: 'Jago', amount: -10079, currency: 'IDR' }],
-    }),
-    (error: unknown) => error instanceof AiResponseParseError && error.message.includes('valid recordDate')
-  );
+  // Missing or null recordDate is allowed for receipt vision (app-side referenceInstant fallback)
+  const envelopeWithMissingRecordDate = validateReceiptFinancialIntentEnvelope({
+    action: 'CREATE_RECORD',
+    records: [{ accountId: 'Jago', amount: -10079, currency: 'IDR' }],
+  });
+  assert.strictEqual(envelopeWithMissingRecordDate.records?.[0].recordDate, undefined);
+
+  const envelopeWithNullRecordDate = validateReceiptFinancialIntentEnvelope({
+    action: 'CREATE_RECORD',
+    records: [{ accountId: 'Jago', amount: -10079, currency: 'IDR', recordDate: null as any }],
+  });
+  assert.strictEqual(envelopeWithNullRecordDate.records?.[0].recordDate, undefined);
 
   // Object recordDate
   assert.throws(
@@ -704,7 +708,7 @@ test('Message flow returns receiptExtractionFailed on parseable-but-structurally
   const replyE = harnessE.mockGateway.lastMessage || '';
   assert.ok(replyE.includes('Foto struk belum berhasil dibaca'), 'Returns receiptExtractionFailed on CHECK_BALANCE');
 
-  // Case F: missing recordDate in records item
+  // Case F: missing recordDate in records item succeeds by falling back to requestReferenceInstant (Issue #147)
   const harnessF = buildTestHarness();
   harnessF.mockAiProvider.setImageHandler(async () => {
     return validateReceiptFinancialIntentEnvelope({
@@ -714,9 +718,10 @@ test('Message flow returns receiptExtractionFailed on parseable-but-structurally
   });
 
   await harnessF.userMessageHandler.handleIncomingUserMessage(createImageEvent());
-  assert.strictEqual(harnessF.mockMcpClient.calls.length, 0, 'Zero writes to Wallet MCP on missing recordDate');
-  const replyF = harnessF.mockGateway.lastMessage || '';
-  assert.ok(replyF.includes('Foto struk belum berhasil dibaca'), 'Returns receiptExtractionFailed on missing recordDate');
+  assert.strictEqual(harnessF.mockMcpClient.calls.length, 1, 'One write to Wallet MCP on missing recordDate (fallback to reference instant)');
+  assert.strictEqual(harnessF.mockMcpClient.calls[0][0].accountId, 'acc-jago');
+  assert.strictEqual(harnessF.mockMcpClient.calls[0][0].amount, -10079);
+  assert.ok(typeof harnessF.mockMcpClient.calls[0][0].recordDate === 'string', 'Assigned normalized recordDate string');
 
   // Case G: object recordDate in records item
   const harnessG = buildTestHarness();

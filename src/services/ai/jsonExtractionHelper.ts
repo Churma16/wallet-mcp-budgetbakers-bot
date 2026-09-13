@@ -164,17 +164,28 @@ export function validateReceiptFinancialIntentEnvelope(
         );
       }
 
-      // 2. RecordDate: require a usable recordDate (non-empty string, valid Date.parse; reject missing/object/boolean/null/undefined/unparseable)
+      // 2. RecordDate: optional for receipt vision. When no date/time is printed on the receipt,
+      // the model omits recordDate or passes null/empty string, allowing downstream normalization
+      // to apply the request reference instant. When provided, it must be a parseable string.
       const rawRecordDate = rawItem.recordDate;
-      const isValidRecordDate =
-        typeof rawRecordDate === 'string' &&
-        rawRecordDate.trim().length > 0 &&
-        !Number.isNaN(Date.parse(rawRecordDate.trim()));
-      if (!isValidRecordDate) {
-        throw new AiResponseParseError(
-          `Receipt Vision record item at index ${index} must have a valid recordDate`,
-          rawResponseContent
-        );
+      let resolvedRecordDate: string | undefined = undefined;
+      if (rawRecordDate !== undefined && rawRecordDate !== null) {
+        if (typeof rawRecordDate !== 'string') {
+          throw new AiResponseParseError(
+            `Receipt Vision record item at index ${index} must have a valid recordDate`,
+            rawResponseContent
+          );
+        }
+        const trimmedRecordDate = rawRecordDate.trim();
+        if (trimmedRecordDate.length > 0) {
+          if (Number.isNaN(Date.parse(trimmedRecordDate))) {
+            throw new AiResponseParseError(
+              `Receipt Vision record item at index ${index} must have a valid recordDate`,
+              rawResponseContent
+            );
+          }
+          resolvedRecordDate = trimmedRecordDate;
+        }
       }
 
       // 3. Currency: require deterministic currency evidence for receipt CREATE_RECORD records before write.
@@ -206,7 +217,7 @@ export function validateReceiptFinancialIntentEnvelope(
           : undefined,
         amount: rawAmount as any,
         currency: resolvedCurrency,
-        recordDate: (rawRecordDate as string).trim(),
+        recordDate: resolvedRecordDate,
         note: typeof rawItem.note === 'string' ? rawItem.note : '',
         counterParty: typeof rawItem.counterParty === 'string' && rawItem.counterParty.trim()
           ? rawItem.counterParty.trim()
