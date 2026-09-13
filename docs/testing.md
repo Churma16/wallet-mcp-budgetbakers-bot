@@ -14,6 +14,8 @@ The repository is migrating its hermetic test suite from the custom `tsx` runner
 
 `npm test` intentionally remains mapped to the legacy runner until all required offline suites have reached Vitest parity. CI runs both the legacy and Vitest commands during the migration.
 
+Vitest coverage intentionally relies on Vitest's default imported-file discovery instead of maintaining a per-source whitelist. Production modules imported by current or future `*.vitest.test.ts` suites are therefore added to `coverage/vitest/lcov.info` automatically, while modules exercised only by remaining legacy suites continue to be represented by `coverage/legacy/lcov.info`. The post-coverage verifier checks representative migrated modules so this discovery behavior cannot silently regress during Phase 2.
+
 ## Vitest conventions
 
 New hermetic tests and migrated suites should:
@@ -35,6 +37,6 @@ For a bounded migration:
 2. Run the legacy suite and its Vitest counterpart to verify behavioral parity.
 3. Keep live/integration entry points explicit and outside the default Vitest include pattern.
 4. Remove the legacy registration and file only after the migrated suite is proven equivalent and the PR scope remains reviewable.
-5. Continue adding any new hermetic regression coverage for the migrated area in Vitest.
+5. Continue adding any new hermetic regression coverage for the migrated area in Vitest. No per-module Vitest coverage configuration is required because imported production modules are discovered automatically.
 
 The initial proof-of-concept was `tests/messageFormatHelper.vitest.test.ts`. After side-by-side parity validation, its legacy baseline has been retired. The first Phase 2 utility batch also migrates container workflow trigger validation, logger credential redaction, and phone-number normalization/environment parsing to native Vitest. Remaining legacy suites stay registered in `tests/runOfflineTests.ts` until they are migrated in bounded batches with the same parity process.
