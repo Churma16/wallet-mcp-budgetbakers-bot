@@ -1,7 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import ts from 'typescript';
 
 const toPosixPath = (filePath: string): string => filePath.replaceAll('\\', '/');
 
@@ -24,23 +23,38 @@ function collectVitestTestFiles(directoryPath: string): string[] {
   return files;
 }
 
-function isRuntimeImport(importDeclaration: ts.ImportDeclaration): boolean {
-  const importClause = importDeclaration.importClause;
-
-  if (!importClause) {
-    return true;
+function isTypeOnlyNamedImportClause(importClause: string): boolean {
+  const trimmedClause = importClause.trim();
+  if (!trimmedClause.startsWith('{') || !trimmedClause.endsWith('}')) {
+    return false;
   }
 
-  if (importClause.isTypeOnly || importClause.name) {
-    return !importClause.isTypeOnly;
+  const importedBindings = trimmedClause
+    .slice(1, -1)
+    .split(',')
+    .map(binding => binding.trim())
+    .filter(Boolean);
+
+  return importedBindings.length > 0 && importedBindings.every(binding => binding.startsWith('type '));
+}
+
+export function extractRuntimeStaticImportSpecifiers(sourceText: string): string[] {
+  const moduleSpecifiers = new Set<string>();
+
+  const sideEffectImportPattern = /^\s*import\s+['"]([^'"]+)['"]\s*;?/gm;
+  for (const match of sourceText.matchAll(sideEffectImportPattern)) {
+    moduleSpecifiers.add(match[1]);
   }
 
-  const namedBindings = importClause.namedBindings;
-  if (!namedBindings || ts.isNamespaceImport(namedBindings)) {
-    return true;
+  const fromImportPattern = /^\s*import\s+(?!type\b)(?!['"])([\s\S]*?)\s+from\s+['"]([^'"]+)['"]\s*;?/gm;
+  for (const match of sourceText.matchAll(fromImportPattern)) {
+    const importClause = match[1];
+    if (!isTypeOnlyNamedImportClause(importClause)) {
+      moduleSpecifiers.add(match[2]);
+    }
   }
 
-  return namedBindings.elements.some(element => !element.isTypeOnly);
+  return [...moduleSpecifiers];
 }
 
 function resolveProductionImport(
@@ -92,28 +106,9 @@ export function discoverDirectProductionImports(repositoryRoot = process.cwd()):
 
   for (const testFilePath of collectVitestTestFiles(testsDirectory)) {
     const sourceText = readFileSync(testFilePath, 'utf8');
-    const sourceFile = ts.createSourceFile(
-      testFilePath,
-      sourceText,
-      ts.ScriptTarget.Latest,
-      true,
-      ts.ScriptKind.TS
-    );
 
-    for (const statement of sourceFile.statements) {
-      if (
-        !ts.isImportDeclaration(statement) ||
-        !ts.isStringLiteral(statement.moduleSpecifier) ||
-        !isRuntimeImport(statement)
-      ) {
-        continue;
-      }
-
-      const productionImport = resolveProductionImport(
-        repositoryRoot,
-        testFilePath,
-        statement.moduleSpecifier.text
-      );
+    for (const moduleSpecifier of extractRuntimeStaticImportSpecifiers(sourceText)) {
+      const productionImport = resolveProductionImport(repositoryRoot, testFilePath, moduleSpecifier);
 
       if (productionImport) {
         productionImports.add(productionImport);
