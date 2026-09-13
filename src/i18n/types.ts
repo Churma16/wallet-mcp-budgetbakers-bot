@@ -135,6 +135,32 @@ export interface ResponseDictionary {
     formatNotification(params: PendingEmailNotificationParams): string;
   };
 
+  status: {
+    header: string;
+    emptyAttention: string;
+    needsCheckHeader(count: number): string;
+    waitingConfirmationHeader(count: number): string;
+    waitingAccountHeader(count: number): string;
+    noOtherTransactionsWaiting: string;
+  };
+
+  uncertain: {
+    title: string;
+    riskWarning: string;
+    actionPromptSingle: string;
+    actionPromptMultiple(tickets: number[]): string;
+  };
+
+  reconciliation: {
+    recordedWithTicket(ticketId: number): string;
+    recordedSingle: string;
+    absentWithTicket(ticketId: number): string;
+    absentSingle: string;
+    notFoundWithTicket(ticketId: number): string;
+    notFoundNone: string;
+    ambiguous(ticketIds: number[]): string;
+  };
+
   confirmation: {
     singleSuccess(params: PendingConfirmationSuccessParams): string;
     bulkSuccess(items: PendingBulkItemParams[], currentTimestamp: string): string;

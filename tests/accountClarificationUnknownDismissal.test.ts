@@ -7,7 +7,7 @@ import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from 
 import { setActiveLanguage } from '../src/i18n/index.js';
 
 console.log('====================================================');
-console.log('[test] UNKNOWN Account Clarification Dismissal');
+console.log('[test] UNKNOWN Account Clarification Reconciliation Safety');
 console.log('====================================================\n');
 
 let assertionCount = 0;
@@ -169,9 +169,12 @@ async function main(): Promise<void> {
     'Uncertain Wallet outcome marks draft UNKNOWN',
     pendingService.getPendingAccountSelectionDraftState(draft.ticketId) === 'UNKNOWN'
   );
+  const uncertaintyMessage = messaging.messages.at(-1) || '';
   assertCondition(
-    'Uncertainty warning gives ticket-specific reconciliation syntax',
-    messaging.messages.at(-1)?.includes(`batal #${draft.ticketId}`) === true
+    'Uncertainty warning exposes reconciliation actions instead of cancellation',
+    uncertaintyMessage.includes('Sudah ada') &&
+      uncertaintyMessage.includes('Belum ada') &&
+      !uncertaintyMessage.toLowerCase().includes('batal')
   );
 
   addStandardPendingTransaction(pendingService, 'Separate pending transaction');
@@ -198,21 +201,22 @@ async function main(): Promise<void> {
     Date.now()
   );
 
-  const dismissalMessage = messaging.messages.at(-1) || '';
-  assertCondition('Ticket-specific UNKNOWN dismissal is handled', targetedCancellationHandled);
+  const reminderMessage = messaging.messages.at(-1) || '';
+  assertCondition('Ticket-specific cancellation attempt is handled', targetedCancellationHandled);
   assertCondition(
-    'Ticket-specific UNKNOWN dismissal removes only the reconciliation draft',
-    pendingService.getPendingAccountSelectionDraft(draft.ticketId) === undefined
+    'Ticket-specific cancellation preserves the UNKNOWN reconciliation draft',
+    pendingService.getPendingAccountSelectionDraft(draft.ticketId) !== undefined &&
+      pendingService.getPendingAccountSelectionDraftState(draft.ticketId) === 'UNKNOWN'
   );
-  assertCondition('UNKNOWN dismissal never retries Wallet', walletMcp.calls.length === 1);
+  assertCondition('UNKNOWN cancellation attempt never retries Wallet', walletMcp.calls.length === 1);
   assertCondition(
-    'UNKNOWN dismissal does not falsely claim the transaction was not recorded',
-    !dismissalMessage.includes('Transaksi tidak dicatat ke Wallet') &&
-      !dismissalMessage.includes('transaksi tidak dicatat ke Wallet')
+    'UNKNOWN cancellation reminder does not falsely claim the transaction was not recorded',
+    !reminderMessage.includes('Transaksi tidak dicatat ke Wallet') &&
+      !reminderMessage.includes('transaksi tidak dicatat ke Wallet')
   );
   assertCondition(
-    'UNKNOWN dismissal preserves the uncertain-outcome warning',
-    dismissalMessage.includes('tetap belum dapat dipastikan')
+    'UNKNOWN cancellation reminder requires reconciliation',
+    reminderMessage.includes('Sudah ada') && reminderMessage.includes('Belum ada')
   );
   assertCondition(
     'Separate standard pending transaction remains available',

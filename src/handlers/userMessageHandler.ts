@@ -13,7 +13,11 @@ import {
   createDefaultFinancialActionRegistry,
   FinancialActionContext,
 } from '../actions/index.js';
-import { detectFastPathAction, detectPendingConfirmationAction } from '../utils/fastPathIntentDetector.js';
+import {
+  detectFastPathAction,
+  detectPendingConfirmationAction,
+  detectReconciliationAction,
+} from '../utils/fastPathIntentDetector.js';
 import {
   formatErrorMessageForHuman,
   getHumanReadableTimestamp,
@@ -67,6 +71,25 @@ function buildAiFinancialActionContext(
   }
 
   return null;
+}
+
+/**
+ * Reconciliation is a finite user protocol, not natural-language interpretation.
+ * Keep routing constrained to the explicit commands shown by the bot. The detector
+ * still supports legacy aliases for direct callers, but free-form chat must never
+ * reach it through this path.
+ */
+function isExplicitReconciliationProtocolCommand(messageText: string): boolean {
+  return /^(?:sudah\s+ada|belum\s+ada|already\s+exists?|not\s+there)(?:\s+#?\d+)?$/i.test(
+    messageText.trim()
+  );
+}
+
+function hasPendingTransactions(manager: PendingTransactionService): boolean {
+  const managerWithPendingQueries = manager as Partial<PendingTransactionService>;
+  return typeof managerWithPendingQueries.hasPendingTransactions === 'function'
+    ? managerWithPendingQueries.hasPendingTransactions.call(manager)
+    : false;
 }
 
 export class UserMessageHandler {
@@ -142,17 +165,13 @@ export class UserMessageHandler {
       imageMimeType: event.imageMimeType,
     });
 
-    // Notify user with typing presence indicator
     await this.messagingGateway.sendTypingPresence(event.channel, event.chatIdentifier);
 
     try {
-      // 0. Generic standard-pending commands (LATEST / ALL) must remain reachable even when an
-      // unrelated account-clarification draft exists. A bare `batal` / `cancel` is the exception:
-      // when both workflows have a PENDING item, it is ambiguous and must not mutate either one.
       if (
         event.messageType === 'text' &&
         event.textPayload &&
-        this.pendingTransactionManager.hasPendingTransactions()
+        hasPendingTransactions(this.pendingTransactionManager)
       ) {
         const genericPendingIntent = detectPendingConfirmationAction(event.textPayload);
         if (
@@ -215,7 +234,27 @@ export class UserMessageHandler {
         }
       }
 
-      // 1. Account-clarification drafts consume free-form account replies before other routing.
+      // Explicit reconciliation phrases are a bounded protocol. They may be parsed even when
+      // the referenced item has already been resolved so the handler can return a deterministic
+      // not-found/already-resolved response. Free-form aliases never enter this path.
+      if (
+        event.messageType === 'text' &&
+        event.textPayload &&
+        isExplicitReconciliationProtocolCommand(event.textPayload)
+      ) {
+        const reconciliationIntent = detectReconciliationAction(event.textPayload);
+        if (reconciliationIntent) {
+          const handled = await this.pendingActionHandler.handleReconciliationAction(
+            event,
+            reconciliationIntent,
+            processingStartTimestamp
+          );
+          if (handled) {
+            return;
+          }
+        }
+      }
+
       if (event.messageType === 'text' && event.textPayload) {
         const handled = await this.accountClarificationHandler.handlePendingAccountSelectionReply(
           event,
@@ -227,8 +266,11 @@ export class UserMessageHandler {
         }
       }
 
-      // 2. Pending confirmation handler (checks if user is confirming or canceling a pending ticket)
-      if (event.messageType === 'text' && event.textPayload && this.pendingTransactionManager.hasPendingTransactions()) {
+      if (
+        event.messageType === 'text' &&
+        event.textPayload &&
+        hasPendingTransactions(this.pendingTransactionManager)
+      ) {
         const confirmationIntent = detectPendingConfirmationAction(event.textPayload);
         if (confirmationIntent) {
           const handled = await this.pendingActionHandler.handlePendingAction(
@@ -242,7 +284,6 @@ export class UserMessageHandler {
         }
       }
 
-      // 3. Fast-path intent classifier: Skip AI entirely for simple balance/budget/help queries (0 tokens used)
       if (event.messageType === 'text' && event.textPayload) {
         const fastPathAction = detectFastPathAction(event.textPayload);
         if (fastPathAction) {
@@ -257,7 +298,6 @@ export class UserMessageHandler {
         }
       }
 
-      // 4. AI Intent Extraction (Gemini / Ollama / Vision)
       const cachedAccounts = this.walletCacheService.getAccounts();
       const cachedCategories = this.walletCacheService.getCategories();
 
@@ -291,7 +331,6 @@ export class UserMessageHandler {
         records: extractedIntent.records,
       });
 
-      // 5. Route actions based on AI analysis
       if (
         event.messageType === 'image' &&
         extractedIntent.action === 'CREATE_RECORD' &&
@@ -318,7 +357,6 @@ export class UserMessageHandler {
         return;
       }
 
-      // Default: general reply or guidance
       if (event.messageType === 'image') {
         const receiptReplyMessage = extractedIntent.explanation?.trim() ||
           getDictionary().errors.receiptExtractionFailed(getHumanReadableTimestamp());
@@ -378,7 +416,6 @@ export class UserMessageHandler {
         humanErrorMessage
       );
     } finally {
-      // Clear typing presence indicator
       await this.messagingGateway.clearTypingPresence(event.channel, event.chatIdentifier);
     }
   }

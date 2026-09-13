@@ -298,6 +298,52 @@ export class PendingTransactionService {
     }
   }
 
+  /**
+   * Reopens an UNKNOWN transaction or draft as PENDING after conservative reconciliation.
+   * Never triggers an automatic write.
+   */
+  public reopenUnknownTransactionAsPending(ticketId: number): boolean {
+    if (
+      this.pendingTransactionMap.has(ticketId) &&
+      this.dispatchStateMap.get(ticketId) === 'UNKNOWN'
+    ) {
+      this.dispatchStateMap.set(ticketId, 'PENDING');
+      return true;
+    }
+
+    if (
+      this.pendingAccountSelectionDraftMap.has(ticketId) &&
+      this.dispatchStateMap.get(ticketId) === 'UNKNOWN'
+    ) {
+      this.dispatchStateMap.set(ticketId, 'PENDING');
+      return true;
+    }
+
+    return false;
+  }
+
+  public getUncertainTransactions(): PendingTransactionItem[] {
+    this.purgeExpiredTransactions();
+    return Array.from(this.pendingTransactionMap.values()).filter(
+      item => this.dispatchStateMap.get(item.ticketId) === 'UNKNOWN'
+    );
+  }
+
+  public getUncertainAccountSelectionDrafts(): PendingAccountSelectionDraft[] {
+    this.purgeExpiredTransactions();
+    return Array.from(this.pendingAccountSelectionDraftMap.values()).filter(
+      draft => this.dispatchStateMap.get(draft.ticketId) === 'UNKNOWN'
+    );
+  }
+
+  public hasUncertainTransactions(): boolean {
+    this.purgeExpiredTransactions();
+    return (
+      this.getUncertainTransactions().length > 0 ||
+      this.getUncertainAccountSelectionDrafts().length > 0
+    );
+  }
+
   public getPendingTransactionState(ticketId: number): PendingTransactionDispatchState | undefined {
     this.purgeExpiredTransactions();
     if (!this.pendingTransactionMap.has(ticketId)) {
@@ -394,11 +440,11 @@ export class PendingTransactionService {
   }
 
   /**
-   * Rejects a pending/unknown transaction. PROCESSING tickets cannot be removed concurrently.
+   * Rejects a PENDING transaction. PROCESSING and UNKNOWN tickets are preserved.
    */
   public rejectPendingTransaction(ticketId: number): PendingTransactionItem | undefined {
     const item = this.pendingTransactionMap.get(ticketId);
-    if (!item || this.dispatchStateMap.get(ticketId) === 'PROCESSING') {
+    if (!item || this.dispatchStateMap.get(ticketId) !== 'PENDING') {
       return undefined;
     }
 
@@ -410,7 +456,7 @@ export class PendingTransactionService {
     ticketId: number
   ): PendingAccountSelectionDraft | undefined {
     const draft = this.pendingAccountSelectionDraftMap.get(ticketId);
-    if (!draft || this.dispatchStateMap.get(ticketId) === 'PROCESSING') {
+    if (!draft || this.dispatchStateMap.get(ticketId) !== 'PENDING') {
       return undefined;
     }
 
@@ -419,13 +465,13 @@ export class PendingTransactionService {
   }
 
   /**
-   * Rejects all tickets that are not currently PROCESSING.
+   * Rejects all PENDING transactions while preserving PROCESSING and UNKNOWN tickets.
    */
   public rejectAllPendingTransactions(): PendingTransactionItem[] {
     const rejectedItems: PendingTransactionItem[] = [];
 
     for (const [ticketId, item] of Array.from(this.pendingTransactionMap.entries())) {
-      if (this.dispatchStateMap.get(ticketId) !== 'PROCESSING') {
+      if (this.dispatchStateMap.get(ticketId) === 'PENDING') {
         rejectedItems.push(item);
         this.removeTicketMetadata(ticketId);
       }

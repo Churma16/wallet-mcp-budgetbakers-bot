@@ -285,7 +285,7 @@ async function main(): Promise<void> {
     assertCondition('Second record remains on its original resolved account', harness.walletMcp.calls[0][1].accountId === 'acc-cash');
   });
 
-  await runCase('Suite 8: UNKNOWN draft does not lock normal commands and can be cancelled without retry', async () => {
+  await runCase('Suite 8: UNKNOWN draft does not lock normal commands and cannot be cancelled before reconciliation', async () => {
     const harness = createHarness([createRecord('')]);
 
     await harness.handler.handleIncomingUserMessage(createEvent('Makan siang 45rb'));
@@ -308,7 +308,19 @@ async function main(): Promise<void> {
 
     await harness.handler.handleIncomingUserMessage(createEvent('batal'));
 
-    assertCondition('Explicit cancellation removes the UNKNOWN reconciliation draft', harness.pendingService.getAllPendingAccountSelectionDrafts().length === 0);
+    assertCondition(
+      'Explicit cancellation preserves the UNKNOWN reconciliation draft',
+      harness.pendingService.getAllPendingAccountSelectionDrafts().length === 1
+    );
+    assertCondition(
+      'Explicit cancellation preserves UNKNOWN state',
+      harness.pendingService.getPendingAccountSelectionDraftState(pendingDraft.ticketId) === 'UNKNOWN'
+    );
+    assertCondition(
+      'Cancellation reminds the user to reconcile Wallet state',
+      harness.messaging.messages.at(-1)?.content.includes('Sudah ada') === true &&
+        harness.messaging.messages.at(-1)?.content.includes('Belum ada') === true
+    );
     assertCondition('Cancellation still does not retry Wallet', harness.walletMcp.calls.length === 1);
   });
 

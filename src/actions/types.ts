@@ -39,10 +39,15 @@ export interface CreateRecordActionContext extends BaseFinancialActionContext {
   readonly requestReferenceInstant?: Date;
 }
 
+export interface CheckQueueActionContext extends BaseFinancialActionContext {
+  readonly action: 'CHECK_QUEUE';
+}
+
 export type FinancialActionContext =
   | CheckBalanceActionContext
   | CheckBudgetActionContext
   | HelpMenuActionContext
+  | CheckQueueActionContext
   | TransactionHistoryActionContext
   | TransactionSummaryActionContext
   | CreateRecordActionContext;
