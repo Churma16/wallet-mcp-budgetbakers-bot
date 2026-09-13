@@ -967,20 +967,6 @@ export class WalletMcpClientService {
           'UNKNOWN'
         );
       }
-
-      if (summaryResolvedErrors !== undefined && summaryResolvedErrors !== resultFailureCount) {
-        throw new WalletMcpRequestError(
-          `[error] MCP Tool 'create_records' returned inconsistent summary and per-record results`,
-          'UNKNOWN'
-        );
-      }
-
-      if (summary?.documentsWritten !== undefined && summary.documentsWritten !== resultSuccessCount) {
-        throw new WalletMcpRequestError(
-          `[error] MCP Tool 'create_records' returned inconsistent summary and per-record results`,
-          'UNKNOWN'
-        );
-      }
     }
 
     const totalFailureCount = summaryResolvedErrors !== undefined
