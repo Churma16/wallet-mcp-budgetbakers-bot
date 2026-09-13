@@ -361,7 +361,7 @@ async function main(): Promise<void> {
     assertCondition('Backend token is not exposed', !chatMessage.includes('secret-123'));
   });
 
-  await runCase('Suite 8: PROCESSING tickets cannot be cancelled concurrently', () => {
+  await runCase('Suite 8: PROCESSING and UNKNOWN tickets cannot be cancelled concurrently or before reconciliation', () => {
     const pendingService = new PendingTransactionService();
     addExpense(pendingService);
 
@@ -377,7 +377,8 @@ async function main(): Promise<void> {
     assertCondition('Released ticket can be claimed again', reclaimed?.ticketId === 1);
     pendingService.markPendingTransactionUnknown(1);
     assertCondition('UNKNOWN ticket cannot be claimed automatically', pendingService.claimPendingTransaction(1) === undefined);
-    assertCondition('UNKNOWN ticket can be explicitly cancelled after reconciliation', pendingService.rejectPendingTransaction(1)?.ticketId === 1);
+    assertCondition('UNKNOWN ticket cannot be cancelled before reconciliation', pendingService.rejectPendingTransaction(1) === undefined);
+    assertCondition('UNKNOWN ticket remains available for reconciliation', pendingService.getPendingTransactionState(1) === 'UNKNOWN');
   });
 
   await runCase('Suite 9: create_records per-item rejection is treated as definitive failure', async () => {
