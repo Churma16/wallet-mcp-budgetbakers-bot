@@ -148,7 +148,7 @@ export function formatAccountSelectionRetry(draft: PendingAccountSelectionDraft)
 
 export function formatAccountSelectionUnknownOutcome(
   draft: PendingAccountSelectionDraft,
-  totalUncertainCount: number = 1
+  totalUncertainCount?: number
 ): string {
   const dictionary = getDictionary();
   const formattedAmount = formatDraftAmount(draft);
@@ -157,7 +157,10 @@ export function formatAccountSelectionUnknownOutcome(
     record?.note || record?.counterParty || (dictionary.languageCode === 'id' ? 'Transaksi' : 'Transaction');
   const accountName =
     draft.accountHint || draft.candidateAccounts[0]?.name || (dictionary.languageCode === 'id' ? 'Akun' : 'Account');
-  const mustQualifyTicket = totalUncertainCount > 1;
+  // Isolated draft formatters do not have enough context to prove the command is globally
+  // unambiguous. Default to the safe ticket-qualified protocol unless the caller explicitly
+  // confirms that this is the only UNKNOWN item.
+  const mustQualifyTicket = totalUncertainCount === undefined || totalUncertainCount > 1;
 
   if (dictionary.languageCode === 'id') {
     return [
