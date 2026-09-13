@@ -92,6 +92,13 @@ function hasUncertainTransactions(manager: PendingTransactionService): boolean {
     : true;
 }
 
+function hasPendingTransactions(manager: PendingTransactionService): boolean {
+  const managerWithPendingQueries = manager as Partial<PendingTransactionService>;
+  return typeof managerWithPendingQueries.hasPendingTransactions === 'function'
+    ? managerWithPendingQueries.hasPendingTransactions.call(manager)
+    : false;
+}
+
 export class UserMessageHandler {
   private readonly accountClarificationHandler: AccountClarificationHandler;
   private readonly financialActionExecutor: FinancialActionExecutor;
@@ -175,7 +182,7 @@ export class UserMessageHandler {
       if (
         event.messageType === 'text' &&
         event.textPayload &&
-        this.pendingTransactionManager.hasPendingTransactions()
+        hasPendingTransactions(this.pendingTransactionManager)
       ) {
         const genericPendingIntent = detectPendingConfirmationAction(event.textPayload);
         if (
@@ -272,7 +279,11 @@ export class UserMessageHandler {
       }
 
       // 2. Pending confirmation handler (checks if user is confirming or canceling a pending ticket)
-      if (event.messageType === 'text' && event.textPayload && this.pendingTransactionManager.hasPendingTransactions()) {
+      if (
+        event.messageType === 'text' &&
+        event.textPayload &&
+        hasPendingTransactions(this.pendingTransactionManager)
+      ) {
         const confirmationIntent = detectPendingConfirmationAction(event.textPayload);
         if (confirmationIntent) {
           const handled = await this.pendingActionHandler.handlePendingAction(
