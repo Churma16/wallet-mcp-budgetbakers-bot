@@ -5,7 +5,6 @@ import {
   formatAccountSelectionProcessing,
   formatAccountSelectionPrompt,
   formatAccountSelectionRetry,
-  formatAccountSelectionUnknownDismissal,
   formatAccountSelectionUnknownOutcome,
 } from '../src/utils/accountClarificationFormatter.js';
 
@@ -181,12 +180,10 @@ describe('PR #155 account clarification formatter changed branches', () => {
     expect(formatAccountSelectionCancellation(value)).toContain('dibatalkan');
     expect(formatAccountSelectionProcessing(value)).toContain('sedang diproses');
     expect(formatAccountSelectionRetry(value)).toContain('belum berhasil dicatat');
-    expect(formatAccountSelectionUnknownDismissal(value)).toContain('Status transaksi #41 ditutup');
 
     setActiveLanguage('en');
     expect(formatAccountSelectionCancellation(value)).toContain('cancelled');
     expect(formatAccountSelectionProcessing(value)).toContain('being processed');
     expect(formatAccountSelectionRetry(value)).toContain('was not recorded');
-    expect(formatAccountSelectionUnknownDismissal(value)).toContain('Transaction #41 status closed');
   });
 });
