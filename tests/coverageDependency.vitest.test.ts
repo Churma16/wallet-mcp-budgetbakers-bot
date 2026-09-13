@@ -26,7 +26,26 @@ describe('coverage dependency wiring', () => {
     expect(lockfile.packages?.['node_modules/@vitest/coverage-v8']?.version).toBe('5.0.0');
 
     const coverageScript = manifest.scripts?.['test:coverage:vitest'];
-    expect(coverageScript).toBe('vitest run --coverage');
+    expect(coverageScript).toBe(
+      'vitest run --coverage && tsx scripts/verifyVitestCoverage.ts'
+    );
     expect(coverageScript).not.toContain('npm install');
+  });
+
+  it('assigns migrated production sources to Vitest coverage without legacy overlap', () => {
+    const manifest = JSON.parse(readFileSync('package.json', 'utf8')) as PackageManifest;
+    const vitestConfiguration = readFileSync('vitest.config.ts', 'utf8');
+    const legacyCoverageScript = manifest.scripts?.['test:coverage:legacy'] ?? '';
+
+    const migratedProductionSources = [
+      'src/utils/logger.ts',
+      'src/config/environmentConfig.ts',
+      'src/services/messaging/messageFormatHelper.ts',
+    ];
+
+    for (const sourcePath of migratedProductionSources) {
+      expect(vitestConfiguration).toContain(`'${sourcePath}'`);
+      expect(legacyCoverageScript).toContain(`--exclude='${sourcePath}'`);
+    }
   });
 });
