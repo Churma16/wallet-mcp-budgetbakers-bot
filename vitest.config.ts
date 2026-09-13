@@ -13,6 +13,9 @@ export default defineConfig({
       include: [
         'src/setup/**/*.ts',
         'src/diagnostics/**/*.ts',
+        'src/utils/logger.ts',
+        'src/config/environmentConfig.ts',
+        'src/services/messaging/messageFormatHelper.ts',
       ],
     },
   },
