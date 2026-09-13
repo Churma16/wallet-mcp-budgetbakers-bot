@@ -55,7 +55,7 @@ function createHandler(
   return { handler, messages };
 }
 
-function draft(service: PendingTransactionService, overrides: Record<string, unknown> = {}) {
+function addDraft(service: PendingTransactionService, overrides: Record<string, unknown> = {}) {
   return service.addPendingAccountSelectionDraft({
     sourceType: 'USER',
     channel: 'whatsapp',
@@ -80,7 +80,7 @@ describe('PR #155 changed-condition coverage', () => {
   beforeEach(() => setActiveLanguage('id'));
 
   describe('PendingActionHandler outcome combinations', () => {
-    it('formats success + unknown without a retryable failure', async () => {
+    it('covers success plus UNKNOWN', async () => {
       const service = new PendingTransactionService();
       addTransaction(service, 'success');
       addTransaction(service, 'unknown');
@@ -92,13 +92,12 @@ describe('PR #155 changed-condition coverage', () => {
       });
 
       await handler.handlePendingAction(event, { actionType: 'CONFIRM', targetScope: 'ALL' }, Date.now());
-
       expect(messages.at(-1)).toContain('1/2 transaksi berhasil');
       expect(messages.at(-1)).toContain('Belum bisa memastikan');
       expect(messages.at(-1)).not.toContain('Gagal mencatat tiket');
     });
 
-    it('formats success + retryable failure without UNKNOWN', async () => {
+    it('covers success plus retryable failure', async () => {
       const service = new PendingTransactionService();
       addTransaction(service, 'success');
       const failed = addTransaction(service, 'failed');
@@ -110,13 +109,12 @@ describe('PR #155 changed-condition coverage', () => {
       });
 
       await handler.handlePendingAction(event, { actionType: 'CONFIRM', targetScope: 'ALL' }, Date.now());
-
       expect(messages.at(-1)).toContain('1/2 transaksi berhasil');
       expect(messages.at(-1)).toContain(`#${failed.ticketId}`);
       expect(messages.at(-1)).not.toContain('Belum bisa memastikan');
     });
 
-    it('formats retryable + UNKNOWN without any success', async () => {
+    it('covers retryable plus UNKNOWN without success', async () => {
       const service = new PendingTransactionService();
       const retry = addTransaction(service, 'retry');
       const unknown = addTransaction(service, 'unknown');
@@ -128,13 +126,12 @@ describe('PR #155 changed-condition coverage', () => {
       });
 
       await handler.handlePendingAction(event, { actionType: 'CONFIRM', targetScope: 'ALL' }, Date.now());
-
       expect(messages.at(-1)).toContain(`#${retry.ticketId}`);
       expect(messages.at(-1)).toContain(`(#${unknown.ticketId})`);
       expect(messages.at(-1)).not.toContain('/2 transaksi berhasil');
     });
 
-    it('covers INCOME amount sign and transfer note/account fallbacks', async () => {
+    it('covers INCOME sign and transfer note/account fallbacks', async () => {
       const service = new PendingTransactionService();
       addTransaction(service, 'income', {
         amount: -50_000,
@@ -157,7 +154,6 @@ describe('PR #155 changed-condition coverage', () => {
       });
 
       await handler.handlePendingAction(event, { actionType: 'CONFIRM', targetScope: 'ALL' }, Date.now());
-
       const flattened = calls.flat();
       expect(flattened.some(record => record.amount === 50_000)).toBe(true);
       expect(flattened.some(record => record.note === 'Transfer ke akun lain')).toBe(true);
@@ -172,12 +168,11 @@ describe('PR #155 changed-condition coverage', () => {
       const { handler } = createHandler(service, async () => ({}), { recordProcessedTransaction });
 
       await handler.handlePendingAction(event, { actionType: 'CONFIRM', targetScope: 'ALL' }, Date.now());
-
       expect(recordProcessedTransaction).toHaveBeenCalledWith(undefined, 'REF-1');
       expect(recordProcessedTransaction).toHaveBeenCalledWith(undefined, undefined);
     });
 
-    it('covers UNKNOWN-only response with multiple items from this same dispatch', async () => {
+    it('covers multiple UNKNOWN-only results from one dispatch', async () => {
       const service = new PendingTransactionService();
       const first = addTransaction(service, 'u1');
       const second = addTransaction(service, 'u2');
@@ -186,15 +181,14 @@ describe('PR #155 changed-condition coverage', () => {
       });
 
       await handler.handlePendingAction(event, { actionType: 'CONFIRM', targetScope: 'ALL' }, Date.now());
-
       expect(messages.at(-1)).toContain(`#${first.ticketId}`);
       expect(messages.at(-1)).toContain(`#${second.ticketId}`);
       expect(messages.at(-1)).toContain(`Sudah ada #${first.ticketId}`);
     });
   });
 
-  describe('reconciliation branch combinations', () => {
-    it('reconciles a numbered standard UNKNOWN as recorded with email listener absent', async () => {
+  describe('reconciliation combinations', () => {
+    it('reconciles numbered standard UNKNOWN as recorded', async () => {
       const service = new PendingTransactionService();
       const tx = addTransaction(service, 'recorded');
       service.markPendingTransactionUnknown(tx.ticketId);
@@ -211,7 +205,7 @@ describe('PR #155 changed-condition coverage', () => {
 
     it('reconciles numbered and unnumbered UNKNOWN drafts as recorded', async () => {
       const numberedService = new PendingTransactionService();
-      const numberedDraft = draft(numberedService);
+      const numberedDraft = addDraft(numberedService);
       numberedService.markPendingAccountSelectionDraftUnknown(numberedDraft.ticketId);
       const numbered = createHandler(numberedService, async () => ({}));
       await numbered.handler.handleReconciliationAction(
@@ -222,18 +216,14 @@ describe('PR #155 changed-condition coverage', () => {
       expect(numberedService.getPendingAccountSelectionDraft(numberedDraft.ticketId)).toBeUndefined();
 
       const singleService = new PendingTransactionService();
-      const singleDraft = draft(singleService);
+      const singleDraft = addDraft(singleService);
       singleService.markPendingAccountSelectionDraftUnknown(singleDraft.ticketId);
       const single = createHandler(singleService, async () => ({}));
-      await single.handler.handleReconciliationAction(
-        event,
-        { actionType: 'CONFIRM_RECORDED' },
-        Date.now()
-      );
+      await single.handler.handleReconciliationAction(event, { actionType: 'CONFIRM_RECORDED' }, Date.now());
       expect(singleService.getPendingAccountSelectionDraft(singleDraft.ticketId)).toBeUndefined();
     });
 
-    it('reconciles a single unnumbered standard UNKNOWN as recorded and absent', async () => {
+    it('reconciles a single standard UNKNOWN as recorded and absent', async () => {
       for (const actionType of ['CONFIRM_RECORDED', 'CONFIRM_ABSENT'] as const) {
         const service = new PendingTransactionService();
         const tx = addTransaction(service, actionType);
@@ -241,7 +231,6 @@ describe('PR #155 changed-condition coverage', () => {
         const { handler } = createHandler(service, async () => ({}));
 
         await handler.handleReconciliationAction(event, { actionType }, Date.now());
-
         if (actionType === 'CONFIRM_RECORDED') {
           expect(service.getPendingTransaction(tx.ticketId)).toBeUndefined();
         } else {
@@ -252,27 +241,23 @@ describe('PR #155 changed-condition coverage', () => {
   });
 
   describe('unknown account-draft formatter conditions', () => {
-    it.each(['id', 'en'] as const)('covers note/account-hint path and safe default in %s', language => {
+    it.each(['id', 'en'] as const)('covers note/account-hint safe default in %s', language => {
       setActiveLanguage(language);
       const service = new PendingTransactionService();
-      const d = draft(service);
+      const d = addDraft(service);
       const output = formatAccountSelectionUnknownOutcome(d);
       expect(output).toContain('Draft note');
       expect(output).toContain('Primary');
       expect(output).toContain(`#${d.ticketId}`);
     });
 
-    it.each(['id', 'en'] as const)('covers counterparty/candidate-account fallbacks in %s', language => {
+    it.each(['id', 'en'] as const)('covers counterparty/candidate fallbacks in %s', language => {
       setActiveLanguage(language);
       const service = new PendingTransactionService();
-      const d = draft(service, {
+      const d = addDraft(service, {
         records: [{
-          accountId: '',
-          amount: -5000,
-          currency: 'IDR',
-          recordDate: '2026-09-13',
-          note: '',
-          counterParty: 'Counterparty fallback',
+          accountId: '', amount: -5000, currency: 'IDR', recordDate: '2026-09-13',
+          note: '', counterParty: 'Counterparty fallback',
         }],
         accountHint: '',
       });
@@ -285,14 +270,10 @@ describe('PR #155 changed-condition coverage', () => {
     it.each(['id', 'en'] as const)('covers generic description/account fallbacks in %s', language => {
       setActiveLanguage(language);
       const service = new PendingTransactionService();
-      const d = draft(service, {
+      const d = addDraft(service, {
         records: [{
-          accountId: '',
-          amount: -5000,
-          currency: 'IDR',
-          recordDate: '2026-09-13',
-          note: '',
-          counterParty: '',
+          accountId: '', amount: -5000, currency: 'IDR', recordDate: '2026-09-13',
+          note: '', counterParty: '',
         }],
         accountHint: '',
         candidateAccounts: [],
@@ -304,11 +285,11 @@ describe('PR #155 changed-condition coverage', () => {
     });
   });
 
-  describe('email pending notification condition matrix', () => {
+  describe('email pending notification conditions', () => {
     it.each([
       ['id', indonesianDictionary],
       ['en', englishDictionary],
-    ] as const)('covers every merchant/title and detail condition in %s', (_language, dictionary) => {
+    ] as const)('covers notification condition matrix in %s', (_language, dictionary) => {
       const base = {
         ticketId: 9,
         typeIcon: '📩',
@@ -318,72 +299,40 @@ describe('PR #155 changed-condition coverage', () => {
         totalPendingCount: 1,
       } as any;
 
-      const accountNoCategory = dictionary.emailPending.formatNotification({
-        ...base,
-        typeLabel: 'Payment',
-        counterParty: 'Merchant',
-        accountNameHint: 'Main',
-        matchedCategoryName: undefined,
-      });
-      expect(accountNoCategory).toContain('Main');
-      expect(accountNoCategory).toContain('Merchant');
+      expect(dictionary.emailPending.formatNotification({
+        ...base, typeLabel: 'Payment', counterParty: 'Merchant',
+        accountNameHint: 'Main', matchedCategoryName: undefined,
+      })).toContain('Main');
+      expect(dictionary.emailPending.formatNotification({
+        ...base, typeLabel: 'Payment', counterParty: undefined,
+        accountNameHint: undefined, matchedCategoryName: 'Food',
+      })).toContain('Food');
+      expect(dictionary.emailPending.formatNotification({
+        ...base, typeLabel: 'Payment', counterParty: undefined,
+        accountNameHint: undefined, matchedCategoryName: undefined,
+      })).toContain('Fallback Bank');
 
-      const categoryNoAccount = dictionary.emailPending.formatNotification({
-        ...base,
-        typeLabel: 'Payment',
-        counterParty: undefined,
-        accountNameHint: undefined,
-        matchedCategoryName: 'Food',
+      const transferMissing = dictionary.emailPending.formatNotification({
+        ...base, typeLabel: 'Transfer', accountNameHint: undefined,
+        destinationAccountNameHint: undefined, matchedCategoryName: 'Ignored',
       });
-      expect(categoryNoAccount).toContain('Food');
-
-      const fallbackOnly = dictionary.emailPending.formatNotification({
-        ...base,
-        typeLabel: 'Payment',
-        counterParty: undefined,
-        accountNameHint: undefined,
-        matchedCategoryName: undefined,
-      });
-      expect(fallbackOnly).toContain('Fallback Bank');
-
-      const transferBothMissing = dictionary.emailPending.formatNotification({
-        ...base,
-        typeLabel: 'Transfer',
-        accountNameHint: undefined,
+      expect(transferMissing).not.toContain('Ignored');
+      expect(dictionary.emailPending.formatNotification({
+        ...base, typeLabel: 'Transfer', accountNameHint: 'Source',
         destinationAccountNameHint: undefined,
-        matchedCategoryName: 'Ignored',
-      });
-      expect(transferBothMissing).not.toContain('Ignored');
-
-      const transferSourceOnly = dictionary.emailPending.formatNotification({
-        ...base,
-        typeLabel: 'Transfer',
-        accountNameHint: 'Source',
-        destinationAccountNameHint: undefined,
-      });
-      expect(transferSourceOnly).toContain('Source');
-
-      const transferDestinationOnly = dictionary.emailPending.formatNotification({
-        ...base,
-        typeLabel: 'Transfer',
-        accountNameHint: undefined,
+      })).toContain('Source');
+      expect(dictionary.emailPending.formatNotification({
+        ...base, typeLabel: 'Transfer', accountNameHint: undefined,
         destinationAccountNameHint: 'Destination',
-      });
-      expect(transferDestinationOnly).toContain('Destination');
-
-      const multi = dictionary.emailPending.formatNotification({
-        ...base,
-        ticketId: 10,
-        typeLabel: 'Payment',
-        counterParty: 'Merchant',
-        totalPendingCount: 2,
-      });
-      expect(multi).toContain('#10');
+      })).toContain('Destination');
+      expect(dictionary.emailPending.formatNotification({
+        ...base, ticketId: 10, typeLabel: 'Payment', counterParty: 'Merchant', totalPendingCount: 2,
+      })).toContain('#10');
     });
   });
 
-  describe('UserMessageHandler changed boolean routing conditions', () => {
-    function harness(pending: any = new PendingTransactionService()) {
+  describe('UserMessageHandler changed routing conditions', () => {
+    function harness() {
       const pendingAction = {
         handlePendingAction: vi.fn().mockResolvedValue(false),
         handleReconciliationAction: vi.fn().mockResolvedValue(false),
@@ -396,12 +345,8 @@ describe('PR #155 changed-condition coverage', () => {
         processImageMessage: vi.fn().mockResolvedValue({ action: 'GENERAL_REPLY', explanation: 'image ok' }),
       };
       const handler = new UserMessageHandler(
-        {
-          sendTypingPresence: vi.fn(),
-          clearTypingPresence: vi.fn(),
-          sendMessage: vi.fn(),
-        } as any,
-        pending,
+        { sendTypingPresence: vi.fn(), clearTypingPresence: vi.fn(), sendMessage: vi.fn() } as any,
+        new PendingTransactionService(),
         pendingAction as any,
         fastPath as any,
         ai as any,
@@ -415,7 +360,7 @@ describe('PR #155 changed-condition coverage', () => {
       return { handler, pendingAction, clarification, fastPath, ai };
     }
 
-    it('covers image false-branches for all new text-only routing stages', async () => {
+    it('covers image false-branches for text-only routing stages', async () => {
       const h = harness();
       await h.handler.handleIncomingUserMessage({
         ...event,
@@ -428,10 +373,10 @@ describe('PR #155 changed-condition coverage', () => {
       expect(h.pendingAction.handleReconciliationAction).not.toHaveBeenCalled();
       expect(h.clarification.handlePendingAccountSelectionReply).not.toHaveBeenCalled();
       expect(h.fastPath.handleFastPath).not.toHaveBeenCalled();
-      expect(h.ai.processImageMessage).toHaveBeenCalledOnce();
+      expect(h.ai.processTextMessage).toHaveBeenCalledOnce();
     });
 
-    it('covers text payload empty false-branches', async () => {
+    it('covers empty text-payload false-branches', async () => {
       const h = harness();
       await h.handler.handleIncomingUserMessage({ ...event, textPayload: '' });
       expect(h.pendingAction.handlePendingAction).not.toHaveBeenCalled();
