@@ -14,9 +14,11 @@ The repository is migrating its hermetic test suite from the custom `tsx` runner
 
 `npm test` intentionally remains mapped to the legacy runner until all required offline suites have reached Vitest parity. CI runs both the legacy and Vitest commands during the migration.
 
-Vitest coverage intentionally relies on Vitest's default imported-file discovery instead of maintaining a per-source whitelist. Production modules imported by current or future `*.vitest.test.ts` suites are therefore added to `coverage/vitest/lcov.info` automatically, while modules exercised only by remaining legacy suites continue to be represented by `coverage/legacy/lcov.info`.
+Vitest coverage intentionally relies on Vitest's default imported-file discovery instead of maintaining a per-source whitelist. Production modules imported and executed by current or future `*.vitest.test.ts` suites are therefore added to `coverage/vitest/lcov.info` automatically, while modules exercised only by remaining legacy suites continue to be represented by `coverage/legacy/lcov.info`.
 
-After each Vitest coverage run, `scripts/verifyVitestCoverage.ts` scans all `*.vitest.test.ts` files, discovers their direct runtime imports from `src/`, and verifies that every discovered production module has an `SF:` entry in the Vitest LCOV report. The invariant scales with new migration batches automatically; adding a newly migrated suite does not require editing a coverage allowlist or verifier path list.
+After each Vitest coverage run, `scripts/verifyVitestCoverage.ts` uses `tests/sharedUtilities.vitest.test.ts` as a stable coverage canary. It discovers that suite's production imports from source text and verifies that every canary module has an `SF:` entry in the Vitest LCOV report. This checks the imported-file coverage mechanism without maintaining a production-source allowlist. The verifier intentionally does not require every source-text import from every suite to appear in LCOV because TypeScript can erase type-only imports and Vitest mocks can replace imported production modules before their source executes.
+
+Future migration batches do not need to edit `vitest.config.ts` or the verifier just to make newly migrated production modules appear in coverage. At full Vitest cutover, the repository can move from mixed imported-file discovery to a whole-production-source coverage scope with intentional exclusions.
 
 ## Vitest conventions
 
@@ -39,6 +41,6 @@ For a bounded migration:
 2. Run the legacy suite and its Vitest counterpart to verify behavioral parity.
 3. Keep live/integration entry points explicit and outside the default Vitest include pattern.
 4. Remove the legacy registration and file only after the migrated suite is proven equivalent and the PR scope remains reviewable.
-5. Continue adding any new hermetic regression coverage for the migrated area in Vitest. No per-module Vitest coverage configuration is required because imported production modules are discovered and verified automatically.
+5. Continue adding any new hermetic regression coverage for the migrated area in Vitest. No per-module Vitest coverage configuration is required because imported production modules are discovered automatically.
 
 The initial proof-of-concept was `tests/messageFormatHelper.vitest.test.ts`. After side-by-side parity validation, its legacy baseline has been retired. The first Phase 2 utility batch also migrates container workflow trigger validation, logger credential redaction, and phone-number normalization/environment parsing to native Vitest. Remaining legacy suites stay registered in `tests/runOfflineTests.ts` until they are migrated in bounded batches with the same parity process.
