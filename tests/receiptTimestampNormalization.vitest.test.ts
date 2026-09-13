@@ -156,6 +156,40 @@ describe('Receipt Timestamp Normalization & Timezone Preservation (Issue #147)',
       expect(normalizedRfc).toBe('2026-09-13T15:26:18.000Z');
     });
 
+    it('falls back to referenceInstant when explicit offset format is unparseable', () => {
+      const invalidExplicitOffset = normalizeTransactionRecordDate(
+        '2026-99-99T99:99:99+07:00',
+        referenceInstantUtc,
+        applicationTimezoneJakarta
+      );
+      expect(invalidExplicitOffset).toBe('2026-09-13T08:26:18.209Z');
+    });
+
+    it('falls back to referenceInstant when explicit timezone indicator text is unparseable', () => {
+      const invalidExplicitTz = normalizeTransactionRecordDate(
+        'invalid timestamp with GMT',
+        referenceInstantUtc,
+        applicationTimezoneJakarta
+      );
+      expect(invalidExplicitTz).toBe('2026-09-13T08:26:18.209Z');
+    });
+
+    it('correctly parses timezone-less datetime with omitted seconds and with milliseconds', () => {
+      const withoutSeconds = normalizeTransactionRecordDate(
+        '2026-09-13T15:26',
+        referenceInstantUtc,
+        applicationTimezoneJakarta
+      );
+      expect(withoutSeconds).toBe('2026-09-13T08:26:00.000Z');
+
+      const withMilliseconds = normalizeTransactionRecordDate(
+        '2026-09-13T15:26:18.123',
+        referenceInstantUtc,
+        applicationTimezoneJakarta
+      );
+      expect(withMilliseconds).toBe('2026-09-13T08:26:18.123Z');
+    });
+
     it('deterministically falls back to referenceInstant for non-canonical timezone-less formats without host-TZ leakage', () => {
       const normalizedNonCanonical = normalizeTransactionRecordDate(
         '09/13/2026 15:26:18',

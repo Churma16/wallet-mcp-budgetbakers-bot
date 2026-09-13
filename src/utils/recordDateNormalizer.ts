@@ -11,6 +11,8 @@ const DATE_ONLY_REGEX = /^(\d{4}-\d{2}-\d{2})$/;
 const TIMEZONE_LESS_DATETIME_REGEX =
   /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?$/;
 
+const EXPLICIT_TIMEZONE_INDICATOR_REGEX = /(?:Z|[+-]\d{2}:?\d{2}|\b(?:UTC|GMT)\b)/i;
+
 /**
  * Normalizes a raw recordDate string into a canonical UTC ISO 8601 string (e.g. YYYY-MM-DDTHH:mm:ss.sssZ).
  *
@@ -74,14 +76,7 @@ export function normalizeTransactionRecordDate(
     // For past or future calendar dates without a clock time, resolve to midday (12:00:00) local time
     // in the application timezone. This avoids midnight boundary shifts and ensures the date remains identical
     // in both UTC and the application timezone.
-    return resolveTargetLocalToUtcIso(
-      datePart,
-      12,
-      0,
-      applicationTimezoneIdentifier,
-      0,
-      0
-    );
+    return resolveTargetLocalToUtcIso(datePart, 12, 0, applicationTimezoneIdentifier, 0, 0);
   }
 
   // Case 3: Timezone-less datetime string (YYYY-MM-DDTHH:mm[:ss[.sss]])
@@ -108,7 +103,6 @@ export function normalizeTransactionRecordDate(
 
   // Case 4: Fallback only for formats with explicit timezone indicators (Z, [+-]HH:mm, UTC, GMT).
   // Timezone-less non-canonical formats must NEVER touch Date.parse() to guarantee host-timezone independence.
-  const EXPLICIT_TIMEZONE_INDICATOR_REGEX = /(?:Z|[+-]\d{2}:?\d{2}|\b(?:UTC|GMT)\b)/i;
   if (EXPLICIT_TIMEZONE_INDICATOR_REGEX.test(trimmedRecordDate)) {
     const fallbackParsedTimestamp = Date.parse(trimmedRecordDate);
     if (!Number.isNaN(fallbackParsedTimestamp)) {
