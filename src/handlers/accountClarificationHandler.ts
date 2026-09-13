@@ -21,7 +21,6 @@ import {
   formatAccountSelectionProcessing,
   formatAccountSelectionPrompt,
   formatAccountSelectionRetry,
-  formatAccountSelectionUnknownDismissal,
   formatAccountSelectionUnknownOutcome,
 } from '../utils/accountClarificationFormatter.js';
 import { getDictionary } from '../i18n/index.js';
@@ -145,23 +144,23 @@ export class AccountClarificationHandler {
     const isTargetedCancellationRequest = targetedCancellationTicketId === pendingDraft.ticketId;
 
     // UNKNOWN means the Wallet request was already dispatched and may have committed. It is a
-    // reconciliation state, not a normal cancellable draft. Any local dismissal must preserve
-    // that uncertainty and must never redispatch the transaction.
+    // reconciliation state, not a cancellable draft. Cancellation must never remove this safety
+    // state; instead remind the user to reconcile the actual Wallet outcome.
     if (draftState === 'UNKNOWN') {
       if (isTargetedCancellationRequest) {
-        await this.dismissUnknownDraft(event, pendingDraft);
+        await this.remindUnknownDraftReconciliation(event, pendingDraft);
         return true;
       }
 
       if (isGenericCancellationRequest) {
         // A generic cancellation may belong to a separate standard pending transaction. Let the
-        // normal pending-action router see it whenever one exists. If there is no competing
-        // pending transaction, it is safe to dismiss only the local UNKNOWN reconciliation state.
+        // normal pending-action router see it whenever one exists. Otherwise keep this UNKNOWN
+        // draft intact and remind the user of the reconciliation protocol.
         if (this.pendingTransactionManager.hasPendingTransactions()) {
           return false;
         }
 
-        await this.dismissUnknownDraft(event, pendingDraft);
+        await this.remindUnknownDraftReconciliation(event, pendingDraft);
         return true;
       }
 
@@ -391,24 +390,17 @@ export class AccountClarificationHandler {
       typeof manager.getPendingAccountSelectionDraftState === 'function';
   }
 
-  private async dismissUnknownDraft(
+  private async remindUnknownDraftReconciliation(
     event: IncomingUserMessageEvent,
     pendingDraft: PendingAccountSelectionDraft
   ): Promise<void> {
-    const dismissedDraft = this.pendingTransactionManager.rejectPendingAccountSelectionDraft(
-      pendingDraft.ticketId
-    );
-    if (!dismissedDraft) {
-      return;
-    }
-
     await this.messagingGateway.sendMessage(
       event.channel,
       event.chatIdentifier,
-      formatAccountSelectionUnknownDismissal(dismissedDraft)
+      formatAccountSelectionUnknownOutcome(pendingDraft)
     );
     applicationLogger.info(
-      `[Account Clarification] UNKNOWN reconciliation draft #${dismissedDraft.ticketId} dismissed locally; no Wallet retry was sent.`
+      `[Account Clarification] Ignored cancellation for UNKNOWN draft #${pendingDraft.ticketId}; reconciliation is still required.`
     );
   }
 
