@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import vitestConfiguration from '../vitest.config';
+import { discoverDirectProductionImports } from '../scripts/verifyVitestCoverage.js';
 
 interface PackageManifest {
   scripts?: Record<string, string>;
@@ -43,5 +44,14 @@ describe('coverage dependency wiring', () => {
     };
 
     expect(resolvedConfiguration.test?.coverage?.include).toBeUndefined();
+  });
+
+  it('discovers existing Vitest production imports automatically', () => {
+    expect(discoverDirectProductionImports()).toEqual(
+      expect.arrayContaining([
+        'src/utils/digitNormalization.ts',
+        'src/utils/exponentialBackoff.ts',
+      ])
+    );
   });
 });
