@@ -174,6 +174,11 @@ export class PendingActionHandler {
     return latestItem ? [latestItem] : [];
   }
 
+  private getTotalUncertainCount(): number {
+    return this.pendingTransactionManager.getUncertainTransactions().length +
+      this.pendingTransactionManager.getUncertainAccountSelectionDrafts().length;
+  }
+
   private buildRecordsForPendingItem(item: PendingTransactionItem): CreateRecordInputPayload[] {
     if (item.transactionType === 'TRANSFER') {
       const transferRecords: CreateRecordInputPayload[] = [
@@ -244,7 +249,11 @@ export class PendingActionHandler {
       const viewModels = uncertainItems.map(item =>
         buildItemViewModelFromPendingItem(item, 'NEEDS_CHECK')
       );
-      const replyMessage = formatUncertainOutcomeResponse(viewModels);
+      const replyMessage = formatUncertainOutcomeResponse(
+        viewModels,
+        undefined,
+        this.getTotalUncertainCount()
+      );
       await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
       return;
     }
@@ -273,7 +282,11 @@ export class PendingActionHandler {
       const viewModels = uncertainItems.map(item =>
         buildItemViewModelFromPendingItem(item, 'NEEDS_CHECK')
       );
-      messageLines.push(formatUncertainOutcomeResponse(viewModels));
+      messageLines.push(formatUncertainOutcomeResponse(
+        viewModels,
+        undefined,
+        this.getTotalUncertainCount()
+      ));
     }
 
     await this.messagingGateway.sendMessage(
@@ -334,7 +347,11 @@ export class PendingActionHandler {
       const viewModels = protectedUncertainItems.map(item =>
         buildItemViewModelFromPendingItem(item, 'NEEDS_CHECK')
       );
-      replyMessages.push(formatUncertainOutcomeResponse(viewModels));
+      replyMessages.push(formatUncertainOutcomeResponse(
+        viewModels,
+        undefined,
+        this.getTotalUncertainCount()
+      ));
     }
 
     if (replyMessages.length === 0) {
