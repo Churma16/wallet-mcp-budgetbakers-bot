@@ -10,6 +10,7 @@ const CATEGORY_FIXTURES: WalletCategoryItem[] = [
   { id: 'cat-hangout', name: 'Makan Hangout' },
   { id: 'cat-nafsu', name: 'Makan Nafsu' },
   { id: 'cat-pokok', name: 'Makan Pokok' },
+  { id: 'cat-daily', name: 'Kebutuhan Harian' },
 ];
 
 function expectHistoryAction(input: string): FastPathTransactionHistoryAction {
@@ -49,6 +50,7 @@ describe('natural transaction-history category routing', () => {
     ['history makan hangout', 'makan hangout', 'cat-hangout'],
     ['riwayat makan nafsu', 'makan nafsu', 'cat-nafsu'],
     ['history makan pokok', 'makan pokok', 'cat-pokok'],
+    ['history kebutuhan harian', 'kebutuhan harian', 'cat-daily'],
   ])('preserves the full bare category phrase for %s', (input, expectedName, expectedId) => {
     const action = expectHistoryAction(input);
     expect(action.options.categoryName).toBe(expectedName);
@@ -96,24 +98,9 @@ describe('natural transaction-history category routing', () => {
     );
   });
 
-  it('continues requiring explicit search syntax for merchant or note text', () => {
-    const naturalHistory = expectHistoryAction('history starbucks');
-    expect(naturalHistory.options.categoryName).toBe('starbucks');
-    expect(naturalHistory.options.searchQuery).toBeUndefined();
-
-    const unresolvedCategory = normalizeTransactionHistoryFilters(
-      naturalHistory.options,
-      [],
-      CATEGORY_FIXTURES
-    );
-    expect(unresolvedCategory.isValid).toBe(false);
-    expect(unresolvedCategory.unresolvedFilters[0]).toEqual(
-      expect.objectContaining({
-        filterKey: 'category',
-        rawValue: 'starbucks',
-        reason: 'NOT_FOUND',
-      })
-    );
+  it('continues requiring explicit search syntax for single-token merchant or note text', () => {
+    expect(detectFastPathAction('history starbucks')).toBeNull();
+    expect(detectFastPathAction('history coffee')).toBeNull();
 
     const explicitSearch = expectHistoryAction('search starbucks');
     expect(explicitSearch.options.searchQuery).toBe('starbucks');
