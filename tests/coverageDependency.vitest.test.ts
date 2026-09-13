@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import vitestConfiguration from '../vitest.config';
-import { discoverDirectProductionImports } from '../scripts/verifyVitestCoverage.js';
+import {
+  discoverDirectProductionImports,
+  extractRuntimeStaticImportSpecifiers,
+} from '../scripts/verifyVitestCoverage.js';
 
 interface PackageManifest {
   scripts?: Record<string, string>;
@@ -44,6 +47,24 @@ describe('coverage dependency wiring', () => {
     };
 
     expect(resolvedConfiguration.test?.coverage?.include).toBeUndefined();
+  });
+
+  it('extracts multiline and side-effect runtime imports while ignoring type-only imports', () => {
+    const moduleSpecifiers = extractRuntimeStaticImportSpecifiers(`
+      import type { Alpha } from '../src/types/alpha.js';
+      import {
+        runtimeValue,
+        type RuntimeShape,
+      } from '../src/runtime.js';
+      import { type OnlyType } from '../src/types/onlyType.js';
+      import '../src/sideEffect.js';
+    `);
+
+    expect(moduleSpecifiers).toEqual(
+      expect.arrayContaining(['../src/runtime.js', '../src/sideEffect.js'])
+    );
+    expect(moduleSpecifiers).not.toContain('../src/types/alpha.js');
+    expect(moduleSpecifiers).not.toContain('../src/types/onlyType.js');
   });
 
   it('discovers existing Vitest production imports automatically', () => {
