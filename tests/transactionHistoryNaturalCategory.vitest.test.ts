@@ -98,13 +98,41 @@ describe('natural transaction-history category routing', () => {
     );
   });
 
-  it('continues requiring explicit search syntax for single-token merchant or note text', () => {
-    expect(detectFastPathAction('history starbucks')).toBeNull();
-    expect(detectFastPathAction('history coffee')).toBeNull();
+  it.each(['history starbucks', 'history coffee', 'riwayat starbucks'])(
+    'keeps an explicit prefixed history request deterministic even when the category is unknown: %s',
+    input => {
+      const expectedCategoryName = input.split(/\s+/).at(-1);
+      const action = expectHistoryAction(input);
 
-    const explicitSearch = expectHistoryAction('search starbucks');
-    expect(explicitSearch.options.searchQuery).toBe('starbucks');
-    expect(explicitSearch.options.categoryName).toBeUndefined();
+      expect(action.options.categoryName).toBe(expectedCategoryName);
+      expect(action.options.searchQuery).toBeUndefined();
+
+      const normalized = normalizeTransactionHistoryFilters(
+        action.options,
+        [],
+        CATEGORY_FIXTURES
+      );
+
+      expect(normalized.isValid).toBe(false);
+      expect(normalized.upstreamCategoryId).toBeUndefined();
+      expect(normalized.unresolvedFilters).toEqual([
+        expect.objectContaining({
+          filterKey: 'category',
+          rawValue: expectedCategoryName,
+          reason: 'NOT_FOUND',
+        }),
+      ]);
+    }
+  );
+
+  it('continues requiring explicit search syntax for merchant or note text', () => {
+    const dedicatedSearch = expectHistoryAction('search starbucks');
+    expect(dedicatedSearch.options.searchQuery).toBe('starbucks');
+    expect(dedicatedSearch.options.categoryName).toBeUndefined();
+
+    const historySearch = expectHistoryAction('history cari starbucks');
+    expect(historySearch.options.searchQuery).toBe('starbucks');
+    expect(historySearch.options.categoryName).toBeUndefined();
   });
 
   it('does not weaken transaction-creation collision protection', () => {
