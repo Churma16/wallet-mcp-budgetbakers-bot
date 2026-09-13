@@ -520,8 +520,13 @@ console.log('\n[Suite 8] Testing Fast-Path Intent Detection...');
   assert.strictEqual(detectFastPathAction('catat riwayat belanja 50rb'), null);
   assert.strictEqual(detectFastPathAction('transfer 100k ke bca'), null);
 
-  // Exact regressions requested by review:
-  assert.strictEqual(detectFastPathAction('history coffee'), null);
+  // Explicit history prefixes stay deterministic even when the category is unknown.
+  const unknownCategoryHistory = detectFastPathAction('history coffee') as any;
+  assert.strictEqual(unknownCategoryHistory?.type, 'TRANSACTION_HISTORY');
+  assert.strictEqual(unknownCategoryHistory?.options.categoryName, 'coffee');
+  assert.strictEqual(unknownCategoryHistory?.options.searchQuery, undefined);
+
+  // Existing collision and invalid-input regressions remain fail-closed.
   assert.strictEqual(detectFastPathAction('riwayat beli kopi 25rb'), null);
   assert.strictEqual(detectFastPathAction('history 25k'), null);
   assert.strictEqual(detectFastPathAction('riwayat belanja 50000'), null);
