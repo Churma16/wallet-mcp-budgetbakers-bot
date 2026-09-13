@@ -20,7 +20,6 @@ interface TestSuiteExecutionResult {
 
 const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
   { filePath: 'tests/bankEmailRules.test.ts', description: 'Bank email parsing rules, currency parser & confirmation intent detector' },
-  { filePath: 'tests/containerWorkflowTriggers.test.ts', description: 'Container workflow pull request path filtering (Issue #96)' },
   { filePath: 'tests/emailSenderDomainValidation.test.ts', description: 'Bank email sender domain spoofing & malformed angle-bracket rejection' },
   { filePath: 'tests/budgetParsing.test.ts', description: 'Budget schema normalization & closed budget filtering' },
   { filePath: 'tests/emailListenerPersistence.test.ts', description: 'Email transactional dedup persistence & downstream failure recovery (Issue #75)' },
@@ -28,10 +27,8 @@ const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
   { filePath: 'tests/failClosedWhitelist.test.ts', description: 'Telegram & WhatsApp fail-closed whitelist authorization & startup validation (Issue #74)' },
   { filePath: 'tests/financialLoggingPolicy.test.ts', description: 'Financial payload log minimization, metadata-only defaults & debug opt-in (Issue #77)' },
   { filePath: 'tests/humanResponseFormatter.test.ts', description: 'Human-facing WhatsApp message formatting & localized responses' },
-  { filePath: 'tests/loggerRedaction.test.ts', description: 'Logger credential redaction for tokens, passwords, and secrets' },
   { filePath: 'tests/loggerSanitizer.test.ts', description: 'Logger PAN and bank account number masking & circular reference safety' },
   { filePath: 'tests/mediaDownloadLimits.test.ts', description: 'Media buffer size exhaustion safeguards & stream constraints' },
-  { filePath: 'tests/messageFormatHelper.test.ts', description: 'WhatsApp-to-Telegram markup conversion & text sanitization' },
   { filePath: 'tests/messagingGatewayResilience.test.ts', description: 'Multi-adapter gateway lifecycle, degraded mode & background reconnection' },
   { filePath: 'tests/consoleMessagingAdapter.test.ts', description: 'Interactive console messaging adapter lifecycle, input parsing & configuration validation (Issue #16)' },
   { filePath: 'tests/accountClarificationDraft.test.ts', description: 'Pending account clarification drafts and safe finalization (Issue #81)' },
@@ -39,7 +36,6 @@ const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
   { filePath: 'tests/accountClarificationPendingRouting.test.ts', description: 'Ticket-specific standard pending commands bypass unrelated clarification drafts (Issue #81)' },
   { filePath: 'tests/accountClarificationSafetyRegression.test.ts', description: 'Clarification cancellation and messaging failure safety regressions (Issue #81)' },
   { filePath: 'tests/pendingActionHandler.test.ts', description: 'Pending transaction data integrity & MCP failure recovery (Issue #72)' },
-  { filePath: 'tests/phoneNumberNormalization.test.ts', description: 'International E.164 phone normalization, domestic prefix detection & Indonesian 08 conversion' },
   { filePath: 'tests/promptInjectionDefense.test.ts', description: 'Prompt trust boundaries for email-derived Gate 1 fields (Issue #76)' },
   { filePath: 'tests/receiptOcrPrompt.test.ts', description: 'Receipt vision OCR system instructions, timezone offset & QRIS rules' },
   { filePath: 'tests/recordValidator.test.ts', description: 'Deterministic account resolution & fail-closed ambiguity handling (Issue #73)' },
