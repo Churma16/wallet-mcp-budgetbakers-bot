@@ -8,14 +8,14 @@ import {
   validateSemanticHistoryQueryOptions,
 } from '../src/services/ai/semanticToolBoundary.js';
 
-function createHandler(ai: any, fastPathHandled = false) {
+function createHandler(ai: any, fastPathHandled = false, categories: any[] = []) {
   const gateway = { sendTypingPresence: vi.fn(), clearTypingPresence: vi.fn(), sendMessage: vi.fn() };
   const registry = { hasHandler: vi.fn().mockReturnValue(true), execute: vi.fn() };
   const fastPath = { handleFastPath: vi.fn().mockResolvedValue(fastPathHandled) };
   const handler = new UserMessageHandler(
     gateway as any, { hasPendingTransactions: vi.fn().mockReturnValue(false) } as any,
     {} as any, fastPath as any, ai,
-    { getAccounts: vi.fn().mockReturnValue([]), getCategories: vi.fn().mockReturnValue([]) } as any,
+    { getAccounts: vi.fn().mockReturnValue([]), getCategories: vi.fn().mockReturnValue(categories) } as any,
     {} as any, {} as any, {} as any, registry as any,
     { handlePendingAccountSelectionReply: vi.fn().mockResolvedValue(false) } as any
   );
@@ -126,5 +126,141 @@ describe('single-call semantic transaction-history routing', () => {
     await harness.handler.handleIncomingUserMessage(textEvent('history'));
     expect(harness.fastPath.handleFastPath).toHaveBeenCalledOnce();
     expect(processTextMessage).not.toHaveBeenCalled();
+  });
+
+  it('defers an unresolved prefixed category meaning to the guarded semantic resolver', async () => {
+    const categories = [{ id: 'cat-health', name: 'Kesehatan' }];
+    const processTextMessage = vi.fn().mockResolvedValue({
+      action: 'TRANSACTION_HISTORY',
+      queryOptions: {
+        categoryId: 'cat-health',
+        accountName: 'BCA',
+        datePeriod: 'this_month',
+        sort: 'newest',
+      },
+    });
+    const harness = createHandler(
+      { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+      true,
+      categories
+    );
+
+    await harness.handler.handleIncomingUserMessage(
+      textEvent('riwayat beli obat bulan ini dari BCA terbaru')
+    );
+
+    expect(harness.fastPath.handleFastPath).not.toHaveBeenCalled();
+    expect(processTextMessage).toHaveBeenCalledOnce();
+    expect(processTextMessage).toHaveBeenCalledWith(
+      'riwayat beli obat bulan ini dari BCA terbaru',
+      [],
+      categories,
+      expect.any(Date)
+    );
+    expect(harness.registry.execute).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'TRANSACTION_HISTORY',
+      routingSource: 'ai',
+      queryOptions: expect.objectContaining({
+        categoryId: 'cat-health',
+        accountName: 'BCA',
+        datePeriod: 'this_month',
+      }),
+    }));
+  });
+
+  it.each([
+    ['riwayat beli obat', 'cat-health', 'Kesehatan'],
+    ['riwayat beli gadget baru', 'cat-electronics', 'Elektronik'],
+    ['riwayat biaya perjalanan motor', 'cat-fuel', 'Bensin'],
+    ['riwayat bayar wifi', 'cat-internet', 'Internet'],
+    ['riwayat ngopi', 'cat-coffee', 'Kopi'],
+    ['riwayat makan siang', 'cat-food', 'Makanan'],
+    ['history medicine purchases', 'cat-health-en', 'Health'],
+    ['history beli obat', 'cat-health-mixed', 'Health'],
+    ['riwayat medical expenses', 'cat-health-expenses', 'Health'],
+  ])('routes the realistic semantic phrase %s through a cached category choice', async (
+    input,
+    categoryId,
+    categoryName
+  ) => {
+    const categories = [{ id: categoryId, name: categoryName }];
+    const processTextMessage = vi.fn().mockResolvedValue({
+      action: 'TRANSACTION_HISTORY', queryOptions: { categoryId },
+    });
+    const harness = createHandler(
+      { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+      true,
+      categories
+    );
+
+    await harness.handler.handleIncomingUserMessage(textEvent(input));
+
+    expect(harness.fastPath.handleFastPath).not.toHaveBeenCalled();
+    expect(processTextMessage).toHaveBeenCalledOnce();
+    expect(harness.registry.execute).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'TRANSACTION_HISTORY',
+      queryOptions: { categoryId },
+    }));
+  });
+
+  it('keeps an intentionally ambiguous deterministic category off the semantic fallback', async () => {
+    const categories = [
+      { id: 'cat-hangout', name: 'Makan Hangout' },
+      { id: 'cat-pokok', name: 'Makan Pokok' },
+    ];
+    const processTextMessage = vi.fn();
+    const harness = createHandler(
+      { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+      true,
+      categories
+    );
+
+    await harness.handler.handleIncomingUserMessage(textEvent('history makan'));
+
+    expect(harness.fastPath.handleFastPath).toHaveBeenCalledOnce();
+    expect(processTextMessage).not.toHaveBeenCalled();
+  });
+
+  it('rejects a semantic history category ID that is absent from the cache', async () => {
+    const categories = [{ id: 'cat-health', name: 'Kesehatan' }];
+    const processTextMessage = vi.fn().mockResolvedValue({
+      action: 'TRANSACTION_HISTORY', queryOptions: { categoryId: 'cat-invented' },
+    });
+    const harness = createHandler(
+      { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+      true,
+      categories
+    );
+
+    await harness.handler.handleIncomingUserMessage(textEvent('riwayat beli obat'));
+
+    expect(processTextMessage).toHaveBeenCalledOnce();
+    expect(harness.registry.execute).not.toHaveBeenCalled();
+  });
+
+  it('does not execute history when the semantic resolver asks for clarification', async () => {
+    const categories = [
+      { id: 'cat-shopping', name: 'Shopping' },
+      { id: 'cat-electronics', name: 'Electronics' },
+      { id: 'cat-household', name: 'Household' },
+    ];
+    const processTextMessage = vi.fn().mockResolvedValue({
+      action: 'GENERAL_REPLY',
+      explanation: 'Maksud Anda kategori Shopping, Electronics, atau Household?',
+    });
+    const harness = createHandler(
+      { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+      true,
+      categories
+    );
+
+    await harness.handler.handleIncomingUserMessage(textEvent('riwayat beli barang'));
+
+    expect(harness.registry.execute).not.toHaveBeenCalled();
+    expect(harness.gateway.sendMessage).toHaveBeenCalledWith(
+      'whatsapp',
+      'chat',
+      'Maksud Anda kategori Shopping, Electronics, atau Household?'
+    );
   });
 });

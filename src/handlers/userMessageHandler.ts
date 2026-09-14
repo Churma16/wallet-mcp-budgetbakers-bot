@@ -20,9 +20,11 @@ import {
 } from '../actions/index.js';
 import {
   detectFastPathAction,
+  FastPathTransactionHistoryAction,
   detectPendingConfirmationAction,
   detectReconciliationAction,
 } from '../utils/fastPathIntentDetector.js';
+import { normalizeTransactionHistoryFilters } from '../utils/transactionHistoryFilterNormalizer.js';
 import {
   formatErrorMessageForHuman,
   getHumanReadableTimestamp,
@@ -66,6 +68,41 @@ function hasPendingTransactions(manager: PendingTransactionService): boolean {
   return typeof managerWithPendingQueries.hasPendingTransactions === 'function'
     ? managerWithPendingQueries.hasPendingTransactions.call(manager)
     : false;
+}
+
+/**
+ * Keep canonical history queries on the fast path. Only an otherwise valid
+ * history command with a category that deterministic resolution cannot find
+ * may use the guarded semantic fallback. Existing ambiguity guards remain
+ * deterministic and therefore never reach the model.
+ */
+function shouldDeferHistoryCategoryToSemanticResolver(
+  fastPathAction: ReturnType<typeof detectFastPathAction>,
+  availableCategories: ReturnType<WalletCacheService['getCategories']>,
+  referenceDate: Date
+): boolean {
+  if (
+    !fastPathAction ||
+    typeof fastPathAction !== 'object' ||
+    fastPathAction.type !== 'TRANSACTION_HISTORY'
+  ) {
+    return false;
+  }
+
+  const historyAction = fastPathAction as FastPathTransactionHistoryAction;
+  if (!historyAction.options.categoryName || historyAction.options.searchQuery) {
+    return false;
+  }
+
+  const resolution = normalizeTransactionHistoryFilters(
+    historyAction.options,
+    [],
+    availableCategories,
+    referenceDate
+  );
+  return resolution.unresolvedFilters.some(
+    issue => issue.filterKey === 'category' && issue.reason === 'NOT_FOUND'
+  );
 }
 
 export class UserMessageHandler {
@@ -270,13 +307,20 @@ export class UserMessageHandler {
       if (event.messageType === 'text' && event.textPayload) {
         const fastPathAction = detectFastPathAction(event.textPayload);
         if (fastPathAction) {
-          const handled = await this.fastPathHandler.handleFastPath(
-            event,
+          const cachedCategories = this.walletCacheService.getCategories();
+          if (!shouldDeferHistoryCategoryToSemanticResolver(
             fastPathAction,
-            processingStartTimestamp
-          );
-          if (handled) {
-            return;
+            cachedCategories,
+            requestReferenceInstant
+          )) {
+            const handled = await this.fastPathHandler.handleFastPath(
+              event,
+              fastPathAction,
+              processingStartTimestamp
+            );
+            if (handled) {
+              return;
+            }
           }
         }
       }

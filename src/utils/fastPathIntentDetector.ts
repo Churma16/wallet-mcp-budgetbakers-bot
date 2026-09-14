@@ -143,6 +143,14 @@ function extractHistoryQueryOptionsFromTokens(
     remainingTokens = remainingTokens.replace(sortMatch[0], ' ').trim();
   }
 
+  // "all" is structural history grammar, not part of a category meaning. A
+  // history request is already unbounded by category scope unless another
+  // filter is supplied, so consuming this modifier is sufficient.
+  const scopeMatches = remainingTokens.match(/\b(?:all|semua|semuanya)\b/gi);
+  if (scopeMatches) {
+    remainingTokens = remainingTokens.replace(/\b(?:all|semua|semuanya)\b/gi, ' ').trim();
+  }
+
   const pageMatch = remainingTokens.match(/\b(?:hal(?:aman)?|page|p)\s*(\d+)\b/i);
   if (pageMatch) {
     const parsedPage = Number.parseInt(pageMatch[1], 10);

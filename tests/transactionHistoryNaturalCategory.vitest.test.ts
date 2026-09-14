@@ -85,6 +85,17 @@ describe('natural transaction-history category routing', () => {
     expect(action).not.toBe('CHECK_BUDGET');
   });
 
+  it.each([
+    ['riwayat makan semuanya', 'makan'],
+    ['riwayat makan semua', 'makan'],
+    ['riwayat makan all', 'makan'],
+  ])('removes trailing scope grammar from a category hint: %s', (input, expectedCategoryName) => {
+    const action = expectHistoryAction(input);
+
+    expect(action.options.categoryName).toBe(expectedCategoryName);
+    expect(action.options.searchQuery).toBeUndefined();
+  });
+
   it('composes a multi-word category with existing structural filters', () => {
     const action = expectHistoryAction('history bca makan hangout bulan ini terbaru');
 

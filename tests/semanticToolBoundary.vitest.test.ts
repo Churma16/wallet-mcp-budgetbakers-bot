@@ -115,6 +115,27 @@ describe('SemanticToolBoundary (Issue #117)', () => {
     })).toBeNull();
   });
 
+  it('accepts only cached category IDs for semantic history proposals', () => {
+    const boundary = new SemanticToolBoundary();
+    const historyEvent = { ...event, textPayload: 'riwayat beli obat' };
+    const request = (categoryId: string) => boundary.evaluate({
+      proposal: { tool: 'get_transaction_history', arguments: { categoryId } },
+      authorization: { isAuthorized: true, source: 'test-authorization-policy' },
+      event: historyEvent,
+      availableAccountList: accounts,
+      availableCategoryList: categories,
+    });
+
+    expect(request('cat-1')).toMatchObject({
+      accepted: true,
+      context: { action: 'TRANSACTION_HISTORY', queryOptions: { categoryId: 'cat-1' } },
+    });
+    expect(request('cat-not-in-cache')).toMatchObject({
+      accepted: false,
+      code: 'INVALID_ENTITY_REFERENCE',
+    });
+  });
+
   it('fails closed for unknown or generic model-requested tools', () => {
     const decision = evaluate({
       tool: 'call_mcp_tool',
