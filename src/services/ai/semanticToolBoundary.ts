@@ -338,23 +338,35 @@ export function validateSemanticHistoryQueryOptions(
 
   if (rawArguments.categoryName !== undefined) {
     const normalizedCategoryName = (rawArguments.categoryName as string).trim().toLowerCase();
-    const matchedCategory = availableCategoryList.find(
+    const exactNameMatches = availableCategoryList.filter(
       category => category.name.trim().toLowerCase() === normalizedCategoryName
     );
-    if (!matchedCategory) {
+
+    if (resolvedCategoryId !== undefined) {
+      const selectedCategory = availableCategoryList.find(
+        category => category.id === resolvedCategoryId
+      );
+      if (selectedCategory?.name.trim().toLowerCase() !== normalizedCategoryName) {
+        return reject(
+          'INVALID_ENTITY_REFERENCE',
+          'Transaction-history categoryId does not match categoryName in the deterministic Wallet cache.'
+        );
+      }
+      matchedCategoryName = selectedCategory.name;
+    } else if (exactNameMatches.length === 0) {
       return reject(
         'INVALID_ENTITY_REFERENCE',
         'Transaction-history categoryName is not present in the deterministic Wallet cache.'
       );
-    }
-    if (resolvedCategoryId !== undefined && resolvedCategoryId !== matchedCategory.id) {
+    } else if (exactNameMatches.length > 1) {
       return reject(
         'INVALID_ENTITY_REFERENCE',
-        'Transaction-history categoryId does not match categoryName in the deterministic Wallet cache.'
+        'Transaction-history categoryName is ambiguous in the deterministic Wallet cache.'
       );
+    } else {
+      resolvedCategoryId = exactNameMatches[0].id;
+      matchedCategoryName = exactNameMatches[0].name;
     }
-    resolvedCategoryId = matchedCategory.id;
-    matchedCategoryName = matchedCategory.name;
   }
 
   if (rawArguments.recordType !== undefined && !['expense', 'income'].includes(String(rawArguments.recordType))) return reject('INVALID_ARGUMENTS', 'Transaction-history record type is invalid.');

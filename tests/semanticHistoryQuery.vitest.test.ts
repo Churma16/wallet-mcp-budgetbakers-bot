@@ -398,6 +398,27 @@ describe('single-call semantic transaction-history routing', () => {
     expect(harness.registry.execute).not.toHaveBeenCalled();
   });
 
+  it('returns validation guidance when a transaction proposal is rejected by the boundary', async () => {
+    const processTextMessage = vi.fn().mockResolvedValue({
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'Cash', amount: Number.POSITIVE_INFINITY, note: 'invalid' }],
+    });
+    const harness = createHandler({
+      providerName: 'mock',
+      processTextMessage,
+      processImageMessage: vi.fn(),
+    });
+
+    await harness.handler.handleIncomingUserMessage(textEvent('catat transaksi invalid'));
+
+    expect(harness.registry.execute).not.toHaveBeenCalled();
+    expect(harness.gateway.sendMessage).toHaveBeenCalledWith(
+      'whatsapp',
+      'chat',
+      expect.stringContaining('tidak valid')
+    );
+  });
+
   it('tightens categoryName trust semantics and normalizes exact cached matches to IDs', () => {
     const categories = [
       { id: 'cat-health', name: 'Kesehatan' },
@@ -432,6 +453,38 @@ describe('single-call semantic transaction-history routing', () => {
     }, categories)).toEqual({
       categoryId: 'cat-health',
       categoryName: 'Kesehatan',
+    });
+  });
+
+  it('fails closed for duplicate exact category names unless a matching cached ID disambiguates them', () => {
+    const duplicateCategories = [
+      { id: 'cat-food-1', name: 'Food' },
+      { id: 'cat-food-2', name: 'Food' },
+      { id: 'cat-health', name: 'Health' },
+    ];
+
+    expect(validateSemanticHistoryQueryOptions({
+      categoryName: 'Food',
+    }, duplicateCategories)).toMatchObject({
+      accepted: false,
+      code: 'INVALID_ENTITY_REFERENCE',
+      reason: expect.stringContaining('ambiguous'),
+    });
+
+    expect(validateSemanticHistoryQueryOptions({
+      categoryId: 'cat-food-2',
+      categoryName: 'Food',
+    }, duplicateCategories)).toEqual({
+      categoryId: 'cat-food-2',
+      categoryName: 'Food',
+    });
+
+    expect(validateSemanticHistoryQueryOptions({
+      categoryId: 'cat-health',
+      categoryName: 'Food',
+    }, duplicateCategories)).toMatchObject({
+      accepted: false,
+      code: 'INVALID_ENTITY_REFERENCE',
     });
   });
 

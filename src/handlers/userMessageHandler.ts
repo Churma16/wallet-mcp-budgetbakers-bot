@@ -406,26 +406,26 @@ export class UserMessageHandler {
                 `Semantic history resolution proposed ${boundaryDecision.context.action}; action was not executed.`
               );
             } else {
-            const semanticCategoryId = boundaryDecision.context.queryOptions?.categoryId;
-            if (!semanticCategoryId) {
-              // A deferred request contains an unresolved category concept. It
-              // must never degrade into an unfiltered history request merely
-              // because the semantic provider omitted a category selection.
-              applicationLogger.warn(
-                'Semantic category resolution omitted categoryId; history query was not executed.'
-              );
-            } else {
-            const mergedQueryOptions: TransactionHistoryQueryOptions = {
-              ...deferredHistoryFastPathOptions,
-                categoryId: semanticCategoryId,
-            };
-            delete mergedQueryOptions.categoryName;
-              await this.financialActionRegistry.execute({
-                ...boundaryDecision.context,
-                queryOptions: mergedQueryOptions,
-              });
-              return;
-            }
+              const semanticCategoryId = boundaryDecision.context.queryOptions?.categoryId;
+              if (!semanticCategoryId) {
+                // A deferred request contains an unresolved category concept. It
+                // must never degrade into an unfiltered history request merely
+                // because the semantic provider omitted a category selection.
+                applicationLogger.warn(
+                  'Semantic category resolution omitted categoryId; history query was not executed.'
+                );
+              } else {
+                const mergedQueryOptions: TransactionHistoryQueryOptions = {
+                  ...deferredHistoryFastPathOptions,
+                  categoryId: semanticCategoryId,
+                };
+                delete mergedQueryOptions.categoryName;
+                await this.financialActionRegistry.execute({
+                  ...boundaryDecision.context,
+                  queryOptions: mergedQueryOptions,
+                });
+                return;
+              }
             }
           } else {
             await this.financialActionRegistry.execute(boundaryDecision.context);
