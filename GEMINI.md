@@ -8,6 +8,7 @@ Before performing any repository task, read and follow `AGENTS.md` in full. This
 - GitHub issue structure by issue type,
 - issue labels and issue-splitting assessment,
 - GitHub pull request structure and verification requirements,
-- safe GitHub CLI usage such as `--body-file`.
+- safe GitHub CLI usage such as `--body-file`,
+- SonarCloud and PR verification via GitHub CLI without raw curl.
 
 Do not duplicate or reinterpret those rules here. If this file and `AGENTS.md` ever appear to conflict, `AGENTS.md` takes precedence.
