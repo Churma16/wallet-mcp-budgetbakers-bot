@@ -154,37 +154,45 @@ function validateKnownExplicitIdentifier(
   );
 }
 
+/**
+ * Validate only the semantic trust-boundary shape here. Business validity stays
+ * authoritative in validateAndSanitizeFinancialRecords so partial records can
+ * still enter the existing clarification flow and OCR amount strings can still
+ * be normalized by the established deterministic parser.
+ */
 function validateAndCloneRecord(
   rawRecord: unknown,
   knownAccountIds: ReadonlySet<string>,
   knownCategoryIds: ReadonlySet<string>
-): ExtractedFinancialRecordItem | RejectedSemanticToolBoundaryDecision {
+): Record<string, unknown> | RejectedSemanticToolBoundaryDecision {
   if (!isPlainObject(rawRecord) || !containsOnlyAllowedKeys(rawRecord, ALLOWED_RECORD_KEYS)) {
     return reject('INVALID_ARGUMENTS', 'Transaction proposal contains unsupported record fields.');
   }
 
-  if (!isBoundedString(rawRecord.accountId)) {
-    return reject('INVALID_ARGUMENTS', 'Transaction proposal requires a bounded account reference.');
+  if (
+    rawRecord.accountId !== undefined &&
+    !isBoundedString(rawRecord.accountId, true)
+  ) {
+    return reject('INVALID_ARGUMENTS', 'Transaction proposal account reference is malformed or too large.');
   }
 
-  if (typeof rawRecord.amount !== 'number' || !Number.isFinite(rawRecord.amount)) {
-    return reject('INVALID_ARGUMENTS', 'Transaction proposal amount must be a finite number.');
+  if (
+    !(
+      (typeof rawRecord.amount === 'number' && Number.isFinite(rawRecord.amount)) ||
+      isBoundedString(rawRecord.amount)
+    )
+  ) {
+    return reject('INVALID_ARGUMENTS', 'Transaction proposal amount must be a finite number or bounded amount string.');
   }
 
-  if (!isBoundedString(rawRecord.note, true)) {
-    return reject('INVALID_ARGUMENTS', 'Transaction proposal note is malformed or too large.');
-  }
-
-  if (rawRecord.categoryId !== undefined && !isBoundedString(rawRecord.categoryId)) {
-    return reject('INVALID_ARGUMENTS', 'Transaction proposal category reference is malformed.');
-  }
-
-  if (rawRecord.recordDate !== undefined && !isBoundedString(rawRecord.recordDate)) {
-    return reject('INVALID_ARGUMENTS', 'Transaction proposal record date is malformed.');
-  }
-
-  if (rawRecord.counterParty !== undefined && !isBoundedString(rawRecord.counterParty, true)) {
-    return reject('INVALID_ARGUMENTS', 'Transaction proposal counterparty is malformed.');
+  for (const fieldName of ['categoryId', 'recordDate', 'note', 'counterParty'] as const) {
+    const fieldValue = rawRecord[fieldName];
+    if (fieldValue !== undefined && !isBoundedString(fieldValue, true)) {
+      return reject(
+        'INVALID_ARGUMENTS',
+        `Transaction proposal ${fieldName} field is malformed or too large.`
+      );
+    }
   }
 
   if (rawRecord.currency !== undefined) {
@@ -198,7 +206,7 @@ function validateAndCloneRecord(
   }
 
   const accountReferenceRejection = validateKnownExplicitIdentifier(
-    rawRecord.accountId,
+    typeof rawRecord.accountId === 'string' ? rawRecord.accountId : undefined,
     knownAccountIds,
     'account'
   );
@@ -216,22 +224,8 @@ function validateAndCloneRecord(
   }
 
   return {
-    accountId: rawRecord.accountId.trim(),
-    categoryId: typeof rawRecord.categoryId === 'string'
-      ? rawRecord.categoryId.trim()
-      : undefined,
-    amount: rawRecord.amount,
-    recordDate: typeof rawRecord.recordDate === 'string'
-      ? rawRecord.recordDate.trim()
-      : undefined,
-    note: rawRecord.note,
-    counterParty: typeof rawRecord.counterParty === 'string'
-      ? rawRecord.counterParty
-      : undefined,
-    labels: rawRecord.labels ? [...rawRecord.labels] : undefined,
-    currency: typeof rawRecord.currency === 'string'
-      ? rawRecord.currency.trim().toUpperCase()
-      : undefined,
+    ...rawRecord,
+    labels: Array.isArray(rawRecord.labels) ? [...rawRecord.labels] : rawRecord.labels,
   };
 }
 
@@ -268,7 +262,10 @@ function validateTransactionArguments(
       return validatedRecord;
     }
 
-    validatedRecords.push(validatedRecord as ExtractedFinancialRecordItem);
+    // The boundary has validated container/type safety. The existing record
+    // validator remains responsible for required business fields, amount
+    // normalization, account clarification, dates, currency, and category rules.
+    validatedRecords.push(validatedRecord as unknown as ExtractedFinancialRecordItem);
   }
 
   return validatedRecords;
