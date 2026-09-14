@@ -91,6 +91,105 @@ describe('native paired transfers (issue #143)', () => {
     );
   });
 
+  it.each([
+    {
+      name: 'ordinary category on transfer',
+      record: { accountHint: 'jago expense', categoryHint: 'Food', amount: -20_000, transfer: { pairingMode: 'new', accountHint: 'gopay' } },
+      categories: [{ id: 'cat-food', name: 'Food', isAssignable: true }],
+      error: 'Transfer tidak boleh menggunakan kategori transaksi biasa.',
+    },
+    {
+      name: 'unsupported pairing mode',
+      record: { accountHint: 'jago expense', amount: -20_000, transfer: { pairingMode: 'unpaired', accountHint: 'gopay' } },
+      categories: [],
+      error: 'Hanya transfer berpasangan baru yang didukung.',
+    },
+    {
+      name: 'unresolved destination',
+      record: { accountHint: 'jago expense', amount: -20_000, transfer: { pairingMode: 'new', accountHint: 'missing' } },
+      categories: [],
+      error: 'Akun tujuan transfer belum dapat dipastikan.',
+    },
+    {
+      name: 'same source and destination',
+      record: { accountHint: 'jago expense', amount: -20_000, transfer: { pairingMode: 'new', accountHint: 'jago expense' } },
+      categories: [],
+      error: 'Akun sumber dan tujuan transfer harus berbeda.',
+    },
+  ])('rejects $name deterministically', ({ record, categories, error }) => {
+    const result = validateAndSanitizeFinancialRecords(
+      [record as any],
+      accounts,
+      categories,
+      undefined,
+      new Date('2026-09-14T12:00:00Z')
+    );
+    expect(result.isValid).toBe(false);
+    expect(result.validationErrors[0]).toContain(error);
+  });
+
+  it('accepts a validated cross-currency counter amount', () => {
+    const result = validateAndSanitizeFinancialRecords(
+      [{
+        accountHint: 'jago expense',
+        amount: -20_000,
+        transfer: {
+          pairingMode: 'new',
+          accountHint: 'dollar account',
+          counterAmount: { value: 1.25, currencyCode: 'usd' },
+        },
+      }],
+      [...accounts, { id: 'acc-usd', name: 'Dollar Account', currency: 'USD' }],
+      [],
+      undefined,
+      new Date('2026-09-14T12:00:00Z')
+    );
+    expect(result.sanitizedRecords[0].transfer?.counterAmount).toEqual({
+      value: 1.25,
+      currencyCode: 'USD',
+    });
+  });
+
+  it.each([
+    { value: Number.NaN, currencyCode: 'USD' },
+    { value: 0, currencyCode: 'USD' },
+    { value: -1.25, currencyCode: 'USD' },
+    { value: 1.25, currencyCode: '' },
+    { value: 1.25, currencyCode: 'EUR' },
+  ])('rejects invalid cross-currency counter amount %#', counterAmount => {
+    const result = validateAndSanitizeFinancialRecords(
+      [{
+        accountHint: 'jago expense',
+        amount: -20_000,
+        transfer: { pairingMode: 'new', accountHint: 'dollar account', counterAmount },
+      }],
+      [...accounts, { id: 'acc-usd', name: 'Dollar Account', currency: 'USD' }],
+      [],
+      undefined,
+      new Date('2026-09-14T12:00:00Z')
+    );
+    expect(result.validationErrors[0]).toContain('Nominal pasangan transfer lintas mata uang tidak valid.');
+  });
+
+  it('rejects counterAmount for same-currency accounts', () => {
+    const result = validateAndSanitizeFinancialRecords(
+      [{
+        accountHint: 'jago expense',
+        amount: -20_000,
+        transfer: {
+          pairingMode: 'new',
+          accountHint: 'gopay',
+          counterAmount: { value: 20_000, currencyCode: 'IDR' },
+        },
+      }],
+      accounts,
+      [],
+      undefined,
+      new Date('2026-09-14T12:00:00Z')
+    );
+    expect(result.isValid).toBe(false);
+  });
+
   it('rejects non-assignable category metadata before ordinary dispatch', () => {
     const categories: WalletCategoryItem[] = [{
       id: 'transfer-category',
@@ -149,6 +248,43 @@ describe('native paired transfers (issue #143)', () => {
     expect(sentRecord.categoryId).toBeUndefined();
     expect(response.results?.[0].createdMirrorRecordId).toBe('mirror-record');
     expect(response.agentHints?.[0].type).toBe('transfer.fx_derived');
+  });
+
+  it('preserves existing-pair and counter-amount transfer fields at dispatch', async () => {
+    const client = new WalletMcpClientService('https://example.invalid', 'test-token');
+    const call = vi.spyOn(client, 'callMcpTool').mockResolvedValue({
+      summary: { total: 2, succeeded: 2, clientErrors: 0, serverErrors: 0, documentsWritten: 3 },
+      results: [
+        { inputIndex: 0, id: 'bound-root', success: true, pairingMode: 'existing' },
+        { inputIndex: 1, id: 'fx-root', success: true, pairingMode: 'new', createdMirrorRecordId: 'fx-mirror' },
+      ],
+    });
+    await client.createRecords([
+      { accountId: 'acc-jago', amount: -1, transfer: { pairingMode: 'existing', recordId: 'existing-record' } },
+      {
+        accountId: 'acc-jago',
+        amount: -20_000,
+        transfer: {
+          pairingMode: 'new',
+          accountId: 'acc-usd',
+          counterAmount: { value: 1.25, currencyCode: 'USD' },
+        },
+      },
+    ]);
+    const records = (call.mock.calls[0][1] as any).records;
+    expect(records[0].transfer.recordId).toBe('existing-record');
+    expect(records[1].transfer.counterAmount).toEqual({ value: 1.25, currencyCode: 'USD' });
+  });
+
+  it('rejects unexplained expanded document counts with and without result rows', () => {
+    const client = new WalletMcpClientService('https://example.invalid', 'test-token');
+    expect(() => client.validateCreateRecordsResponse({
+      summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 2 },
+    }, 1)).toThrow(expect.objectContaining({ message: expect.stringContaining('unexplained') }));
+    expect(() => client.validateCreateRecordsResponse({
+      summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 2 },
+      results: [{ inputIndex: 0, id: 'ordinary', success: true }],
+    }, 1)).toThrow(expect.objectContaining({ message: expect.stringContaining('unexplained') }));
   });
 
   it('fails closed on duplicate or out-of-range input correlation', () => {
