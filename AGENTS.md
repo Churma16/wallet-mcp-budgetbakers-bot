@@ -101,6 +101,11 @@ To prevent Windows PowerShell string truncation and backtick escaping failures:
 - PR title must follow Conventional Commits format without JIRA ID prefix (e.g., `feat(messaging): ...`, `fix(security): ...`).
 - Branch names must follow standard kebab-cased format `<branch-type>/<short-kebab-description>` without JIRA prefixes.
 
+### 4. SonarCloud and PR Verification via GitHub CLI (No curl)
+When inspecting SonarCloud status, quality gate results, or review feedback on Pull Requests:
+- **Use GitHub CLI Only**: Always inspect PR comments, review feedback, and status check details via `gh pr view <pr> --comments` and `gh pr checks <pr>`.
+- **No curl to SonarCloud**: Do not make raw HTTP/curl requests directly to `sonarcloud.io` or external API endpoints. The SonarCloud GitHub integration automatically posts Quality Gate results and line annotations directly to the PR discussion.
+
 ## Vitest Invariant for New Test Suites
 Following the Vitest bootstrap (Issue #113), all new hermetic unit, integration, and regression test suites in this repository MUST be authored directly in Vitest:
 - **File Naming & Discovery**: New test files must be named `tests/**/*.vitest.test.ts` to match the include pattern in `vitest.config.ts`.

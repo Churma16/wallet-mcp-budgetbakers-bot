@@ -273,6 +273,13 @@ function extractHistoryQueryOptionsFromTokens(
     remainingTokens = remainingTokens.replace(explicitSearchMatch[0], ' ').trim();
   }
 
+  // Scope words are structural history grammar only when they remain after
+  // explicit category and search operands have been extracted.
+  const scopeMatches = remainingTokens.match(/\b(?:all|semua|semuanya)\b/gi);
+  if (scopeMatches) {
+    remainingTokens = remainingTokens.replace(/\b(?:all|semua|semuanya)\b/gi, ' ').trim();
+  }
+
   if (!resolvedSearchQuery) {
     const standaloneQuotedMatch = remainingTokens.match(/(?:"([^"]+)"|'([^']+)')/);
     if (standaloneQuotedMatch) {

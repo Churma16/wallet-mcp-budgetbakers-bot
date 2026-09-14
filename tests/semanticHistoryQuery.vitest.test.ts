@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
+import { shouldDeferHistoryCategoryToSemanticResolver, UserMessageHandler } from '../src/handlers/userMessageHandler.js';
 import { buildCompactSystemInstruction, buildTextMessagePrompt } from '../src/services/ai/aiPromptBuilder.js';
 import { postProcessFinancialIntentResponse } from '../src/services/ai/aiProviderWorkflow.js';
 import {
@@ -8,14 +8,14 @@ import {
   validateSemanticHistoryQueryOptions,
 } from '../src/services/ai/semanticToolBoundary.js';
 
-function createHandler(ai: any, fastPathHandled = false) {
+function createHandler(ai: any, fastPathHandled = false, categories: any[] = []) {
   const gateway = { sendTypingPresence: vi.fn(), clearTypingPresence: vi.fn(), sendMessage: vi.fn() };
   const registry = { hasHandler: vi.fn().mockReturnValue(true), execute: vi.fn() };
   const fastPath = { handleFastPath: vi.fn().mockResolvedValue(fastPathHandled) };
   const handler = new UserMessageHandler(
     gateway as any, { hasPendingTransactions: vi.fn().mockReturnValue(false) } as any,
     {} as any, fastPath as any, ai,
-    { getAccounts: vi.fn().mockReturnValue([]), getCategories: vi.fn().mockReturnValue([]) } as any,
+    { getAccounts: vi.fn().mockReturnValue([]), getCategories: vi.fn().mockReturnValue(categories) } as any,
     {} as any, {} as any, {} as any, registry as any,
     { handlePendingAccountSelectionReply: vi.fn().mockResolvedValue(false) } as any
   );
@@ -47,11 +47,12 @@ describe('single-call semantic transaction-history routing', () => {
   });
 
   it('validates model-produced query options and rejects malformed authority expansion', () => {
+    const sampleCategories = [{ id: 'cat-food', name: 'Food' }];
     expect(validateSemanticHistoryQueryOptions({
       accountName: 'BCA', categoryName: 'Food', recordType: 'expense',
       datePeriod: 'last_month', sort: 'newest', limit: 10, page: 2,
-    })).toEqual({
-      accountName: 'BCA', categoryName: 'Food', recordType: 'expense',
+    }, sampleCategories)).toEqual({
+      accountName: 'BCA', categoryId: 'cat-food', categoryName: 'Food', recordType: 'expense',
       datePeriod: 'last_month', sort: 'newest', limit: 10, page: 2,
     });
     for (const invalid of [
@@ -84,16 +85,25 @@ describe('single-call semantic transaction-history routing', () => {
   });
 
   it('uses one common model call for complex history language and dispatches its proposal', async () => {
+    const categories = [{ id: 'cat-food', name: 'food' }];
     const processTextMessage = vi.fn().mockResolvedValue({
       action: 'TRANSACTION_HISTORY',
       queryOptions: { accountName: 'main account', categoryName: 'food', datePeriod: 'last_month' },
     });
-    const harness = createHandler({ providerName: 'mock', processTextMessage, processImageMessage: vi.fn() });
+    const harness = createHandler(
+      { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+      false,
+      categories
+    );
     await harness.handler.handleIncomingUserMessage(textEvent('what did I spend on food from my main account last month?'));
     expect(processTextMessage).toHaveBeenCalledOnce();
     expect(harness.registry.execute).toHaveBeenCalledWith(expect.objectContaining({
       action: 'TRANSACTION_HISTORY', routingSource: 'ai',
-      queryOptions: { accountName: 'main account', categoryName: 'food', datePeriod: 'last_month' },
+      queryOptions: expect.objectContaining({
+        accountName: 'main account',
+        categoryId: 'cat-food',
+        datePeriod: 'last_month',
+      }),
     }));
   });
 
@@ -126,5 +136,421 @@ describe('single-call semantic transaction-history routing', () => {
     await harness.handler.handleIncomingUserMessage(textEvent('history'));
     expect(harness.fastPath.handleFastPath).toHaveBeenCalledOnce();
     expect(processTextMessage).not.toHaveBeenCalled();
+  });
+
+  it('defers an unresolved prefixed category meaning to the guarded semantic resolver', async () => {
+    const categories = [{ id: 'cat-health', name: 'Kesehatan' }];
+    const processTextMessage = vi.fn().mockResolvedValue({
+      action: 'TRANSACTION_HISTORY',
+      queryOptions: {
+        categoryId: 'cat-health',
+        accountName: 'BCA',
+        datePeriod: 'this_month',
+        sort: 'newest',
+      },
+    });
+    const harness = createHandler(
+      { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+      true,
+      categories
+    );
+
+    await harness.handler.handleIncomingUserMessage(
+      textEvent('riwayat beli obat bulan ini dari BCA terbaru')
+    );
+
+    expect(harness.fastPath.handleFastPath).not.toHaveBeenCalled();
+    expect(processTextMessage).toHaveBeenCalledOnce();
+    expect(processTextMessage).toHaveBeenCalledWith(
+      'riwayat beli obat bulan ini dari BCA terbaru',
+      [],
+      categories,
+      expect.any(Date)
+    );
+    expect(harness.registry.execute).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'TRANSACTION_HISTORY',
+      routingSource: 'ai',
+      queryOptions: expect.objectContaining({
+        categoryId: 'cat-health',
+        accountName: 'bca',
+        datePeriod: 'this_month',
+      }),
+    }));
+  });
+
+  it.each([
+    ['riwayat beli obat', 'cat-health', 'Kesehatan'],
+    ['riwayat beli gadget baru', 'cat-electronics', 'Elektronik'],
+    ['riwayat biaya perjalanan motor', 'cat-fuel', 'Bensin'],
+    ['riwayat bayar wifi', 'cat-internet', 'Internet'],
+    ['riwayat ngopi', 'cat-coffee', 'Kopi'],
+    ['riwayat makan siang', 'cat-food', 'Makanan'],
+    ['history medicine purchases', 'cat-health-en', 'Health'],
+    ['history beli obat', 'cat-health-mixed', 'Health'],
+    ['riwayat medical expenses', 'cat-health-expenses', 'Health'],
+  ])('routes the realistic semantic phrase %s through a cached category choice', async (
+    input,
+    categoryId,
+    categoryName
+  ) => {
+    const categories = [{ id: categoryId, name: categoryName }];
+    const processTextMessage = vi.fn().mockResolvedValue({
+      action: 'TRANSACTION_HISTORY', queryOptions: { categoryId },
+    });
+    const harness = createHandler(
+      { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+      true,
+      categories
+    );
+
+    await harness.handler.handleIncomingUserMessage(textEvent(input));
+
+    expect(harness.fastPath.handleFastPath).not.toHaveBeenCalled();
+    expect(processTextMessage).toHaveBeenCalledOnce();
+    expect(harness.registry.execute).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'TRANSACTION_HISTORY',
+      queryOptions: expect.objectContaining({ categoryId }),
+    }));
+  });
+
+  it('keeps an intentionally ambiguous deterministic category off the semantic fallback', async () => {
+    const categories = [
+      { id: 'cat-hangout', name: 'Makan Hangout' },
+      { id: 'cat-pokok', name: 'Makan Pokok' },
+    ];
+    const processTextMessage = vi.fn();
+    const harness = createHandler(
+      { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+      true,
+      categories
+    );
+
+    await harness.handler.handleIncomingUserMessage(textEvent('history makan'));
+
+    expect(harness.fastPath.handleFastPath).toHaveBeenCalledOnce();
+    expect(processTextMessage).not.toHaveBeenCalled();
+  });
+
+  it('rejects a semantic history category ID that is absent from the cache', async () => {
+    const categories = [{ id: 'cat-health', name: 'Kesehatan' }];
+    const processTextMessage = vi.fn().mockResolvedValue({
+      action: 'TRANSACTION_HISTORY', queryOptions: { categoryId: 'cat-invented' },
+    });
+    const harness = createHandler(
+      { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+      true,
+      categories
+    );
+
+    await harness.handler.handleIncomingUserMessage(textEvent('riwayat beli obat'));
+
+    expect(processTextMessage).toHaveBeenCalledOnce();
+    expect(harness.registry.execute).not.toHaveBeenCalled();
+  });
+
+  it('does not execute history when the semantic resolver asks for clarification', async () => {
+    const categories = [
+      { id: 'cat-shopping', name: 'Shopping' },
+      { id: 'cat-electronics', name: 'Electronics' },
+      { id: 'cat-household', name: 'Household' },
+    ];
+    const processTextMessage = vi.fn().mockResolvedValue({
+      action: 'GENERAL_REPLY',
+      explanation: 'Maksud Anda kategori Shopping, Electronics, atau Household?',
+    });
+    const harness = createHandler(
+      { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+      true,
+      categories
+    );
+
+    await harness.handler.handleIncomingUserMessage(textEvent('riwayat beli barang'));
+
+    expect(harness.registry.execute).not.toHaveBeenCalled();
+    expect(harness.gateway.sendMessage).toHaveBeenCalledWith(
+      'whatsapp',
+      'chat',
+      'Maksud Anda kategori Shopping, Electronics, atau Household?'
+    );
+  });
+
+  it('exposes real category IDs in compact system instruction matching those accepted by SemanticToolBoundary', () => {
+    const categories = [
+      { id: 'cat-health', name: 'Kesehatan' },
+      { id: 'cat-electronics', name: 'Elektronik' },
+    ];
+    const instruction = buildCompactSystemInstruction([], categories, '2026-09-14');
+    expect(instruction).toContain('cat-health: Kesehatan');
+    expect(instruction).toContain('cat-electronics: Elektronik');
+    expect(instruction).not.toContain('1: Kesehatan');
+
+    const boundary = new SemanticToolBoundary();
+    const event = textEvent('riwayat beli obat');
+    const evaluateId = (categoryId) => boundary.evaluate({
+      proposal: { tool: 'get_transaction_history', arguments: { categoryId } },
+      authorization: { isAuthorized: true, source: 'test-policy' },
+      event,
+      availableAccountList: [],
+      availableCategoryList: categories,
+    });
+
+    expect(evaluateId('cat-health')).toMatchObject({
+      accepted: true,
+      context: { action: 'TRANSACTION_HISTORY', queryOptions: { categoryId: 'cat-health' } },
+    });
+    expect(evaluateId('cat-electronics')).toMatchObject({
+      accepted: true,
+      context: { action: 'TRANSACTION_HISTORY', queryOptions: { categoryId: 'cat-electronics' } },
+    });
+    expect(evaluateId('1')).toMatchObject({
+      accepted: false,
+      code: 'INVALID_ENTITY_REFERENCE',
+    });
+    expect(evaluateId('non-existent-id')).toMatchObject({
+      accepted: false,
+      code: 'INVALID_ENTITY_REFERENCE',
+    });
+  });
+
+  it('preserves authoritative deterministic structural filters when deferring category to semantic resolver', async () => {
+    const categories = [{ id: 'cat-health', name: 'Kesehatan' }];
+    const processTextMessage = vi.fn().mockResolvedValue({
+      action: 'TRANSACTION_HISTORY',
+      queryOptions: {
+        categoryId: 'cat-health',
+        accountName: 'AlteredBank',
+        sort: 'oldest',
+      },
+    });
+    const harness = createHandler(
+      { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+      true,
+      categories
+    );
+
+    await harness.handler.handleIncomingUserMessage(
+      textEvent('riwayat 20 beli obat bulan lalu dari BCA terbaru')
+    );
+
+    expect(harness.fastPath.handleFastPath).not.toHaveBeenCalled();
+    expect(processTextMessage).toHaveBeenCalledOnce();
+    expect(harness.registry.execute).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'TRANSACTION_HISTORY',
+      routingSource: 'ai',
+      queryOptions: expect.objectContaining({
+        limit: 20,
+        datePeriod: 'last_month',
+        accountName: 'bca',
+        sort: 'newest',
+        categoryId: 'cat-health',
+      }),
+    }));
+  });
+
+  it('fails closed when a deferred semantic category response omits categoryId', async () => {
+    const categories = [{ id: 'cat-health', name: 'Kesehatan' }];
+    const processTextMessage = vi.fn().mockResolvedValue({
+      action: 'TRANSACTION_HISTORY',
+      queryOptions: { datePeriod: 'last_month' },
+      explanation: 'Kategori yang dimaksud belum jelas.',
+    });
+    const harness = createHandler(
+      { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+      true,
+      categories
+    );
+
+    await harness.handler.handleIncomingUserMessage(
+      textEvent('riwayat beli obat bulan lalu')
+    );
+
+    expect(harness.fastPath.handleFastPath).not.toHaveBeenCalled();
+    expect(processTextMessage).toHaveBeenCalledOnce();
+    expect(harness.registry.execute).not.toHaveBeenCalled();
+    expect(harness.gateway.sendMessage).toHaveBeenCalledWith(
+      'whatsapp',
+      'chat',
+      'Kategori yang dimaksud belum jelas.'
+    );
+  });
+
+  it.each([
+    ['CHECK_BALANCE', { action: 'CHECK_BALANCE', explanation: 'Tidak menjalankan saldo.' }],
+    ['CHECK_BUDGET', { action: 'CHECK_BUDGET', explanation: 'Tidak menjalankan anggaran.' }],
+    ['CREATE_RECORD', {
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'Cash', amount: 25_000, note: 'beli obat' }],
+      explanation: 'Tidak menyimpan transaksi.',
+    }],
+  ])('does not let deferred history semantic fallback switch to %s', async (_action, aiResponse) => {
+    const categories = [{ id: 'cat-health', name: 'Kesehatan' }];
+    const processTextMessage = vi.fn().mockResolvedValue(aiResponse);
+    const harness = createHandler(
+      { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+      true,
+      categories
+    );
+
+    await harness.handler.handleIncomingUserMessage(textEvent('riwayat beli obat'));
+
+    expect(harness.fastPath.handleFastPath).not.toHaveBeenCalled();
+    expect(processTextMessage).toHaveBeenCalledOnce();
+    expect(harness.registry.execute).not.toHaveBeenCalled();
+  });
+
+  it('returns validation guidance when a transaction proposal is rejected by the boundary', async () => {
+    const processTextMessage = vi.fn().mockResolvedValue({
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'Cash', amount: Number.POSITIVE_INFINITY, note: 'invalid' }],
+    });
+    const harness = createHandler({
+      providerName: 'mock',
+      processTextMessage,
+      processImageMessage: vi.fn(),
+    });
+
+    await harness.handler.handleIncomingUserMessage(textEvent('catat transaksi invalid'));
+
+    expect(harness.registry.execute).not.toHaveBeenCalled();
+    expect(harness.gateway.sendMessage).toHaveBeenCalledWith(
+      'whatsapp',
+      'chat',
+      expect.stringContaining('tidak valid')
+    );
+  });
+
+  it('tightens categoryName trust semantics and normalizes exact cached matches to IDs', () => {
+    const categories = [
+      { id: 'cat-health', name: 'Kesehatan' },
+      { id: 'cat-food', name: 'Makanan' },
+    ];
+
+    expect(validateSemanticHistoryQueryOptions({
+      categoryName: 'kesehatan',
+    }, categories)).toEqual({
+      categoryId: 'cat-health',
+      categoryName: 'Kesehatan',
+    });
+
+    expect(validateSemanticHistoryQueryOptions({
+      categoryName: 'Unknown Category',
+    }, categories)).toMatchObject({
+      accepted: false,
+      code: 'INVALID_ENTITY_REFERENCE',
+    });
+
+    expect(validateSemanticHistoryQueryOptions({
+      categoryId: 'cat-health',
+      categoryName: 'Makanan',
+    }, categories)).toMatchObject({
+      accepted: false,
+      code: 'INVALID_ENTITY_REFERENCE',
+    });
+
+    expect(validateSemanticHistoryQueryOptions({
+      categoryId: 'cat-health',
+      categoryName: 'kesehatan',
+    }, categories)).toEqual({
+      categoryId: 'cat-health',
+      categoryName: 'Kesehatan',
+    });
+  });
+
+  it('fails closed for duplicate exact category names unless a matching cached ID disambiguates them', () => {
+    const duplicateCategories = [
+      { id: 'cat-food-1', name: 'Food' },
+      { id: 'cat-food-2', name: 'Food' },
+      { id: 'cat-health', name: 'Health' },
+    ];
+
+    expect(validateSemanticHistoryQueryOptions({
+      categoryName: 'Food',
+    }, duplicateCategories)).toMatchObject({
+      accepted: false,
+      code: 'INVALID_ENTITY_REFERENCE',
+      reason: expect.stringContaining('ambiguous'),
+    });
+
+    expect(validateSemanticHistoryQueryOptions({
+      categoryId: 'cat-food-2',
+      categoryName: 'Food',
+    }, duplicateCategories)).toEqual({
+      categoryId: 'cat-food-2',
+      categoryName: 'Food',
+    });
+
+    expect(validateSemanticHistoryQueryOptions({
+      categoryId: 'cat-health',
+      categoryName: 'Food',
+    }, duplicateCategories)).toMatchObject({
+      accepted: false,
+      code: 'INVALID_ENTITY_REFERENCE',
+    });
+  });
+
+  describe('shouldDeferHistoryCategoryToSemanticResolver branch coverage', () => {
+    const categories = [
+      { id: 'cat-food-1', name: 'Makan Pokok' },
+      { id: 'cat-food-2', name: 'Makan Hangout' },
+      { id: 'cat-health', name: 'Kesehatan' },
+    ];
+    const refDate = new Date('2026-09-14T00:00:00.000Z');
+
+    it('returns false for non-history or invalid actions', () => {
+      expect(shouldDeferHistoryCategoryToSemanticResolver(null, categories, refDate)).toBe(false);
+      expect(shouldDeferHistoryCategoryToSemanticResolver(undefined, categories, refDate)).toBe(false);
+      expect(shouldDeferHistoryCategoryToSemanticResolver('invalid', categories, refDate)).toBe(false);
+      expect(shouldDeferHistoryCategoryToSemanticResolver({ type: 'CHECK_BALANCE' }, categories, refDate)).toBe(false);
+    });
+
+    it('returns false when categoryName is missing or searchQuery is present', () => {
+      expect(shouldDeferHistoryCategoryToSemanticResolver(
+        { type: 'TRANSACTION_HISTORY', options: {} },
+        categories,
+        refDate
+      )).toBe(false);
+
+      expect(shouldDeferHistoryCategoryToSemanticResolver(
+        { type: 'TRANSACTION_HISTORY', options: { categoryName: 'obat', searchQuery: 'starbucks' } },
+        categories,
+        refDate
+      )).toBe(false);
+    });
+
+    it('returns false when category resolves cleanly (exact match)', () => {
+      expect(shouldDeferHistoryCategoryToSemanticResolver(
+        { type: 'TRANSACTION_HISTORY', options: { categoryName: 'Kesehatan' } },
+        categories,
+        refDate
+      )).toBe(false);
+    });
+
+    it('returns false when category resolution is ambiguous', () => {
+      expect(shouldDeferHistoryCategoryToSemanticResolver(
+        { type: 'TRANSACTION_HISTORY', options: { categoryName: 'makan' } },
+        categories,
+        refDate
+      )).toBe(false);
+    });
+
+    it('returns true only when category resolution fails with NOT_FOUND', () => {
+      expect(shouldDeferHistoryCategoryToSemanticResolver(
+        { type: 'TRANSACTION_HISTORY', options: { categoryName: 'obat' } },
+        categories,
+        refDate
+      )).toBe(true);
+    });
+
+    it('continues message processing when fast-path handler does not handle an action', async () => {
+      const processTextMessage = vi.fn().mockResolvedValue({ action: 'GENERAL_REPLY', explanation: 'ok' });
+      const harness = createHandler(
+        { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+        false,
+        categories
+      );
+      await harness.handler.handleIncomingUserMessage(textEvent('cek saldo'));
+      expect(harness.fastPath.handleFastPath).toHaveBeenCalledOnce();
+      expect(processTextMessage).toHaveBeenCalledOnce();
+    });
   });
 });

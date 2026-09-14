@@ -20,9 +20,11 @@ import {
 } from '../actions/index.js';
 import {
   detectFastPathAction,
+  FastPathTransactionHistoryAction,
   detectPendingConfirmationAction,
   detectReconciliationAction,
 } from '../utils/fastPathIntentDetector.js';
+import { normalizeTransactionHistoryFilters } from '../utils/transactionHistoryFilterNormalizer.js';
 import {
   formatErrorMessageForHuman,
   getHumanReadableTimestamp,
@@ -30,6 +32,7 @@ import {
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../utils/logger.js';
 import { WalletRecordPreparationService } from '../services/walletRecordPreparationService.js';
+import { TransactionHistoryQueryOptions } from '../types/walletTypes.js';
 
 export type SemanticToolAuthorizationResolver = (
   event: IncomingUserMessageEvent
@@ -66,6 +69,41 @@ function hasPendingTransactions(manager: PendingTransactionService): boolean {
   return typeof managerWithPendingQueries.hasPendingTransactions === 'function'
     ? managerWithPendingQueries.hasPendingTransactions.call(manager)
     : false;
+}
+
+/**
+ * Keep canonical history queries on the fast path. Only an otherwise valid
+ * history command with a category that deterministic resolution cannot find
+ * may use the guarded semantic fallback. Existing ambiguity guards remain
+ * deterministic and therefore never reach the model.
+ */
+export function shouldDeferHistoryCategoryToSemanticResolver(
+  fastPathAction: ReturnType<typeof detectFastPathAction>,
+  availableCategories: ReturnType<WalletCacheService['getCategories']>,
+  referenceDate: Date
+): boolean {
+  if (
+    !fastPathAction ||
+    typeof fastPathAction !== 'object' ||
+    fastPathAction.type !== 'TRANSACTION_HISTORY'
+  ) {
+    return false;
+  }
+
+  const historyAction = fastPathAction as FastPathTransactionHistoryAction;
+  if (!historyAction.options.categoryName || historyAction.options.searchQuery) {
+    return false;
+  }
+
+  const resolution = normalizeTransactionHistoryFilters(
+    historyAction.options,
+    [],
+    availableCategories,
+    referenceDate
+  );
+  return resolution.unresolvedFilters.some(
+    issue => issue.filterKey === 'category' && issue.reason === 'NOT_FOUND'
+  );
 }
 
 export class UserMessageHandler {
@@ -267,16 +305,27 @@ export class UserMessageHandler {
         }
       }
 
+      let deferredHistoryFastPathOptions: FastPathTransactionHistoryAction['options'] | undefined;
+
       if (event.messageType === 'text' && event.textPayload) {
         const fastPathAction = detectFastPathAction(event.textPayload);
         if (fastPathAction) {
-          const handled = await this.fastPathHandler.handleFastPath(
-            event,
+          const cachedCategories = this.walletCacheService.getCategories();
+          if (shouldDeferHistoryCategoryToSemanticResolver(
             fastPathAction,
-            processingStartTimestamp
-          );
-          if (handled) {
-            return;
+            cachedCategories,
+            requestReferenceInstant
+          )) {
+            deferredHistoryFastPathOptions = (fastPathAction as FastPathTransactionHistoryAction).options;
+          } else {
+            const handled = await this.fastPathHandler.handleFastPath(
+              event,
+              fastPathAction,
+              processingStartTimestamp
+            );
+            if (handled) {
+              return;
+            }
           }
         }
       }
@@ -348,30 +397,62 @@ export class UserMessageHandler {
             return;
           }
 
-          await this.financialActionRegistry.execute(boundaryDecision.context);
-          return;
-        }
-
-        applicationLogger.warn(
-          `[SemanticToolBoundary] Rejected ${semanticToolProposal.tool}: ${boundaryDecision.code}.`
-        );
-        applicationLogger.fileDetail('security', 'Rejected Semantic Tool Proposal', {
-          tool: semanticToolProposal.tool,
-          rejectionCode: boundaryDecision.code,
-          rejectionReason: boundaryDecision.reason,
-          channel: event.channel,
-          senderIdentifier: event.senderIdentifier,
-        });
-
-        if (semanticToolProposal.tool === 'propose_transaction') {
-          await this.messagingGateway.sendMessage(
-            event.channel,
-            event.chatIdentifier,
-            getDictionary().errors.validationRejected(
-              getDictionary().errors.accountResolutionFallback
-            )
+          if (deferredHistoryFastPathOptions) {
+            if (boundaryDecision.context.action !== 'TRANSACTION_HISTORY') {
+              // Deterministic parsing has already established a history
+              // request. Semantic fallback may resolve its category only; it
+              // cannot broaden authority into a different financial action.
+              applicationLogger.warn(
+                `Semantic history resolution proposed ${boundaryDecision.context.action}; action was not executed.`
+              );
+            } else {
+              const semanticCategoryId = boundaryDecision.context.queryOptions?.categoryId;
+              if (!semanticCategoryId) {
+                // A deferred request contains an unresolved category concept. It
+                // must never degrade into an unfiltered history request merely
+                // because the semantic provider omitted a category selection.
+                applicationLogger.warn(
+                  'Semantic category resolution omitted categoryId; history query was not executed.'
+                );
+              } else {
+                const mergedQueryOptions: TransactionHistoryQueryOptions = {
+                  ...deferredHistoryFastPathOptions,
+                  categoryId: semanticCategoryId,
+                };
+                delete mergedQueryOptions.categoryName;
+                await this.financialActionRegistry.execute({
+                  ...boundaryDecision.context,
+                  queryOptions: mergedQueryOptions,
+                });
+                return;
+              }
+            }
+          } else {
+            await this.financialActionRegistry.execute(boundaryDecision.context);
+            return;
+          }
+        } else {
+          applicationLogger.warn(
+            `[SemanticToolBoundary] Rejected ${semanticToolProposal.tool}: ${boundaryDecision.code}.`
           );
-          return;
+          applicationLogger.fileDetail('security', 'Rejected Semantic Tool Proposal', {
+            tool: semanticToolProposal.tool,
+            rejectionCode: boundaryDecision.code,
+            rejectionReason: boundaryDecision.reason,
+            channel: event.channel,
+            senderIdentifier: event.senderIdentifier,
+          });
+
+          if (semanticToolProposal.tool === 'propose_transaction') {
+            await this.messagingGateway.sendMessage(
+              event.channel,
+              event.chatIdentifier,
+              getDictionary().errors.validationRejected(
+                getDictionary().errors.accountResolutionFallback
+              )
+            );
+            return;
+          }
         }
       }
 

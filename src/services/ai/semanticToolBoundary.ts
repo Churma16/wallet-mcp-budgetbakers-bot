@@ -78,7 +78,7 @@ type RecordShapeDecision =
   | RejectedSemanticToolBoundaryDecision;
 
 const ALLOWED_TRANSACTION_ARGUMENT_KEYS = new Set(['records']);
-const ALLOWED_HISTORY_ARGUMENT_KEYS = new Set(['accountName', 'categoryName', 'recordType', 'startDate', 'endDate', 'datePeriod', 'searchQuery', 'limit', 'page', 'sort']);
+const ALLOWED_HISTORY_ARGUMENT_KEYS = new Set(['accountName', 'categoryId', 'categoryName', 'recordType', 'startDate', 'endDate', 'datePeriod', 'searchQuery', 'limit', 'page', 'sort']);
 const ALLOWED_RECORD_KEYS = new Set([
   'accountId',
   'categoryId',
@@ -307,7 +307,10 @@ export function hasTransactionRecordingShape(messageText: string | undefined): b
   return Boolean(normalizedText) && (RECORDING_COMMAND_PATTERN.test(normalizedText) || MONETARY_AMOUNT_PATTERN.test(normalizedText));
 }
 
-export function validateSemanticHistoryQueryOptions(rawArguments: unknown): TransactionHistoryQueryOptions | RejectedSemanticToolBoundaryDecision {
+export function validateSemanticHistoryQueryOptions(
+  rawArguments: unknown,
+  availableCategoryList: WalletCategoryItem[] = []
+): TransactionHistoryQueryOptions | RejectedSemanticToolBoundaryDecision {
   if (!isPlainObject(rawArguments) || !containsOnlyAllowedKeys(rawArguments, ALLOWED_HISTORY_ARGUMENT_KEYS)) {
     return reject('INVALID_ARGUMENTS', 'Transaction-history proposal contains unsupported fields.');
   }
@@ -316,6 +319,56 @@ export function validateSemanticHistoryQueryOptions(rawArguments: unknown): Tran
     const value = rawArguments[field];
     if (value !== undefined && (!isBoundedString(value) || value.length > 200)) return reject('INVALID_ARGUMENTS', `Transaction-history ${field} is malformed or too large.`);
   }
+
+  let resolvedCategoryId = rawArguments.categoryId as string | undefined;
+
+  if (rawArguments.categoryId !== undefined) {
+    if (!isBoundedString(rawArguments.categoryId) || rawArguments.categoryId.length > 200) {
+      return reject('INVALID_ARGUMENTS', 'Transaction-history categoryId is malformed or too large.');
+    }
+    if (!availableCategoryList.some(category => category.id === rawArguments.categoryId)) {
+      return reject(
+        'INVALID_ENTITY_REFERENCE',
+        'Transaction-history categoryId is not present in the deterministic Wallet cache.'
+      );
+    }
+  }
+
+  let matchedCategoryName: string | undefined = undefined;
+
+  if (rawArguments.categoryName !== undefined) {
+    const normalizedCategoryName = (rawArguments.categoryName as string).trim().toLowerCase();
+    const exactNameMatches = availableCategoryList.filter(
+      category => category.name.trim().toLowerCase() === normalizedCategoryName
+    );
+
+    if (resolvedCategoryId !== undefined) {
+      const selectedCategory = availableCategoryList.find(
+        category => category.id === resolvedCategoryId
+      );
+      if (selectedCategory?.name.trim().toLowerCase() !== normalizedCategoryName) {
+        return reject(
+          'INVALID_ENTITY_REFERENCE',
+          'Transaction-history categoryId does not match categoryName in the deterministic Wallet cache.'
+        );
+      }
+      matchedCategoryName = selectedCategory.name;
+    } else if (exactNameMatches.length === 0) {
+      return reject(
+        'INVALID_ENTITY_REFERENCE',
+        'Transaction-history categoryName is not present in the deterministic Wallet cache.'
+      );
+    } else if (exactNameMatches.length > 1) {
+      return reject(
+        'INVALID_ENTITY_REFERENCE',
+        'Transaction-history categoryName is ambiguous in the deterministic Wallet cache.'
+      );
+    } else {
+      resolvedCategoryId = exactNameMatches[0].id;
+      matchedCategoryName = exactNameMatches[0].name;
+    }
+  }
+
   if (rawArguments.recordType !== undefined && !['expense', 'income'].includes(String(rawArguments.recordType))) return reject('INVALID_ARGUMENTS', 'Transaction-history record type is invalid.');
   if (rawArguments.datePeriod !== undefined && !['today', 'yesterday', 'this_week', 'last_week', 'this_month', 'last_month', 'this_year'].includes(String(rawArguments.datePeriod))) return reject('INVALID_ARGUMENTS', 'Transaction-history date period is invalid.');
   if (rawArguments.sort !== undefined && !['newest', 'oldest'].includes(String(rawArguments.sort))) return reject('INVALID_ARGUMENTS', 'Transaction-history sort is invalid.');
@@ -323,7 +376,11 @@ export function validateSemanticHistoryQueryOptions(rawArguments: unknown): Tran
     const value = rawArguments[field];
     if (value !== undefined && (!Number.isInteger(value) || Number(value) <= 0)) return reject('INVALID_ARGUMENTS', `Transaction-history ${field} is invalid.`);
   }
-  return { ...rawArguments } as TransactionHistoryQueryOptions;
+  return {
+    ...rawArguments,
+    ...(resolvedCategoryId !== undefined ? { categoryId: resolvedCategoryId } : {}),
+    ...(matchedCategoryName !== undefined ? { categoryName: matchedCategoryName } : {}),
+  } as TransactionHistoryQueryOptions;
 }
 
 function isAllowlistedToolName(toolName: string): toolName is SemanticToolName {
@@ -434,7 +491,10 @@ export class SemanticToolBoundary {
           'Transaction-history lookup was denied because the message is structurally shaped like a recording request.'
         );
       }
-      const queryOptions = validateSemanticHistoryQueryOptions(request.proposal.arguments);
+      const queryOptions = validateSemanticHistoryQueryOptions(
+        request.proposal.arguments,
+        request.availableCategoryList
+      );
       if ('accepted' in queryOptions) return queryOptions;
       return {
         accepted: true, tool, access,
