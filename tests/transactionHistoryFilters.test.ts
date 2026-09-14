@@ -13,6 +13,8 @@ import {
 } from '../src/utils/transactionHistoryFilterNormalizer.js';
 import { formatTransactionHistoryMessage } from '../src/utils/humanResponseFormatter.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
+import { buildCompactSystemInstruction } from '../src/services/ai/aiPromptBuilder.js';
+import { SemanticToolBoundary } from '../src/services/ai/semanticToolBoundary.js';
 import {
   WalletAccountItem,
   WalletCategoryItem,
@@ -1719,6 +1721,34 @@ console.log('\n[Suite 9] Testing FastPathHandler Integration with Filters...');
   assert.match(sentMessages[0].text, /Pizza Hut/);
 
   console.log('  [PASS] FastPathHandler integration with filters verified end-to-end.');
+}
+
+// Verify Issue #148 scope grammar and prompt/boundary coverage in legacy suite
+{
+  const actionAll = detectFastPathAction('riwayat makan semua');
+  assert.ok(actionAll);
+  if (actionAll.type === 'TRANSACTION_HISTORY') {
+    assert.strictEqual(actionAll.options.categoryName, 'makan');
+  }
+
+  const prompt = buildCompactSystemInstruction(MOCK_ACCOUNTS, MOCK_CATEGORIES, '2026-09-14');
+  assert.match(prompt, /cat-food-001: Makanan & Minuman/);
+
+  const boundary = new SemanticToolBoundary();
+  const evaluation = boundary.evaluate({
+    proposal: { tool: 'get_transaction_history', arguments: { categoryId: 'cat-food-001' } },
+    authorization: { isAuthorized: true, source: 'test-policy' },
+    event: {
+      channel: 'whatsapp',
+      chatIdentifier: 'test-chat',
+      senderIdentifier: 'test-sender',
+      messageType: 'text',
+      textPayload: 'riwayat makan',
+    },
+    availableAccountList: MOCK_ACCOUNTS,
+    availableCategoryList: MOCK_CATEGORIES,
+  });
+  assert.strictEqual(evaluation.accepted, true);
 }
 
 console.log('\n[SUCCESS] All Composable Transaction History Filter tests passed cleanly!');
