@@ -47,11 +47,12 @@ describe('single-call semantic transaction-history routing', () => {
   });
 
   it('validates model-produced query options and rejects malformed authority expansion', () => {
+    const sampleCategories = [{ id: 'cat-food', name: 'Food' }];
     expect(validateSemanticHistoryQueryOptions({
       accountName: 'BCA', categoryName: 'Food', recordType: 'expense',
       datePeriod: 'last_month', sort: 'newest', limit: 10, page: 2,
-    })).toEqual({
-      accountName: 'BCA', categoryName: 'Food', recordType: 'expense',
+    }, sampleCategories)).toEqual({
+      accountName: 'BCA', categoryId: 'cat-food', categoryName: 'Food', recordType: 'expense',
       datePeriod: 'last_month', sort: 'newest', limit: 10, page: 2,
     });
     for (const invalid of [
@@ -84,16 +85,25 @@ describe('single-call semantic transaction-history routing', () => {
   });
 
   it('uses one common model call for complex history language and dispatches its proposal', async () => {
+    const categories = [{ id: 'cat-food', name: 'food' }];
     const processTextMessage = vi.fn().mockResolvedValue({
       action: 'TRANSACTION_HISTORY',
       queryOptions: { accountName: 'main account', categoryName: 'food', datePeriod: 'last_month' },
     });
-    const harness = createHandler({ providerName: 'mock', processTextMessage, processImageMessage: vi.fn() });
+    const harness = createHandler(
+      { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+      false,
+      categories
+    );
     await harness.handler.handleIncomingUserMessage(textEvent('what did I spend on food from my main account last month?'));
     expect(processTextMessage).toHaveBeenCalledOnce();
     expect(harness.registry.execute).toHaveBeenCalledWith(expect.objectContaining({
       action: 'TRANSACTION_HISTORY', routingSource: 'ai',
-      queryOptions: { accountName: 'main account', categoryName: 'food', datePeriod: 'last_month' },
+      queryOptions: expect.objectContaining({
+        accountName: 'main account',
+        categoryId: 'cat-food',
+        datePeriod: 'last_month',
+      }),
     }));
   });
 
@@ -162,7 +172,7 @@ describe('single-call semantic transaction-history routing', () => {
       routingSource: 'ai',
       queryOptions: expect.objectContaining({
         categoryId: 'cat-health',
-        accountName: 'BCA',
+        accountName: 'bca',
         datePeriod: 'this_month',
       }),
     }));
@@ -199,7 +209,7 @@ describe('single-call semantic transaction-history routing', () => {
     expect(processTextMessage).toHaveBeenCalledOnce();
     expect(harness.registry.execute).toHaveBeenCalledWith(expect.objectContaining({
       action: 'TRANSACTION_HISTORY',
-      queryOptions: { categoryId },
+      queryOptions: expect.objectContaining({ categoryId }),
     }));
   });
 
@@ -299,6 +309,78 @@ describe('single-call semantic transaction-history routing', () => {
     expect(evaluateId('non-existent-id')).toMatchObject({
       accepted: false,
       code: 'INVALID_ENTITY_REFERENCE',
+    });
+  });
+
+  it('preserves authoritative deterministic structural filters when deferring category to semantic resolver', async () => {
+    const categories = [{ id: 'cat-health', name: 'Kesehatan' }];
+    const processTextMessage = vi.fn().mockResolvedValue({
+      action: 'TRANSACTION_HISTORY',
+      queryOptions: {
+        categoryId: 'cat-health',
+        accountName: 'AlteredBank',
+        sort: 'oldest',
+      },
+    });
+    const harness = createHandler(
+      { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+      true,
+      categories
+    );
+
+    await harness.handler.handleIncomingUserMessage(
+      textEvent('riwayat 20 beli obat bulan lalu dari BCA terbaru')
+    );
+
+    expect(harness.fastPath.handleFastPath).not.toHaveBeenCalled();
+    expect(processTextMessage).toHaveBeenCalledOnce();
+    expect(harness.registry.execute).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'TRANSACTION_HISTORY',
+      routingSource: 'ai',
+      queryOptions: expect.objectContaining({
+        limit: 20,
+        datePeriod: 'last_month',
+        accountName: 'bca',
+        sort: 'newest',
+        categoryId: 'cat-health',
+      }),
+    }));
+  });
+
+  it('tightens categoryName trust semantics and normalizes exact cached matches to IDs', () => {
+    const categories = [
+      { id: 'cat-health', name: 'Kesehatan' },
+      { id: 'cat-food', name: 'Makanan' },
+    ];
+
+    expect(validateSemanticHistoryQueryOptions({
+      categoryName: 'kesehatan',
+    }, categories)).toEqual({
+      categoryId: 'cat-health',
+      categoryName: 'Kesehatan',
+    });
+
+    expect(validateSemanticHistoryQueryOptions({
+      categoryName: 'Unknown Category',
+    }, categories)).toMatchObject({
+      accepted: false,
+      code: 'INVALID_ENTITY_REFERENCE',
+    });
+
+    expect(validateSemanticHistoryQueryOptions({
+      categoryId: 'cat-health',
+      categoryName: 'Makanan',
+    }, categories)).toMatchObject({
+      accepted: false,
+      code: 'INVALID_ENTITY_REFERENCE',
+    });
+
+    expect(validateSemanticHistoryQueryOptions({
+      categoryId: 'cat-health',
+      categoryName: 'kesehatan',
+    }, categories)).toEqual({
+      categoryId: 'cat-health',
+      categoryName: 'Kesehatan',
     });
   });
 

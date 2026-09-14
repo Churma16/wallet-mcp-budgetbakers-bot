@@ -319,6 +319,9 @@ export function validateSemanticHistoryQueryOptions(
     const value = rawArguments[field];
     if (value !== undefined && (!isBoundedString(value) || value.length > 200)) return reject('INVALID_ARGUMENTS', `Transaction-history ${field} is malformed or too large.`);
   }
+
+  let resolvedCategoryId = rawArguments.categoryId as string | undefined;
+
   if (rawArguments.categoryId !== undefined) {
     if (!isBoundedString(rawArguments.categoryId) || rawArguments.categoryId.length > 200) {
       return reject('INVALID_ARGUMENTS', 'Transaction-history categoryId is malformed or too large.');
@@ -330,6 +333,30 @@ export function validateSemanticHistoryQueryOptions(
       );
     }
   }
+
+  let matchedCategoryName: string | undefined = undefined;
+
+  if (rawArguments.categoryName !== undefined) {
+    const normalizedCategoryName = (rawArguments.categoryName as string).trim().toLowerCase();
+    const matchedCategory = availableCategoryList.find(
+      category => category.name.trim().toLowerCase() === normalizedCategoryName
+    );
+    if (!matchedCategory) {
+      return reject(
+        'INVALID_ENTITY_REFERENCE',
+        'Transaction-history categoryName is not present in the deterministic Wallet cache.'
+      );
+    }
+    if (resolvedCategoryId !== undefined && resolvedCategoryId !== matchedCategory.id) {
+      return reject(
+        'INVALID_ENTITY_REFERENCE',
+        'Transaction-history categoryId does not match categoryName in the deterministic Wallet cache.'
+      );
+    }
+    resolvedCategoryId = matchedCategory.id;
+    matchedCategoryName = matchedCategory.name;
+  }
+
   if (rawArguments.recordType !== undefined && !['expense', 'income'].includes(String(rawArguments.recordType))) return reject('INVALID_ARGUMENTS', 'Transaction-history record type is invalid.');
   if (rawArguments.datePeriod !== undefined && !['today', 'yesterday', 'this_week', 'last_week', 'this_month', 'last_month', 'this_year'].includes(String(rawArguments.datePeriod))) return reject('INVALID_ARGUMENTS', 'Transaction-history date period is invalid.');
   if (rawArguments.sort !== undefined && !['newest', 'oldest'].includes(String(rawArguments.sort))) return reject('INVALID_ARGUMENTS', 'Transaction-history sort is invalid.');
@@ -337,7 +364,11 @@ export function validateSemanticHistoryQueryOptions(
     const value = rawArguments[field];
     if (value !== undefined && (!Number.isInteger(value) || Number(value) <= 0)) return reject('INVALID_ARGUMENTS', `Transaction-history ${field} is invalid.`);
   }
-  return { ...rawArguments } as TransactionHistoryQueryOptions;
+  return {
+    ...rawArguments,
+    ...(resolvedCategoryId !== undefined ? { categoryId: resolvedCategoryId } : {}),
+    ...(matchedCategoryName !== undefined ? { categoryName: matchedCategoryName } : {}),
+  } as TransactionHistoryQueryOptions;
 }
 
 function isAllowlistedToolName(toolName: string): toolName is SemanticToolName {

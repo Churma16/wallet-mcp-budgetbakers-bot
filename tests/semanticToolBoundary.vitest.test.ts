@@ -31,7 +31,8 @@ const categories: WalletCategoryItem[] = [
 
 function evaluate(
   proposal: SemanticToolProposal,
-  isAuthorized = true
+  isAuthorized = true,
+  testEvent: IncomingUserMessageEvent = event
 ): SemanticToolBoundaryDecision {
   return new SemanticToolBoundary().evaluate({
     proposal,
@@ -39,7 +40,7 @@ function evaluate(
       isAuthorized,
       source: 'test-authorization-policy',
     },
-    event,
+    event: testEvent,
     availableAccountList: accounts,
     availableCategoryList: categories,
     processingStartTimestamp: 1_789_000_000_000,
@@ -409,5 +410,62 @@ describe('SemanticToolBoundary (Issue #117)', () => {
       action: 'CREATE_RECORD',
       routingSource: 'ai',
     }));
+  });
+
+  it('tightens categoryName trust semantics on transaction history queries against deterministic cache', () => {
+    const historyEvent: IncomingUserMessageEvent = {
+      ...event,
+      textPayload: 'riwayat transaksi bulan ini',
+    };
+
+    const validMatch = evaluate({
+      tool: 'get_transaction_history',
+      arguments: { categoryName: 'kesehatan' },
+    }, true, historyEvent);
+    expect(validMatch).toMatchObject({
+      accepted: true,
+      tool: 'get_transaction_history',
+      access: 'read',
+      context: {
+        action: 'TRANSACTION_HISTORY',
+        queryOptions: {
+          categoryId: 'cat-1',
+          categoryName: 'Kesehatan',
+        },
+      },
+    });
+
+    const unknownCategory = evaluate({
+      tool: 'get_transaction_history',
+      arguments: { categoryName: 'Unregistered Category' },
+    }, true, historyEvent);
+    expect(unknownCategory).toMatchObject({
+      accepted: false,
+      code: 'INVALID_ENTITY_REFERENCE',
+    });
+
+    const mismatchedCategory = evaluate({
+      tool: 'get_transaction_history',
+      arguments: { categoryId: 'cat-1', categoryName: 'Makanan' },
+    }, true, historyEvent);
+    expect(mismatchedCategory).toMatchObject({
+      accepted: false,
+      code: 'INVALID_ENTITY_REFERENCE',
+    });
+
+    const matchingCategoryAndId = evaluate({
+      tool: 'get_transaction_history',
+      arguments: { categoryId: 'cat-1', categoryName: 'Kesehatan' },
+    }, true, historyEvent);
+    expect(matchingCategoryAndId).toMatchObject({
+      accepted: true,
+      context: {
+        action: 'TRANSACTION_HISTORY',
+        queryOptions: {
+          categoryId: 'cat-1',
+          categoryName: 'Kesehatan',
+        },
+      },
+    });
   });
 });

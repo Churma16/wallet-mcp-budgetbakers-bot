@@ -32,6 +32,7 @@ import {
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../utils/logger.js';
 import { WalletRecordPreparationService } from '../services/walletRecordPreparationService.js';
+import { TransactionHistoryQueryOptions } from '../types/walletTypes.js';
 
 export type SemanticToolAuthorizationResolver = (
   event: IncomingUserMessageEvent
@@ -304,15 +305,19 @@ export class UserMessageHandler {
         }
       }
 
+      let deferredHistoryFastPathOptions: FastPathTransactionHistoryAction['options'] | undefined;
+
       if (event.messageType === 'text' && event.textPayload) {
         const fastPathAction = detectFastPathAction(event.textPayload);
         if (fastPathAction) {
           const cachedCategories = this.walletCacheService.getCategories();
-          if (!shouldDeferHistoryCategoryToSemanticResolver(
+          if (shouldDeferHistoryCategoryToSemanticResolver(
             fastPathAction,
             cachedCategories,
             requestReferenceInstant
           )) {
+            deferredHistoryFastPathOptions = (fastPathAction as FastPathTransactionHistoryAction).options;
+          } else {
             const handled = await this.fastPathHandler.handleFastPath(
               event,
               fastPathAction,
@@ -392,7 +397,24 @@ export class UserMessageHandler {
             return;
           }
 
-          await this.financialActionRegistry.execute(boundaryDecision.context);
+          let actionContext = boundaryDecision.context;
+
+          if (
+            actionContext.action === 'TRANSACTION_HISTORY' &&
+            deferredHistoryFastPathOptions
+          ) {
+            const mergedQueryOptions: TransactionHistoryQueryOptions = {
+              ...deferredHistoryFastPathOptions,
+              categoryId: actionContext.queryOptions?.categoryId,
+            };
+            delete mergedQueryOptions.categoryName;
+            actionContext = {
+              ...actionContext,
+              queryOptions: mergedQueryOptions,
+            };
+          }
+
+          await this.financialActionRegistry.execute(actionContext);
           return;
         }
 
