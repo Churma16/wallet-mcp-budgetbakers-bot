@@ -278,6 +278,10 @@ function hasEmptyReadArguments(rawArguments: unknown): boolean {
   return isPlainObject(rawArguments) && Object.keys(rawArguments).length === 0;
 }
 
+function isAllowlistedToolName(toolName: string): toolName is SemanticToolName {
+  return Object.prototype.hasOwnProperty.call(SEMANTIC_TOOL_ALLOWLIST, toolName);
+}
+
 /**
  * Marks data returned by an external semantic tool as untrusted. Callers may
  * feed the data back to a model for summarization, but must never derive
@@ -327,11 +331,11 @@ export class SemanticToolBoundary {
       );
     }
 
-    if (!(request.proposal.tool in SEMANTIC_TOOL_ALLOWLIST)) {
+    if (!isAllowlistedToolName(request.proposal.tool)) {
       return reject('UNKNOWN_TOOL', 'Semantic tool is not explicitly allowlisted.');
     }
 
-    const tool = request.proposal.tool as SemanticToolName;
+    const tool = request.proposal.tool;
     const access = SEMANTIC_TOOL_ALLOWLIST[tool].access;
 
     if (tool === 'get_balance') {
