@@ -143,14 +143,6 @@ function extractHistoryQueryOptionsFromTokens(
     remainingTokens = remainingTokens.replace(sortMatch[0], ' ').trim();
   }
 
-  // "all" is structural history grammar, not part of a category meaning. A
-  // history request is already unbounded by category scope unless another
-  // filter is supplied, so consuming this modifier is sufficient.
-  const scopeMatches = remainingTokens.match(/\b(?:all|semua|semuanya)\b/gi);
-  if (scopeMatches) {
-    remainingTokens = remainingTokens.replace(/\b(?:all|semua|semuanya)\b/gi, ' ').trim();
-  }
-
   const pageMatch = remainingTokens.match(/\b(?:hal(?:aman)?|page|p)\s*(\d+)\b/i);
   if (pageMatch) {
     const parsedPage = Number.parseInt(pageMatch[1], 10);
@@ -271,6 +263,14 @@ function extractHistoryQueryOptionsFromTokens(
       resolvedCategoryName = connectorCategoryMatch[1].toLowerCase();
       remainingTokens = remainingTokens.replace(connectorCategoryMatch[0], ' ').trim();
     }
+  }
+
+  // "all" is structural history grammar, not part of a category meaning. It
+  // is intentionally consumed only after quoted category literals have been
+  // extracted, so names such as "Semua Makanan" remain intact.
+  const scopeMatches = remainingTokens.match(/\b(?:all|semua|semuanya)\b/gi);
+  if (scopeMatches) {
+    remainingTokens = remainingTokens.replace(/\b(?:all|semua|semuanya)\b/gi, ' ').trim();
   }
 
   const explicitSearchMatch = remainingTokens.match(

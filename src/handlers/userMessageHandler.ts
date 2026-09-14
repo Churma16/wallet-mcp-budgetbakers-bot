@@ -397,10 +397,15 @@ export class UserMessageHandler {
             return;
           }
 
-          if (
-            boundaryDecision.context.action === 'TRANSACTION_HISTORY' &&
-            deferredHistoryFastPathOptions
-          ) {
+          if (deferredHistoryFastPathOptions) {
+            if (boundaryDecision.context.action !== 'TRANSACTION_HISTORY') {
+              // Deterministic parsing has already established a history
+              // request. Semantic fallback may resolve its category only; it
+              // cannot broaden authority into a different financial action.
+              applicationLogger.warn(
+                `Semantic history resolution proposed ${boundaryDecision.context.action}; action was not executed.`
+              );
+            } else {
             const semanticCategoryId = boundaryDecision.context.queryOptions?.categoryId;
             if (!semanticCategoryId) {
               // A deferred request contains an unresolved category concept. It
@@ -417,9 +422,10 @@ export class UserMessageHandler {
             delete mergedQueryOptions.categoryName;
               await this.financialActionRegistry.execute({
                 ...boundaryDecision.context,
-              queryOptions: mergedQueryOptions,
+                queryOptions: mergedQueryOptions,
               });
               return;
+            }
             }
           } else {
             await this.financialActionRegistry.execute(boundaryDecision.context);

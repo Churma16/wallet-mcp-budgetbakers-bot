@@ -374,6 +374,30 @@ describe('single-call semantic transaction-history routing', () => {
     );
   });
 
+  it.each([
+    ['CHECK_BALANCE', { action: 'CHECK_BALANCE', explanation: 'Tidak menjalankan saldo.' }],
+    ['CHECK_BUDGET', { action: 'CHECK_BUDGET', explanation: 'Tidak menjalankan anggaran.' }],
+    ['CREATE_RECORD', {
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'Cash', amount: 25_000, note: 'beli obat' }],
+      explanation: 'Tidak menyimpan transaksi.',
+    }],
+  ])('does not let deferred history semantic fallback switch to %s', async (_action, aiResponse) => {
+    const categories = [{ id: 'cat-health', name: 'Kesehatan' }];
+    const processTextMessage = vi.fn().mockResolvedValue(aiResponse);
+    const harness = createHandler(
+      { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+      true,
+      categories
+    );
+
+    await harness.handler.handleIncomingUserMessage(textEvent('riwayat beli obat'));
+
+    expect(harness.fastPath.handleFastPath).not.toHaveBeenCalled();
+    expect(processTextMessage).toHaveBeenCalledOnce();
+    expect(harness.registry.execute).not.toHaveBeenCalled();
+  });
+
   it('tightens categoryName trust semantics and normalizes exact cached matches to IDs', () => {
     const categories = [
       { id: 'cat-health', name: 'Kesehatan' },

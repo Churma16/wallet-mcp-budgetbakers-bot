@@ -96,6 +96,15 @@ describe('natural transaction-history category routing', () => {
     expect(action.options.searchQuery).toBeUndefined();
   });
 
+  it.each([
+    ['history kategori "Semua Makanan"', 'semua makanan'],
+    ['history category "All Food"', 'all food'],
+  ])('preserves scope-looking words inside quoted category names: %s', (input, expectedName) => {
+    const action = expectHistoryAction(input);
+
+    expect(action.options.categoryName).toBe(expectedName);
+  });
+
   it('composes a multi-word category with existing structural filters', () => {
     const action = expectHistoryAction('history bca makan hangout bulan ini terbaru');
 
