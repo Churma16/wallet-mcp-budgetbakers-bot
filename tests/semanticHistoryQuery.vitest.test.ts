@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
 import { buildCompactSystemInstruction, buildTextMessagePrompt } from '../src/services/ai/aiPromptBuilder.js';
-import { postProcessFinancialIntentResponse, validateSemanticHistoryQueryOptions } from '../src/services/ai/aiProviderWorkflow.js';
+import { postProcessFinancialIntentResponse } from '../src/services/ai/aiProviderWorkflow.js';
+import { SemanticToolBoundary, validateSemanticHistoryQueryOptions } from '../src/services/ai/semanticToolBoundary.js';
 
 function createHandler(ai: any, fastPathHandled = false) {
   const gateway = { sendTypingPresence: vi.fn(), clearTypingPresence: vi.fn(), sendMessage: vi.fn() };
@@ -49,18 +50,14 @@ describe('single-call semantic transaction-history routing', () => {
       accountName: 'BCA', categoryName: 'Food', recordType: 'expense',
       datePeriod: 'last_month', sort: 'newest', limit: 10, page: 2,
     });
-    expect(() => validateSemanticHistoryQueryOptions(null)).toThrow();
-    expect(() => validateSemanticHistoryQueryOptions({ tool: 'create_records' })).toThrow();
-    expect(() => validateSemanticHistoryQueryOptions({ accountName: '' })).toThrow();
-    expect(() => validateSemanticHistoryQueryOptions({ startDate: 42 })).toThrow();
-    expect(() => validateSemanticHistoryQueryOptions({ recordType: 'transfer' })).toThrow();
-    expect(() => validateSemanticHistoryQueryOptions({ datePeriod: 'tomorrow' })).toThrow();
-    expect(() => validateSemanticHistoryQueryOptions({ sort: 'random' })).toThrow();
-    expect(() => validateSemanticHistoryQueryOptions({ limit: -1 })).toThrow();
-    expect(() => validateSemanticHistoryQueryOptions({ page: 1.5 })).toThrow();
+    for (const invalid of [
+      null, { tool: 'create_records' }, { accountName: '' }, { startDate: 42 },
+      { recordType: 'transfer' }, { datePeriod: 'tomorrow' }, { sort: 'random' },
+      { limit: -1 }, { page: 1.5 },
+    ]) expect(validateSemanticHistoryQueryOptions(invalid)).toMatchObject({ accepted: false, code: 'INVALID_ARGUMENTS' });
   });
 
-  it('post-processes valid history and fails closed on malformed options', () => {
+  it('post-processes history once and leaves trust validation to the semantic boundary', () => {
     const valid = postProcessFinancialIntentResponse({
       responseText: '{"action":"TRANSACTION_HISTORY","queryOptions":{"recordType":"expense","datePeriod":"last_month"}}',
       tokenUsage: { promptTokens: 5, candidatesTokens: 2, totalTokens: 7 },
@@ -70,9 +67,16 @@ describe('single-call semantic transaction-history routing', () => {
       tokenUsage: { promptTokens: 5, candidatesTokens: 2, totalTokens: 7 },
     });
     const rawMalformed = '{"action":"TRANSACTION_HISTORY","queryOptions":{"tool":"create_records"}}';
-    expect(postProcessFinancialIntentResponse({ responseText: rawMalformed }, 'mock')).toEqual({
-      action: 'GENERAL_REPLY', explanation: rawMalformed, tokenUsage: undefined,
+    const malformed = postProcessFinancialIntentResponse({ responseText: rawMalformed }, 'mock');
+    expect(malformed).toEqual({
+      action: 'TRANSACTION_HISTORY', queryOptions: { tool: 'create_records' }, tokenUsage: undefined,
     });
+    const decision = new SemanticToolBoundary().evaluate({
+      proposal: { tool: 'get_transaction_history', arguments: malformed.queryOptions },
+      authorization: { isAuthorized: true, source: 'test' }, event: textEvent('history'),
+      availableAccountList: [], availableCategoryList: [],
+    });
+    expect(decision).toMatchObject({ accepted: false, code: 'INVALID_ARGUMENTS' });
   });
 
   it('uses one common model call for complex history language and dispatches its proposal', async () => {

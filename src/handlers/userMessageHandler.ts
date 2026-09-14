@@ -1,6 +1,12 @@
 import { MessagingGatewayService, IncomingUserMessageEvent } from '../services/messaging/index.js';
 import { PendingTransactionService } from '../services/pendingTransactionService.js';
-import { FinancialAiProvider, ExtractedFinancialIntent } from '../services/ai/index.js';
+import {
+  FinancialAiProvider,
+  ExtractedFinancialIntent,
+  SemanticToolBoundary,
+  SemanticToolAuthorizationContext,
+  createSemanticToolProposalFromFinancialIntent,
+} from '../services/ai/index.js';
 import { validateReceiptFinancialIntentEnvelope } from '../services/ai/jsonExtractionHelper.js';
 import { WalletMcpClientService } from '../services/walletMcpService.js';
 import { WalletCacheService } from '../services/walletCacheService.js';
@@ -11,7 +17,6 @@ import { FinancialActionExecutor } from '../services/financialActionExecutor.js'
 import {
   FinancialActionRegistry,
   createDefaultFinancialActionRegistry,
-  FinancialActionContext,
 } from '../actions/index.js';
 import {
   detectFastPathAction,
@@ -26,61 +31,22 @@ import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../utils/logger.js';
 import { WalletRecordPreparationService } from '../services/walletRecordPreparationService.js';
 
+export type SemanticToolAuthorizationResolver = (
+  event: IncomingUserMessageEvent
+) => SemanticToolAuthorizationContext;
+
 /**
- * Builds a strongly-typed FinancialActionContext from an extracted AI intent.
- * Ensures CREATE_RECORD actions cannot reach the registry unless records are present and non-empty,
- * allowing incomplete intents (e.g. text queries with records: [] or undefined) to fall through safely
- * to the default explanation or guidance response.
+ * Messaging adapters own sender authorization and fail closed before they emit
+ * an IncomingUserMessageEvent. The semantic layer receives only this
+ * application-owned decision; the model cannot set or override it.
  */
-function buildAiFinancialActionContext(
-  intent: ExtractedFinancialIntent,
-  event: IncomingUserMessageEvent,
-  processingStartTimestamp: number,
-  requestReferenceInstant: Date
-): FinancialActionContext | null {
-  if (intent.action === 'CREATE_RECORD') {
-    if (intent.records && intent.records.length > 0) {
-      return {
-        action: 'CREATE_RECORD',
-        event,
-        records: intent.records,
-        processingStartTimestamp,
-        routingSource: 'ai',
-        requestReferenceInstant,
-      };
-    }
-    return null;
-  }
-
-  if (intent.action === 'CHECK_BALANCE') {
-    return {
-      action: 'CHECK_BALANCE',
-      event,
-      processingStartTimestamp,
-      routingSource: 'ai',
-    };
-  }
-
-  if (intent.action === 'CHECK_BUDGET') {
-    return {
-      action: 'CHECK_BUDGET',
-      event,
-      processingStartTimestamp,
-      routingSource: 'ai',
-    };
-  }
-
-  if (intent.action === 'TRANSACTION_HISTORY') {
-    return {
-      action: 'TRANSACTION_HISTORY',
-      event,
-      queryOptions: intent.queryOptions,
-      processingStartTimestamp,
-      routingSource: 'ai',
-    };
-  }
-
-  return null;
+function resolveGatewayAuthorization(
+  event: IncomingUserMessageEvent
+): SemanticToolAuthorizationContext {
+  return {
+    isAuthorized: true,
+    source: `${event.channel}-gateway-authorization`,
+  };
 }
 
 /**
@@ -107,6 +73,8 @@ export class UserMessageHandler {
   private readonly financialActionExecutor: FinancialActionExecutor;
   private readonly recordPreparationService: WalletRecordPreparationService;
   private readonly financialActionRegistry: FinancialActionRegistry;
+  private readonly semanticToolBoundary: SemanticToolBoundary;
+  private readonly semanticToolAuthorizationResolver: SemanticToolAuthorizationResolver;
 
   constructor(
     private readonly messagingGateway: MessagingGatewayService,
@@ -119,7 +87,9 @@ export class UserMessageHandler {
     financialActionExecutor?: FinancialActionExecutor,
     recordPreparationService?: WalletRecordPreparationService,
     financialActionRegistry?: FinancialActionRegistry,
-    accountClarificationHandler?: AccountClarificationHandler
+    accountClarificationHandler?: AccountClarificationHandler,
+    semanticToolBoundary?: SemanticToolBoundary,
+    semanticToolAuthorizationResolver?: SemanticToolAuthorizationResolver
   ) {
     this.financialActionExecutor =
       financialActionExecutor ||
@@ -140,6 +110,9 @@ export class UserMessageHandler {
         messagingGateway,
         this.recordPreparationService
       );
+    this.semanticToolBoundary = semanticToolBoundary || new SemanticToolBoundary();
+    this.semanticToolAuthorizationResolver =
+      semanticToolAuthorizationResolver || resolveGatewayAuthorization;
 
     if (financialActionRegistry) {
       this.financialActionRegistry = financialActionRegistry;
@@ -355,16 +328,51 @@ export class UserMessageHandler {
         return;
       }
 
-      const financialActionContext = buildAiFinancialActionContext(
-        extractedIntent,
-        event,
-        processingStartTimestamp,
-        requestReferenceInstant
-      );
+      const semanticToolProposal = createSemanticToolProposalFromFinancialIntent(extractedIntent);
+      if (semanticToolProposal) {
+        const boundaryDecision = this.semanticToolBoundary.evaluate({
+          proposal: semanticToolProposal,
+          authorization: this.semanticToolAuthorizationResolver(event),
+          event,
+          availableAccountList: cachedAccounts,
+          availableCategoryList: cachedCategories,
+          processingStartTimestamp,
+          requestReferenceInstant,
+        });
 
-      if (financialActionContext && this.financialActionRegistry.hasHandler(financialActionContext.action)) {
-        await this.financialActionRegistry.execute(financialActionContext);
-        return;
+        if (boundaryDecision.accepted) {
+          if (!this.financialActionRegistry.hasHandler(boundaryDecision.context.action)) {
+            applicationLogger.error(
+              `[SemanticToolBoundary] Accepted action has no registered handler: ${boundaryDecision.context.action}.`
+            );
+            return;
+          }
+
+          await this.financialActionRegistry.execute(boundaryDecision.context);
+          return;
+        }
+
+        applicationLogger.warn(
+          `[SemanticToolBoundary] Rejected ${semanticToolProposal.tool}: ${boundaryDecision.code}.`
+        );
+        applicationLogger.fileDetail('security', 'Rejected Semantic Tool Proposal', {
+          tool: semanticToolProposal.tool,
+          rejectionCode: boundaryDecision.code,
+          rejectionReason: boundaryDecision.reason,
+          channel: event.channel,
+          senderIdentifier: event.senderIdentifier,
+        });
+
+        if (semanticToolProposal.tool === 'propose_transaction') {
+          await this.messagingGateway.sendMessage(
+            event.channel,
+            event.chatIdentifier,
+            getDictionary().errors.validationRejected(
+              getDictionary().errors.accountResolutionFallback
+            )
+          );
+          return;
+        }
       }
 
       if (event.messageType === 'image') {
