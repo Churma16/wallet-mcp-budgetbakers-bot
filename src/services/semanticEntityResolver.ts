@@ -21,7 +21,7 @@ const normalize = (value: string): string => value
   .normalize('NFKD')
   .replace(/[\u0300-\u036f]/g, '')
   .toLocaleLowerCase('id-ID')
-  .replace(/[^a-z0-9]+/g, ' ')
+  .replace(/[^\p{L}\p{N}]+/gu, ' ')
   .trim();
 
 const words = (value: string): string[] => normalize(value).split(' ').filter(Boolean);
@@ -58,7 +58,9 @@ export function resolveSemanticAccountHint(hint: string, accounts: readonly Wall
     if (index >= 0 && index < accounts.length) candidates.push(accounts[index]);
   }
 
-  const exactNames = accounts.filter(account => normalize(account.name) === normalizedHint);
+  const exactNames = normalizedHint
+    ? accounts.filter(account => normalize(account.name) === normalizedHint)
+    : [];
   candidates.push(...exactNames);
 
   if (exactNames.length === 0 && normalizedHint.length > 1) {
@@ -105,7 +107,9 @@ export function resolveSemanticCategoryHint(
   if (idMatches.length === 1) return resolved(idMatches[0], 'ID');
 
   const normalizedHint = normalize(rawHint);
-  const exactNames = categories.filter(category => normalize(category.name) === normalizedHint);
+  const exactNames = normalizedHint
+    ? categories.filter(category => normalize(category.name) === normalizedHint)
+    : [];
   if (exactNames.length === 1) return resolved(exactNames[0], 'EXACT_NAME');
   if (exactNames.length > 1) return unresolved(rawHint, exactNames);
 

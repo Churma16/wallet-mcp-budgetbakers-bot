@@ -207,14 +207,23 @@ export function validateReceiptFinancialIntentEnvelope(
         );
       }
 
-      // 4. AccountId: allow empty string for deterministic clarification
+      // 4. Preserve semantic hints for deterministic cache-owned resolution while
+      // retaining legacy ID/name fields for backward-compatible provider output.
       const resolvedAccountId = typeof rawItem.accountId === 'string' ? rawItem.accountId.trim() : '';
+      const resolvedAccountHint = typeof rawItem.accountHint === 'string'
+        ? rawItem.accountHint.trim()
+        : undefined;
+      const resolvedCategoryHint = typeof rawItem.categoryHint === 'string' && rawItem.categoryHint.trim()
+        ? rawItem.categoryHint.trim()
+        : undefined;
 
       validatedRecords.push({
         accountId: resolvedAccountId,
+        accountHint: resolvedAccountHint,
         categoryId: typeof rawItem.categoryId === 'string' && rawItem.categoryId.trim()
           ? rawItem.categoryId.trim()
           : undefined,
+        categoryHint: resolvedCategoryHint,
         amount: rawAmount as any,
         currency: resolvedCurrency,
         recordDate: resolvedRecordDate,

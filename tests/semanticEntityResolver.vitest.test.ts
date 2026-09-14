@@ -64,6 +64,24 @@ describe('semantic entity resolver (Issue #119)', () => {
     });
   });
 
+  it('preserves non-Latin scripts and never treats empty normalization as an exact match', () => {
+    expect(resolveSemanticAccountHint('銀行', [{ id: 'cash-ja', name: '現金' }])).toMatchObject({
+      status: 'CLARIFICATION_REQUIRED', reason: 'UNRESOLVED', candidates: [],
+    });
+    expect(resolveSemanticAccountHint('現金', [{ id: 'cash-ja', name: '現金' }])).toMatchObject({
+      status: 'RESOLVED', id: 'cash-ja', matchedBy: 'EXACT_NAME',
+    });
+    expect(resolveSemanticCategoryHint('Еда', [{ id: 'food-ru', name: 'Еда' }])).toMatchObject({
+      status: 'RESOLVED', id: 'food-ru', matchedBy: 'EXACT_NAME',
+    });
+    expect(resolveSemanticCategoryHint('Другое', [{ id: 'food-ru', name: 'Еда' }])).toMatchObject({
+      status: 'CLARIFICATION_REQUIRED', reason: 'UNRESOLVED', candidates: [],
+    });
+    expect(resolveSemanticAccountHint('\u{1F642}', [{ id: 'cash-ja', name: '現金' }])).toMatchObject({
+      status: 'CLARIFICATION_REQUIRED', reason: 'UNRESOLVED', candidates: [],
+    });
+  });
+
   it('makes unknown category hints authoritative validation failures', () => {
     const result = validateAndSanitizeFinancialRecords(
       [{ accountHint: 'Cash', categoryHint: 'invented category', amount: -25_000, note: 'test' }],
