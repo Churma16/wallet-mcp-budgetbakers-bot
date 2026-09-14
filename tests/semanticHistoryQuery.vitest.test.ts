@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
 import { buildCompactSystemInstruction, buildTextMessagePrompt } from '../src/services/ai/aiPromptBuilder.js';
 import { postProcessFinancialIntentResponse } from '../src/services/ai/aiProviderWorkflow.js';
-import { SemanticToolBoundary, validateSemanticHistoryQueryOptions } from '../src/services/ai/semanticToolBoundary.js';
+import {
+  hasTransactionRecordingShape,
+  SemanticToolBoundary,
+  validateSemanticHistoryQueryOptions,
+} from '../src/services/ai/semanticToolBoundary.js';
 
 function createHandler(ai: any, fastPathHandled = false) {
   const gateway = { sendTypingPresence: vi.fn(), clearTypingPresence: vi.fn(), sendMessage: vi.fn() };
@@ -91,6 +95,18 @@ describe('single-call semantic transaction-history routing', () => {
       action: 'TRANSACTION_HISTORY', routingSource: 'ai',
       queryOptions: { accountName: 'main account', categoryName: 'food', datePeriod: 'last_month' },
     }));
+  });
+
+  it('denies a model-selected history action for a structurally recording-shaped message', async () => {
+    expect(hasTransactionRecordingShape('catat makan 50rb dari BCA')).toBe(true);
+    expect(hasTransactionRecordingShape('history last month')).toBe(false);
+    const processTextMessage = vi.fn().mockResolvedValue({
+      action: 'TRANSACTION_HISTORY', queryOptions: { datePeriod: 'last_month' },
+    });
+    const harness = createHandler({ providerName: 'mock', processTextMessage, processImageMessage: vi.fn() });
+    await harness.handler.handleIncomingUserMessage(textEvent('catat makan 50rb dari BCA'));
+    expect(processTextMessage).toHaveBeenCalledOnce();
+    expect(harness.registry.execute).not.toHaveBeenCalled();
   });
 
   it('uses only the normal single model call for unrelated general text', async () => {

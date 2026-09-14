@@ -94,6 +94,8 @@ const MAXIMUM_PROPOSED_RECORDS = 20;
 const MAXIMUM_TEXT_FIELD_LENGTH = 2_000;
 const MAXIMUM_LABELS_PER_RECORD = 20;
 const MAXIMUM_LABEL_LENGTH = 100;
+const RECORDING_COMMAND_PATTERN = /^(?:beli|bayar|catat|tambahkan|tambah|masukkan|record|add|transfer|top\s*up|topup)\b/i;
+const MONETARY_AMOUNT_PATTERN = /\d+\s*(?:k|rb|jt|ribu|juta)\b|(?:rp|idr)\.?\s*\d+|\d+\s*(?:rp|idr)\b/i;
 
 // Structured identifier recognition is intentionally finite grammar. It is not
 // used to infer natural-language meaning.
@@ -295,6 +297,19 @@ function hasEmptyReadArguments(rawArguments: unknown): boolean {
   return isPlainObject(rawArguments) && Object.keys(rawArguments).length === 0;
 }
 
+/**
+ * A finite safety grammar that prevents a model-selected read action from
+ * intercepting a message structurally shaped like a transaction recording.
+ * It intentionally does not infer history intent or natural-language meaning.
+ */
+export function hasTransactionRecordingShape(messageText: string | undefined): boolean {
+  const normalizedText = messageText?.trim() || '';
+  return Boolean(normalizedText) && (
+    RECORDING_COMMAND_PATTERN.test(normalizedText) ||
+    MONETARY_AMOUNT_PATTERN.test(normalizedText)
+  );
+}
+
 export function validateSemanticHistoryQueryOptions(rawArguments: unknown): TransactionHistoryQueryOptions | RejectedSemanticToolBoundaryDecision {
   if (!isPlainObject(rawArguments) || !containsOnlyAllowedKeys(rawArguments, ALLOWED_HISTORY_ARGUMENT_KEYS)) {
     return reject('INVALID_ARGUMENTS', 'Transaction-history proposal contains unsupported fields.');
@@ -416,6 +431,12 @@ export class SemanticToolBoundary {
     }
 
     if (tool === 'get_transaction_history') {
+      if (hasTransactionRecordingShape(request.event.textPayload)) {
+        return reject(
+          'INVALID_ARGUMENTS',
+          'Transaction-history lookup was denied because the message is structurally shaped like a recording request.'
+        );
+      }
       const queryOptions = validateSemanticHistoryQueryOptions(request.proposal.arguments);
       if ('accepted' in queryOptions) return queryOptions;
       return {
