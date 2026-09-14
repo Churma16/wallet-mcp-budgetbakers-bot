@@ -304,10 +304,7 @@ function hasEmptyReadArguments(rawArguments: unknown): boolean {
  */
 export function hasTransactionRecordingShape(messageText: string | undefined): boolean {
   const normalizedText = messageText?.trim() || '';
-  return Boolean(normalizedText) && (
-    RECORDING_COMMAND_PATTERN.test(normalizedText) ||
-    MONETARY_AMOUNT_PATTERN.test(normalizedText)
-  );
+  return Boolean(normalizedText) && (RECORDING_COMMAND_PATTERN.test(normalizedText) || MONETARY_AMOUNT_PATTERN.test(normalizedText));
 }
 
 export function validateSemanticHistoryQueryOptions(rawArguments: unknown): TransactionHistoryQueryOptions | RejectedSemanticToolBoundaryDecision {
