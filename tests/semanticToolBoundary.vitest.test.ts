@@ -78,6 +78,7 @@ describe('SemanticToolBoundary (Issue #117)', () => {
     expect(Object.keys(SEMANTIC_TOOL_ALLOWLIST).sort()).toEqual([
       'get_balance',
       'get_budgets',
+      'get_transaction_history',
       'propose_transaction',
     ]);
     expect('call_mcp_tool' in SEMANTIC_TOOL_ALLOWLIST).toBe(false);
@@ -91,6 +92,13 @@ describe('SemanticToolBoundary (Issue #117)', () => {
     expect(createSemanticToolProposalFromFinancialIntent({ action: 'CHECK_BUDGET' })).toEqual({
       tool: 'get_budgets',
       arguments: {},
+    });
+    expect(createSemanticToolProposalFromFinancialIntent({
+      action: 'TRANSACTION_HISTORY',
+      queryOptions: { datePeriod: 'last_month' },
+    })).toEqual({
+      tool: 'get_transaction_history',
+      arguments: { datePeriod: 'last_month' },
     });
     expect(createSemanticToolProposalFromFinancialIntent({
       action: 'CREATE_RECORD',

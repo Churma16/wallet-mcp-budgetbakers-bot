@@ -1,5 +1,5 @@
 import { FinancialActionContext } from '../../actions/types.js';
-import { WalletAccountItem, WalletCategoryItem } from '../../types/walletTypes.js';
+import { TransactionHistoryQueryOptions, WalletAccountItem, WalletCategoryItem } from '../../types/walletTypes.js';
 import { IncomingUserMessageEvent } from '../messaging/index.js';
 import {
   ExtractedFinancialIntent,
@@ -9,6 +9,7 @@ import {
 export const SEMANTIC_TOOL_ALLOWLIST = {
   get_balance: { access: 'read' },
   get_budgets: { access: 'read' },
+  get_transaction_history: { access: 'read' },
   propose_transaction: { access: 'mutation' },
 } as const;
 
@@ -77,6 +78,7 @@ type RecordShapeDecision =
   | RejectedSemanticToolBoundaryDecision;
 
 const ALLOWED_TRANSACTION_ARGUMENT_KEYS = new Set(['records']);
+const ALLOWED_HISTORY_ARGUMENT_KEYS = new Set(['accountName', 'categoryName', 'recordType', 'startDate', 'endDate', 'datePeriod', 'searchQuery', 'limit', 'page', 'sort']);
 const ALLOWED_RECORD_KEYS = new Set([
   'accountId',
   'categoryId',
@@ -92,6 +94,8 @@ const MAXIMUM_PROPOSED_RECORDS = 20;
 const MAXIMUM_TEXT_FIELD_LENGTH = 2_000;
 const MAXIMUM_LABELS_PER_RECORD = 20;
 const MAXIMUM_LABEL_LENGTH = 100;
+const RECORDING_COMMAND_PATTERN = /^(?:(?:tolong|please|mohon|bisa\s+tolong)\s+)?(?:beli|bayar|catat|tambahkan|tambah|masukkan|record|add|transfer|top\s*up|topup)\b/i;
+const MONETARY_AMOUNT_PATTERN = /\d+\s*(?:k|rb|jt|ribu|juta)\b|(?:rp|idr)\.?\s*\d+|\d+\s*(?:rp|idr)\b/i;
 
 // Structured identifier recognition is intentionally finite grammar. It is not
 // used to infer natural-language meaning.
@@ -293,6 +297,35 @@ function hasEmptyReadArguments(rawArguments: unknown): boolean {
   return isPlainObject(rawArguments) && Object.keys(rawArguments).length === 0;
 }
 
+/**
+ * A finite safety grammar that prevents a model-selected read action from
+ * intercepting a message structurally shaped like a transaction recording.
+ * It intentionally does not infer history intent or natural-language meaning.
+ */
+export function hasTransactionRecordingShape(messageText: string | undefined): boolean {
+  const normalizedText = messageText?.trim() || '';
+  return Boolean(normalizedText) && (RECORDING_COMMAND_PATTERN.test(normalizedText) || MONETARY_AMOUNT_PATTERN.test(normalizedText));
+}
+
+export function validateSemanticHistoryQueryOptions(rawArguments: unknown): TransactionHistoryQueryOptions | RejectedSemanticToolBoundaryDecision {
+  if (!isPlainObject(rawArguments) || !containsOnlyAllowedKeys(rawArguments, ALLOWED_HISTORY_ARGUMENT_KEYS)) {
+    return reject('INVALID_ARGUMENTS', 'Transaction-history proposal contains unsupported fields.');
+  }
+  const stringFields = ['accountName', 'categoryName', 'startDate', 'endDate', 'searchQuery'] as const;
+  for (const field of stringFields) {
+    const value = rawArguments[field];
+    if (value !== undefined && (!isBoundedString(value) || value.length > 200)) return reject('INVALID_ARGUMENTS', `Transaction-history ${field} is malformed or too large.`);
+  }
+  if (rawArguments.recordType !== undefined && !['expense', 'income'].includes(String(rawArguments.recordType))) return reject('INVALID_ARGUMENTS', 'Transaction-history record type is invalid.');
+  if (rawArguments.datePeriod !== undefined && !['today', 'yesterday', 'this_week', 'last_week', 'this_month', 'last_month', 'this_year'].includes(String(rawArguments.datePeriod))) return reject('INVALID_ARGUMENTS', 'Transaction-history date period is invalid.');
+  if (rawArguments.sort !== undefined && !['newest', 'oldest'].includes(String(rawArguments.sort))) return reject('INVALID_ARGUMENTS', 'Transaction-history sort is invalid.');
+  for (const field of ['limit', 'page'] as const) {
+    const value = rawArguments[field];
+    if (value !== undefined && (!Number.isInteger(value) || Number(value) <= 0)) return reject('INVALID_ARGUMENTS', `Transaction-history ${field} is invalid.`);
+  }
+  return { ...rawArguments } as TransactionHistoryQueryOptions;
+}
+
 function isAllowlistedToolName(toolName: string): toolName is SemanticToolName {
   return Object.prototype.hasOwnProperty.call(SEMANTIC_TOOL_ALLOWLIST, toolName);
 }
@@ -322,6 +355,8 @@ export function createSemanticToolProposalFromFinancialIntent(
       return { tool: 'get_balance', arguments: {} };
     case 'CHECK_BUDGET':
       return { tool: 'get_budgets', arguments: {} };
+    case 'TRANSACTION_HISTORY':
+      return { tool: 'get_transaction_history', arguments: intent.queryOptions };
     case 'CREATE_RECORD':
       if (!Array.isArray(intent.records) || intent.records.length === 0) {
         return null;
@@ -388,6 +423,24 @@ export class SemanticToolBoundary {
           event: request.event,
           processingStartTimestamp: request.processingStartTimestamp,
           routingSource: 'ai',
+        },
+      };
+    }
+
+    if (tool === 'get_transaction_history') {
+      if (hasTransactionRecordingShape(request.event.textPayload)) {
+        return reject(
+          'INVALID_ARGUMENTS',
+          'Transaction-history lookup was denied because the message is structurally shaped like a recording request.'
+        );
+      }
+      const queryOptions = validateSemanticHistoryQueryOptions(request.proposal.arguments);
+      if ('accepted' in queryOptions) return queryOptions;
+      return {
+        accepted: true, tool, access,
+        context: {
+          action: 'TRANSACTION_HISTORY', event: request.event, queryOptions,
+          processingStartTimestamp: request.processingStartTimestamp, routingSource: 'ai',
         },
       };
     }

@@ -1,4 +1,8 @@
-import { WalletAccountItem, WalletCategoryItem } from '../../types/walletTypes.js';
+import {
+  TransactionHistoryQueryOptions,
+  WalletAccountItem,
+  WalletCategoryItem,
+} from '../../types/walletTypes.js';
 import { GateEvaluationResult } from '../../utils/emailGateEvaluator.js';
 
 export interface TokenUsageStatistics {
@@ -21,8 +25,9 @@ export interface ExtractedFinancialRecordItem {
 }
 
 export interface ExtractedFinancialIntent {
-  action: 'CREATE_RECORD' | 'CHECK_BUDGET' | 'CHECK_BALANCE' | 'GENERAL_REPLY' | 'RECORD_EXPENSE' | 'RECORD_INCOME' | 'RECORD_TRANSFER';
+  action: 'CREATE_RECORD' | 'CHECK_BUDGET' | 'CHECK_BALANCE' | 'TRANSACTION_HISTORY' | 'GENERAL_REPLY' | 'RECORD_EXPENSE' | 'RECORD_INCOME' | 'RECORD_TRANSFER';
   records?: ExtractedFinancialRecordItem[];
+  queryOptions?: TransactionHistoryQueryOptions;
   explanation?: string;
   tokenUsage?: TokenUsageStatistics;
 }
