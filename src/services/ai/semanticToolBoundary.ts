@@ -85,6 +85,7 @@ const ALLOWED_RECORD_KEYS = new Set([
   'note',
   'counterParty',
   'labels',
+  'labelIds',
   'currency',
 ]);
 const MAXIMUM_PROPOSED_RECORDS = 20;
@@ -149,7 +150,7 @@ function validateKnownExplicitIdentifier(
   knownIds: ReadonlySet<string>,
   referenceType: 'account' | 'category'
 ): RejectedSemanticToolBoundaryDecision | null {
-  if (!rawReference || !looksLikeExplicitIdentifier(rawReference)) {
+  if (!rawReference || knownIds.size === 0 || !looksLikeExplicitIdentifier(rawReference)) {
     return null;
   }
 
@@ -232,12 +233,17 @@ function validateAndCloneRecord(
     return categoryReferenceRejection;
   }
 
+  const clonedRecord = { ...rawRecord };
+  // labelIds are application-derived authority. Treat model-provided values as
+  // untrusted data and discard them before deterministic label resolution.
+  delete clonedRecord.labelIds;
+  if (Array.isArray(rawRecord.labels)) {
+    clonedRecord.labels = [...rawRecord.labels];
+  }
+
   return {
     accepted: true,
-    record: {
-      ...rawRecord,
-      labels: Array.isArray(rawRecord.labels) ? [...rawRecord.labels] : rawRecord.labels,
-    },
+    record: clonedRecord,
   };
 }
 
@@ -317,6 +323,9 @@ export function createSemanticToolProposalFromFinancialIntent(
     case 'CHECK_BUDGET':
       return { tool: 'get_budgets', arguments: {} };
     case 'CREATE_RECORD':
+      if (!Array.isArray(intent.records) || intent.records.length === 0) {
+        return null;
+      }
       return {
         tool: 'propose_transaction',
         arguments: { records: intent.records },
