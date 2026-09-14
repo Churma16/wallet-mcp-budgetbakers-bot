@@ -271,7 +271,7 @@ describe('Wallet MCP create_records Response Validation (Issue #146)', () => {
           { id: 'rec-2', success: true },
         ],
         summary: {
-          total: 1,
+          total: 2,
           succeeded: 1,
           clientErrors: 0,
           serverErrors: 0,

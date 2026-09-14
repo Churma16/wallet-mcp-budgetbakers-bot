@@ -881,7 +881,8 @@ export class WalletMcpClientService {
       const succeededValid =
         typeof summary?.succeeded === 'number' && Number.isInteger(summary.succeeded) && summary.succeeded >= 0;
 
-      if (!totalValid || !succeededValid || summary?.total !== expectedRecordCount) {
+      const expectedSummaryTotal = hasResults ? results.length : expectedRecordCount;
+      if (!totalValid || !succeededValid || summary?.total !== expectedSummaryTotal) {
         throw new WalletMcpRequestError(
           `[error] MCP Tool 'create_records' returned an invalid or mismatched summary`,
           'UNKNOWN'
@@ -927,7 +928,7 @@ export class WalletMcpClientService {
       }
 
       if (summaryResolvedErrors !== undefined) {
-        if ((summary?.succeeded ?? 0) + summaryResolvedErrors !== summary?.total) {
+        if ((summary?.succeeded ?? 0) + summaryResolvedErrors !== expectedRecordCount) {
           throw new WalletMcpRequestError(
             `[error] MCP Tool 'create_records' returned an invalid or mismatched summary`,
             'UNKNOWN'

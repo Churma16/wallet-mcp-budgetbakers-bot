@@ -335,7 +335,7 @@ describe('native paired transfers (issue #143)', () => {
   it('accepts an explicitly correlated root plus mirror result', () => {
     const client = new WalletMcpClientService('https://example.invalid', 'test-token');
     const response = client.validateCreateRecordsResponse({
-      summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 2 },
+      summary: { total: 2, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 2 },
       results: [
         {
           inputIndex: 0,
@@ -360,7 +360,7 @@ describe('native paired transfers (issue #143)', () => {
   it('accepts multiple paired transfers and a mixed ordinary-transfer batch', () => {
     const client = new WalletMcpClientService('https://example.invalid', 'test-token');
     const multipleTransfers = client.validateCreateRecordsResponse({
-      summary: { total: 2, succeeded: 2, clientErrors: 0, serverErrors: 0, documentsWritten: 4 },
+      summary: { total: 4, succeeded: 2, clientErrors: 0, serverErrors: 0, documentsWritten: 4 },
       results: [
         { inputIndex: 0, id: 'root-1', success: true, pairingMode: 'new', createdMirrorRecordId: 'mirror-1' },
         { inputIndex: 0, id: 'mirror-1', success: true, resultType: 'mirror', mirrorOfRecordId: 'root-1' },
@@ -371,7 +371,7 @@ describe('native paired transfers (issue #143)', () => {
     expect(multipleTransfers.summary?.documentsWritten).toBe(4);
 
     const mixed = client.validateCreateRecordsResponse({
-      summary: { total: 2, succeeded: 2, clientErrors: 0, serverErrors: 0, documentsWritten: 3 },
+      summary: { total: 3, succeeded: 2, clientErrors: 0, serverErrors: 0, documentsWritten: 3 },
       results: [
         { inputIndex: 0, id: 'ordinary', success: true },
         { inputIndex: 1, id: 'root', success: true, pairingMode: 'new', createdMirrorRecordId: 'mirror' },
@@ -393,7 +393,7 @@ describe('native paired transfers (issue #143)', () => {
     {
       name: 'uncorrelated mirror',
       payload: {
-        summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 2 },
+        summary: { total: 2, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 2 },
         results: [
           { inputIndex: 0, id: 'root', success: true },
           { inputIndex: 0, id: 'other', success: true, isMirror: true, mirrorOfRecordId: 'not-root' },
@@ -404,7 +404,7 @@ describe('native paired transfers (issue #143)', () => {
     {
       name: 'duplicate mirror',
       payload: {
-        summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 2 },
+        summary: { total: 3, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 2 },
         results: [
           { inputIndex: 0, id: 'root', success: true, createdMirrorRecordId: 'mirror' },
           { inputIndex: 0, id: 'mirror', success: true, isMirror: true },
@@ -416,7 +416,7 @@ describe('native paired transfers (issue #143)', () => {
     {
       name: 'contradictory mirror',
       payload: {
-        summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 2 },
+        summary: { total: 2, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 2 },
         results: [
           { inputIndex: 0, id: 'root', success: true, createdMirrorRecordId: 'mirror' },
           { inputIndex: 0, id: 'mirror', success: false, isMirror: true },
