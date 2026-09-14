@@ -67,6 +67,15 @@ export interface UntrustedSemanticToolResult<T> {
   readonly data: T;
 }
 
+interface AcceptedRecordShapeDecision {
+  readonly accepted: true;
+  readonly record: Record<string, unknown>;
+}
+
+type RecordShapeDecision =
+  | AcceptedRecordShapeDecision
+  | RejectedSemanticToolBoundaryDecision;
+
 const ALLOWED_TRANSACTION_ARGUMENT_KEYS = new Set(['records']);
 const ALLOWED_RECORD_KEYS = new Set([
   'accountId',
@@ -164,7 +173,7 @@ function validateAndCloneRecord(
   rawRecord: unknown,
   knownAccountIds: ReadonlySet<string>,
   knownCategoryIds: ReadonlySet<string>
-): Record<string, unknown> | RejectedSemanticToolBoundaryDecision {
+): RecordShapeDecision {
   if (!isPlainObject(rawRecord) || !containsOnlyAllowedKeys(rawRecord, ALLOWED_RECORD_KEYS)) {
     return reject('INVALID_ARGUMENTS', 'Transaction proposal contains unsupported record fields.');
   }
@@ -224,8 +233,11 @@ function validateAndCloneRecord(
   }
 
   return {
-    ...rawRecord,
-    labels: Array.isArray(rawRecord.labels) ? [...rawRecord.labels] : rawRecord.labels,
+    accepted: true,
+    record: {
+      ...rawRecord,
+      labels: Array.isArray(rawRecord.labels) ? [...rawRecord.labels] : rawRecord.labels,
+    },
   };
 }
 
@@ -252,20 +264,20 @@ function validateTransactionArguments(
   const validatedRecords: ExtractedFinancialRecordItem[] = [];
 
   for (const rawRecord of rawArguments.records) {
-    const validatedRecord = validateAndCloneRecord(
+    const recordDecision = validateAndCloneRecord(
       rawRecord,
       knownAccountIds,
       knownCategoryIds
     );
 
-    if ('accepted' in validatedRecord && validatedRecord.accepted === false) {
-      return validatedRecord;
+    if (!recordDecision.accepted) {
+      return recordDecision;
     }
 
     // The boundary has validated container/type safety. The existing record
     // validator remains responsible for required business fields, amount
     // normalization, account clarification, dates, currency, and category rules.
-    validatedRecords.push(validatedRecord as unknown as ExtractedFinancialRecordItem);
+    validatedRecords.push(recordDecision.record as unknown as ExtractedFinancialRecordItem);
   }
 
   return validatedRecords;
