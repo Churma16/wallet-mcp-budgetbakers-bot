@@ -352,6 +352,10 @@ export function validateAndSanitizeFinancialRecords(
 
     let resolvedTransfer: CreateRecordInputPayload['transfer'];
     if (currentRecord.transfer) {
+      if (parsedAmount >= 0) {
+        validationErrors.push(`${recordLabel}: Nominal sumber transfer harus bernilai negatif.`);
+        continue;
+      }
       if (currentRecord.categoryId || currentRecord.categoryHint) {
         validationErrors.push(`${recordLabel}: Transfer tidak boleh menggunakan kategori transaksi biasa.`);
         continue;

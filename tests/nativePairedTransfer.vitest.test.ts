@@ -72,6 +72,25 @@ describe('native paired transfers (issue #143)', () => {
     expect(result.sanitizedRecords[0].categoryId).toBeUndefined();
   });
 
+  it('rejects a positive source-side amount from malformed model output', () => {
+    const result = validateAndSanitizeFinancialRecords(
+      [{
+        accountHint: 'jago expense',
+        amount: 20_000,
+        transfer: { pairingMode: 'new', accountHint: 'gopay' },
+      }],
+      accounts,
+      [],
+      undefined,
+      new Date('2026-09-14T12:00:00Z')
+    );
+
+    expect(result.isValid).toBe(false);
+    expect(result.validationErrors).toContain(
+      'Transaksi #1: Nominal sumber transfer harus bernilai negatif.'
+    );
+  });
+
   it('rejects non-assignable category metadata before ordinary dispatch', () => {
     const categories: WalletCategoryItem[] = [{
       id: 'transfer-category',
@@ -142,7 +161,109 @@ describe('native paired transfers (issue #143)', () => {
       ],
     }, 2)).toThrow(expect.objectContaining({
       dispatchOutcome: 'UNKNOWN',
-      message: expect.stringContaining('uncorrelated'),
+      message: expect.stringContaining('duplicate root'),
     }));
+  });
+
+  it('accepts an explicitly correlated root plus mirror result', () => {
+    const client = new WalletMcpClientService('https://example.invalid', 'test-token');
+    const response = client.validateCreateRecordsResponse({
+      summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 2 },
+      results: [
+        {
+          inputIndex: 0,
+          id: 'root-1',
+          success: true,
+          pairingMode: 'new',
+          createdMirrorRecordId: 'mirror-1',
+        },
+        {
+          inputIndex: 0,
+          id: 'mirror-1',
+          success: true,
+          isMirror: true,
+          mirrorOfRecordId: 'root-1',
+        },
+      ],
+    }, 1);
+
+    expect(response.results).toHaveLength(2);
+  });
+
+  it('accepts multiple paired transfers and a mixed ordinary-transfer batch', () => {
+    const client = new WalletMcpClientService('https://example.invalid', 'test-token');
+    const multipleTransfers = client.validateCreateRecordsResponse({
+      summary: { total: 2, succeeded: 2, clientErrors: 0, serverErrors: 0, documentsWritten: 4 },
+      results: [
+        { inputIndex: 0, id: 'root-1', success: true, pairingMode: 'new', createdMirrorRecordId: 'mirror-1' },
+        { inputIndex: 0, id: 'mirror-1', success: true, resultType: 'mirror', mirrorOfRecordId: 'root-1' },
+        { inputIndex: 1, id: 'root-2', success: true, pairingMode: 'new', createdMirrorRecordId: 'mirror-2' },
+        { inputIndex: 1, id: 'mirror-2', success: true, resultType: 'mirror', mirrorOfRecordId: 'root-2' },
+      ],
+    }, 2);
+    expect(multipleTransfers.summary?.documentsWritten).toBe(4);
+
+    const mixed = client.validateCreateRecordsResponse({
+      summary: { total: 2, succeeded: 2, clientErrors: 0, serverErrors: 0, documentsWritten: 3 },
+      results: [
+        { inputIndex: 0, id: 'ordinary', success: true },
+        { inputIndex: 1, id: 'root', success: true, pairingMode: 'new', createdMirrorRecordId: 'mirror' },
+        { inputIndex: 1, id: 'mirror', success: true, isMirror: true, mirrorOfRecordId: 'root' },
+      ],
+    }, 2);
+    expect(mixed.summary?.succeeded).toBe(2);
+  });
+
+  it.each([
+    {
+      name: 'missing root',
+      payload: {
+        summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 1 },
+        results: [{ inputIndex: 0, id: 'mirror', success: true, isMirror: true }],
+      },
+      message: 'missing root',
+    },
+    {
+      name: 'uncorrelated mirror',
+      payload: {
+        summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 2 },
+        results: [
+          { inputIndex: 0, id: 'root', success: true },
+          { inputIndex: 0, id: 'other', success: true, isMirror: true, mirrorOfRecordId: 'not-root' },
+        ],
+      },
+      message: 'uncorrelated mirror',
+    },
+    {
+      name: 'duplicate mirror',
+      payload: {
+        summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 2 },
+        results: [
+          { inputIndex: 0, id: 'root', success: true, createdMirrorRecordId: 'mirror' },
+          { inputIndex: 0, id: 'mirror', success: true, isMirror: true },
+          { inputIndex: 0, id: 'mirror', success: true, resultType: 'mirror' },
+        ],
+      },
+      message: 'duplicate mirror',
+    },
+    {
+      name: 'contradictory mirror',
+      payload: {
+        summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 2 },
+        results: [
+          { inputIndex: 0, id: 'root', success: true, createdMirrorRecordId: 'mirror' },
+          { inputIndex: 0, id: 'mirror', success: false, isMirror: true },
+        ],
+      },
+      message: 'contradictory mirror',
+    },
+  ])('fails closed on $name evidence', ({ payload, message }) => {
+    const client = new WalletMcpClientService('https://example.invalid', 'test-token');
+    expect(() => client.validateCreateRecordsResponse(payload, 1)).toThrow(
+      expect.objectContaining({
+        dispatchOutcome: 'UNKNOWN',
+        message: expect.stringContaining(message),
+      })
+    );
   });
 });

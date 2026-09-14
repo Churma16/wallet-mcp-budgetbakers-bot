@@ -960,9 +960,11 @@ export class WalletMcpClientService {
 
     let resultSuccessCount = 0;
     let resultFailureCount = 0;
+    let rootResults: NonNullable<WalletCreateRecordsResponse['results']> = [];
+    let mirrorResults: NonNullable<WalletCreateRecordsResponse['results']> = [];
 
     if (hasResults) {
-      if (results.length !== expectedRecordCount) {
+      if (results.length < expectedRecordCount) {
         throw new WalletMcpRequestError(
           `[error] MCP Tool 'create_records' returned an unexpected number of per-record results`,
           'UNKNOWN'
@@ -977,24 +979,72 @@ export class WalletMcpClientService {
         );
       }
 
-      const seenInputIndexes = new Set<number>();
+      const rootResultsByInputIndex = new Map<number, (typeof results)[number]>();
       for (const result of results) {
         if (
           !Number.isInteger(result.inputIndex) ||
           (result.inputIndex as number) < 0 ||
-          (result.inputIndex as number) >= expectedRecordCount ||
-          seenInputIndexes.has(result.inputIndex as number)
+          (result.inputIndex as number) >= expectedRecordCount
         ) {
           throw new WalletMcpRequestError(
             `[error] MCP Tool 'create_records' returned uncorrelated per-record results`,
             'UNKNOWN'
           );
         }
-        seenInputIndexes.add(result.inputIndex as number);
+        const isMirrorResult = result.isMirror === true || result.resultType === 'mirror';
+        if (isMirrorResult) {
+          mirrorResults.push(result);
+          continue;
+        }
+        if (rootResultsByInputIndex.has(result.inputIndex as number)) {
+          throw new WalletMcpRequestError(
+            `[error] MCP Tool 'create_records' returned duplicate root results`,
+            'UNKNOWN'
+          );
+        }
+        rootResultsByInputIndex.set(result.inputIndex as number, result);
       }
 
-      resultSuccessCount = results.filter(result => result.success === true).length;
-      resultFailureCount = results.length - resultSuccessCount;
+      if (rootResultsByInputIndex.size !== expectedRecordCount) {
+        throw new WalletMcpRequestError(
+          `[error] MCP Tool 'create_records' returned missing root results`,
+          'UNKNOWN'
+        );
+      }
+
+      rootResults = [...rootResultsByInputIndex.values()];
+      const mirrorInputIndexes = new Set<number>();
+      for (const mirrorResult of mirrorResults) {
+        if (mirrorInputIndexes.has(mirrorResult.inputIndex as number)) {
+          throw new WalletMcpRequestError(
+            `[error] MCP Tool 'create_records' returned duplicate mirror results`,
+            'UNKNOWN'
+          );
+        }
+        mirrorInputIndexes.add(mirrorResult.inputIndex as number);
+        const rootResult = rootResultsByInputIndex.get(mirrorResult.inputIndex as number)!;
+        const mirrorIdMatches =
+          typeof mirrorResult.id === 'string' &&
+          rootResult.createdMirrorRecordId === mirrorResult.id;
+        const rootIdMatches =
+          typeof mirrorResult.mirrorOfRecordId === 'string' &&
+          rootResult.id === mirrorResult.mirrorOfRecordId;
+        if (!mirrorIdMatches && !rootIdMatches) {
+          throw new WalletMcpRequestError(
+            `[error] MCP Tool 'create_records' returned an uncorrelated mirror result`,
+            'UNKNOWN'
+          );
+        }
+        if (mirrorResult.success !== true || rootResult.success !== true) {
+          throw new WalletMcpRequestError(
+            `[error] MCP Tool 'create_records' returned contradictory mirror evidence`,
+            'UNKNOWN'
+          );
+        }
+      }
+
+      resultSuccessCount = rootResults.filter(result => result.success === true).length;
+      resultFailureCount = rootResults.length - resultSuccessCount;
     }
 
     if (hasSummary && hasResults) {
@@ -1005,16 +1055,25 @@ export class WalletMcpClientService {
         );
       }
 
-      const confirmedSecondaryWrites = results.filter(result =>
+      const confirmedSecondaryDocumentIds = new Set<string>();
+      for (const result of rootResults) {
+        if (result.success === true && typeof result.createdMirrorRecordId === 'string') {
+          confirmedSecondaryDocumentIds.add(result.createdMirrorRecordId);
+        }
+      }
+      for (const result of mirrorResults) {
+        if (result.success === true && typeof result.id === 'string') {
+          confirmedSecondaryDocumentIds.add(result.id);
+        }
+      }
+      const confirmedExistingWrites = rootResults.filter(result =>
         result.success === true && (
-          result.pairingMode === 'existing' ||
-          (result.pairingMode === 'new' &&
-            typeof result.createdMirrorRecordId === 'string' &&
-            result.createdMirrorRecordId.length > 0)
+          result.pairingMode === 'existing'
         )
       ).length;
       const minimumDocumentsWritten = summary?.succeeded ?? 0;
-      const maximumExplainedDocumentsWritten = minimumDocumentsWritten + confirmedSecondaryWrites;
+      const maximumExplainedDocumentsWritten =
+        minimumDocumentsWritten + confirmedSecondaryDocumentIds.size + confirmedExistingWrites;
       if (
         summary?.documentsWritten !== undefined &&
         (summary.documentsWritten < minimumDocumentsWritten ||
@@ -1034,12 +1093,12 @@ export class WalletMcpClientService {
     if (totalFailureCount > 0 || (hasResults && resultFailureCount > 0)) {
       const failureCount = Math.max(totalFailureCount, resultFailureCount);
       const firstFailureItem = hasResults
-        ? results.find(result => result.success === false)
+        ? rootResults.find(result => result.success === false)
         : undefined;
       const firstFailureDetail = firstFailureItem?.error;
 
       const hasServerErrors = (summary?.serverErrors !== undefined && summary.serverErrors > 0) ||
-        (hasResults && results.some(r => r.success === false && r.errorType === 'server_error'));
+        (hasResults && rootResults.some(r => r.success === false && r.errorType === 'server_error'));
 
       const hasPartialSuccess = (summary?.succeeded !== undefined && summary.succeeded > 0) ||
         (hasResults && resultSuccessCount > 0);

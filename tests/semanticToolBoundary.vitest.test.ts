@@ -75,6 +75,48 @@ async function dispatchIfAccepted(
 }
 
 describe('SemanticToolBoundary (Issue #117)', () => {
+  it('accepts a bounded native transfer proposal and clones its nested amount', () => {
+    const decision = evaluate({
+      tool: 'propose_transaction',
+      arguments: {
+        records: [{
+          accountHint: 'BCA',
+          amount: -100_000,
+          transfer: {
+            pairingMode: 'new',
+            accountId: 'acc-2',
+            counterAmount: { value: 100_000, currencyCode: 'IDR' },
+          },
+        }],
+      },
+    });
+
+    expect(decision.accepted).toBe(true);
+    if (decision.accepted) {
+      expect(decision.context.records[0].transfer).toEqual({
+        pairingMode: 'new',
+        accountId: 'acc-2',
+        counterAmount: { value: 100_000, currencyCode: 'IDR' },
+      });
+    }
+  });
+
+  it.each([
+    { transfer: 'invalid', label: 'non-object transfer', code: 'INVALID_ARGUMENTS' },
+    { transfer: { pairingMode: 'existing' }, label: 'unsupported pairing mode', code: 'INVALID_ARGUMENTS' },
+    { transfer: { pairingMode: 'new', accountHint: 42 }, label: 'malformed destination hint', code: 'INVALID_ARGUMENTS' },
+    { transfer: { pairingMode: 'new', accountId: 'acc-unknown' }, label: 'unknown destination ID', code: 'INVALID_ENTITY_REFERENCE' },
+    { transfer: { pairingMode: 'new', counterAmount: { value: '100', currencyCode: 'IDR' } }, label: 'non-numeric counter amount', code: 'INVALID_ARGUMENTS' },
+    { transfer: { pairingMode: 'new', counterAmount: { value: 100, currencyCode: 'RP' } }, label: 'invalid counter currency', code: 'INVALID_ARGUMENTS' },
+    { transfer: { pairingMode: 'new', unexpected: true }, label: 'unexpected transfer field', code: 'INVALID_ARGUMENTS' },
+  ])('rejects $label', ({ transfer, code }) => {
+    const decision = evaluate({
+      tool: 'propose_transaction',
+      arguments: { records: [{ accountId: 'acc-1', amount: -100, transfer }] },
+    });
+    expect(decision).toMatchObject({ accepted: false, code });
+  });
+
   it('exposes only narrow semantic capabilities and no generic MCP passthrough', () => {
     expect(Object.keys(SEMANTIC_TOOL_ALLOWLIST).sort()).toEqual([
       'get_balance',

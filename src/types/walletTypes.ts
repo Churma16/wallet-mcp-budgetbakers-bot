@@ -83,6 +83,9 @@ export interface WalletCreateRecordsResponse {
     fields?: string[];
     pairingMode?: string;
     createdMirrorRecordId?: string;
+    isMirror?: boolean;
+    resultType?: 'root' | 'mirror';
+    mirrorOfRecordId?: string;
     record?: Record<string, unknown>;
   }>;
 }

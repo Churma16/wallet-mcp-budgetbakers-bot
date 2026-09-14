@@ -282,7 +282,7 @@ describe('Wallet MCP create_records Response Validation (Issue #146)', () => {
       expect(() => client.validateCreateRecordsResponse(mismatchedResultsCountPayload, 1)).toThrow(
         expect.objectContaining({
           dispatchOutcome: 'UNKNOWN',
-          message: expect.stringContaining('unexpected number of per-record results'),
+          message: expect.stringContaining('uncorrelated per-record results'),
         })
       );
     });
