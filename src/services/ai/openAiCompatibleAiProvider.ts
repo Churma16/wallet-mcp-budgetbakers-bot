@@ -258,12 +258,7 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     );
   }
 
-  public async processTransactionHistoryQuery(
-    userMessageText: string,
-    availableAccountList: WalletAccountItem[],
-    availableCategoryList: WalletCategoryItem[],
-    referenceInstant: Date = new Date()
-  ): Promise<SemanticHistoryQueryResult> {
+  public async processTransactionHistoryQuery(userMessageText: string, availableAccountList: WalletAccountItem[], availableCategoryList: WalletCategoryItem[], referenceInstant: Date = new Date()): Promise<SemanticHistoryQueryResult> {
     return executeSemanticHistoryWorkflow({ userMessageText, availableAccountList, availableCategoryList, referenceInstant }, prepared =>
       this.executeChatCompletionWithFallback(
         [{ role: 'system', content: prepared.systemInstruction }, { role: 'user', content: prepared.promptText }],

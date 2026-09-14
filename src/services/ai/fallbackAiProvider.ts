@@ -89,12 +89,7 @@ export class FallbackAiProvider implements FinancialAiProvider {
     );
   }
 
-  public async processTransactionHistoryQuery(
-    userMessageText: string,
-    availableAccountList: WalletAccountItem[],
-    availableCategoryList: WalletCategoryItem[],
-    referenceInstant?: Date
-  ): Promise<SemanticHistoryQueryResult> {
+  public async processTransactionHistoryQuery(userMessageText: string, availableAccountList: WalletAccountItem[], availableCategoryList: WalletCategoryItem[], referenceInstant?: Date): Promise<SemanticHistoryQueryResult> {
     return this.executeWithFallback('processTransactionHistoryQuery', currentProvider => {
       if (!currentProvider.processTransactionHistoryQuery) {
         throw new Error(`Provider '${currentProvider.providerName}' does not support semantic history parsing.`);
