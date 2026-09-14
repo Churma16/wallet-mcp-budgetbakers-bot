@@ -26,6 +26,7 @@ import {
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger, formatConciseErrorMessage } from '../utils/logger.js';
 import { WalletRecordPreparationService } from '../services/walletRecordPreparationService.js';
+import { CategoryContextService } from '../services/categoryContextService.js';
 
 export class AccountClarificationHandler {
   private readonly recordPreparationService: WalletRecordPreparationService;
@@ -35,7 +36,8 @@ export class AccountClarificationHandler {
     private readonly walletMcpClient: WalletMcpClientService,
     private readonly walletCacheService: WalletCacheService,
     private readonly messagingGateway: MessagingGatewayService,
-    recordPreparationService?: WalletRecordPreparationService
+    recordPreparationService?: WalletRecordPreparationService,
+    private readonly categoryContextService?: CategoryContextService
   ) {
     this.recordPreparationService =
       recordPreparationService ||
@@ -226,6 +228,7 @@ export class AccountClarificationHandler {
     updatedRecords[claimedDraft.pendingRecordIndex] = {
       ...updatedRecords[claimedDraft.pendingRecordIndex],
       accountId: selectedAccount.id,
+      accountHint: undefined,
     };
 
     // Keep the original candidate mapping for this unresolved record. A definitive MCP failure
@@ -246,7 +249,8 @@ export class AccountClarificationHandler {
       availableCategories,
       undefined,
       referenceInstantForClarification,
-      claimedDraft.sourceUserText
+      claimedDraft.sourceUserText,
+      this.categoryContextService?.getConfiguration().categoryRules
     );
 
     if (validationResult.validationErrors.length > 0) {

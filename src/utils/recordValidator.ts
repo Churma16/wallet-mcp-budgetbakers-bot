@@ -8,6 +8,7 @@ import {
 import { normalizeTransactionRecordDate } from './recordDateNormalizer.js';
 import { extractHashtags, deduplicateTags, normalizeTagName } from './hashtagParser.js';
 import { parseFinancialAmount, parseFinancialAmountString } from './financialAmountParser.js';
+import { CategoryContextRule } from '../types/categoryContextTypes.js';
 import {
   resolveSemanticAccountHint,
   resolveSemanticCategoryHint,
@@ -71,7 +72,8 @@ export function validateAndSanitizeFinancialRecords(
   availableCategoryList: WalletCategoryItem[],
   contextualUserMessage?: string,
   referenceDate: Date = new Date(),
-  sourceUserTextForHashtags?: string
+  sourceUserTextForHashtags?: string,
+  categoryRules: readonly CategoryContextRule[] = []
 ): FinancialRecordValidationResult {
   const validationErrors: string[] = [];
   const sanitizedRecords: CreateRecordInputPayload[] = [];
@@ -325,7 +327,11 @@ export function validateAndSanitizeFinancialRecords(
     let resolvedCategoryId: string | undefined;
     const rawCategoryHint = String(currentRecord.categoryHint ?? currentRecord.categoryId ?? '').trim();
     if (rawCategoryHint) {
-      const categoryResolution = resolveSemanticCategoryHint(rawCategoryHint, availableCategoryList);
+      const categoryResolution = resolveSemanticCategoryHint(
+        rawCategoryHint,
+        availableCategoryList,
+        categoryRules
+      );
       if (categoryResolution.status !== 'RESOLVED') {
         entityResolutionIssues.push({
           recordIndex,
@@ -411,7 +417,8 @@ export function validateAndSanitizeFinancialRecords(
     isValid:
       sanitizedRecords.length > 0 &&
       validationErrors.length === 0 &&
-      accountResolutionIssues.length === 0,
+      accountResolutionIssues.length === 0 &&
+      entityResolutionIssues.length === 0,
     sanitizedRecords,
     validationErrors,
     accountResolutionIssues,

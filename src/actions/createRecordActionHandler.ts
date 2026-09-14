@@ -15,6 +15,7 @@ import {
 } from '../utils/humanResponseFormatter.js';
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../utils/logger.js';
+import { CategoryContextService } from '../services/categoryContextService.js';
 
 function formatAccountResolutionIssueMessage(issue: AccountResolutionIssue): string {
   const dictionary = getDictionary();
@@ -42,7 +43,8 @@ export class CreateRecordActionHandler implements FinancialActionHandler<'CREATE
     private readonly walletCacheService: WalletCacheService,
     private readonly messagingGateway: MessagingGatewayService,
     private readonly recordPreparationService: WalletRecordPreparationService,
-    private readonly accountClarificationHandler: AccountClarificationHandler
+    private readonly accountClarificationHandler: AccountClarificationHandler,
+    private readonly categoryContextService?: CategoryContextService
   ) {}
 
   public async execute(context: CreateRecordActionContext): Promise<void> {
@@ -72,7 +74,9 @@ export class CreateRecordActionHandler implements FinancialActionHandler<'CREATE
       cachedAccounts,
       cachedCategories,
       event.textPayload,
-      requestReferenceInstant
+      requestReferenceInstant,
+      undefined,
+      this.categoryContextService?.getConfiguration().categoryRules
     );
 
     if (
