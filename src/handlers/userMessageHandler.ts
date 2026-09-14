@@ -299,35 +299,22 @@ export class UserMessageHandler {
         }
       }
 
-      if (
-        event.messageType === 'text' &&
-        event.textPayload &&
-        this.financialAiProvider.processTransactionHistoryQuery &&
-        isSemanticHistoryQueryCandidate(event.textPayload)
-      ) {
+      if (event.messageType === 'text' && event.textPayload &&
+          this.financialAiProvider.processTransactionHistoryQuery && isSemanticHistoryQueryCandidate(event.textPayload)) {
         applicationLogger.ai(`Parsing complex transaction-history query with ${this.financialAiProvider.providerName.toUpperCase()}...`);
         const semanticResult = await this.financialAiProvider.processTransactionHistoryQuery(
-          event.textPayload,
-          this.walletCacheService.getAccounts(),
-          this.walletCacheService.getCategories(),
-          requestReferenceInstant
+          event.textPayload, this.walletCacheService.getAccounts(),
+          this.walletCacheService.getCategories(), requestReferenceInstant
         );
         if (semanticResult.status === 'query') {
           await this.financialActionRegistry.execute({
-            action: 'TRANSACTION_HISTORY',
-            event,
-            queryOptions: semanticResult.queryOptions,
-            processingStartTimestamp,
-            routingSource: 'ai',
+            action: 'TRANSACTION_HISTORY', event, queryOptions: semanticResult.queryOptions,
+            processingStartTimestamp, routingSource: 'ai',
           });
           return;
         }
         if (semanticResult.status === 'clarification') {
-          await this.messagingGateway.sendMessage(
-            event.channel,
-            event.chatIdentifier,
-            semanticResult.clarification
-          );
+          await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, semanticResult.clarification);
           return;
         }
       }

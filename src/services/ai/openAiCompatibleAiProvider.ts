@@ -264,12 +264,11 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     availableCategoryList: WalletCategoryItem[],
     referenceInstant: Date = new Date()
   ): Promise<SemanticHistoryQueryResult> {
-    return executeSemanticHistoryWorkflow(
-      { userMessageText, availableAccountList, availableCategoryList, referenceInstant },
-      prepared => this.executeChatCompletionWithFallback([
-        { role: 'system', content: prepared.systemInstruction },
-        { role: 'user', content: prepared.promptText },
-      ], prepared.requestContextDescription)
+    return executeSemanticHistoryWorkflow({ userMessageText, availableAccountList, availableCategoryList, referenceInstant }, prepared =>
+      this.executeChatCompletionWithFallback(
+        [{ role: 'system', content: prepared.systemInstruction }, { role: 'user', content: prepared.promptText }],
+        prepared.requestContextDescription
+      )
     );
   }
 
