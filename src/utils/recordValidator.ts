@@ -8,6 +8,12 @@ import {
 import { normalizeTransactionRecordDate } from './recordDateNormalizer.js';
 import { extractHashtags, deduplicateTags, normalizeTagName } from './hashtagParser.js';
 import { parseFinancialAmount, parseFinancialAmountString } from './financialAmountParser.js';
+import {
+  resolveSemanticAccountHint,
+  resolveSemanticCategoryHint,
+  SemanticEntityCandidate,
+  SemanticEntityResolutionReason,
+} from '../services/semanticEntityResolver.js';
 
 export type AccountResolutionIssueReason = 'UNRESOLVED' | 'AMBIGUOUS';
 
@@ -29,7 +35,20 @@ export interface FinancialRecordValidationResult {
   sanitizedRecords: CreateRecordInputPayload[];
   validationErrors: string[];
   accountResolutionIssues: AccountResolutionIssue[];
+  entityResolutionIssues: EntityResolutionIssue[];
 }
+
+export interface EntityResolutionIssue {
+  recordIndex: number;
+  entityType: 'ACCOUNT' | 'CATEGORY';
+  hint: string;
+  reason: SemanticEntityResolutionReason;
+  candidates: SemanticEntityCandidate[];
+}
+
+export type FinancialRecordValidationInput = Omit<CreateRecordInputPayload, 'accountId'> & {
+  accountId?: string;
+};
 
 const MAXIMUM_RECORDS_PER_BATCH = 20;
 const MAXIMUM_SINGLE_TRANSACTION_AMOUNT = 100_000_000_000; // 100 billion IDR upper limit for sanity
@@ -42,86 +61,12 @@ function toAccountResolutionCandidate(account: WalletAccountItem): AccountResolu
   };
 }
 
-function findBankAccountMatches(
-  rawAccountHint: string,
-  availableAccountList: WalletAccountItem[]
-): WalletAccountItem[] {
-  const numericDigitsOnly = rawAccountHint.replace(/\D/g, '');
-  if (numericDigitsOnly.length < 4) {
-    return [];
-  }
-
-  return availableAccountList.filter(account => {
-    if (!account.bankAccountNumber) {
-      return false;
-    }
-
-    const cleanAccountDigits = account.bankAccountNumber.replace(/\D/g, '');
-    return cleanAccountDigits === numericDigitsOnly ||
-      cleanAccountDigits.endsWith(numericDigitsOnly) ||
-      numericDigitsOnly.endsWith(cleanAccountDigits);
-  });
-}
-
-function uniqueAccountsById(accounts: WalletAccountItem[]): WalletAccountItem[] {
-  const uniqueAccounts = new Map<string, WalletAccountItem>();
-  for (const account of accounts) {
-    uniqueAccounts.set(account.id, account);
-  }
-  return Array.from(uniqueAccounts.values());
-}
-
-function findAccountResolutionCandidates(
-  rawAccountHint: string,
-  availableAccountList: WalletAccountItem[]
-): WalletAccountItem[] {
-  // An exact Wallet ID is canonical and does not need heuristic interpretation.
-  const exactIdMatches = availableAccountList.filter(account => account.id === rawAccountHint);
-  if (exactIdMatches.length > 0) {
-    return uniqueAccountsById(exactIdMatches);
-  }
-
-  const resolutionCandidates: WalletAccountItem[] = [];
-
-  // Numeric hints may represent the 1-based account index shown to the AI/user.
-  if (/^\d+$/.test(rawAccountHint)) {
-    const accountIndex = Number.parseInt(rawAccountHint, 10) - 1;
-    if (accountIndex >= 0 && accountIndex < availableAccountList.length) {
-      resolutionCandidates.push(availableAccountList[accountIndex]);
-    }
-  }
-
-  // Prefer exact-name interpretation over partial-name interpretation, but compare
-  // that name interpretation with other applicable strategies before resolving.
-  const normalizedAccountHint = rawAccountHint.toLowerCase();
-  const exactNameMatches = availableAccountList.filter(
-    account => account.name.toLowerCase() === normalizedAccountHint
-  );
-
-  if (exactNameMatches.length > 0) {
-    resolutionCandidates.push(...exactNameMatches);
-  } else if (rawAccountHint.length > 1) {
-    resolutionCandidates.push(
-      ...availableAccountList.filter(account =>
-        account.name.toLowerCase().includes(normalizedAccountHint) ||
-        normalizedAccountHint.includes(account.name.toLowerCase())
-      )
-    );
-  }
-
-  // Bank-account interpretation is evaluated alongside index/name interpretations.
-  // Distinct accounts from different strategies must fail closed as ambiguous.
-  resolutionCandidates.push(...findBankAccountMatches(rawAccountHint, availableAccountList));
-
-  return uniqueAccountsById(resolutionCandidates);
-}
-
 /**
  * Validates and sanitizes financial records extracted by AI before dispatching to Wallet MCP.
  * Prevents hallucinatory account IDs, zero/infinite amounts, out-of-range values, and corrupt dates.
  */
 export function validateAndSanitizeFinancialRecords(
-  incomingRecords: CreateRecordInputPayload[],
+  incomingRecords: FinancialRecordValidationInput[],
   availableAccountList: WalletAccountItem[],
   availableCategoryList: WalletCategoryItem[],
   contextualUserMessage?: string,
@@ -131,6 +76,7 @@ export function validateAndSanitizeFinancialRecords(
   const validationErrors: string[] = [];
   const sanitizedRecords: CreateRecordInputPayload[] = [];
   const accountResolutionIssues: AccountResolutionIssue[] = [];
+  const entityResolutionIssues: EntityResolutionIssue[] = [];
 
   if (!Array.isArray(incomingRecords) || incomingRecords.length === 0) {
     return {
@@ -138,6 +84,7 @@ export function validateAndSanitizeFinancialRecords(
       sanitizedRecords: [],
       validationErrors: ['Tidak ada data transaksi yang dapat divalidasi.'],
       accountResolutionIssues: [],
+      entityResolutionIssues: [],
     };
   }
 
@@ -149,6 +96,7 @@ export function validateAndSanitizeFinancialRecords(
         `Jumlah transaksi (${incomingRecords.length}) melebihi batas wajar (${MAXIMUM_RECORDS_PER_BATCH} entri per pesan).`,
       ],
       accountResolutionIssues: [],
+      entityResolutionIssues: [],
     };
   }
 
@@ -334,24 +282,32 @@ export function validateAndSanitizeFinancialRecords(
 
     // 2. Account ID Resolution & Validation. All applicable heuristic strategies
     // are compared before committing so conflicting interpretations fail closed.
-    const rawAccountIdStr = String(currentRecord.accountId ?? '').trim();
-    const accountResolutionCandidates = findAccountResolutionCandidates(
-      rawAccountIdStr,
-      availableAccountList
-    );
+    const rawAccountIdStr = String(currentRecord.accountHint ?? currentRecord.accountId ?? '').trim();
+    const accountResolution = resolveSemanticAccountHint(rawAccountIdStr, availableAccountList);
 
-    if (accountResolutionCandidates.length !== 1) {
-      accountResolutionIssues.push({
+    if (accountResolution.status !== 'RESOLVED') {
+      const accountIssue: AccountResolutionIssue = {
         recordIndex,
         accountHint: rawAccountIdStr,
-        reason: accountResolutionCandidates.length > 1 ? 'AMBIGUOUS' : 'UNRESOLVED',
-        candidates: accountResolutionCandidates.map(toAccountResolutionCandidate),
+        reason: accountResolution.reason,
+        candidates: accountResolution.candidates.map(candidate => {
+          const account = availableAccountList.find(item => item.id === candidate.id);
+          return account ? toAccountResolutionCandidate(account) : candidate;
+        }),
+      };
+      accountResolutionIssues.push(accountIssue);
+      entityResolutionIssues.push({
+        recordIndex,
+        entityType: 'ACCOUNT',
+        hint: rawAccountIdStr,
+        reason: accountResolution.reason,
+        candidates: accountResolution.candidates,
       });
       continue;
     }
 
-    const resolvedAccount = accountResolutionCandidates[0];
-    const resolvedAccountId = resolvedAccount.id;
+    const resolvedAccount = availableAccountList.find(account => account.id === accountResolution.id)!;
+    const resolvedAccountId = accountResolution.id;
 
     // Currency compatibility check: explicit OCR / record currency hint must match resolved account currency
     if (effectiveCurrencyHint && resolvedAccount.currency) {
@@ -366,46 +322,21 @@ export function validateAndSanitizeFinancialRecords(
     }
 
     // 3. Category ID Validation (supports UUID, 1-based index number, exact name, or partial name)
-    let resolvedCategoryId: string | undefined = undefined;
-    if (currentRecord.categoryId) {
-      const rawCategoryIdStr = String(currentRecord.categoryId).trim();
-
-      // Strategy A: Exact UUID match
-      const exactCategoryMatch = availableCategoryList.find(category => category.id === rawCategoryIdStr);
-      if (exactCategoryMatch) {
-        resolvedCategoryId = exactCategoryMatch.id;
+    let resolvedCategoryId: string | undefined;
+    const rawCategoryHint = String(currentRecord.categoryHint ?? currentRecord.categoryId ?? '').trim();
+    if (rawCategoryHint) {
+      const categoryResolution = resolveSemanticCategoryHint(rawCategoryHint, availableCategoryList);
+      if (categoryResolution.status !== 'RESOLVED') {
+        entityResolutionIssues.push({
+          recordIndex,
+          entityType: 'CATEGORY',
+          hint: rawCategoryHint,
+          reason: categoryResolution.reason,
+          candidates: categoryResolution.candidates,
+        });
+        continue;
       }
-
-      // Strategy B: 1-based index number (e.g. 1, 24, "1", "24")
-      if (!resolvedCategoryId && /^\d+$/.test(rawCategoryIdStr)) {
-        const categoryIndex = Number.parseInt(rawCategoryIdStr, 10) - 1;
-        if (categoryIndex >= 0 && categoryIndex < availableCategoryList.length) {
-          resolvedCategoryId = availableCategoryList[categoryIndex].id;
-        }
-      }
-
-      // Strategy C: Exact name match (case-insensitive)
-      if (!resolvedCategoryId) {
-        const nameCategoryMatch = availableCategoryList.find(
-          category => category.name.toLowerCase() === rawCategoryIdStr.toLowerCase()
-        );
-        if (nameCategoryMatch) {
-          resolvedCategoryId = nameCategoryMatch.id;
-        }
-      }
-
-      // Strategy D: Substring / partial name match
-      if (!resolvedCategoryId && rawCategoryIdStr.length > 2) {
-        const partialCategoryMatch = availableCategoryList.find(
-          category =>
-            category.name.toLowerCase().includes(rawCategoryIdStr.toLowerCase()) ||
-            rawCategoryIdStr.toLowerCase().includes(category.name.toLowerCase())
-        );
-        if (partialCategoryMatch) {
-          resolvedCategoryId = partialCategoryMatch.id;
-        }
-      }
-      // If still not matched, omit categoryId rather than failing the transaction with bad UUID
+      resolvedCategoryId = categoryResolution.id;
     }
 
     // 4. Record Date Validation (already normalized into immutable UTC ISO string upfront)
@@ -484,5 +415,6 @@ export function validateAndSanitizeFinancialRecords(
     sanitizedRecords,
     validationErrors,
     accountResolutionIssues,
+    entityResolutionIssues,
   };
 }

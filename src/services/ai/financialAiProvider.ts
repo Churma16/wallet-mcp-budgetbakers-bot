@@ -14,8 +14,10 @@ export interface TokenUsageStatistics {
 }
 
 export interface ExtractedFinancialRecordItem {
-  accountId: string;
+  accountId?: string;
+  accountHint?: string;
   categoryId?: string;
+  categoryHint?: string;
   amount: number;
   recordDate?: string;
   note: string;

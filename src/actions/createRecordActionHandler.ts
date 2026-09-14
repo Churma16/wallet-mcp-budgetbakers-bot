@@ -62,9 +62,13 @@ export class CreateRecordActionHandler implements FinancialActionHandler<'CREATE
 
     const cachedAccounts = this.walletCacheService.getAccounts();
     const cachedCategories = this.walletCacheService.getCategories();
+    const incomingRecords = context.records.map(record => ({
+      ...record,
+      accountId: record.accountId ?? record.accountHint ?? '',
+    }));
 
     const validationResult = validateAndSanitizeFinancialRecords(
-      context.records,
+      incomingRecords,
       cachedAccounts,
       cachedCategories,
       event.textPayload,
@@ -73,11 +77,12 @@ export class CreateRecordActionHandler implements FinancialActionHandler<'CREATE
 
     if (
       validationResult.validationErrors.length === 0 &&
-      validationResult.accountResolutionIssues.length > 0
+      validationResult.accountResolutionIssues.length > 0 &&
+      validationResult.entityResolutionIssues.every(issue => issue.entityType === 'ACCOUNT')
     ) {
       const drafted = await this.accountClarificationHandler.createPendingAccountSelectionDraft(
         event,
-        context.records,
+        incomingRecords,
         validationResult.accountResolutionIssues,
         cachedAccounts,
         cachedCategories,
@@ -95,9 +100,17 @@ export class CreateRecordActionHandler implements FinancialActionHandler<'CREATE
       const validationErrorMessage = [
         ...validationResult.validationErrors,
         ...accountResolutionMessages,
+        ...validationResult.entityResolutionIssues
+          .filter(issue => issue.entityType === 'CATEGORY')
+          .map(issue => {
+            const candidates = issue.candidates.map(candidate => candidate.name).join(', ');
+            return issue.reason === 'AMBIGUOUS'
+              ? `Transaksi #${issue.recordIndex + 1}: kategori "${issue.hint}" ambigu${candidates ? ` (${candidates})` : ''}.`
+              : `Transaksi #${issue.recordIndex + 1}: kategori "${issue.hint}" tidak ditemukan.`;
+          }),
       ].join('\n') || getDictionary().errors.accountResolutionFallback;
       const totalValidationIssueCount =
-        validationResult.validationErrors.length + validationResult.accountResolutionIssues.length;
+        validationResult.validationErrors.length + validationResult.entityResolutionIssues.length;
 
       applicationLogger.warn(
         `Financial record validation rejected (${totalValidationIssueCount} issue(s)).`
@@ -107,6 +120,7 @@ export class CreateRecordActionHandler implements FinancialActionHandler<'CREATE
         originalRecords: context.records,
         validationErrors: validationResult.validationErrors,
         accountResolutionIssues: validationResult.accountResolutionIssues,
+        entityResolutionIssues: validationResult.entityResolutionIssues,
       });
 
       await this.messagingGateway.sendMessage(
