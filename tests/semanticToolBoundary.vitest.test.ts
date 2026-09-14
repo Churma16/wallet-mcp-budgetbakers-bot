@@ -134,6 +134,18 @@ describe('SemanticToolBoundary (Issue #117)', () => {
       accepted: false,
       code: 'INVALID_ENTITY_REFERENCE',
     });
+    expect(request(123 as any)).toMatchObject({
+      accepted: false,
+      code: 'INVALID_ARGUMENTS',
+    });
+    expect(request('')).toMatchObject({
+      accepted: false,
+      code: 'INVALID_ARGUMENTS',
+    });
+    expect(request('a'.repeat(201))).toMatchObject({
+      accepted: false,
+      code: 'INVALID_ARGUMENTS',
+    });
   });
 
   it('fails closed for unknown or generic model-requested tools', () => {

@@ -76,7 +76,7 @@ function hasPendingTransactions(manager: PendingTransactionService): boolean {
  * may use the guarded semantic fallback. Existing ambiguity guards remain
  * deterministic and therefore never reach the model.
  */
-function shouldDeferHistoryCategoryToSemanticResolver(
+export function shouldDeferHistoryCategoryToSemanticResolver(
   fastPathAction: ReturnType<typeof detectFastPathAction>,
   availableCategories: ReturnType<WalletCacheService['getCategories']>,
   referenceDate: Date
