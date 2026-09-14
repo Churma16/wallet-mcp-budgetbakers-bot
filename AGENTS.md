@@ -106,6 +106,31 @@ When inspecting SonarCloud status, quality gate results, or review feedback on P
 - **Use GitHub CLI Only**: Always inspect PR comments, review feedback, and status check details via `gh pr view <pr> --comments` and `gh pr checks <pr>`.
 - **No curl to SonarCloud**: Do not make raw HTTP/curl requests directly to `sonarcloud.io` or external API endpoints. The SonarCloud GitHub integration automatically posts Quality Gate results and line annotations directly to the PR discussion.
 
+## MCP Capability and Protocol Audit Before Implementation
+For changes to Wallet-domain operations, Wallet MCP adapters, capability/tool discovery, generic MCP transport/protocol plumbing, or Wallet metadata sources of truth, audit upstream capabilities before adding local behavior. This operationalizes the native-first architecture in #121, typed capability discovery in #163, and official-client migration in #165 without duplicating those designs.
+
+### 1. Required Capability Audit
+Before implementation:
+1. Inspect the current repository adapter and its existing contracts.
+2. Inspect current Wallet MCP tools and schemas for relevant native filtering/search, aggregation/grouping, transfers, CRUD, entity/reference access, metadata, rollback, and delete behavior.
+3. When transport or protocol behavior is involved, inspect the current official MCP SDK/protocol support for transport, protocol-version negotiation, tool discovery and invocation, lifecycle, and session mechanics.
+4. Verify ambiguous contracts with focused documentation, contract, or test evidence before adding a broad fallback. Live external checks must remain explicit and outside default CI.
+
+A missing method in `WalletMcpClientService` or another application wrapper does not prove that Wallet MCP lacks the capability. Likewise, needing an MCP request does not justify hand-building generic JSON-RPC or transport plumbing.
+
+### 2. Native and Authoritative Sources First
+- Prefer a native Wallet operation when it satisfies the required contract.
+- Prefer official MCP SDK/protocol abstractions when they satisfy transport or protocol requirements; do not build a second generic MCP client without a demonstrated gap.
+- Preserve and use authoritative Wallet metadata rather than maintaining duplicate canonical registries or recomputing source-of-truth state where appropriate. This includes category hierarchy/group/assignability, bank-sync/source, budget/aggregation, profile base-currency/readiness, and bounded typed-consumer metadata.
+- Retain local compatibility behavior only for a specific, documented upstream or SDK gap, and keep the shim as narrow as that evidence permits.
+
+Application-owned human-language aliases, validation, safety policy, and presentation remain valid. Native-first behavior must preserve deterministic sender authorization, trusted-entity validation, pending/confirmation state, `UNKNOWN` handling, reconciliation, correlation/deduplication policy, and semantic tool allowlists; capability discovery must not automatically expose every advertised tool to the LLM.
+
+### 3. Scope and PR Evidence
+Do not apply this audit to unrelated presentation-only messaging, localization, logging unrelated to MCP transport, CI/test-runner migration, or email transport work that does not change Wallet semantics.
+
+For relevant PRs, record a concise decision such as the native Wallet capability and official protocol layer used, whether local compatibility remains, or the concrete gap and evidence that justify a bounded shim. Do not require this note, a live Wallet call, or live external-service testing for unrelated PRs.
+
 ## Vitest Invariant for New Test Suites
 Following the Vitest bootstrap (Issue #113), all new hermetic unit, integration, and regression test suites in this repository MUST be authored directly in Vitest:
 - **File Naming & Discovery**: New test files must be named `tests/**/*.vitest.test.ts` to match the include pattern in `vitest.config.ts`.
