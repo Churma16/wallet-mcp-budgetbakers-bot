@@ -1749,6 +1749,39 @@ console.log('\n[Suite 9] Testing FastPathHandler Integration with Filters...');
     availableCategoryList: MOCK_CATEGORIES,
   });
   assert.strictEqual(evaluation.accepted, true);
+
+  const duplicateCategories: WalletCategoryItem[] = [
+    { id: 'cat-food-001', name: 'Food' },
+    { id: 'cat-food-002', name: 'Food' },
+    { id: 'cat-health-001', name: 'Health' },
+  ];
+  const evaluateDuplicateName = (argumentsValue: Record<string, unknown>) => boundary.evaluate({
+    proposal: { tool: 'get_transaction_history', arguments: argumentsValue },
+    authorization: { isAuthorized: true, source: 'test-policy' },
+    event: {
+      channel: 'whatsapp',
+      chatIdentifier: 'test-chat',
+      senderIdentifier: 'test-sender',
+      messageType: 'text',
+      textPayload: 'riwayat kategori food',
+    },
+    availableAccountList: MOCK_ACCOUNTS,
+    availableCategoryList: duplicateCategories,
+  });
+
+  assert.strictEqual(evaluateDuplicateName({ categoryName: 'Food' }).accepted, false);
+  const selectedDuplicate = evaluateDuplicateName({
+    categoryId: 'cat-food-002',
+    categoryName: 'Food',
+  });
+  assert.strictEqual(selectedDuplicate.accepted, true);
+  if (selectedDuplicate.accepted && selectedDuplicate.context.action === 'TRANSACTION_HISTORY') {
+    assert.strictEqual(selectedDuplicate.context.queryOptions?.categoryId, 'cat-food-002');
+  }
+  assert.strictEqual(evaluateDuplicateName({
+    categoryId: 'cat-health-001',
+    categoryName: 'Food',
+  }).accepted, false);
 }
 
 console.log('\n[SUCCESS] All Composable Transaction History Filter tests passed cleanly!');

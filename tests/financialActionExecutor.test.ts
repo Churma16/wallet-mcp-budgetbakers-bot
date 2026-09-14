@@ -253,6 +253,103 @@ console.log('\n[Suite 3] Testing UserMessageHandler (AI-Path) Delegation...');
   console.log('  [PASS] UserMessageHandler delegates AI CHECK_BALANCE and CHECK_BUDGET to FinancialActionExecutor');
 }
 
+// Cover the issue #148 deferred-category authority boundary through the
+// existing legacy runner so Sonar receives granular TypeScript source maps.
+{
+  const categories = [{ id: 'cat-health', name: 'Kesehatan' }];
+  let aiResponse: any = {
+    action: 'TRANSACTION_HISTORY',
+    queryOptions: { categoryId: 'cat-health' },
+  };
+  const executedContexts: any[] = [];
+  const mockGateway = createMockGateway();
+  const registry = {
+    hasHandler: () => true,
+    execute: async (context: any) => {
+      executedContexts.push(context);
+    },
+  };
+  const handler = new UserMessageHandler(
+    mockGateway as any,
+    { hasPendingTransactions: () => false } as any,
+    {} as any,
+    { handleFastPath: async () => false } as any,
+    {
+      providerName: 'mock-ai',
+      processTextMessage: async () => aiResponse,
+    } as any,
+    {
+      getAccounts: () => [],
+      getCategories: () => categories,
+    } as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    registry as any
+  );
+
+  await handler.handleIncomingUserMessage(createMockIncomingEvent('riwayat beli obat bulan lalu'));
+  assert.strictEqual(executedContexts.length, 1);
+  assert.deepStrictEqual(executedContexts[0].queryOptions, {
+    limit: undefined,
+    page: undefined,
+    sort: 'newest',
+    datePeriod: 'last_month',
+    categoryId: 'cat-health',
+  });
+
+  for (const rejectedResponse of [
+    { action: 'TRANSACTION_HISTORY', queryOptions: {}, explanation: 'Kategori belum jelas.' },
+    { action: 'CHECK_BALANCE', explanation: 'Action switch rejected.' },
+    { action: 'CHECK_BUDGET', explanation: 'Action switch rejected.' },
+    {
+      action: 'CREATE_RECORD',
+      records: [{ accountId: 'Cash', amount: 25_000, note: 'beli obat' }],
+      explanation: 'Action switch rejected.',
+    },
+  ]) {
+    aiResponse = rejectedResponse;
+    await handler.handleIncomingUserMessage(createMockIncomingEvent('riwayat beli obat'));
+  }
+  assert.strictEqual(executedContexts.length, 1, 'Deferred history must not execute without a category or after an action switch');
+
+  aiResponse = {
+    action: 'CREATE_RECORD',
+    records: [{ accountId: 'Cash', amount: Number.POSITIVE_INFINITY, note: 'invalid' }],
+  };
+  const messageCountBeforeInvalidProposal = mockGateway.dispatchedMessages.length;
+  await handler.handleIncomingUserMessage(createMockIncomingEvent('catat transaksi invalid'));
+  assert.strictEqual(executedContexts.length, 1, 'Rejected transaction proposal must not execute');
+  assert.strictEqual(
+    mockGateway.dispatchedMessages.length,
+    messageCountBeforeInvalidProposal + 1,
+    'Rejected transaction proposal should return validation guidance'
+  );
+
+  const missingHandler = new UserMessageHandler(
+    mockGateway as any,
+    { hasPendingTransactions: () => false } as any,
+    {} as any,
+    { handleFastPath: async () => false } as any,
+    {
+      providerName: 'mock-ai',
+      processTextMessage: async () => ({
+        action: 'TRANSACTION_HISTORY',
+        queryOptions: { categoryId: 'cat-health' },
+      }),
+    } as any,
+    {
+      getAccounts: () => [],
+      getCategories: () => categories,
+    } as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    { hasHandler: () => false, execute: async () => undefined } as any
+  );
+  await missingHandler.handleIncomingUserMessage(createMockIncomingEvent('riwayat beli obat'));
+}
+
 // -----------------------------------------------------------------------------
 // Suite 4: End-to-End Equivalence Between Fast-Path and AI Routes
 // -----------------------------------------------------------------------------
