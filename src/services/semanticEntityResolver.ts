@@ -66,7 +66,9 @@ export function resolveSemanticAccountHint(hint: string, accounts: readonly Wall
   if (exactNames.length === 0 && normalizedHint.length > 1) {
     candidates.push(...accounts.filter(account => {
       const candidate = normalize(account.name);
-      return candidate.includes(normalizedHint) || normalizedHint.includes(candidate);
+      return candidate.length > 0 && (
+        candidate.includes(normalizedHint) || normalizedHint.includes(candidate)
+      );
     }));
   }
 
@@ -122,12 +124,17 @@ export function resolveSemanticCategoryHint(
   const matchedIds = new Set<string>();
   for (const category of categories) {
     const categoryText = normalize(category.name);
-    if (normalizedHint.length > 2 && (categoryText.includes(normalizedHint) || normalizedHint.includes(categoryText))) {
+    if (
+      categoryText.length > 0 &&
+      normalizedHint.length > 2 &&
+      (categoryText.includes(normalizedHint) || normalizedHint.includes(categoryText))
+    ) {
       matchedIds.add(category.id);
     }
 
     for (const rule of categoryRules) {
-      if (normalize(rule.category) !== categoryText && rule.category !== category.id) continue;
+      const ruleTargetsCategoryByName = categoryText.length > 0 && normalize(rule.category) === categoryText;
+      if (!ruleTargetsCategoryByName && rule.category !== category.id) continue;
       const excluded = (rule.exclusions ?? []).some(value => words(value).some(word => hintWords.has(word)));
       if (excluded) continue;
       const semanticText = [rule.scope, ...(rule.examples ?? [])].filter(Boolean).join(' ');

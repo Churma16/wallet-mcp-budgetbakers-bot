@@ -82,6 +82,28 @@ describe('semantic entity resolver (Issue #119)', () => {
     });
   });
 
+  it('does not partially match normal hints to empty-normalized entity names', () => {
+    expect(resolveSemanticAccountHint('Cash', [{ id: 'symbol-account', name: '\u{1F4B0}' }])).toEqual({
+      status: 'CLARIFICATION_REQUIRED',
+      reason: 'UNRESOLVED',
+      hint: 'Cash',
+      candidates: [],
+    });
+    expect(resolveSemanticCategoryHint('Food', [{ id: 'symbol-category', name: '!!!' }])).toEqual({
+      status: 'CLARIFICATION_REQUIRED',
+      reason: 'UNRESOLVED',
+      hint: 'Food',
+      candidates: [],
+    });
+    expect(resolveSemanticCategoryHint(
+      'Food',
+      [{ id: 'symbol-category', name: '!!!' }],
+      [{ category: '???', examples: ['Food'] }]
+    )).toMatchObject({
+      status: 'CLARIFICATION_REQUIRED', reason: 'UNRESOLVED', candidates: [],
+    });
+  });
+
   it('makes unknown category hints authoritative validation failures', () => {
     const result = validateAndSanitizeFinancialRecords(
       [{ accountHint: 'Cash', categoryHint: 'invented category', amount: -25_000, note: 'test' }],
