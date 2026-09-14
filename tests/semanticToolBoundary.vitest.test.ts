@@ -207,6 +207,50 @@ describe('SemanticToolBoundary (Issue #117)', () => {
     });
   });
 
+  it('rejects unknown UUIDv7-shaped entity identifiers without dispatching a write', async () => {
+    const executeMutation = vi.fn().mockResolvedValue(undefined);
+    const registry = new FinancialActionRegistry();
+    registry.register({
+      action: 'CREATE_RECORD',
+      execute: executeMutation,
+    });
+
+    const rejectedDecisions = [
+      evaluate({
+        tool: 'propose_transaction',
+        arguments: {
+          records: [{
+            accountId: '018f47d2-9b11-7cc4-8d2e-7f8a9b0c1d2e',
+            categoryId: 'cat-1',
+            amount: 10_000,
+            note: 'fake UUIDv7 account',
+          }],
+        },
+      }),
+      evaluate({
+        tool: 'propose_transaction',
+        arguments: {
+          records: [{
+            accountId: 'acc-1',
+            categoryId: '018f47d2-9b11-7cc4-8d2e-7f8a9b0c1d2e',
+            amount: 10_000,
+            note: 'fake UUIDv7 category',
+          }],
+        },
+      }),
+    ];
+
+    for (const decision of rejectedDecisions) {
+      expect(decision).toMatchObject({
+        accepted: false,
+        code: 'INVALID_ENTITY_REFERENCE',
+      });
+      await dispatchIfAccepted(decision, registry);
+    }
+
+    expect(executeMutation).not.toHaveBeenCalled();
+  });
+
   it('allows semantic entity hints to continue into the existing deterministic resolver', () => {
     const decision = evaluate({
       tool: 'propose_transaction',

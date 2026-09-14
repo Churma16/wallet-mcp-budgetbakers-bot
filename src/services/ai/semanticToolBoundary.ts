@@ -95,7 +95,7 @@ const MAXIMUM_LABEL_LENGTH = 100;
 
 // Structured identifier recognition is intentionally finite grammar. It is not
 // used to infer natural-language meaning.
-const UUID_IDENTIFIER_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_IDENTIFIER_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EXPLICIT_NAMED_IDENTIFIER_PATTERN = /^(?:acc|account|cat|category)[-_][a-z0-9_-]+$/i;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
