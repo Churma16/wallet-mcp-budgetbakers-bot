@@ -114,7 +114,8 @@ export class Application {
       this.walletMcpClient,
       this.walletCacheService,
       this.messagingGateway,
-      recordPreparationService
+      recordPreparationService,
+      this.categoryContextService
     );
 
     this.financialActionRegistry = createDefaultFinancialActionRegistry({
@@ -125,6 +126,7 @@ export class Application {
       recordPreparationService,
       accountClarificationHandler,
       pendingTransactionService: this.pendingTransactionManager,
+      categoryContextService: this.categoryContextService,
     });
 
     this.fastPathHandler = new FastPathHandler(

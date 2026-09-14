@@ -81,7 +81,9 @@ const ALLOWED_TRANSACTION_ARGUMENT_KEYS = new Set(['records']);
 const ALLOWED_HISTORY_ARGUMENT_KEYS = new Set(['accountName', 'categoryId', 'categoryName', 'recordType', 'startDate', 'endDate', 'datePeriod', 'searchQuery', 'limit', 'page', 'sort']);
 const ALLOWED_RECORD_KEYS = new Set([
   'accountId',
+  'accountHint',
   'categoryId',
+  'categoryHint',
   'amount',
   'recordDate',
   'note',
@@ -183,11 +185,16 @@ function validateAndCloneRecord(
     return reject('INVALID_ARGUMENTS', 'Transaction proposal contains unsupported record fields.');
   }
 
-  if (
-    rawRecord.accountId !== undefined &&
-    !isBoundedString(rawRecord.accountId, true)
-  ) {
+  if (rawRecord.accountId !== undefined && !isBoundedString(rawRecord.accountId, true)) {
     return reject('INVALID_ARGUMENTS', 'Transaction proposal account reference is malformed or too large.');
+  }
+
+  if (rawRecord.accountHint !== undefined && !isBoundedString(rawRecord.accountHint, true)) {
+    return reject('INVALID_ARGUMENTS', 'Transaction proposal account hint is malformed or too large.');
+  }
+
+  if (rawRecord.categoryHint !== undefined && !isBoundedString(rawRecord.categoryHint, true)) {
+    return reject('INVALID_ARGUMENTS', 'Transaction proposal category hint is malformed or too large.');
   }
 
   if (
@@ -238,6 +245,12 @@ function validateAndCloneRecord(
   }
 
   const clonedRecord = { ...rawRecord };
+  if (!clonedRecord.accountId && typeof clonedRecord.accountHint === 'string') {
+    clonedRecord.accountId = clonedRecord.accountHint;
+  }
+  if (!clonedRecord.categoryId && typeof clonedRecord.categoryHint === 'string') {
+    clonedRecord.categoryId = clonedRecord.categoryHint;
+  }
   // labelIds are application-derived authority. Treat model-provided values as
   // untrusted data and discard them before deterministic label resolution.
   delete clonedRecord.labelIds;

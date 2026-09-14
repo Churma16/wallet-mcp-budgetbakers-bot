@@ -15,6 +15,7 @@ import {
 } from './readActionHandlers.js';
 import { CreateRecordActionHandler } from './createRecordActionHandler.js';
 import { PendingTransactionService } from '../services/pendingTransactionService.js';
+import { CategoryContextService } from '../services/categoryContextService.js';
 
 export * from './types.js';
 export * from './financialActionRegistry.js';
@@ -29,6 +30,7 @@ export interface DefaultFinancialActionRegistryDependencies {
   readonly recordPreparationService: WalletRecordPreparationService;
   readonly accountClarificationHandler: AccountClarificationHandler;
   readonly pendingTransactionService?: PendingTransactionService;
+  readonly categoryContextService?: CategoryContextService;
 }
 
 /**
@@ -56,7 +58,8 @@ export function createDefaultFinancialActionRegistry(
       dependencies.walletCacheService,
       dependencies.messagingGateway,
       dependencies.recordPreparationService,
-      dependencies.accountClarificationHandler
+      dependencies.accountClarificationHandler,
+      dependencies.categoryContextService
     )
   );
 

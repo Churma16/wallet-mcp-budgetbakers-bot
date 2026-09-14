@@ -22,9 +22,11 @@ export interface WalletLabelItem {
 
 export interface CreateRecordInputPayload {
   accountId: string;
+  accountHint?: string;
   amount: number;
   recordDate?: string;
   categoryId?: string;
+  categoryHint?: string;
   note?: string;
   counterParty?: string;
   labelIds?: string[];

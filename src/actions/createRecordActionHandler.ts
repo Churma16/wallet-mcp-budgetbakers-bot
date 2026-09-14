@@ -15,6 +15,7 @@ import {
 } from '../utils/humanResponseFormatter.js';
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../utils/logger.js';
+import { CategoryContextService } from '../services/categoryContextService.js';
 
 function formatAccountResolutionIssueMessage(issue: AccountResolutionIssue): string {
   const dictionary = getDictionary();
@@ -42,7 +43,8 @@ export class CreateRecordActionHandler implements FinancialActionHandler<'CREATE
     private readonly walletCacheService: WalletCacheService,
     private readonly messagingGateway: MessagingGatewayService,
     private readonly recordPreparationService: WalletRecordPreparationService,
-    private readonly accountClarificationHandler: AccountClarificationHandler
+    private readonly accountClarificationHandler: AccountClarificationHandler,
+    private readonly categoryContextService?: CategoryContextService
   ) {}
 
   public async execute(context: CreateRecordActionContext): Promise<void> {
@@ -62,22 +64,29 @@ export class CreateRecordActionHandler implements FinancialActionHandler<'CREATE
 
     const cachedAccounts = this.walletCacheService.getAccounts();
     const cachedCategories = this.walletCacheService.getCategories();
+    const incomingRecords = context.records.map(record => ({
+      ...record,
+      accountId: record.accountId ?? record.accountHint ?? '',
+    }));
 
     const validationResult = validateAndSanitizeFinancialRecords(
-      context.records,
+      incomingRecords,
       cachedAccounts,
       cachedCategories,
       event.textPayload,
-      requestReferenceInstant
+      requestReferenceInstant,
+      undefined,
+      this.categoryContextService?.getConfiguration().categoryRules
     );
 
     if (
       validationResult.validationErrors.length === 0 &&
-      validationResult.accountResolutionIssues.length > 0
+      validationResult.accountResolutionIssues.length > 0 &&
+      validationResult.entityResolutionIssues.every(issue => issue.entityType === 'ACCOUNT')
     ) {
       const drafted = await this.accountClarificationHandler.createPendingAccountSelectionDraft(
         event,
-        context.records,
+        incomingRecords,
         validationResult.accountResolutionIssues,
         cachedAccounts,
         cachedCategories,
@@ -95,9 +104,17 @@ export class CreateRecordActionHandler implements FinancialActionHandler<'CREATE
       const validationErrorMessage = [
         ...validationResult.validationErrors,
         ...accountResolutionMessages,
+        ...validationResult.entityResolutionIssues
+          .filter(issue => issue.entityType === 'CATEGORY')
+          .map(issue => {
+            const candidates = issue.candidates.map(candidate => candidate.name).join(', ');
+            return issue.reason === 'AMBIGUOUS'
+              ? `Transaksi #${issue.recordIndex + 1}: kategori "${issue.hint}" ambigu${candidates ? ` (${candidates})` : ''}.`
+              : `Transaksi #${issue.recordIndex + 1}: kategori "${issue.hint}" tidak ditemukan.`;
+          }),
       ].join('\n') || getDictionary().errors.accountResolutionFallback;
       const totalValidationIssueCount =
-        validationResult.validationErrors.length + validationResult.accountResolutionIssues.length;
+        validationResult.validationErrors.length + validationResult.entityResolutionIssues.length;
 
       applicationLogger.warn(
         `Financial record validation rejected (${totalValidationIssueCount} issue(s)).`
@@ -107,6 +124,7 @@ export class CreateRecordActionHandler implements FinancialActionHandler<'CREATE
         originalRecords: context.records,
         validationErrors: validationResult.validationErrors,
         accountResolutionIssues: validationResult.accountResolutionIssues,
+        entityResolutionIssues: validationResult.entityResolutionIssues,
       });
 
       await this.messagingGateway.sendMessage(
