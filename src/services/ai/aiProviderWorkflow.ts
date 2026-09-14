@@ -92,7 +92,7 @@ export function validateSemanticHistoryQueryResponse(
       throw new Error(`Invalid semantic history field '${field}'.`);
     }
   }
-  if (options.recordType !== undefined && !['expense', 'income', 'transfer'].includes(String(options.recordType))) throw new Error('Invalid semantic history record type.');
+  if (options.recordType !== undefined && !['expense', 'income'].includes(String(options.recordType))) throw new Error('Invalid semantic history record type.');
   if (options.datePeriod !== undefined && !['today', 'yesterday', 'this_week', 'last_week', 'this_month', 'last_month', 'this_year'].includes(String(options.datePeriod))) throw new Error('Invalid semantic history date period.');
   if (options.sort !== undefined && !['newest', 'oldest'].includes(String(options.sort))) throw new Error('Invalid semantic history sort.');
   for (const field of ['limit', 'page'] as const) {
