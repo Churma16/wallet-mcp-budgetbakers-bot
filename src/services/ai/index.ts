@@ -6,3 +6,4 @@ export * from './aiProviderFactory.js';
 export * from './jsonExtractionHelper.js';
 export * from './aiPromptBuilder.js';
 export * from './aiProviderWorkflow.js';
+export * from './semanticToolBoundary.js';
