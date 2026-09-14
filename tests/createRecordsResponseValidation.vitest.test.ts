@@ -245,7 +245,7 @@ describe('Wallet MCP create_records Response Validation (Issue #146)', () => {
     it('rejects contradictory summary vs per-record results as UNKNOWN', () => {
       const client = new WalletMcpClientService(dummyBaseUrl, dummyToken);
       const contradictoryPayload: WalletCreateRecordsResponse = {
-        results: [{ id: 'rec-1', success: false, error: 'failed' }],
+        results: [{ id: 'rec-1', inputIndex: 0, success: false, error: 'failed' }],
         summary: {
           total: 1,
           succeeded: 1,
@@ -290,7 +290,7 @@ describe('Wallet MCP create_records Response Validation (Issue #146)', () => {
     it('rejects mismatched documentsWritten when it contradicts positive success evidence', () => {
       const client = new WalletMcpClientService(dummyBaseUrl, dummyToken);
       const mismatchedDocumentsWrittenPayload: WalletCreateRecordsResponse = {
-        results: [{ id: 'rec-1', success: true }],
+        results: [{ id: 'rec-1', inputIndex: 0, success: true }],
         summary: {
           total: 1,
           succeeded: 1,
@@ -372,7 +372,7 @@ describe('Wallet MCP create_records Response Validation (Issue #146)', () => {
           succeeded: 0,
           failed: 1,
         },
-        results: [{ success: false, error: 'Invalid currency' }],
+        results: [{ inputIndex: 0, success: false, error: 'Invalid currency' }],
       };
 
       expect(() => client.validateCreateRecordsResponse(legacyFailurePayload, 1)).toThrow(

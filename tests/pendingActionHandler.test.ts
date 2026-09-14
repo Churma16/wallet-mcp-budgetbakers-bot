@@ -72,7 +72,7 @@ class MockWalletMcpClient {
 
     return {
       summary: { total: records.length, succeeded: records.length, failed: 0 },
-      results: records.map((_record, index) => ({ id: `record-${callNumber}-${index}`, success: true })),
+      results: records.map((_record, index) => ({ id: `record-${callNumber}-${index}`, inputIndex: index, success: true })),
     };
   }
 }
@@ -229,7 +229,7 @@ async function main(): Promise<void> {
     assertCondition('Bulk retry guidance does not suggest ambiguous bare ya', !retryMessage.includes('Ketik "ya"'));
   });
 
-  await runCase('Suite 3: transfer resumes from the failed leg without duplicating the committed leg', async () => {
+  await runCase('Suite 3: transfer uses one native paired-transfer input', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -249,22 +249,22 @@ async function main(): Promise<void> {
       recordDate: '2026-09-10',
     });
 
-    walletMcp.setDefinitiveFailureOnCall(2, 'destination leg rejected');
+    walletMcp.setDefinitiveFailureOnCall(1, 'transfer rejected');
     await handler.handlePendingAction(createMockEvent(), confirmTicketOne, Date.now());
 
-    assertCondition('Transfer remains pending after second-leg failure', pendingService.getPendingTransaction(1) !== undefined);
+    assertCondition('Transfer remains pending after definitive failure', pendingService.getPendingTransaction(1) !== undefined);
     assertCondition('Transfer returns to PENDING after definitive failure', pendingService.getPendingTransactionState(1) === 'PENDING');
-    assertCondition('First transfer leg checkpoint persisted', pendingService.getCompletedRecordIndexes(1).join(',') === '0');
-    assertCondition('Two transfer leg calls attempted initially', walletMcp.calls.length === 2);
-    assertCondition('First call was source leg', walletMcp.calls[0][0].accountId === 'acc-source');
-    assertCondition('Second call was destination leg', walletMcp.calls[1][0].accountId === 'acc-destination');
+    assertCondition('One native transfer call attempted initially', walletMcp.calls.length === 1);
+    assertCondition('Native transfer uses source account', walletMcp.calls[0][0].accountId === 'acc-source');
+    assertCondition('Native transfer targets destination account', walletMcp.calls[0][0].transfer?.accountId === 'acc-destination');
+    assertCondition('Native transfer requests a new pair', walletMcp.calls[0][0].transfer?.pairingMode === 'new');
+    assertCondition('Native transfer omits ordinary category', walletMcp.calls[0][0].categoryId === undefined);
 
     walletMcp.clearFailures();
     await handler.handlePendingAction(createMockEvent('msg-retry'), confirmTicketOne, Date.now());
 
-    assertCondition('Retry only dispatched one additional call', walletMcp.calls.length === 3);
-    assertCondition('Retry dispatched only destination leg', walletMcp.calls[2][0].accountId === 'acc-destination');
-    assertCondition('Transfer ticket removed after remaining leg succeeds', pendingService.getPendingTransaction(1) === undefined);
+    assertCondition('Safe retry dispatched one logical transfer call', walletMcp.calls.length === 2);
+    assertCondition('Transfer ticket removed after retry succeeds', pendingService.getPendingTransaction(1) === undefined);
   });
 
   await runCase('Suite 4: ambiguous timeout becomes UNKNOWN and is not automatically retried', async () => {
@@ -306,7 +306,7 @@ async function main(): Promise<void> {
     assertCondition('Both confirmation attempts received deterministic responses', messaging.messages.length === 2);
   });
 
-  await runCase('Suite 6: email reference is recorded only after the full transaction succeeds', async () => {
+  await runCase('Suite 6: email reference is recorded only after the native transfer succeeds', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -335,9 +335,9 @@ async function main(): Promise<void> {
       referenceNumber: 'REF-12345',
     });
 
-    walletMcp.setDefinitiveFailureOnCall(2, 'second leg failed');
+    walletMcp.setDefinitiveFailureOnCall(1, 'native transfer rejected');
     await handler.handlePendingAction(createMockEvent(), confirmTicketOne, Date.now());
-    assertCondition('Email reference is not marked after partial transfer', recordedReferences.length === 0);
+    assertCondition('Email reference is not marked after rejected transfer', recordedReferences.length === 0);
 
     walletMcp.clearFailures();
     await handler.handlePendingAction(createMockEvent('msg-email-retry'), confirmTicketOne, Date.now());
@@ -388,7 +388,7 @@ async function main(): Promise<void> {
         result: {
           structuredContent: {
             summary: { total: 1, succeeded: 0, failed: 1 },
-            results: [{ success: false, error: 'invalid category' }],
+            results: [{ inputIndex: 0, success: false, error: 'invalid category' }],
           },
         },
       },
@@ -482,7 +482,7 @@ async function main(): Promise<void> {
     assertCondition('Complete success summary is accepted as positive evidence', summaryOnlyResult.summary?.succeeded === 1);
 
     const resultsOnlySuccessClient = createWalletClientWithToolResult({
-      results: [{ id: 'record-1', success: true }],
+      results: [{ inputIndex: 0, id: 'record-1', success: true }],
     });
     const resultsOnlyResult = await resultsOnlySuccessClient.createRecords([sampleRecord]);
     assertCondition('Complete per-record results are accepted as positive evidence', resultsOnlyResult.results?.[0]?.success === true);
@@ -490,7 +490,7 @@ async function main(): Promise<void> {
     // Current-format full success (Issue #146)
     const currentFormatSuccessClient = createWalletClientWithToolResult({
       summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 1 },
-      results: [{ id: 'record-1', success: true }],
+      results: [{ inputIndex: 0, id: 'record-1', success: true }],
     });
     const currentFormatResult = await currentFormatSuccessClient.createRecords([sampleRecord]);
     assertCondition('Current format success summary is accepted', currentFormatResult.summary?.succeeded === 1);
@@ -498,14 +498,14 @@ async function main(): Promise<void> {
     // Current-format client error yields DEFINITIVE_FAILURE
     const currentClientErrorClient = createWalletClientWithToolResult({
       summary: { total: 1, succeeded: 0, clientErrors: 1, serverErrors: 0, documentsWritten: 0 },
-      results: [{ success: false, error: 'invalid category' }],
+      results: [{ inputIndex: 0, success: false, error: 'invalid category' }],
     });
     await expectWalletMcpRequestError(() => currentClientErrorClient.createRecords([sampleRecord]), 'DEFINITIVE_FAILURE');
 
     // Current-format server error yields UNKNOWN
     const currentServerErrorClient = createWalletClientWithToolResult({
       summary: { total: 1, succeeded: 0, clientErrors: 0, serverErrors: 1, documentsWritten: 0 },
-      results: [{ success: false, errorType: 'server_error', error: 'database error' }],
+      results: [{ inputIndex: 0, success: false, errorType: 'server_error', error: 'database error' }],
     });
     await expectWalletMcpRequestError(() => currentServerErrorClient.createRecords([sampleRecord]), 'UNKNOWN');
 
@@ -536,7 +536,7 @@ async function main(): Promise<void> {
     // Inconsistent documentsWritten with per-record results
     const inconsistentDocsClient = createWalletClientWithToolResult({
       summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 0 },
-      results: [{ id: 'rec-1', success: true }],
+      results: [{ inputIndex: 0, id: 'rec-1', success: true }],
     });
     await expectWalletMcpRequestError(() => inconsistentDocsClient.createRecords([sampleRecord]), 'UNKNOWN');
 
@@ -550,14 +550,17 @@ async function main(): Promise<void> {
     // Summary succeeded inconsistent with results success count
     const inconsistentSuccessCountClient = createWalletClientWithToolResult({
       summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 1 },
-      results: [{ id: 'rec-1', success: false }],
+      results: [{ inputIndex: 0, id: 'rec-1', success: false }],
     });
     await expectWalletMcpRequestError(() => inconsistentSuccessCountClient.createRecords([sampleRecord]), 'UNKNOWN');
 
     // Summary error count inconsistent with results failure count
     const inconsistentErrorCountClient = createWalletClientWithToolResult({
       summary: { total: 2, succeeded: 1, clientErrors: 1, serverErrors: 0, documentsWritten: 1 },
-      results: [{ id: 'rec-1', success: true }, { id: 'rec-2', success: true }],
+      results: [
+        { inputIndex: 0, id: 'rec-1', success: true },
+        { inputIndex: 1, id: 'rec-2', success: true },
+      ],
     });
     await expectWalletMcpRequestError(() => inconsistentErrorCountClient.createRecords([sampleRecord, sampleRecord]), 'UNKNOWN');
 

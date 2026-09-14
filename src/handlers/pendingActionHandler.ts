@@ -1,6 +1,7 @@
 import { PendingTransactionService, PendingTransactionItem } from '../services/pendingTransactionService.js';
 import {
   WalletMcpClientService,
+  WalletMcpRequestError,
   isWalletMcpDefinitiveFailure,
   isWalletMcpDispatchOutcomeUnknown,
 } from '../services/walletMcpService.js';
@@ -83,25 +84,8 @@ export class PendingActionHandler {
     for (const item of itemsToRecord) {
       try {
         const recordsForThisTransaction = this.buildRecordsForPendingItem(item);
-        const completedRecordIndexes = new Set(
-          this.pendingTransactionManager.getCompletedRecordIndexes(item.ticketId)
-        );
-
-        for (let recordIndex = 0; recordIndex < recordsForThisTransaction.length; recordIndex++) {
-          if (completedRecordIndexes.has(recordIndex)) {
-            applicationLogger.mcp(
-              `[Ticket #${item.ticketId}] Skipping already committed record ${recordIndex + 1}/${recordsForThisTransaction.length}.`
-            );
-            continue;
-          }
-
-          applicationLogger.mcp(
-            `[Ticket #${item.ticketId}] Submitting record ${recordIndex + 1}/${recordsForThisTransaction.length}...`
-          );
-
-          await this.walletMcpClient.createRecords([recordsForThisTransaction[recordIndex]]);
-          this.pendingTransactionManager.markRecordIndexCompleted(item.ticketId, recordIndex);
-        }
+        applicationLogger.mcp(`[Ticket #${item.ticketId}] Submitting transaction...`);
+        await this.walletMcpClient.createRecords(recordsForThisTransaction);
 
         if (activeEmailListener) {
           activeEmailListener.recordProcessedTransaction(undefined, item.referenceNumber);
@@ -181,27 +165,23 @@ export class PendingActionHandler {
 
   private buildRecordsForPendingItem(item: PendingTransactionItem): CreateRecordInputPayload[] {
     if (item.transactionType === 'TRANSFER') {
-      const transferRecords: CreateRecordInputPayload[] = [
-        {
-          accountId: item.matchedAccountId,
-          amount: -Math.abs(item.amount),
-          recordDate: item.recordDate,
-          note: item.note || `Transfer ke ${item.destinationAccountNameHint || 'akun lain'}`,
-          counterParty: item.destinationAccountNameHint || '',
-        },
-      ];
-
-      if (item.matchedDestinationAccountId) {
-        transferRecords.push({
-          accountId: item.matchedDestinationAccountId,
-          amount: Math.abs(item.amount),
-          recordDate: item.recordDate,
-          note: item.note || `Transfer dari ${item.accountNameHint || 'akun lain'}`,
-          counterParty: item.accountNameHint || '',
-        });
+      if (!item.matchedDestinationAccountId) {
+        throw new WalletMcpRequestError(
+          'Transfer destination account was not resolved before dispatch',
+          'DEFINITIVE_FAILURE'
+        );
       }
-
-      return transferRecords;
+      return [{
+        accountId: item.matchedAccountId,
+        amount: -Math.abs(item.amount),
+        recordDate: item.recordDate,
+        note: item.note || `Transfer ke ${item.destinationAccountNameHint || 'akun lain'}`,
+        counterParty: item.destinationAccountNameHint || '',
+        transfer: {
+          pairingMode: 'new',
+          accountId: item.matchedDestinationAccountId,
+        },
+      }];
     }
 
     const finalAmount = item.transactionType === 'EXPENSE'

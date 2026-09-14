@@ -11,6 +11,28 @@ export interface WalletCategoryItem {
   id: string;
   name: string;
   parentCategoryId?: string;
+  parentCategoryName?: string;
+  group?: {
+    id: string;
+    name: string;
+  };
+  systemId?: string;
+  cardinality?: string;
+  customCategory?: boolean;
+  archived?: boolean;
+  enabled?: boolean;
+  isAssignable?: boolean;
+}
+
+export interface WalletTransferInput {
+  pairingMode: 'new' | 'existing' | 'unpaired';
+  accountId?: string;
+  accountHint?: string;
+  recordId?: string;
+  counterAmount?: {
+    value: number;
+    currencyCode: string;
+  };
 }
 
 export interface WalletLabelItem {
@@ -32,6 +54,14 @@ export interface CreateRecordInputPayload {
   labelIds?: string[];
   labels?: string[];
   currency?: string;
+  transfer?: WalletTransferInput;
+}
+
+export interface WalletAgentHint {
+  type: string;
+  severity?: string;
+  text?: string;
+  data?: Record<string, unknown>;
 }
 
 export interface WalletCreateRecordsResponse {
@@ -43,6 +73,7 @@ export interface WalletCreateRecordsResponse {
     serverErrors?: number;
     documentsWritten?: number;
   };
+  agentHints?: WalletAgentHint[];
   results?: Array<{
     id?: string;
     inputIndex?: number;
@@ -50,6 +81,8 @@ export interface WalletCreateRecordsResponse {
     error?: string;
     errorType?: string;
     fields?: string[];
+    pairingMode?: string;
+    createdMirrorRecordId?: string;
     record?: Record<string, unknown>;
   }>;
 }

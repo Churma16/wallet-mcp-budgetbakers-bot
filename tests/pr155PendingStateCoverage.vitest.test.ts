@@ -127,7 +127,7 @@ describe('PR #155 PendingTransactionService state branch coverage', () => {
     expect(service.getPendingAccountSelectionDraftState(draft.ticketId)).toBe('PENDING');
   });
 
-  it('covers state getters and record-index checkpoint branches', () => {
+  it('covers transaction and draft state getters', () => {
     const service = new PendingTransactionService();
     const transaction = addTransaction(service);
     const draft = addDraft(service);
@@ -137,16 +137,6 @@ describe('PR #155 PendingTransactionService state branch coverage', () => {
     expect(service.getPendingTransactionState(transaction.ticketId)).toBe('PENDING');
     expect(service.getPendingAccountSelectionDraftState(draft.ticketId)).toBe('PENDING');
 
-    expect(service.getCompletedRecordIndexes(9999)).toEqual([]);
-    service.markRecordIndexCompleted(9999, 0);
-    expect(service.getCompletedRecordIndexes(transaction.ticketId)).toEqual([]);
-
-    const internals = service as any;
-    internals.completedRecordIndexesMap.delete(transaction.ticketId);
-    service.markRecordIndexCompleted(transaction.ticketId, 2);
-    service.markRecordIndexCompleted(transaction.ticketId, 0);
-    service.markRecordIndexCompleted(transaction.ticketId, 1);
-    expect(service.getCompletedRecordIndexes(transaction.ticketId)).toEqual([0, 1, 2]);
   });
 
   it('covers standard transaction claim/release and latest/all claim branches', () => {

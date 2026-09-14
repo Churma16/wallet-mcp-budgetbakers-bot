@@ -58,7 +58,6 @@ export class PendingTransactionService {
   private readonly pendingTransactionMap: Map<number, PendingTransactionItem> = new Map();
   private readonly pendingAccountSelectionDraftMap: Map<number, PendingAccountSelectionDraft> = new Map();
   private readonly dispatchStateMap: Map<number, PendingTransactionDispatchState> = new Map();
-  private readonly completedRecordIndexesMap: Map<number, Set<number>> = new Map();
   private readonly defaultTimeToLiveMilliseconds: number = 24 * 60 * 60 * 1000; // 24 hours
 
   /**
@@ -82,7 +81,6 @@ export class PendingTransactionService {
 
     this.pendingTransactionMap.set(ticketId, pendingItem);
     this.dispatchStateMap.set(ticketId, 'PENDING');
-    this.completedRecordIndexesMap.set(ticketId, new Set());
     return pendingItem;
   }
 
@@ -363,26 +361,6 @@ export class PendingTransactionService {
   }
 
   /**
-   * Records a successfully committed record index for multi-record transactions such as transfers.
-   */
-  public markRecordIndexCompleted(ticketId: number, recordIndex: number): void {
-    if (!this.pendingTransactionMap.has(ticketId)) {
-      return;
-    }
-
-    let completedIndexes = this.completedRecordIndexesMap.get(ticketId);
-    if (!completedIndexes) {
-      completedIndexes = new Set<number>();
-      this.completedRecordIndexesMap.set(ticketId, completedIndexes);
-    }
-    completedIndexes.add(recordIndex);
-  }
-
-  public getCompletedRecordIndexes(ticketId: number): number[] {
-    return Array.from(this.completedRecordIndexesMap.get(ticketId) ?? []).sort((a, b) => a - b);
-  }
-
-  /**
    * Checks if there are any active pending transactions in any dispatch state.
    */
   public hasPendingTransactions(): boolean {
@@ -509,6 +487,5 @@ export class PendingTransactionService {
     this.pendingTransactionMap.delete(ticketId);
     this.pendingAccountSelectionDraftMap.delete(ticketId);
     this.dispatchStateMap.delete(ticketId);
-    this.completedRecordIndexesMap.delete(ticketId);
   }
 }

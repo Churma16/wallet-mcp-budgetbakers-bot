@@ -254,6 +254,20 @@ export class WalletMcpClientService {
       id: item.id || item.categoryId,
       name: item.name || item.categoryName || 'Unnamed Category',
       parentCategoryId: item.parentId || item.parentCategoryId,
+      parentCategoryName: item.parentName || item.parentCategoryName,
+      group: item.group && typeof item.group === 'object'
+        ? { id: String(item.group.id), name: String(item.group.name) }
+        : undefined,
+      systemId: item.systemId,
+      cardinality: item.cardinality,
+      customCategory: item.customCategory,
+      archived: item.archived,
+      enabled: item.enabled,
+      isAssignable: typeof item.isAssignable === 'boolean'
+        ? item.isAssignable
+        : typeof item.assignable === 'boolean'
+          ? item.assignable
+          : item.enabled !== false && item.archived !== true && item.group?.id !== 'system_categories',
     }));
 
     return this.cachedCategoryList;
@@ -790,6 +804,21 @@ export class WalletMcpClientService {
       if (Array.isArray(recordItem.labelIds) && recordItem.labelIds.length > 0) {
         sanitizedRecordItem.labelIds = recordItem.labelIds;
       }
+      if (recordItem.transfer) {
+        const transfer: Record<string, unknown> = {
+          pairingMode: recordItem.transfer.pairingMode,
+        };
+        if (recordItem.transfer.accountId) {
+          transfer.accountId = recordItem.transfer.accountId;
+        }
+        if (recordItem.transfer.recordId) {
+          transfer.recordId = recordItem.transfer.recordId;
+        }
+        if (recordItem.transfer.counterAmount) {
+          transfer.counterAmount = recordItem.transfer.counterAmount;
+        }
+        sanitizedRecordItem.transfer = transfer;
+      }
 
       return sanitizedRecordItem;
     });
@@ -906,13 +935,26 @@ export class WalletMcpClientService {
         }
       }
 
-      if (summary?.documentsWritten !== undefined) {
-        if (summary.documentsWritten !== summary.succeeded) {
-          throw new WalletMcpRequestError(
-            `[error] MCP Tool 'create_records' returned an invalid or mismatched summary`,
-            'UNKNOWN'
-          );
-        }
+      // Native transfers can write a root plus a mirror for one successful input.
+      // documentsWritten therefore counts documents, not successful input rows.
+      if (
+        summary?.documentsWritten !== undefined &&
+        summary.documentsWritten < summary.succeeded
+      ) {
+        throw new WalletMcpRequestError(
+          `[error] MCP Tool 'create_records' returned an invalid or mismatched summary`,
+          'UNKNOWN'
+        );
+      }
+      if (
+        summary?.documentsWritten !== undefined &&
+        summary.documentsWritten > summary.succeeded &&
+        !hasResults
+      ) {
+        throw new WalletMcpRequestError(
+          `[error] MCP Tool 'create_records' returned unexplained document-write evidence`,
+          'UNKNOWN'
+        );
       }
     }
 
@@ -935,6 +977,22 @@ export class WalletMcpClientService {
         );
       }
 
+      const seenInputIndexes = new Set<number>();
+      for (const result of results) {
+        if (
+          !Number.isInteger(result.inputIndex) ||
+          (result.inputIndex as number) < 0 ||
+          (result.inputIndex as number) >= expectedRecordCount ||
+          seenInputIndexes.has(result.inputIndex as number)
+        ) {
+          throw new WalletMcpRequestError(
+            `[error] MCP Tool 'create_records' returned uncorrelated per-record results`,
+            'UNKNOWN'
+          );
+        }
+        seenInputIndexes.add(result.inputIndex as number);
+      }
+
       resultSuccessCount = results.filter(result => result.success === true).length;
       resultFailureCount = results.length - resultSuccessCount;
     }
@@ -943,6 +1001,27 @@ export class WalletMcpClientService {
       if (summary?.succeeded !== resultSuccessCount) {
         throw new WalletMcpRequestError(
           `[error] MCP Tool 'create_records' returned inconsistent summary and per-record results`,
+          'UNKNOWN'
+        );
+      }
+
+      const confirmedSecondaryWrites = results.filter(result =>
+        result.success === true && (
+          result.pairingMode === 'existing' ||
+          (result.pairingMode === 'new' &&
+            typeof result.createdMirrorRecordId === 'string' &&
+            result.createdMirrorRecordId.length > 0)
+        )
+      ).length;
+      const minimumDocumentsWritten = summary?.succeeded ?? 0;
+      const maximumExplainedDocumentsWritten = minimumDocumentsWritten + confirmedSecondaryWrites;
+      if (
+        summary?.documentsWritten !== undefined &&
+        (summary.documentsWritten < minimumDocumentsWritten ||
+          summary.documentsWritten > maximumExplainedDocumentsWritten)
+      ) {
+        throw new WalletMcpRequestError(
+          `[error] MCP Tool 'create_records' returned unexplained document-write evidence`,
           'UNKNOWN'
         );
       }

@@ -328,23 +328,7 @@ describe('PR #155 final changed-branch coverage', () => {
       expect(messages.at(-1)).toContain('tidak tersedia');
     });
 
-    it('skips a completed record checkpoint instead of dispatching it again', async () => {
-      const service = new PendingTransactionService();
-      const tx = addTransaction(service);
-      service.markRecordIndexCompleted(tx.ticketId, 0);
-      const { handler, createRecords } = createPendingHandler(service);
-
-      await handler.handlePendingAction(
-        event,
-        { actionType: 'CONFIRM', targetScope: tx.ticketId },
-        Date.now()
-      );
-
-      expect(createRecords).not.toHaveBeenCalled();
-      expect(service.getPendingTransaction(tx.ticketId)).toBeUndefined();
-    });
-
-    it('covers transfer without destination account and success email-listener branch', async () => {
+    it('rejects transfer without a resolved destination before dispatch', async () => {
       const service = new PendingTransactionService();
       const tx = addTransaction(service, {
         sourceType: 'EMAIL',
@@ -366,10 +350,9 @@ describe('PR #155 final changed-branch coverage', () => {
         Date.now()
       );
 
-      expect(createRecords).toHaveBeenCalledTimes(1);
-      expect(createRecords.mock.calls[0][0]).toHaveLength(1);
-      expect(createRecords.mock.calls[0][0][0].counterParty).toBe('');
-      expect(recordProcessedTransaction).toHaveBeenCalledWith(undefined, 'REF-X');
+      expect(createRecords).not.toHaveBeenCalled();
+      expect(service.getPendingTransactionState(tx.ticketId)).toBe('PENDING');
+      expect(recordProcessedTransaction).not.toHaveBeenCalled();
     });
 
     it('uses compatibility fallback when reject manager lacks uncertain-query capability', async () => {
