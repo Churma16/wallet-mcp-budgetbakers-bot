@@ -347,6 +347,33 @@ describe('single-call semantic transaction-history routing', () => {
     }));
   });
 
+  it('fails closed when a deferred semantic category response omits categoryId', async () => {
+    const categories = [{ id: 'cat-health', name: 'Kesehatan' }];
+    const processTextMessage = vi.fn().mockResolvedValue({
+      action: 'TRANSACTION_HISTORY',
+      queryOptions: { datePeriod: 'last_month' },
+      explanation: 'Kategori yang dimaksud belum jelas.',
+    });
+    const harness = createHandler(
+      { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+      true,
+      categories
+    );
+
+    await harness.handler.handleIncomingUserMessage(
+      textEvent('riwayat beli obat bulan lalu')
+    );
+
+    expect(harness.fastPath.handleFastPath).not.toHaveBeenCalled();
+    expect(processTextMessage).toHaveBeenCalledOnce();
+    expect(harness.registry.execute).not.toHaveBeenCalled();
+    expect(harness.gateway.sendMessage).toHaveBeenCalledWith(
+      'whatsapp',
+      'chat',
+      'Kategori yang dimaksud belum jelas.'
+    );
+  });
+
   it('tightens categoryName trust semantics and normalizes exact cached matches to IDs', () => {
     const categories = [
       { id: 'cat-health', name: 'Kesehatan' },

@@ -397,47 +397,56 @@ export class UserMessageHandler {
             return;
           }
 
-          let actionContext = boundaryDecision.context;
-
           if (
-            actionContext.action === 'TRANSACTION_HISTORY' &&
+            boundaryDecision.context.action === 'TRANSACTION_HISTORY' &&
             deferredHistoryFastPathOptions
           ) {
+            const semanticCategoryId = boundaryDecision.context.queryOptions?.categoryId;
+            if (!semanticCategoryId) {
+              // A deferred request contains an unresolved category concept. It
+              // must never degrade into an unfiltered history request merely
+              // because the semantic provider omitted a category selection.
+              applicationLogger.warn(
+                'Semantic category resolution omitted categoryId; history query was not executed.'
+              );
+            } else {
             const mergedQueryOptions: TransactionHistoryQueryOptions = {
               ...deferredHistoryFastPathOptions,
-              categoryId: actionContext.queryOptions?.categoryId,
+                categoryId: semanticCategoryId,
             };
             delete mergedQueryOptions.categoryName;
-            actionContext = {
-              ...actionContext,
+              await this.financialActionRegistry.execute({
+                ...boundaryDecision.context,
               queryOptions: mergedQueryOptions,
-            };
+              });
+              return;
+            }
+          } else {
+            await this.financialActionRegistry.execute(boundaryDecision.context);
+            return;
           }
-
-          await this.financialActionRegistry.execute(actionContext);
-          return;
-        }
-
-        applicationLogger.warn(
-          `[SemanticToolBoundary] Rejected ${semanticToolProposal.tool}: ${boundaryDecision.code}.`
-        );
-        applicationLogger.fileDetail('security', 'Rejected Semantic Tool Proposal', {
-          tool: semanticToolProposal.tool,
-          rejectionCode: boundaryDecision.code,
-          rejectionReason: boundaryDecision.reason,
-          channel: event.channel,
-          senderIdentifier: event.senderIdentifier,
-        });
-
-        if (semanticToolProposal.tool === 'propose_transaction') {
-          await this.messagingGateway.sendMessage(
-            event.channel,
-            event.chatIdentifier,
-            getDictionary().errors.validationRejected(
-              getDictionary().errors.accountResolutionFallback
-            )
+        } else {
+          applicationLogger.warn(
+            `[SemanticToolBoundary] Rejected ${semanticToolProposal.tool}: ${boundaryDecision.code}.`
           );
-          return;
+          applicationLogger.fileDetail('security', 'Rejected Semantic Tool Proposal', {
+            tool: semanticToolProposal.tool,
+            rejectionCode: boundaryDecision.code,
+            rejectionReason: boundaryDecision.reason,
+            channel: event.channel,
+            senderIdentifier: event.senderIdentifier,
+          });
+
+          if (semanticToolProposal.tool === 'propose_transaction') {
+            await this.messagingGateway.sendMessage(
+              event.channel,
+              event.chatIdentifier,
+              getDictionary().errors.validationRejected(
+                getDictionary().errors.accountResolutionFallback
+              )
+            );
+            return;
+          }
         }
       }
 
