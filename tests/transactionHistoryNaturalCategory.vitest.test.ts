@@ -155,6 +155,34 @@ describe('natural transaction-history category routing', () => {
     expect(historySearch.options.categoryName).toBeUndefined();
   });
 
+  it.each([
+    ['history search all minggu ini', 'all', 'this_week'],
+    ['riwayat cari semua', 'semua', undefined],
+    ['history search spotify', 'spotify', undefined],
+    ['riwayat cari starbucks', 'starbucks', undefined],
+  ])('preserves the explicit search operand before consuming scope grammar: %s', (
+    input,
+    expectedSearchQuery,
+    expectedDatePeriod
+  ) => {
+    const action = expectHistoryAction(input);
+
+    expect(action.options.searchQuery).toBe(expectedSearchQuery);
+    expect(action.options.datePeriod).toBe(expectedDatePeriod);
+    expect(action.options.categoryName).toBeUndefined();
+  });
+
+  it.each([
+    ['history makan semua minggu ini', 'makan'],
+    ['semua riwayat makan minggu ini', 'makan'],
+  ])('keeps leftover scope words structural for natural category hints: %s', (input, expectedCategoryName) => {
+    const action = expectHistoryAction(input);
+
+    expect(action.options.categoryName).toBe(expectedCategoryName);
+    expect(action.options.datePeriod).toBe('this_week');
+    expect(action.options.searchQuery).toBeUndefined();
+  });
+
   it('does not weaken transaction-creation collision protection', () => {
     expect(detectFastPathAction('beli makan hangout 25rb')).toBeNull();
     expect(detectFastPathAction('catat history makan hangout 50k')).toBeNull();

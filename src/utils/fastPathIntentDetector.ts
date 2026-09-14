@@ -265,20 +265,19 @@ function extractHistoryQueryOptionsFromTokens(
     }
   }
 
-  // "all" is structural history grammar, not part of a category meaning. It
-  // is intentionally consumed only after quoted category literals have been
-  // extracted, so names such as "Semua Makanan" remain intact.
-  const scopeMatches = remainingTokens.match(/\b(?:all|semua|semuanya)\b/gi);
-  if (scopeMatches) {
-    remainingTokens = remainingTokens.replace(/\b(?:all|semua|semuanya)\b/gi, ' ').trim();
-  }
-
   const explicitSearchMatch = remainingTokens.match(
     /\b(?:cari|search|find|keyword|q)(?::\s*|=\s*|\s+)(?:"([^"]+)"|'([^']+)'|([a-zA-Z0-9_-]+)\b)/i
   );
   if (explicitSearchMatch) {
     resolvedSearchQuery = explicitSearchMatch[1] || explicitSearchMatch[2] || explicitSearchMatch[3];
     remainingTokens = remainingTokens.replace(explicitSearchMatch[0], ' ').trim();
+  }
+
+  // Scope words are structural history grammar only when they remain after
+  // explicit category and search operands have been extracted.
+  const scopeMatches = remainingTokens.match(/\b(?:all|semua|semuanya)\b/gi);
+  if (scopeMatches) {
+    remainingTokens = remainingTokens.replace(/\b(?:all|semua|semuanya)\b/gi, ' ').trim();
   }
 
   if (!resolvedSearchQuery) {
