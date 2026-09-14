@@ -25,27 +25,12 @@ export interface ExtractedFinancialRecordItem {
 }
 
 export interface ExtractedFinancialIntent {
-  action: 'CREATE_RECORD' | 'CHECK_BUDGET' | 'CHECK_BALANCE' | 'GENERAL_REPLY' | 'RECORD_EXPENSE' | 'RECORD_INCOME' | 'RECORD_TRANSFER';
+  action: 'CREATE_RECORD' | 'CHECK_BUDGET' | 'CHECK_BALANCE' | 'TRANSACTION_HISTORY' | 'GENERAL_REPLY' | 'RECORD_EXPENSE' | 'RECORD_INCOME' | 'RECORD_TRANSFER';
   records?: ExtractedFinancialRecordItem[];
+  queryOptions?: TransactionHistoryQueryOptions;
   explanation?: string;
   tokenUsage?: TokenUsageStatistics;
 }
-
-export type SemanticHistoryQueryResult =
-  | {
-      status: 'query';
-      queryOptions: TransactionHistoryQueryOptions;
-      tokenUsage?: TokenUsageStatistics;
-    }
-  | {
-      status: 'clarification';
-      clarification: string;
-      tokenUsage?: TokenUsageStatistics;
-    }
-  | {
-      status: 'not_history';
-      tokenUsage?: TokenUsageStatistics;
-    };
 
 export interface ExtractedEmailTransactionData {
   isTransaction: boolean;
@@ -77,14 +62,6 @@ export interface FinancialAiProvider {
     availableCategoryList: WalletCategoryItem[],
     referenceInstant?: Date
   ): Promise<ExtractedFinancialIntent>;
-
-  /** Interprets only read-only transaction-history language. */
-  processTransactionHistoryQuery?(
-    userMessageText: string,
-    availableAccountList: WalletAccountItem[],
-    availableCategoryList: WalletCategoryItem[],
-    referenceInstant?: Date
-  ): Promise<SemanticHistoryQueryResult>;
 
   /**
    * Processes an image message such as a receipt or invoice photo

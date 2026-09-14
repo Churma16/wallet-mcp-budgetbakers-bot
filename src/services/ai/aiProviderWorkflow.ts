@@ -1,11 +1,10 @@
-import { WalletAccountItem, WalletCategoryItem } from '../../types/walletTypes.js';
+import { TransactionHistoryQueryOptions, WalletAccountItem, WalletCategoryItem } from '../../types/walletTypes.js';
 import { GateEvaluationResult } from '../../utils/emailGateEvaluator.js';
 import { applicationLogger } from '../../utils/logger.js';
 import {
   ExtractedFinancialIntent,
   ExtractedEmailTransactionData,
   TokenUsageStatistics,
-  SemanticHistoryQueryResult,
 } from './financialAiProvider.js';
 import {
   extractAndParseJsonObject,
@@ -25,8 +24,6 @@ import {
   buildTextMessagePrompt,
   buildReceiptExtractionPrompt,
   buildEmailEvaluationPrompt,
-  buildSemanticHistoryQueryPrompt,
-  buildSemanticHistorySystemInstruction,
   resolveEmailExtractedEntities,
   buildFailedEmailTransactionFallback,
 } from './aiPromptBuilder.js';
@@ -55,50 +52,22 @@ export interface PreparedEmailPrompt {
   requestContextDescription: string;
 }
 
-export type PreparedSemanticHistoryPrompt = { promptText: string; systemInstruction: string; requestContextDescription: string };
-
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export function validateSemanticHistoryQueryResponse(value: unknown, tokenUsage?: TokenUsageStatistics): SemanticHistoryQueryResult {
-  if (!isPlainObject(value) || !['query', 'clarification', 'not_history'].includes(String(value.status))) {
-    throw new Error('Invalid semantic history response status.');
-  }
-  if (value.status === 'not_history') return { status: 'not_history', tokenUsage };
-  if (value.status === 'clarification') {
-    if (typeof value.clarification !== 'string' || !value.clarification.trim() || value.clarification.length > 300) throw new Error('Invalid semantic history clarification.');
-    return { status: 'clarification', clarification: value.clarification.trim(), tokenUsage };
-  }
-  if (!isPlainObject(value.queryOptions)) throw new Error('Invalid semantic history query options.');
+export function validateSemanticHistoryQueryOptions(value: unknown): TransactionHistoryQueryOptions {
+  if (!isPlainObject(value)) throw new Error('Invalid semantic history query options.');
   const allowedKeys = new Set(['accountName', 'categoryName', 'recordType', 'startDate', 'endDate', 'datePeriod', 'searchQuery', 'limit', 'page', 'sort']);
-  for (const key of Object.keys(value.queryOptions)) if (!allowedKeys.has(key)) throw new Error(`Unsupported semantic history query field '${key}'.`);
-  const options = value.queryOptions;
+  for (const key of Object.keys(value)) if (!allowedKeys.has(key)) throw new Error(`Unsupported semantic history query field '${key}'.`);
+  const options = value;
   const stringFields = ['accountName', 'categoryName', 'startDate', 'endDate', 'searchQuery'] as const;
   for (const field of stringFields) if (options[field] !== undefined && (typeof options[field] !== 'string' || !(options[field] as string).trim() || (options[field] as string).length > 200)) throw new Error(`Invalid semantic history field '${field}'.`);
   if (options.recordType !== undefined && !['expense', 'income'].includes(String(options.recordType))) throw new Error('Invalid semantic history record type.');
   if (options.datePeriod !== undefined && !['today', 'yesterday', 'this_week', 'last_week', 'this_month', 'last_month', 'this_year'].includes(String(options.datePeriod))) throw new Error('Invalid semantic history date period.');
   if (options.sort !== undefined && !['newest', 'oldest'].includes(String(options.sort))) throw new Error('Invalid semantic history sort.');
   for (const field of ['limit', 'page'] as const) if (options[field] !== undefined && (!Number.isInteger(options[field]) || Number(options[field]) <= 0)) throw new Error(`Invalid semantic history field '${field}'.`);
-  return { status: 'query', queryOptions: { ...options }, tokenUsage } as SemanticHistoryQueryResult;
-}
-
-export function prepareSemanticHistoryPrompt(userMessageText: string, availableAccountList: WalletAccountItem[], availableCategoryList: WalletCategoryItem[], referenceInstant: Date): PreparedSemanticHistoryPrompt {
-  const timezone = getApplicationTimezone();
-  return {
-    systemInstruction: buildSemanticHistorySystemInstruction(availableAccountList, availableCategoryList, getCurrentLocalDateString(referenceInstant, timezone), timezone),
-    promptText: buildSemanticHistoryQueryPrompt(userMessageText),
-    requestContextDescription: 'Read-only semantic transaction-history parsing',
-  };
-}
-
-export async function executeSemanticHistoryWorkflow(options: {
-  userMessageText: string; availableAccountList: WalletAccountItem[]; availableCategoryList: WalletCategoryItem[]; referenceInstant?: Date;
-}, transport: (prepared: PreparedSemanticHistoryPrompt) => Promise<AiExecutionResult>
-): Promise<SemanticHistoryQueryResult> {
-  const prepared = prepareSemanticHistoryPrompt(options.userMessageText, options.availableAccountList, options.availableCategoryList, options.referenceInstant || new Date());
-  const result = await transport(prepared);
-  return validateSemanticHistoryQueryResponse(extractAndParseJsonObject<unknown>(result.responseText), result.tokenUsage);
+  return { ...options } as TransactionHistoryQueryOptions;
 }
 
 /**
@@ -265,6 +234,9 @@ export function postProcessFinancialIntentResponse(
 ): ExtractedFinancialIntent {
   try {
     const parsedIntent = extractAndParseJsonObject<ExtractedFinancialIntent>(executionResult.responseText);
+    if (parsedIntent.action === 'TRANSACTION_HISTORY') {
+      parsedIntent.queryOptions = validateSemanticHistoryQueryOptions(parsedIntent.queryOptions);
+    }
     parsedIntent.tokenUsage = executionResult.tokenUsage;
     applicationLogger.fileDetail('ai', `Parsed Financial Intent from ${providerLabel}`, parsedIntent);
     return parsedIntent;

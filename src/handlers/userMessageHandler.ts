@@ -25,7 +25,6 @@ import {
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../utils/logger.js';
 import { WalletRecordPreparationService } from '../services/walletRecordPreparationService.js';
-import { isSemanticHistoryQueryCandidate } from '../utils/semanticHistoryQueryDetector.js';
 
 /**
  * Builds a strongly-typed FinancialActionContext from an extracted AI intent.
@@ -66,6 +65,16 @@ function buildAiFinancialActionContext(
     return {
       action: 'CHECK_BUDGET',
       event,
+      processingStartTimestamp,
+      routingSource: 'ai',
+    };
+  }
+
+  if (intent.action === 'TRANSACTION_HISTORY') {
+    return {
+      action: 'TRANSACTION_HISTORY',
+      event,
+      queryOptions: intent.queryOptions,
       processingStartTimestamp,
       routingSource: 'ai',
     };
@@ -296,26 +305,6 @@ export class UserMessageHandler {
           if (handled) {
             return;
           }
-        }
-      }
-
-      if (event.messageType === 'text' && event.textPayload &&
-          this.financialAiProvider.processTransactionHistoryQuery && isSemanticHistoryQueryCandidate(event.textPayload)) {
-        applicationLogger.ai(`Parsing complex transaction-history query with ${this.financialAiProvider.providerName.toUpperCase()}...`);
-        const semanticResult = await this.financialAiProvider.processTransactionHistoryQuery(
-          event.textPayload, this.walletCacheService.getAccounts(),
-          this.walletCacheService.getCategories(), requestReferenceInstant
-        );
-        if (semanticResult.status === 'query') {
-          await this.financialActionRegistry.execute({
-            action: 'TRANSACTION_HISTORY', event, queryOptions: semanticResult.queryOptions,
-            processingStartTimestamp, routingSource: 'ai',
-          });
-          return;
-        }
-        if (semanticResult.status === 'clarification') {
-          await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, semanticResult.clarification);
-          return;
         }
       }
 

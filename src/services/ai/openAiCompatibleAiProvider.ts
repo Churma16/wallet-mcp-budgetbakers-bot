@@ -7,7 +7,6 @@ import {
   ExtractedFinancialIntent,
   ExtractedEmailTransactionData,
   TokenUsageStatistics,
-  SemanticHistoryQueryResult,
 } from './financialAiProvider.js';
 import { isAiResponseParseError } from './jsonExtractionHelper.js';
 import { CategoryContextService } from '../categoryContextService.js';
@@ -16,7 +15,6 @@ import {
   executeTextWorkflow,
   executeReceiptWorkflow,
   executeEmailTransactionWorkflow,
-  executeSemanticHistoryWorkflow,
   isRecoverableModelExecutionError,
 } from './aiProviderWorkflow.js';
 
@@ -255,15 +253,6 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
         ];
         return this.executeChatCompletionWithFallback(messages, prepared.requestContextDescription);
       }
-    );
-  }
-
-  public async processTransactionHistoryQuery(userMessageText: string, availableAccountList: WalletAccountItem[], availableCategoryList: WalletCategoryItem[], referenceInstant: Date = new Date()): Promise<SemanticHistoryQueryResult> {
-    return executeSemanticHistoryWorkflow({ userMessageText, availableAccountList, availableCategoryList, referenceInstant }, prepared =>
-      this.executeChatCompletionWithFallback(
-        [{ role: 'system', content: prepared.systemInstruction }, { role: 'user', content: prepared.promptText }],
-        prepared.requestContextDescription
-      )
     );
   }
 
