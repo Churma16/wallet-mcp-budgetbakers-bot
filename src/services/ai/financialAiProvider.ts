@@ -1,4 +1,8 @@
-import { WalletAccountItem, WalletCategoryItem } from '../../types/walletTypes.js';
+import {
+  TransactionHistoryQueryOptions,
+  WalletAccountItem,
+  WalletCategoryItem,
+} from '../../types/walletTypes.js';
 import { GateEvaluationResult } from '../../utils/emailGateEvaluator.js';
 
 export interface TokenUsageStatistics {
@@ -26,6 +30,22 @@ export interface ExtractedFinancialIntent {
   explanation?: string;
   tokenUsage?: TokenUsageStatistics;
 }
+
+export type SemanticHistoryQueryResult =
+  | {
+      status: 'query';
+      queryOptions: TransactionHistoryQueryOptions;
+      tokenUsage?: TokenUsageStatistics;
+    }
+  | {
+      status: 'clarification';
+      clarification: string;
+      tokenUsage?: TokenUsageStatistics;
+    }
+  | {
+      status: 'not_history';
+      tokenUsage?: TokenUsageStatistics;
+    };
 
 export interface ExtractedEmailTransactionData {
   isTransaction: boolean;
@@ -57,6 +77,14 @@ export interface FinancialAiProvider {
     availableCategoryList: WalletCategoryItem[],
     referenceInstant?: Date
   ): Promise<ExtractedFinancialIntent>;
+
+  /** Interprets only read-only transaction-history language. */
+  processTransactionHistoryQuery?(
+    userMessageText: string,
+    availableAccountList: WalletAccountItem[],
+    availableCategoryList: WalletCategoryItem[],
+    referenceInstant?: Date
+  ): Promise<SemanticHistoryQueryResult>;
 
   /**
    * Processes an image message such as a receipt or invoice photo

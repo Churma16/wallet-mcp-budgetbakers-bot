@@ -2,6 +2,7 @@ import {
   FinancialAiProvider,
   ExtractedFinancialIntent,
   ExtractedEmailTransactionData,
+  SemanticHistoryQueryResult,
 } from './financialAiProvider.js';
 import { WalletAccountItem, WalletCategoryItem } from '../../types/walletTypes.js';
 import { GateEvaluationResult } from '../../utils/emailGateEvaluator.js';
@@ -85,6 +86,28 @@ export class FallbackAiProvider implements FinancialAiProvider {
           availableCategoryList,
           referenceInstant
         )
+    );
+  }
+
+  public async processTransactionHistoryQuery(
+    userMessageText: string,
+    availableAccountList: WalletAccountItem[],
+    availableCategoryList: WalletCategoryItem[],
+    referenceInstant?: Date
+  ): Promise<SemanticHistoryQueryResult> {
+    return this.executeWithFallback(
+      'processTransactionHistoryQuery',
+      currentProvider => {
+        if (!currentProvider.processTransactionHistoryQuery) {
+          throw new Error(`Provider '${currentProvider.providerName}' does not support semantic history parsing.`);
+        }
+        return currentProvider.processTransactionHistoryQuery(
+          userMessageText,
+          availableAccountList,
+          availableCategoryList,
+          referenceInstant
+        );
+      }
     );
   }
 

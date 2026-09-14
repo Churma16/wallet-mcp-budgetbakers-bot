@@ -6,6 +6,7 @@ import {
   FinancialAiProvider,
   ExtractedFinancialIntent,
   ExtractedEmailTransactionData,
+  SemanticHistoryQueryResult,
   TokenUsageStatistics,
 } from './financialAiProvider.js';
 import { CategoryContextService } from '../categoryContextService.js';
@@ -14,6 +15,7 @@ import {
   executeTextWorkflow,
   executeReceiptWorkflow,
   executeEmailTransactionWorkflow,
+  executeSemanticHistoryWorkflow,
   isRecoverableModelExecutionError,
 } from './aiProviderWorkflow.js';
 
@@ -249,6 +251,22 @@ export class GeminiAiProvider implements FinancialAiProvider {
           systemInstruction: prepared.systemInstruction,
           requestContextDescription: prepared.requestContextDescription,
         })
+    );
+  }
+
+  public async processTransactionHistoryQuery(
+    userMessageText: string,
+    availableAccountList: WalletAccountItem[],
+    availableCategoryList: WalletCategoryItem[],
+    referenceInstant: Date = new Date()
+  ): Promise<SemanticHistoryQueryResult> {
+    return executeSemanticHistoryWorkflow(
+      { userMessageText, availableAccountList, availableCategoryList, referenceInstant },
+      prepared => this.executeGenerationWithFallback({
+        contents: [{ role: 'user', parts: [{ text: prepared.promptText }] }],
+        systemInstruction: prepared.systemInstruction,
+        requestContextDescription: prepared.requestContextDescription,
+      })
     );
   }
 
