@@ -94,7 +94,7 @@ const MAXIMUM_PROPOSED_RECORDS = 20;
 const MAXIMUM_TEXT_FIELD_LENGTH = 2_000;
 const MAXIMUM_LABELS_PER_RECORD = 20;
 const MAXIMUM_LABEL_LENGTH = 100;
-const RECORDING_COMMAND_PATTERN = /^(?:beli|bayar|catat|tambahkan|tambah|masukkan|record|add|transfer|top\s*up|topup)\b/i;
+const RECORDING_COMMAND_PATTERN = /^(?:(?:tolong|please|mohon|bisa\s+tolong)\s+)?(?:beli|bayar|catat|tambahkan|tambah|masukkan|record|add|transfer|top\s*up|topup)\b/i;
 const MONETARY_AMOUNT_PATTERN = /\d+\s*(?:k|rb|jt|ribu|juta)\b|(?:rp|idr)\.?\s*\d+|\d+\s*(?:rp|idr)\b/i;
 
 // Structured identifier recognition is intentionally finite grammar. It is not

@@ -99,12 +99,15 @@ describe('single-call semantic transaction-history routing', () => {
 
   it('denies a model-selected history action for a structurally recording-shaped message', async () => {
     expect(hasTransactionRecordingShape('catat makan 50rb dari BCA')).toBe(true);
+    expect(hasTransactionRecordingShape('tolong catat makan lima puluh ribu dari BCA')).toBe(true);
+    expect(hasTransactionRecordingShape('please add coffee expense')).toBe(true);
+    expect(hasTransactionRecordingShape('bisa tolong transfer seratus ribu ke BCA')).toBe(true);
     expect(hasTransactionRecordingShape('history last month')).toBe(false);
     const processTextMessage = vi.fn().mockResolvedValue({
       action: 'TRANSACTION_HISTORY', queryOptions: { datePeriod: 'last_month' },
     });
     const harness = createHandler({ providerName: 'mock', processTextMessage, processImageMessage: vi.fn() });
-    await harness.handler.handleIncomingUserMessage(textEvent('catat makan 50rb dari BCA'));
+    await harness.handler.handleIncomingUserMessage(textEvent('tolong catat makan lima puluh ribu dari BCA'));
     expect(processTextMessage).toHaveBeenCalledOnce();
     expect(harness.registry.execute).not.toHaveBeenCalled();
   });
