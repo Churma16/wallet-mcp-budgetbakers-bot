@@ -101,6 +101,20 @@ describe('SemanticToolBoundary (Issue #117)', () => {
     }
   });
 
+  it('accepts a destination hint without explicit ID or counter amount', () => {
+    const decision = evaluate({
+      tool: 'propose_transaction',
+      arguments: {
+        records: [{
+          accountHint: 'BCA',
+          amount: -100_000,
+          transfer: { pairingMode: 'new', accountHint: 'Tabungan' },
+        }],
+      },
+    });
+    expect(decision.accepted).toBe(true);
+  });
+
   it.each([
     { transfer: 'invalid', label: 'non-object transfer', code: 'INVALID_ARGUMENTS' },
     { transfer: { pairingMode: 'existing' }, label: 'unsupported pairing mode', code: 'INVALID_ARGUMENTS' },

@@ -32,6 +32,9 @@ describe('native paired transfers (issue #143)', () => {
           archived: false,
           enabled: true,
         },
+        { id: 'explicit-no', name: 'Explicit no', isAssignable: false },
+        { id: 'legacy-yes', name: 'Legacy yes', assignable: true },
+        { categoryId: 'fallback-id', categoryName: 'Fallback name', group: 'legacy' },
       ],
     });
 
@@ -46,6 +49,14 @@ describe('native paired transfers (issue #143)', () => {
       isAssignable: true,
     });
     expect(categories[1].isAssignable).toBe(false);
+    expect(categories[2].isAssignable).toBe(false);
+    expect(categories[3].isAssignable).toBe(true);
+    expect(categories[4]).toMatchObject({
+      id: 'fallback-id',
+      name: 'Fallback name',
+      group: undefined,
+      isAssignable: true,
+    });
   });
 
   it('resolves both accounts and keeps a transfer as one category-free native input', () => {
@@ -285,6 +296,26 @@ describe('native paired transfers (issue #143)', () => {
       summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 2 },
       results: [{ inputIndex: 0, id: 'ordinary', success: true }],
     }, 1)).toThrow(expect.objectContaining({ message: expect.stringContaining('unexplained') }));
+  });
+
+  it('rejects fewer result rows than submitted inputs', () => {
+    const client = new WalletMcpClientService('https://example.invalid', 'test-token');
+    expect(() => client.validateCreateRecordsResponse({
+      results: [{ inputIndex: 0, id: 'only-root', success: true }],
+    }, 2)).toThrow(expect.objectContaining({
+      message: expect.stringContaining('unexpected number'),
+    }));
+  });
+
+  it('accepts results-only mirror evidence correlated through the root id', () => {
+    const client = new WalletMcpClientService('https://example.invalid', 'test-token');
+    const response = client.validateCreateRecordsResponse({
+      results: [
+        { inputIndex: 0, id: 'root', success: true },
+        { inputIndex: 0, success: true, isMirror: true, mirrorOfRecordId: 'root' },
+      ],
+    }, 1);
+    expect(response.results).toHaveLength(2);
   });
 
   it('fails closed on duplicate or out-of-range input correlation', () => {
