@@ -149,7 +149,7 @@ async function expectWalletMcpRequestError(
 
 function createWalletClientWithToolResult(toolResult: unknown): WalletMcpClientService {
   const client = new WalletMcpClientService('https://example.invalid', 'test-token');
-  vi.spyOn(client, 'callMcpTool').mockResolvedValue(toolResult);
+  vi.spyOn(client, 'callMcpTool').mockResolvedValue(toolResult as never);
   return client;
 }
 
@@ -364,7 +364,8 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery (Issue #72
   });
 
   runCase('Suite 9: create_records per-item rejection is treated as definitive failure', async () => {
-    const client = createWalletClientWithToolResult({
+    const client = new WalletMcpClientService('https://example.invalid', 'test-token');
+    vi.spyOn(client, 'callMcpTool').mockResolvedValue({
       summary: { total: 1, succeeded: 0, failed: 1 },
       results: [{ inputIndex: 0, success: false, error: 'invalid category' }],
     });

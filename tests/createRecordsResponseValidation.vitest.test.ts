@@ -22,7 +22,7 @@ describe('Wallet MCP create_records Response Validation (Issue #146)', () => {
 
   function createClientWithToolResponse(toolResponse: unknown): WalletMcpClientService {
     const client = new WalletMcpClientService(dummyBaseUrl, dummyToken);
-    vi.spyOn(client, 'callMcpTool').mockResolvedValue(toolResponse);
+    vi.spyOn(client, 'callMcpTool').mockResolvedValue(toolResponse as never);
     return client;
   }
 
