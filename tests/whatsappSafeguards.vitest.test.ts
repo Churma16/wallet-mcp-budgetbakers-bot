@@ -133,19 +133,31 @@ async function runTestGroup(testGroup: number): Promise<void> {
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 3] Granular Status Code Dispatcher');
   if (testGroup === 4) {
-    adapter.resetSafeguardsState();
+    vi.useFakeTimers();
+    try {
+      adapter.resetSafeguardsState();
 
-    // TC-4: Status 440 (connectionReplaced) must abort immediately
-    adapter.handleConnectionClose(DisconnectReason.connectionReplaced, new Error('Stream Errored (conflict)'));
-    assertCondition('TC-4.1: Status 440 immediately trips circuit breaker', adapter.getCircuitBreakerStatus() === true);
-    assertCondition('TC-4.2: Status 440 does NOT increment standard failure counter', adapter.getConsecutiveFailureCount() === 0, `Actual: ${adapter.getConsecutiveFailureCount()}`);
+      // TC-4: Status 440 (connectionReplaced) must abort immediately
+      adapter.handleConnectionClose(DisconnectReason.connectionReplaced, new Error('Stream Errored (conflict)'));
+      assertCondition('TC-4.1: Status 440 immediately trips circuit breaker', adapter.getCircuitBreakerStatus() === true);
+      assertCondition('TC-4.2: Status 440 does NOT increment standard failure counter', adapter.getConsecutiveFailureCount() === 0, `Actual: ${adapter.getConsecutiveFailureCount()}`);
 
-    adapter.resetSafeguardsState();
+      adapter.resetSafeguardsState();
 
-    // TC-5: Status 515 (restartRequired) fast track
-    adapter.handleConnectionClose(DisconnectReason.restartRequired, new Error('Restart Required'));
-    assertCondition('TC-5.1: Status 515 does not increment failure counter', adapter.getConsecutiveFailureCount() === 0);
-    assertCondition('TC-5.2: Status 515 does not trip circuit breaker', adapter.getCircuitBreakerStatus() === false);
+      // TC-5: Status 515 (restartRequired) fast track
+      adapter.handleConnectionClose(DisconnectReason.restartRequired, new Error('Restart Required'));
+      assertCondition('TC-5.1: Status 515 does not increment failure counter', adapter.getConsecutiveFailureCount() === 0);
+      assertCondition('TC-5.2: Status 515 does not trip circuit breaker', adapter.getCircuitBreakerStatus() === false);
+      assertCondition('TC-5.3: Status 515 schedules a reconnect timer', (adapter as any).activeReconnectTimeout !== null);
+
+      await adapter.stopConnection();
+      assertCondition('TC-5.4: stopConnection clears the status-515 timer', (adapter as any).activeReconnectTimeout === null);
+
+      await vi.runAllTimersAsync();
+      assertCondition('TC-5.5: No socket is created after advancing cleaned timers', vi.mocked(makeWASocket).mock.calls.length === 0);
+    } finally {
+      vi.useRealTimers();
+    }
   }
 
   // ----------------------------------------------------
