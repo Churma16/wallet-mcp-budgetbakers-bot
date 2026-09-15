@@ -1,5 +1,5 @@
 import { Context, GrammyError, HttpError } from 'grammy';
-import { beforeEach, describe, it } from 'vitest';
+import { beforeEach, describe, it, vi } from 'vitest';
 import { TelegramMessagingAdapter } from '../src/services/messaging/telegramAdapter.js';
 
 interface AssertionStatistics {
@@ -179,6 +179,8 @@ async function runTestGroup(testGroup: number): Promise<void> {
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 4] Retry Execution Loop (executeWithStartupRetry)');
   if (testGroup === 4) {
+    vi.useFakeTimers();
+    try {
     // Fast adapter with 10ms base delay for instant test execution
     const fastAdapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback, {
       maxStartupAttempts: 3,
@@ -196,13 +198,15 @@ async function runTestGroup(testGroup: number): Promise<void> {
 
     // 2. Success on 3rd attempt after 2 transient failures
     let attemptCounter2 = 0;
-    const result2 = await fastAdapter.executeWithStartupRetry(async () => {
+    const result2Promise = fastAdapter.executeWithStartupRetry(async () => {
       attemptCounter2++;
       if (attemptCounter2 < 3) {
         throw Object.assign(new Error('DNS failure'), { code: 'EAI_AGAIN' });
       }
       return { botId: 99999 };
     }, 'Test Operation 2');
+    await vi.runAllTimersAsync();
+    const result2 = await result2Promise;
     assertCondition('TG-4.2: Operation recovers and succeeds after transient failures', result2.botId === 99999 && attemptCounter2 === 3);
 
     // 3. Immediate failure on non-retryable 401 error
@@ -229,18 +233,21 @@ async function runTestGroup(testGroup: number): Promise<void> {
     // 4. Exhaustion failure after max attempts
     let attemptCounter4 = 0;
     let errorCaught4: unknown = null;
-    try {
-      await fastAdapter.executeWithStartupRetry(async () => {
+    const operation4Promise = fastAdapter.executeWithStartupRetry(async () => {
         attemptCounter4++;
         throw Object.assign(new Error('Continuous timeout'), { code: 'ETIMEDOUT' });
-      }, 'Test Operation 4');
-    } catch (error) {
+      }, 'Test Operation 4').catch(error => {
       errorCaught4 = error;
-    }
+    });
+    await vi.runAllTimersAsync();
+    await operation4Promise;
     assertCondition(
       'TG-4.4: Retry loop exhausts all attempts when transient error persists',
       attemptCounter4 === 3 && (errorCaught4 as { code?: string })?.code === 'ETIMEDOUT'
     );
+    } finally {
+      vi.useRealTimers();
+    }
   }
 
   // ----------------------------------------------------
