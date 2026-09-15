@@ -1,6 +1,29 @@
 import { WhatsappMessagingAdapter } from '../src/services/messaging/whatsappAdapter.js';
-import { beforeEach, describe, it } from 'vitest';
-import { DisconnectReason, type proto } from '@whiskeysockets/baileys';
+import { beforeEach, describe, it, vi } from 'vitest';
+import makeWASocket, {
+  DisconnectReason,
+  type proto,
+  useMultiFileAuthState,
+} from '@whiskeysockets/baileys';
+
+vi.mock('@whiskeysockets/baileys', async importOriginal => {
+  const actual = await importOriginal<typeof import('@whiskeysockets/baileys')>();
+  return {
+    ...actual,
+    default: vi.fn(() => ({
+      end: vi.fn(),
+      ev: {
+        on: vi.fn(),
+        removeAllListeners: vi.fn(),
+      },
+      user: { id: '6281234567890:1@s.whatsapp.net' },
+    })),
+    useMultiFileAuthState: vi.fn(async () => ({
+      saveCreds: vi.fn(),
+      state: { creds: {}, keys: {} },
+    })),
+  };
+});
 
 interface AssertionStatistics {
   totalCount: number;
@@ -325,14 +348,12 @@ async function runTestGroup(testGroup: number): Promise<void> {
     }
     assertCondition('EC-5.1: Breaker is initially tripped', adapter.getCircuitBreakerStatus() === true);
 
-    try {
-      await adapter.startConnection(true);
-    } catch {
-      // Expected in test environment without live credentials
-    }
+    await adapter.startConnection(true);
 
-    assertCondition('EC-5.2: Manual startConnection reset failure counter to 0', adapter.getConsecutiveFailureCount() === 0);
-    assertCondition('EC-5.3: Manual startConnection cleared circuit breaker trip flag', adapter.getCircuitBreakerStatus() === false);
+    assertCondition('EC-5.2: Manual startConnection uses mocked auth initialization', vi.mocked(useMultiFileAuthState).mock.calls.length === 1);
+    assertCondition('EC-5.3: Manual startConnection uses mocked socket creation', vi.mocked(makeWASocket).mock.calls.length === 1);
+    assertCondition('EC-5.4: Manual startConnection reset failure counter to 0', adapter.getConsecutiveFailureCount() === 0);
+    assertCondition('EC-5.5: Manual startConnection cleared circuit breaker trip flag', adapter.getCircuitBreakerStatus() === false);
   }
 
   // ----------------------------------------------------
@@ -438,6 +459,12 @@ async function runTestGroup(testGroup: number): Promise<void> {
     );
   }
 
+  await adapter.stopConnection();
+  assertCondition(
+    `cleanup-${testGroup}: reconnect timer is cleared after the logical group`,
+    (adapter as any).activeReconnectTimeout === null
+  );
+
   // ----------------------------------------------------
   // Summary
   // ----------------------------------------------------
@@ -453,6 +480,7 @@ async function runTestGroup(testGroup: number): Promise<void> {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   testStatistics.totalCount = 0;
   testStatistics.passedCount = 0;
   testStatistics.failedCount = 0;
