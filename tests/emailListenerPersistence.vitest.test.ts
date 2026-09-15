@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { describe, it } from 'vitest';
 import { EmailListenerService } from '../src/services/emailListenerService.js';
 
 interface FakeImapClient {
@@ -285,23 +286,20 @@ async function testGateOneRejectionCachesImmediately(): Promise<void> {
   }
 }
 
-async function runEmailListenerPersistenceTests(): Promise<void> {
-  console.log('[test] Email listener transactional persistence (Issue #75)');
+describe('email listener transactional persistence', () => {
+  it('commits a successful candidate after the downstream callback', async () => {
+    await testSuccessfulCandidateCommitsAfterCallback();
+  });
 
-  await testSuccessfulCandidateCommitsAfterCallback();
-  console.log('  [PASS] successful candidate commits after downstream callback');
+  it('keeps a downstream failure retryable and commits it on retry', async () => {
+    await testFailedCandidateRemainsRetryable();
+  });
 
-  await testFailedCandidateRemainsRetryable();
-  console.log('  [PASS] downstream failure remains retryable and commits on retry');
+  it('prevents duplicate in-flight dispatch and cleans up the claim', async () => {
+    await testProductionInFlightClaimPreventsDuplicateDispatch();
+  });
 
-  await testProductionInFlightClaimPreventsDuplicateDispatch();
-  console.log('  [PASS] production in-flight claim prevents duplicate dispatch and cleans up');
-
-  await testGateOneRejectionCachesImmediately();
-  console.log('  [PASS] Gate 1 rejection is cached immediately');
-}
-
-runEmailListenerPersistenceTests().catch((error: unknown) => {
-  console.error('[FAIL] Email listener persistence regression suite failed:', error);
-  process.exit(1);
+  it('caches a Gate 1 rejection immediately', async () => {
+    await testGateOneRejectionCachesImmediately();
+  });
 });

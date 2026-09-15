@@ -1,4 +1,5 @@
 import { TelegramMessagingAdapter } from '../src/services/messaging/telegramAdapter.js';
+import { beforeEach, describe, it } from 'vitest';
 import { WhatsappMessagingAdapter } from '../src/services/messaging/whatsappAdapter.js';
 import {
   validateApplicationConfiguration,
@@ -75,7 +76,7 @@ function createBaseConfiguration(
   };
 }
 
-async function runTestSuite(): Promise<void> {
+async function runTestGroup(testGroup: number): Promise<void> {
   console.log('====================================================');
   console.log('[INFO] Running Fail-Closed Whitelist Authorization Test Suite (Issue #74)');
   console.log('====================================================\n');
@@ -87,7 +88,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 1: Application Startup Configuration Validation
   // ----------------------------------------------------
   console.log('[TEST GROUP 1] Application Startup Configuration Validation');
-  {
+  if (testGroup === 1) {
     // Case 1.1: Valid WhatsApp-only configuration
     const validWhatsAppConfig = createBaseConfiguration({
       enabledMessengerChannels: ['whatsapp'],
@@ -322,7 +323,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 2: Telegram Adapter Fail-Closed Middleware & Whitelist Gates
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 2] Telegram Adapter Fail-Closed Middleware & Whitelist Gates');
-  {
+  if (testGroup === 2) {
     // Case 2.1: Empty allowlist rejects all senders (fail-closed)
     const emptyAllowlistAdapter = new TelegramMessagingAdapter(dummyToken, '', dummyCallback);
     assertCondition(
@@ -476,7 +477,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 3: WhatsApp Adapter Fail-Closed Inbound Authorization
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 3] WhatsApp Adapter Fail-Closed Inbound Authorization');
-  {
+  if (testGroup === 3) {
     const dummySessionDir = './test_auth_session';
 
     // Case 3.1: Empty ALLOWED_PHONE_NUMBER rejects non-self messages
@@ -589,7 +590,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 4: Defense in Depth (Bypassed Application Validation)
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 4] Defense in Depth (Bypassed Application Validation)');
-  {
+  if (testGroup === 4) {
     // If an adapter is created directly or via bypassed startup validation with an undefined allowlist:
     const undefTelegramAdapter = new TelegramMessagingAdapter(dummyToken, undefined as any, dummyCallback);
     assertCondition(
@@ -620,7 +621,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 5: Application Class Configuration Validation Integration
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 5] Application Class Configuration Validation Integration');
-  {
+  if (testGroup === 5) {
     // Valid configuration instantiation and validation check
     const validAppConfig = createBaseConfiguration({
       enabledMessengerChannels: ['whatsapp'],
@@ -732,14 +733,23 @@ async function runTestSuite(): Promise<void> {
   console.log('====================================================');
 
   if (testStatistics.failedCount > 0) {
-    process.exit(1);
+    throw new Error(`${testStatistics.failedCount} fail-closed whitelist assertions failed`);
   } else {
     console.log('[SUCCESS] All fail-closed whitelist authorization test cases passed!\n');
-    process.exit(0);
   }
 }
 
-runTestSuite().catch(() => {
-  console.error('[ERROR] Test suite execution failed unexpectedly.');
-  process.exit(1);
+beforeEach(() => {
+  testStatistics.totalCount = 0;
+  testStatistics.passedCount = 0;
+  testStatistics.failedCount = 0;
+});
+
+describe('fail-closed whitelist authorization', () => {
+  it.each(Array.from({ length: 5 }, (_, index) => index + 1))(
+    'runs logical group %s in isolation',
+    async testGroup => {
+      await runTestGroup(testGroup);
+    }
+  );
 });

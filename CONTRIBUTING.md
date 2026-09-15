@@ -187,29 +187,30 @@ npm test
 # or with verbose sub-test output:
 npm test -- --verbose
 ```
-This command executes all 14 hermetic offline test suites in sequence. It requires no live network calls, active credentials, or running MCP instances, making it completely deterministic and safe for local development and CI pipelines.
+This command executes the remaining legacy hermetic suites in sequence. Run `npm run test:vitest` for the migrated native Vitest suites. Both commands require no live network calls, active credentials, or running MCP instances; complete local and CI verification runs both suite families.
 
 ### Test Suites Overview
 
 #### 1. Automated Offline Test Suites (Hermetic & Mocked)
-These test suites run automatically as part of `npm test` and require no `.env` credentials:
+These suites require no `.env` credentials. The legacy runner and native Vitest runner are separate commands:
 
 | Script | Test Target | Description |
 | :--- | :--- | :--- |
-| `npm test` | All 14 Suites | Executes all hermetic test suites sequentially with execution summary |
+| `npm test` | Remaining legacy suites | Executes the legacy hermetic suites sequentially with an execution summary |
+| `npm run test:vitest` | `tests/**/*.vitest.test.ts` | Executes all migrated native Vitest suites |
 | `npm run test:format` | `tests/messageFormatHelper.test.ts` | WhatsApp markdown to Telegram HTML conversion & escaping |
 | `npm run test:formatter` | `tests/humanResponseFormatter.test.ts` | WhatsApp confirmation & balance response templates |
 | `npm run test:i18n` | `tests/responseDictionary.test.ts` | Multi-language dictionary key parity (Indonesian/English) |
 | `npm run test:budget` | `tests/budgetParsing.test.ts` | Budget metric parsing from spending.current & closed filter |
 | `npm run test:email-rules` | `tests/bankEmailRules.test.ts` | Bank email Gate 1 parsing rules & confirmation intent detector |
-| `npm run test:ai-fallback` | `tests/fallbackAiProvider.test.ts` | Cascading multi-provider failover (429/503) & error classification |
-| `npm run test:whatsapp-safeguards` | `tests/whatsappSafeguards.test.ts` | WhatsApp exponential backoff, circuit breaker & ban protections |
-| `npm run test:whatsapp-hardening` | `tests/whatsappSocketHardening.test.ts` | Baileys socket options & typing presence debouncing |
-| `npm run test:telegram-safeguards` | `tests/telegramSafeguards.test.ts` | Telegram rate limiting & unauthorized user whitelist gates |
-| `npm run test:media-limits` | `tests/mediaDownloadLimits.test.ts` | Inbound media download size limits & buffer exhaustion defense |
-| `npm run test:gateway-resilience` | `tests/messagingGatewayResilience.test.ts` | Multi-adapter gateway lifecycle, degraded mode & background reconnection |
+| `npm run test:ai-fallback` | `tests/fallbackAiProvider.vitest.test.ts` | Cascading multi-provider failover (429/503) & error classification |
+| `npm run test:whatsapp-safeguards` | `tests/whatsappSafeguards.vitest.test.ts` | WhatsApp exponential backoff, circuit breaker & ban protections |
+| `npm run test:whatsapp-hardening` | `tests/whatsappSocketHardening.vitest.test.ts` | Baileys socket options & typing presence debouncing |
+| `npm run test:telegram-safeguards` | `tests/telegramSafeguards.vitest.test.ts` | Telegram rate limiting & unauthorized user whitelist gates |
+| `npm run test:media-limits` | `tests/mediaDownloadLimits.vitest.test.ts` | Inbound media download size limits & buffer exhaustion defense |
+| `npm run test:gateway-resilience` | `tests/messagingGatewayResilience.vitest.test.ts`, `tests/messagingGatewayLifecycle.vitest.test.ts` | Multi-adapter gateway lifecycle, degraded mode & background reconnection |
 | `npm run test:redaction` | `tests/loggerRedaction.test.ts` | Credential redaction for tokens, passwords, and secrets |
-| `npm run test:sanitizer` | `tests/loggerSanitizer.test.ts` | Bank account number and PAN masking & circular reference safety |
+| `npm run test:sanitizer` | `tests/loggerSanitizer.vitest.test.ts` | Bank account number and PAN masking & circular reference safety |
 | `npm run test:receipt-ocr` | `tests/receiptOcrPrompt.test.ts` | Receipt vision OCR system instructions, timezone offset & QRIS rules |
 
 #### 2. Live Diagnostic Scripts (Require Active `.env` Credentials)
@@ -270,11 +271,11 @@ This repository follows the [Conventional Commits](https://www.conventionalcommi
 
 ## Pull Request Process
 
-Pull requests must target `main`, keep a focused scope, and pass the mandatory CI checks (`npm run build` plus all 14 offline hermetic test suites). The repository ships an automated pull request template at `.github/pull_request_template.md` that pre-fills the required structure below whenever a new PR is opened on GitHub.
+Pull requests must target `main`, keep a focused scope, and pass the mandatory CI checks (`npm run build`, `npm test`, and `npm run test:vitest`). The repository ships an automated pull request template at `.github/pull_request_template.md` that pre-fills the required structure below whenever a new PR is opened on GitHub.
 
 1. **Keep Pull Requests Focused**: Limit a single PR to one feature, fix, or cohesive refactoring task. If an issue spans multiple distinct concerns, propose splitting it into separate, reviewable PRs.
 2. **Work on Assigned Issues Only**: Implement only issues assigned to you. See [Finding an Issue & Claiming Workflow](#finding-an-issue--claiming-workflow).
-3. **Verify Locally**: Ensure `npm run build` and `npm test` (all 14 offline hermetic suites) pass before pushing, along with any additional `npm run test:*` scripts relevant to the areas you changed.
+3. **Verify Locally**: Ensure `npm run build`, `npm test` (remaining legacy suites), and `npm run test:vitest` (native Vitest suites) pass before pushing, along with any additional `npm run test:*` scripts relevant to the areas you changed.
 4. **Use the Mandatory 5-Section PR Description**: Every PR description must contain the following sections (mirroring `.github/pull_request_template.md`):
    - **`## Summary`**: High-level overview of what the PR accomplishes and the core problem it solves.
    - **`## Motivation & Context`**: Why the change is necessary, citing previous limitations, edge cases, or the bug being addressed.

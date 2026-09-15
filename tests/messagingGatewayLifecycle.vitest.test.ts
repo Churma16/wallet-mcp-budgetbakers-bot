@@ -1,4 +1,5 @@
 import { MessagingGatewayService } from '../src/services/messaging/messagingGatewayService.js';
+import { beforeEach, describe, it } from 'vitest';
 import {
   MessagingAdapter,
   SupportedMessengerChannel,
@@ -62,7 +63,7 @@ class MockMessagingAdapter implements MessagingAdapter {
   }
 }
 
-async function runTestSuite(): Promise<void> {
+async function runTestGroup(testGroup: number): Promise<void> {
   console.log('====================================================');
   console.log('[INFO] Running Messaging Gateway Resilience & Partial Startup Test Suite');
   console.log('====================================================\n');
@@ -71,7 +72,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 1: Registration and Initial State
   // ----------------------------------------------------
   console.log('[TEST GROUP 1] Registration & State Queries');
-  {
+  if (testGroup === 1) {
     const gateway = new MessagingGatewayService();
     const whatsappMock = new MockMessagingAdapter('whatsapp');
     const telegramMock = new MockMessagingAdapter('telegram');
@@ -89,7 +90,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 2: Partial Startup Failure (Degraded Mode)
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 2] Partial Startup Failure & Degraded Mode');
-  {
+  if (testGroup === 2) {
     const gateway = new MessagingGatewayService({
       maxBackgroundReconnectAttempts: 3,
       backgroundReconnectBaseDelayMs: 20, // Short delay for test
@@ -136,7 +137,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 3: Complete Startup Failure
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 3] Total Startup Failure (All Channels Dead)');
-  {
+  if (testGroup === 3) {
     const gateway = new MessagingGatewayService();
     const brokenWhatsApp = new MockMessagingAdapter('whatsapp', true, new Error('WhatsApp network offline'));
     const brokenTelegram = new MockMessagingAdapter('telegram', true, new Error('Telegram token invalid'));
@@ -163,7 +164,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 4: Background Reconnection Recovery
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 4] Background Reconnection Recovery');
-  {
+  if (testGroup === 4) {
     const gateway = new MessagingGatewayService({
       maxBackgroundReconnectAttempts: 5,
       backgroundReconnectBaseDelayMs: 30, // 30ms for quick recovery
@@ -203,7 +204,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 5: Broadcast Notification Filtering
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 5] Broadcast Notification Isolation');
-  {
+  if (testGroup === 5) {
     const gateway = new MessagingGatewayService({
       maxBackgroundReconnectAttempts: 2,
       backgroundReconnectBaseDelayMs: 500,
@@ -230,7 +231,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 6: Graceful Shutdown
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 6] Graceful Shutdown Lifecycle');
-  {
+  if (testGroup === 6) {
     const gateway = new MessagingGatewayService({
       maxBackgroundReconnectAttempts: 5,
       backgroundReconnectBaseDelayMs: 10000, // Long delay
@@ -262,14 +263,23 @@ async function runTestSuite(): Promise<void> {
   console.log('====================================================');
 
   if (testStatistics.failedCount > 0) {
-    process.exit(1);
+    throw new Error(`${testStatistics.failedCount} messaging gateway assertions failed`);
   } else {
     console.log('[SUCCESS] All Messaging Gateway resilience test cases passed!\n');
-    process.exit(0);
   }
 }
 
-runTestSuite().catch(suiteError => {
-  console.error(`[ERROR] Test suite execution failed: ${suiteError}`);
-  process.exit(1);
+beforeEach(() => {
+  testStatistics.totalCount = 0;
+  testStatistics.passedCount = 0;
+  testStatistics.failedCount = 0;
+});
+
+describe('messaging gateway lifecycle resilience', () => {
+  it.each(Array.from({ length: 6 }, (_, index) => index + 1))(
+    'runs logical group %s in isolation',
+    async testGroup => {
+      await runTestGroup(testGroup);
+    }
+  );
 });

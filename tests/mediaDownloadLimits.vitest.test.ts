@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { beforeEach, describe, it } from 'vitest';
 import { Bot } from 'grammy';
 import { TelegramMessagingAdapter } from '../src/services/messaging/telegramAdapter.js';
 import { WhatsappMessagingAdapter } from '../src/services/messaging/whatsappAdapter.js';
@@ -41,7 +42,7 @@ function assertCondition(testCaseIdentifier: string, conditionMet: boolean, fail
   }
 }
 
-async function runTestSuite(): Promise<void> {
+async function runTestGroup(testGroup: number): Promise<void> {
   console.log('====================================================');
   console.log('[INFO] Running Incoming Media Download Limits Test Suite');
   console.log('====================================================\n');
@@ -55,7 +56,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 1: Environment Configuration for Media Limits
   // ----------------------------------------------------
   console.log('[TEST GROUP 1] Environment Configuration for Media Limits');
-  {
+  if (testGroup === 1) {
     const originalEnv = process.env.MAX_MEDIA_DOWNLOAD_MB;
 
     delete process.env.MAX_MEDIA_DOWNLOAD_MB;
@@ -101,7 +102,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 2: WhatsApp Pre-Download & Buffer Limits
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 2] WhatsApp Media Buffer Limits');
-  {
+  if (testGroup === 2) {
     const receivedEvents: IncomingUserMessageEvent[] = [];
     const callback = async (event: IncomingUserMessageEvent) => {
       receivedEvents.push(event);
@@ -195,7 +196,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 3: Telegram Pre-Download & Stream Limits
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 3] Telegram Media Buffer Limits');
-  {
+  if (testGroup === 3) {
     const receivedEvents: IncomingUserMessageEvent[] = [];
     const callback = async (event: IncomingUserMessageEvent) => {
       receivedEvents.push(event);
@@ -259,7 +260,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 4: Shared Cross-Channel Media Policy Primitives & Localization
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 4] Shared Cross-Channel Media Policy Primitives & Localization');
-  {
+  if (testGroup === 4) {
     // 4.1 Byte and Megabyte Size Evaluation
     assertCondition(
       'POLICY-4.1: formatBytesToMegabytes converts 10 MB accurately',
@@ -446,7 +447,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 5: Telegram End-to-End Media Handling & Error Redaction
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 5] Telegram End-to-End Media Handling & Error Redaction');
-  {
+  if (testGroup === 5) {
     const dummyBotInfo = {
       id: 123456789,
       is_bot: true as const,
@@ -850,7 +851,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 6: WhatsApp Inbound Processor Download Failure Handling
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 6] WhatsApp Inbound Processor Download Failure Handling');
-  {
+  if (testGroup === 6) {
     const receivedEvents: IncomingUserMessageEvent[] = [];
     const callback = async (event: IncomingUserMessageEvent) => {
       receivedEvents.push(event);
@@ -917,13 +918,23 @@ async function runTestSuite(): Promise<void> {
   console.log('====================================================');
 
   if (testStatistics.failedCount > 0) {
-    process.exit(1);
+    throw new Error(`${testStatistics.failedCount} media download limit assertions failed`);
   } else {
     console.log('[SUCCESS] All incoming media download limit tests passed!\n');
   }
 }
 
-runTestSuite().catch(() => {
-  console.error('[ERROR] Unexpected test suite failure. Rerun with the --verbose offline runner to inspect the failing output.');
-  process.exit(1);
+beforeEach(() => {
+  testStatistics.totalCount = 0;
+  testStatistics.passedCount = 0;
+  testStatistics.failedCount = 0;
+});
+
+describe('incoming media download limits', () => {
+  it.each(Array.from({ length: 6 }, (_, index) => index + 1))(
+    'runs logical group %s in isolation',
+    async testGroup => {
+      await runTestGroup(testGroup);
+    }
+  );
 });

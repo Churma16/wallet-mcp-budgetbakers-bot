@@ -19,18 +19,6 @@ interface TestSuiteExecutionResult {
 }
 
 const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
-  { filePath: 'tests/emailListenerPersistence.test.ts', description: 'Email transactional dedup persistence & downstream failure recovery (Issue #75)' },
-  { filePath: 'tests/fallbackAiProvider.test.ts', description: 'Fallback AI provider cascading failover & error classification' },
-  { filePath: 'tests/failClosedWhitelist.test.ts', description: 'Telegram & WhatsApp fail-closed whitelist authorization & startup validation (Issue #74)' },
-  { filePath: 'tests/financialLoggingPolicy.test.ts', description: 'Financial payload log minimization, metadata-only defaults & debug opt-in (Issue #77)' },
-  { filePath: 'tests/loggerSanitizer.test.ts', description: 'Logger PAN and bank account number masking & circular reference safety' },
-  { filePath: 'tests/mediaDownloadLimits.test.ts', description: 'Media buffer size exhaustion safeguards & stream constraints' },
-  { filePath: 'tests/messagingGatewayResilience.test.ts', description: 'Multi-adapter gateway lifecycle, degraded mode & background reconnection' },
-  { filePath: 'tests/consoleMessagingAdapter.test.ts', description: 'Interactive console messaging adapter lifecycle, input parsing & configuration validation (Issue #16)' },
-  { filePath: 'tests/telegramSafeguards.test.ts', description: 'Telegram rate limiting & unauthorized user whitelist gates' },
-  { filePath: 'tests/whatsappSafeguards.test.ts', description: 'WhatsApp exponential backoff, circuit breaker & ban safeguards' },
-  { filePath: 'tests/whatsappSocketHardening.test.ts', description: 'WhatsApp Baileys socket options & typing presence debouncing' },
-  { filePath: 'tests/whatsappComponentBoundaries.test.ts', description: 'WhatsApp component boundaries & identifier-based loop prevention (Issue #31)' },
   { filePath: 'tests/transactionHistory.test.ts', description: 'Transaction history retrieval, bounded pagination & deterministic sorting (Issue #100)' },
   { filePath: 'tests/transactionHistoryFilters.test.ts', description: 'Composable transaction history filters across category, account, type, and date range (Issue #101)' },
   { filePath: 'tests/transactionHistorySearch.test.ts', description: 'Transaction history free-text search across merchant/payee and notes (Issue #102)' },

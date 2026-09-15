@@ -1,5 +1,29 @@
 import { WhatsappMessagingAdapter } from '../src/services/messaging/whatsappAdapter.js';
-import { DisconnectReason, type proto } from '@whiskeysockets/baileys';
+import { beforeEach, describe, it, vi } from 'vitest';
+import makeWASocket, {
+  DisconnectReason,
+  type proto,
+  useMultiFileAuthState,
+} from '@whiskeysockets/baileys';
+
+vi.mock('@whiskeysockets/baileys', async importOriginal => {
+  const actual = await importOriginal<typeof import('@whiskeysockets/baileys')>();
+  return {
+    ...actual,
+    default: vi.fn(() => ({
+      end: vi.fn(),
+      ev: {
+        on: vi.fn(),
+        removeAllListeners: vi.fn(),
+      },
+      user: { id: '6281234567890:1@s.whatsapp.net' },
+    })),
+    useMultiFileAuthState: vi.fn(async () => ({
+      saveCreds: vi.fn(),
+      state: { creds: {}, keys: {} },
+    })),
+  };
+});
 
 interface AssertionStatistics {
   totalCount: number;
@@ -24,7 +48,7 @@ function assertCondition(testCaseIdentifier: string, conditionMet: boolean, fail
   }
 }
 
-async function runTestSuite(): Promise<void> {
+async function runTestGroup(testGroup: number): Promise<void> {
   console.log('====================================================');
   console.log('[INFO] Running WhatsApp Connection Resilience & Safeguards Test Suite (14 Test Cases)');
   console.log('====================================================\n');
@@ -49,7 +73,7 @@ async function runTestSuite(): Promise<void> {
   // TC-0: Configuration & Default Values
   // ----------------------------------------------------
   console.log('[TEST GROUP 0] Configuration & Default Values');
-  {
+  if (testGroup === 1) {
     const defaultAdapter = new WhatsappMessagingAdapter(dummySessionDirectory, dummyPhoneNumber, dummyCallback);
     assertCondition('TC-0.1: Default maxMediaDownloadBytes is 10 MB (10485760 bytes)', defaultAdapter.getMaxMediaDownloadBytes() === 10 * 1024 * 1024);
     assertCondition('TC-0.2: Custom maxMediaDownloadBytes is respected', adapter.getMaxMediaDownloadBytes() === 5 * 1024 * 1024);
@@ -59,7 +83,7 @@ async function runTestSuite(): Promise<void> {
   // TC-1: Exponential Backoff & Jitter Bounds
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 1] Backoff & Delay Math');
-  {
+  if (testGroup === 2) {
     const delayAttempt0 = adapter.calculateBackoffDelayMilliseconds(0);
     const delayAttempt1 = adapter.calculateBackoffDelayMilliseconds(1);
     const delayAttempt2 = adapter.calculateBackoffDelayMilliseconds(2);
@@ -82,7 +106,7 @@ async function runTestSuite(): Promise<void> {
   // TC-2 & TC-3: Circuit Breaker Tripping & Success Reset
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 2] Circuit Breaker Lifecycle');
-  {
+  if (testGroup === 3) {
     adapter.resetSafeguardsState();
 
     // Trigger 5 connection failures (threshold is 6)
@@ -108,27 +132,39 @@ async function runTestSuite(): Promise<void> {
   // TC-4, TC-5: Baileys Status Code Specific Behaviors
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 3] Granular Status Code Dispatcher');
-  {
-    adapter.resetSafeguardsState();
+  if (testGroup === 4) {
+    vi.useFakeTimers();
+    try {
+      adapter.resetSafeguardsState();
 
-    // TC-4: Status 440 (connectionReplaced) must abort immediately
-    adapter.handleConnectionClose(DisconnectReason.connectionReplaced, new Error('Stream Errored (conflict)'));
-    assertCondition('TC-4.1: Status 440 immediately trips circuit breaker', adapter.getCircuitBreakerStatus() === true);
-    assertCondition('TC-4.2: Status 440 does NOT increment standard failure counter', adapter.getConsecutiveFailureCount() === 0, `Actual: ${adapter.getConsecutiveFailureCount()}`);
+      // TC-4: Status 440 (connectionReplaced) must abort immediately
+      adapter.handleConnectionClose(DisconnectReason.connectionReplaced, new Error('Stream Errored (conflict)'));
+      assertCondition('TC-4.1: Status 440 immediately trips circuit breaker', adapter.getCircuitBreakerStatus() === true);
+      assertCondition('TC-4.2: Status 440 does NOT increment standard failure counter', adapter.getConsecutiveFailureCount() === 0, `Actual: ${adapter.getConsecutiveFailureCount()}`);
 
-    adapter.resetSafeguardsState();
+      adapter.resetSafeguardsState();
 
-    // TC-5: Status 515 (restartRequired) fast track
-    adapter.handleConnectionClose(DisconnectReason.restartRequired, new Error('Restart Required'));
-    assertCondition('TC-5.1: Status 515 does not increment failure counter', adapter.getConsecutiveFailureCount() === 0);
-    assertCondition('TC-5.2: Status 515 does not trip circuit breaker', adapter.getCircuitBreakerStatus() === false);
+      // TC-5: Status 515 (restartRequired) fast track
+      adapter.handleConnectionClose(DisconnectReason.restartRequired, new Error('Restart Required'));
+      assertCondition('TC-5.1: Status 515 does not increment failure counter', adapter.getConsecutiveFailureCount() === 0);
+      assertCondition('TC-5.2: Status 515 does not trip circuit breaker', adapter.getCircuitBreakerStatus() === false);
+      assertCondition('TC-5.3: Status 515 schedules a reconnect timer', (adapter as any).activeReconnectTimeout !== null);
+
+      await adapter.stopConnection();
+      assertCondition('TC-5.4: stopConnection clears the status-515 timer', (adapter as any).activeReconnectTimeout === null);
+
+      await vi.runAllTimersAsync();
+      assertCondition('TC-5.5: No socket is created after advancing cleaned timers', vi.mocked(makeWASocket).mock.calls.length === 0);
+    } finally {
+      vi.useRealTimers();
+    }
   }
 
   // ----------------------------------------------------
   // TC-6: Reconnection Mutex Guard
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 4] Concurrency & Mutex Lock');
-  {
+  if (testGroup === 5) {
     adapter.resetSafeguardsState();
 
     // Test mutex flag behavior using internal reflection
@@ -152,7 +188,7 @@ async function runTestSuite(): Promise<void> {
   // TC-7: Outbound Message FIFO Throttling
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 5] Outbound Message Queue Throttling');
-  {
+  if (testGroup === 6) {
     adapter.resetSafeguardsState();
 
     const dispatchTimestamps: number[] = [];
@@ -189,7 +225,7 @@ async function runTestSuite(): Promise<void> {
   // TC-8: Clean Timer Cancellation on stopConnection
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 6] Lifecycle Stop Cleanup');
-  {
+  if (testGroup === 7) {
     adapter.resetSafeguardsState();
     adapter.handleConnectionClose(DisconnectReason.timedOut, new Error('Timeout'));
 
@@ -205,7 +241,7 @@ async function runTestSuite(): Promise<void> {
   // Edge Case EC-1: Undefined / Unknown Status Code Fall-Through
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 7] Edge Cases (EC-1 through EC-6)');
-  {
+  if (testGroup === 8) {
     adapter.resetSafeguardsState();
 
     // Passing undefined status code (raw network drop without Baileys status)
@@ -221,7 +257,7 @@ async function runTestSuite(): Promise<void> {
   // ----------------------------------------------------
   // Edge Case EC-2: Queue Rejection when Socket is null
   // ----------------------------------------------------
-  {
+  if (testGroup === 8) {
     adapter.resetSafeguardsState();
     (adapter as any).socketInstance = null;
 
@@ -242,7 +278,7 @@ async function runTestSuite(): Promise<void> {
   // ----------------------------------------------------
   // Edge Case EC-3: Queue Item Failure Does Not Stall Remaining Items
   // ----------------------------------------------------
-  {
+  if (testGroup === 8) {
     adapter.resetSafeguardsState();
 
     let item1Failed = false;
@@ -280,7 +316,7 @@ async function runTestSuite(): Promise<void> {
   // ----------------------------------------------------
   // Edge Case EC-4: stopConnection Drains and Rejects Pending Queue Tasks
   // ----------------------------------------------------
-  {
+  if (testGroup === 8) {
     adapter.resetSafeguardsState();
 
     let queueItemRejectedOnStop = false;
@@ -316,7 +352,7 @@ async function runTestSuite(): Promise<void> {
   // ----------------------------------------------------
   // Edge Case EC-5: Manual startConnection Resets Tripped Circuit Breaker
   // ----------------------------------------------------
-  {
+  if (testGroup === 8) {
     adapter.resetSafeguardsState();
 
     for (let count = 1; count <= 6; count++) {
@@ -324,20 +360,18 @@ async function runTestSuite(): Promise<void> {
     }
     assertCondition('EC-5.1: Breaker is initially tripped', adapter.getCircuitBreakerStatus() === true);
 
-    try {
-      await adapter.startConnection(true);
-    } catch {
-      // Expected in test environment without live credentials
-    }
+    await adapter.startConnection(true);
 
-    assertCondition('EC-5.2: Manual startConnection reset failure counter to 0', adapter.getConsecutiveFailureCount() === 0);
-    assertCondition('EC-5.3: Manual startConnection cleared circuit breaker trip flag', adapter.getCircuitBreakerStatus() === false);
+    assertCondition('EC-5.2: Manual startConnection uses mocked auth initialization', vi.mocked(useMultiFileAuthState).mock.calls.length === 1);
+    assertCondition('EC-5.3: Manual startConnection uses mocked socket creation', vi.mocked(makeWASocket).mock.calls.length === 1);
+    assertCondition('EC-5.4: Manual startConnection reset failure counter to 0', adapter.getConsecutiveFailureCount() === 0);
+    assertCondition('EC-5.5: Manual startConnection cleared circuit breaker trip flag', adapter.getCircuitBreakerStatus() === false);
   }
 
   // ----------------------------------------------------
   // Edge Case EC-6: Repeated loggedOut After Session Purge Trips Circuit Breaker
   // ----------------------------------------------------
-  {
+  if (testGroup === 8) {
     adapter.resetSafeguardsState();
 
     adapter.handleConnectionClose(DisconnectReason.loggedOut, 'First Logout');
@@ -346,13 +380,14 @@ async function runTestSuite(): Promise<void> {
     adapter.handleConnectionClose(DisconnectReason.loggedOut, 'Second Logout (Device Banned or Unlinked Repeatedly)');
     assertCondition('EC-6.2: Repeated logout trips circuit breaker', adapter.getCircuitBreakerStatus() === true);
     assertCondition('EC-6.3: Consecutive failure count incremented', adapter.getConsecutiveFailureCount() === 1);
+    await adapter.stopConnection();
   }
 
   // ----------------------------------------------------
   // TEST GROUP 7: Whitelist Inbound Authorization Gates (Fail-Closed)
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 7] Whitelist Inbound Authorization Gates (Fail-Closed)');
-  {
+  if (testGroup === 9) {
     let receivedCallback = false;
     const testCallback = async () => {
       receivedCallback = true;
@@ -436,6 +471,12 @@ async function runTestSuite(): Promise<void> {
     );
   }
 
+  await adapter.stopConnection();
+  assertCondition(
+    `cleanup-${testGroup}: reconnect timer is cleared after the logical group`,
+    (adapter as any).activeReconnectTimeout === null
+  );
+
   // ----------------------------------------------------
   // Summary
   // ----------------------------------------------------
@@ -444,14 +485,24 @@ async function runTestSuite(): Promise<void> {
   console.log('====================================================');
 
   if (testStatistics.failedCount > 0) {
-    process.exit(1);
+    throw new Error(`${testStatistics.failedCount} WhatsApp safeguard assertions failed`);
   } else {
     console.log('[SUCCESS] All 14 WhatsApp resilience & safeguard test cases passed!\n');
-    process.exit(0);
   }
 }
 
-runTestSuite().catch(suiteError => {
-  console.error(`[ERROR] Test suite execution failed: ${suiteError}`);
-  process.exit(1);
+beforeEach(() => {
+  vi.clearAllMocks();
+  testStatistics.totalCount = 0;
+  testStatistics.passedCount = 0;
+  testStatistics.failedCount = 0;
+});
+
+describe('WhatsApp resilience and safeguards', () => {
+  it.each(Array.from({ length: 9 }, (_, index) => index + 1))(
+    'runs logical group %s in isolation',
+    async testGroup => {
+      await runTestGroup(testGroup);
+    }
+  );
 });
