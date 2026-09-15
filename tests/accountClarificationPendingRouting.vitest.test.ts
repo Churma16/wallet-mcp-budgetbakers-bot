@@ -2,19 +2,10 @@ import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
 import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
-
-console.log('====================================================');
-console.log('[test] Account Clarification vs Pending Ticket Routing');
-console.log('====================================================\n');
-
-let assertionCount = 0;
+import { expect, it } from 'vitest';
 
 function assertCondition(testName: string, condition: boolean): void {
-  assertionCount++;
-  if (!condition) {
-    throw new Error(`[FAIL] ${testName}`);
-  }
-  console.log(`[PASS] ${testName}`);
+  expect(condition, testName).toBe(true);
 }
 
 class MockMessagingGateway {
@@ -169,7 +160,7 @@ function assertClarificationUntouched(
   assertCondition(`${label} does not dispatch clarification Wallet write`, harness.walletDispatch.calls === 0);
 }
 
-async function main(): Promise<void> {
+it('routes ticket-specific pending commands without disturbing clarification drafts', async () => {
   const rejectHarness = createHarness();
   await rejectHarness.handler.handleIncomingUserMessage(
     createEvent(`batal #${rejectHarness.standardPending.ticketId}`)
@@ -251,10 +242,4 @@ async function main(): Promise<void> {
   );
   assertClarificationUntouched('Unambiguous generic latest rejection', latestRejectHarness);
 
-  console.log(`\n[SUCCESS] ${assertionCount} assertions passed.`);
-}
-
-main().catch(error => {
-  console.error(error);
-  process.exit(1);
 });

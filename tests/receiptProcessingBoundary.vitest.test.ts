@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import test from 'node:test';
+import { afterEach, test } from 'vitest';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
 import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
@@ -15,7 +15,7 @@ import { validateReceiptFinancialIntentEnvelope } from '../src/services/ai/jsonE
 import { OpenAiCompatibleAiProvider } from '../src/services/ai/openAiCompatibleAiProvider.js';
 import { FallbackAiProvider } from '../src/services/ai/fallbackAiProvider.js';
 
-console.log('[TEST] Starting Receipt Processing Boundary & Recovery Tests (Issue #123)...');
+afterEach(() => setActiveLanguage('id'));
 
 class MockMessagingGateway {
   public readonly sentMessages: Array<{ channel: string; chatId: string; content: string }> = [];

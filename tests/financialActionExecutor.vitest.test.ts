@@ -13,8 +13,9 @@ import {
 } from '../src/types/walletTypes.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import { applicationLogger } from '../src/utils/logger.js';
+import { afterEach, test } from 'vitest';
 
-console.log('[TEST] Starting Unified Financial Action Execution Paths Tests (Issue #107)...');
+afterEach(() => setActiveLanguage('id'));
 
 interface SentMessageRecord {
   readonly channel: string;
@@ -65,8 +66,7 @@ const mockSampleBudgets: WalletBudgetProgressItem[] = [
 // -----------------------------------------------------------------------------
 // Suite 1: FinancialActionExecutor Direct Unit Execution
 // -----------------------------------------------------------------------------
-console.log('\n[Suite 1] Testing FinancialActionExecutor Direct Execution...');
-{
+test('FinancialActionExecutor directly executes balance, budget, and help actions', async () => {
   setActiveLanguage('id');
   const mockGateway = createMockGateway();
 
@@ -122,14 +122,12 @@ console.log('\n[Suite 1] Testing FinancialActionExecutor Direct Execution...');
   });
   assert.strictEqual(mockGateway.dispatchedMessages.length, 3, 'Should dispatch help menu message');
   assert.ok(mockGateway.dispatchedMessages[2].message.includes('saldo'), 'Help menu should mention commands');
-  console.log('  [PASS] Direct execution of balance, budget, and help passed');
-}
+});
 
 // -----------------------------------------------------------------------------
 // Suite 2: FastPathHandler Delegation to Shared Executor
 // -----------------------------------------------------------------------------
-console.log('\n[Suite 2] Testing FastPathHandler Delegation to FinancialActionExecutor...');
-{
+test('FastPathHandler delegates supported actions to FinancialActionExecutor', async () => {
   setActiveLanguage('id');
   const mockGateway = createMockGateway();
 
@@ -182,14 +180,12 @@ console.log('\n[Suite 2] Testing FastPathHandler Delegation to FinancialActionEx
   assert.strictEqual(historyHandled, true);
   assert.deepStrictEqual(executedActions, ['TRANSACTION_HISTORY'], 'FastPathHandler should delegate TRANSACTION_HISTORY to executor');
 
-  console.log('  [PASS] FastPathHandler delegates all actions to FinancialActionExecutor');
-}
+});
 
 // -----------------------------------------------------------------------------
 // Suite 3: UserMessageHandler (AI-Path) Delegation to Shared Executor
 // -----------------------------------------------------------------------------
-console.log('\n[Suite 3] Testing UserMessageHandler (AI-Path) Delegation...');
-{
+test('UserMessageHandler delegates AI-routed actions to FinancialActionExecutor', async () => {
   setActiveLanguage('id');
   const mockGateway = createMockGateway();
 
@@ -250,12 +246,11 @@ console.log('\n[Suite 3] Testing UserMessageHandler (AI-Path) Delegation...');
   await userMessageHandler.handleIncomingUserMessage(budgetEvent);
   assert.deepStrictEqual(executedAiActions, ['CHECK_BUDGET'], 'UserMessageHandler should delegate AI CHECK_BUDGET to executor');
 
-  console.log('  [PASS] UserMessageHandler delegates AI CHECK_BALANCE and CHECK_BUDGET to FinancialActionExecutor');
-}
+});
 
 // Cover the issue #148 deferred-category authority boundary through the
-// existing legacy runner so Sonar receives granular TypeScript source maps.
-{
+// native Vitest runner so Sonar receives granular TypeScript source maps.
+test('deferred category authority rejects unresolved categories and action switches', async () => {
   const categories = [{ id: 'cat-health', name: 'Kesehatan' }];
   let aiResponse: any = {
     action: 'TRANSACTION_HISTORY',
@@ -348,13 +343,12 @@ console.log('\n[Suite 3] Testing UserMessageHandler (AI-Path) Delegation...');
     { hasHandler: () => false, execute: async () => undefined } as any
   );
   await missingHandler.handleIncomingUserMessage(createMockIncomingEvent('riwayat beli obat'));
-}
+});
 
 // -----------------------------------------------------------------------------
 // Suite 4: End-to-End Equivalence Between Fast-Path and AI Routes
 // -----------------------------------------------------------------------------
-console.log('\n[Suite 4] Testing End-to-End Equivalence Between Fast-Path and AI-Routed Outputs...');
-{
+test('Fast-Path and AI routes produce equivalent balance and budget outputs', async () => {
   setActiveLanguage('id');
 
   const fastPathGateway = createMockGateway();
@@ -442,14 +436,12 @@ console.log('\n[Suite 4] Testing End-to-End Equivalence Between Fast-Path and AI
     'Dispatched budget message from Fast-Path and AI-Path must be completely identical'
   );
 
-  console.log('  [PASS] Output equivalence verified: both routes produce identical human messages');
-}
+});
 
 // -----------------------------------------------------------------------------
 // Suite 5: Fallback Start Timestamp Resolution Without Context (Review Feedback)
 // -----------------------------------------------------------------------------
-console.log('\n[Suite 5] Testing Fallback Start Timestamp Resolution When Context Is Omitted...');
-{
+test('executor methods establish a fallback timestamp before awaited work begins', async () => {
   setActiveLanguage('id');
 
   const capturedSuccessLogs: string[] = [];
@@ -530,10 +522,7 @@ console.log('\n[Suite 5] Testing Fallback Start Timestamp Resolution When Contex
       `Help duration (${helpDuration}ms) should include the awaited work (minimum ${minimumExpectedDurationMs}ms)`
     );
 
-    console.log('  [PASS] All executor methods establish fallback timestamp before work begins');
   } finally {
     applicationLogger.success = originalSuccessLogger;
   }
-}
-
-console.log('\n[SUCCESS] All Unified Financial Action Execution Tests Passed Cleanly!');
+});
