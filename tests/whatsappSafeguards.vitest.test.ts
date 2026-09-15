@@ -222,7 +222,7 @@ async function runTestGroup(testGroup: number): Promise<void> {
   // ----------------------------------------------------
   // Edge Case EC-2: Queue Rejection when Socket is null
   // ----------------------------------------------------
-  {
+  if (testGroup === 8) {
     adapter.resetSafeguardsState();
     (adapter as any).socketInstance = null;
 
@@ -243,7 +243,7 @@ async function runTestGroup(testGroup: number): Promise<void> {
   // ----------------------------------------------------
   // Edge Case EC-3: Queue Item Failure Does Not Stall Remaining Items
   // ----------------------------------------------------
-  {
+  if (testGroup === 8) {
     adapter.resetSafeguardsState();
 
     let item1Failed = false;
@@ -281,7 +281,7 @@ async function runTestGroup(testGroup: number): Promise<void> {
   // ----------------------------------------------------
   // Edge Case EC-4: stopConnection Drains and Rejects Pending Queue Tasks
   // ----------------------------------------------------
-  {
+  if (testGroup === 8) {
     adapter.resetSafeguardsState();
 
     let queueItemRejectedOnStop = false;
@@ -317,7 +317,7 @@ async function runTestGroup(testGroup: number): Promise<void> {
   // ----------------------------------------------------
   // Edge Case EC-5: Manual startConnection Resets Tripped Circuit Breaker
   // ----------------------------------------------------
-  {
+  if (testGroup === 8) {
     adapter.resetSafeguardsState();
 
     for (let count = 1; count <= 6; count++) {
@@ -338,7 +338,7 @@ async function runTestGroup(testGroup: number): Promise<void> {
   // ----------------------------------------------------
   // Edge Case EC-6: Repeated loggedOut After Session Purge Trips Circuit Breaker
   // ----------------------------------------------------
-  {
+  if (testGroup === 8) {
     adapter.resetSafeguardsState();
 
     adapter.handleConnectionClose(DisconnectReason.loggedOut, 'First Logout');
@@ -347,6 +347,7 @@ async function runTestGroup(testGroup: number): Promise<void> {
     adapter.handleConnectionClose(DisconnectReason.loggedOut, 'Second Logout (Device Banned or Unlinked Repeatedly)');
     assertCondition('EC-6.2: Repeated logout trips circuit breaker', adapter.getCircuitBreakerStatus() === true);
     assertCondition('EC-6.3: Consecutive failure count incremented', adapter.getConsecutiveFailureCount() === 1);
+    await adapter.stopConnection();
   }
 
   // ----------------------------------------------------

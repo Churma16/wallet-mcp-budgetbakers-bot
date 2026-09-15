@@ -175,7 +175,7 @@ async function runTestGroup(testGroup: number): Promise<void> {
   }
 
   // EC-2: Timestamp Not Committed on Error
-  {
+  if (testGroup === 3) {
     let shouldFail = true;
     const mockSocket = {
       sendPresenceUpdate: async () => {
@@ -212,7 +212,7 @@ async function runTestGroup(testGroup: number): Promise<void> {
   }
 
   // EC-3: clearTypingPresence Resets Timestamp
-  {
+  if (testGroup === 3) {
     const presenceEvents: Array<{ action: string; jid: string }> = [];
     const mockSocket = {
       sendPresenceUpdate: async (action: string, jid: string) => {
@@ -250,7 +250,7 @@ async function runTestGroup(testGroup: number): Promise<void> {
   }
 
   // EC-4: Zero Cooldown Configuration Support
-  {
+  if (testGroup === 3) {
     let presenceDispatchCount = 0;
     const mockSocket = {
       sendPresenceUpdate: async () => {
@@ -280,7 +280,7 @@ async function runTestGroup(testGroup: number): Promise<void> {
   }
 
   // EC-5: Falsy / Empty JID Guard
-  {
+  if (testGroup === 3) {
     let socketCalled = false;
     const mockSocket = {
       sendPresenceUpdate: async () => {
