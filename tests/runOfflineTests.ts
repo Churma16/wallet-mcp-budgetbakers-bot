@@ -27,11 +27,6 @@ const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
   { filePath: 'tests/mediaDownloadLimits.test.ts', description: 'Media buffer size exhaustion safeguards & stream constraints' },
   { filePath: 'tests/messagingGatewayResilience.test.ts', description: 'Multi-adapter gateway lifecycle, degraded mode & background reconnection' },
   { filePath: 'tests/consoleMessagingAdapter.test.ts', description: 'Interactive console messaging adapter lifecycle, input parsing & configuration validation (Issue #16)' },
-  { filePath: 'tests/accountClarificationDraft.test.ts', description: 'Pending account clarification drafts and safe finalization (Issue #81)' },
-  { filePath: 'tests/accountClarificationUnknownDismissal.test.ts', description: 'UNKNOWN clarification reconciliation and ticket-specific safe dismissal (Issue #81)' },
-  { filePath: 'tests/accountClarificationPendingRouting.test.ts', description: 'Ticket-specific standard pending commands bypass unrelated clarification drafts (Issue #81)' },
-  { filePath: 'tests/accountClarificationSafetyRegression.test.ts', description: 'Clarification cancellation and messaging failure safety regressions (Issue #81)' },
-  { filePath: 'tests/pendingActionHandler.test.ts', description: 'Pending transaction data integrity & MCP failure recovery (Issue #72)' },
   { filePath: 'tests/telegramSafeguards.test.ts', description: 'Telegram rate limiting & unauthorized user whitelist gates' },
   { filePath: 'tests/whatsappSafeguards.test.ts', description: 'WhatsApp exponential backoff, circuit breaker & ban safeguards' },
   { filePath: 'tests/whatsappSocketHardening.test.ts', description: 'WhatsApp Baileys socket options & typing presence debouncing' },
@@ -42,8 +37,6 @@ const OFFLINE_TEST_SUITES: readonly TestSuiteDefinition[] = [
   { filePath: 'tests/transactionHistorySearchReviewRegression.test.ts', description: 'PR #114 quoted literal and search pagination regressions (Issue #102)' },
   { filePath: 'tests/transactionSummary.test.ts', description: 'Transaction totals, grouped breakdowns, filters, empty data, and currency isolation (Issue #103)' },
   { filePath: 'tests/transactionSummaryHandler.test.ts', description: 'Transaction summary fast-path dispatch, service delegation, formatting, and message delivery (Issue #103)' },
-  { filePath: 'tests/receiptProcessingBoundary.test.ts', description: 'Receipt processing boundary, partial extraction clarification & recovery (Issue #123)' },
-  { filePath: 'tests/financialActionExecutor.test.ts', description: 'Unified financial action execution paths and Fast-Path/AI routing equivalence (Issue #107)' },
 ];
 
 const isVerboseMode = process.argv.includes('--verbose') || process.argv.includes('-v');

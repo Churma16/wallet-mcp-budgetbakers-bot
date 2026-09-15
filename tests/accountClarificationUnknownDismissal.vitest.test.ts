@@ -5,19 +5,10 @@ import { WalletMcpRequestError } from '../src/services/walletMcpService.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
 import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
-
-console.log('====================================================');
-console.log('[test] UNKNOWN Account Clarification Reconciliation Safety');
-console.log('====================================================\n');
-
-let assertionCount = 0;
+import { afterEach, expect, it } from 'vitest';
 
 function assertCondition(testName: string, condition: boolean): void {
-  assertionCount++;
-  if (!condition) {
-    throw new Error(`[FAIL] ${testName}`);
-  }
-  console.log(`[PASS] ${testName}`);
+  expect(condition, testName).toBe(true);
 }
 
 class MockMessagingGateway {
@@ -132,7 +123,9 @@ function addStandardPendingTransaction(pendingService: PendingTransactionService
   });
 }
 
-async function main(): Promise<void> {
+afterEach(() => setActiveLanguage('id'));
+
+it('preserves UNKNOWN clarification drafts until ticket-specific reconciliation', async () => {
   setActiveLanguage('id');
 
   const pendingService = new PendingTransactionService();
@@ -222,10 +215,11 @@ async function main(): Promise<void> {
     'Separate standard pending transaction remains available',
     pendingService.hasPendingTransactions()
   );
+});
 
-  // Regression: an active PENDING clarification must not swallow ticket-specific commands that
-  // target a standard pending transaction. Exercise the real UserMessageHandler ordering so the
-  // test proves those commands actually reach PendingActionHandler.
+it('routes ticket-specific standard pending commands around an active clarification draft', async () => {
+  setActiveLanguage('id');
+
   const routingPendingService = new PendingTransactionService();
   const routingMessaging = new MockMessagingGateway();
   const routingWalletMcp = new MockWalletMcpClient();
@@ -293,11 +287,4 @@ async function main(): Promise<void> {
     'Ticket-specific standard commands do not dispatch clarification Wallet writes',
     routingWalletMcp.calls.length === 0
   );
-
-  console.log(`\n[SUCCESS] ${assertionCount} assertions passed.`);
-}
-
-main().catch(error => {
-  console.error(error);
-  process.exit(1);
 });

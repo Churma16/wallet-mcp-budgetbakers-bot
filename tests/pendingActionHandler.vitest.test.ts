@@ -8,26 +8,14 @@ import {
 import { CreateRecordInputPayload, WalletCreateRecordsResponse } from '../src/types/walletTypes.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
 import { PendingConfirmationIntent } from '../src/utils/fastPathIntentDetector.js';
-
-console.log('====================================================');
-console.log('[test] Pending Transaction Data Integrity & MCP Failure Recovery (Issue #72)');
-console.log('====================================================\n');
-
-let passedCaseCount = 0;
-let assertionCount = 0;
+import { describe, expect, it } from 'vitest';
 
 function assertCondition(testName: string, condition: boolean, extraDetail?: string): void {
-  assertionCount++;
-  if (!condition) {
-    throw new Error(`[FAIL] ${testName}${extraDetail ? ` -> ${extraDetail}` : ''}`);
-  }
-  console.log(`[PASS] ${testName}`);
+  expect(condition, `${testName}${extraDetail ? ` -> ${extraDetail}` : ''}`).toBe(true);
 }
 
-async function runCase(testName: string, testFunction: () => Promise<void> | void): Promise<void> {
-  console.log(`\n--- ${testName} ---`);
-  await testFunction();
-  passedCaseCount++;
+function runCase(testName: string, testFunction: () => Promise<void> | void): void {
+  it(testName, testFunction);
 }
 
 class MockWalletMcpClient {
@@ -177,8 +165,8 @@ const sampleRecord: CreateRecordInputPayload = {
   recordDate: '2026-09-10',
 };
 
-async function main(): Promise<void> {
-  await runCase('Suite 1: single confirmation succeeds and removes the ticket', async () => {
+describe('Pending Transaction Data Integrity and MCP Failure Recovery (Issue #72)', () => {
+  runCase('Suite 1: single confirmation succeeds and removes the ticket', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -192,7 +180,7 @@ async function main(): Promise<void> {
     assertCondition('Success response was sent to the user', messaging.messages.length === 1);
   });
 
-  await runCase('Suite 2: bulk partial definitive failures keep only failed tickets retryable', async () => {
+  runCase('Suite 2: bulk partial definitive failures keep only failed tickets retryable', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -229,7 +217,7 @@ async function main(): Promise<void> {
     assertCondition('Bulk retry guidance does not suggest ambiguous bare ya', !retryMessage.includes('Ketik "ya"'));
   });
 
-  await runCase('Suite 3: transfer uses one native paired-transfer input', async () => {
+  runCase('Suite 3: transfer uses one native paired-transfer input', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -267,7 +255,7 @@ async function main(): Promise<void> {
     assertCondition('Transfer ticket removed after retry succeeds', pendingService.getPendingTransaction(1) === undefined);
   });
 
-  await runCase('Suite 4: ambiguous timeout becomes UNKNOWN and is not automatically retried', async () => {
+  runCase('Suite 4: ambiguous timeout becomes UNKNOWN and is not automatically retried', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -287,7 +275,7 @@ async function main(): Promise<void> {
     assertCondition('Second confirmation did not redispatch UNKNOWN ticket', walletMcp.calls.length === 1);
   });
 
-  await runCase('Suite 5: concurrent confirmations cannot double-dispatch one ticket', async () => {
+  runCase('Suite 5: concurrent confirmations cannot double-dispatch one ticket', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -306,7 +294,7 @@ async function main(): Promise<void> {
     assertCondition('Both confirmation attempts received deterministic responses', messaging.messages.length === 2);
   });
 
-  await runCase('Suite 6: email reference is recorded only after the native transfer succeeds', async () => {
+  runCase('Suite 6: email reference is recorded only after the native transfer succeeds', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -344,7 +332,7 @@ async function main(): Promise<void> {
     assertCondition('Email reference marked once after full success', recordedReferences.join(',') === 'REF-12345');
   });
 
-  await runCase('Suite 7: backend error details stay in logs and are not exposed to chat', async () => {
+  runCase('Suite 7: backend error details stay in logs and are not exposed to chat', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -361,7 +349,7 @@ async function main(): Promise<void> {
     assertCondition('Backend token is not exposed', !chatMessage.includes('secret-123'));
   });
 
-  await runCase('Suite 8: PROCESSING and UNKNOWN tickets cannot be cancelled concurrently or before reconciliation', () => {
+  runCase('Suite 8: PROCESSING and UNKNOWN tickets cannot be cancelled concurrently or before reconciliation', () => {
     const pendingService = new PendingTransactionService();
     addExpense(pendingService);
 
@@ -381,7 +369,7 @@ async function main(): Promise<void> {
     assertCondition('UNKNOWN ticket remains available for reconciliation', pendingService.getPendingTransactionState(1) === 'UNKNOWN');
   });
 
-  await runCase('Suite 9: create_records per-item rejection is treated as definitive failure', async () => {
+  runCase('Suite 9: create_records per-item rejection is treated as definitive failure', async () => {
     const client = new WalletMcpClientService('https://example.invalid', 'test-token');
     (client as any).httpClient.post = async () => ({
       data: {
@@ -400,7 +388,7 @@ async function main(): Promise<void> {
     );
   });
 
-  await runCase('Suite 10: transport timeout is classified UNKNOWN', async () => {
+  runCase('Suite 10: transport timeout is classified UNKNOWN', async () => {
     const client = new WalletMcpClientService('https://example.invalid', 'test-token');
     const timeoutError = Object.assign(new Error('request timed out'), {
       isAxiosError: true,
@@ -417,7 +405,7 @@ async function main(): Promise<void> {
     assertCondition('UNKNOWN helper recognizes real client transport error', isWalletMcpDispatchOutcomeUnknown(error));
   });
 
-  await runCase('Suite 11: explicit HTTP 400 is definitive while HTTP 503 is ambiguous', async () => {
+  runCase('Suite 11: explicit HTTP 400 is definitive while HTTP 503 is ambiguous', async () => {
     const definitiveClient = new WalletMcpClientService('https://example.invalid', 'test-token');
     const badRequestError = Object.assign(new Error('bad request'), {
       isAxiosError: true,
@@ -447,7 +435,7 @@ async function main(): Promise<void> {
     );
   });
 
-  await runCase('Suite 12: create_records requires positive and internally consistent success evidence', async () => {
+  runCase('Suite 12: create_records requires positive and internally consistent success evidence', async () => {
     const nullClient = createWalletClientWithToolResult(null);
     await expectWalletMcpRequestError(() => nullClient.createRecords([sampleRecord]), 'UNKNOWN');
 
@@ -583,7 +571,7 @@ async function main(): Promise<void> {
     await expectWalletMcpRequestError(() => mismatchedTotalClient.createRecords([sampleRecord]), 'UNKNOWN');
   });
 
-  await runCase('Suite 13: generic unclassified handler errors become UNKNOWN instead of retryable', async () => {
+  runCase('Suite 13: generic unclassified handler errors become UNKNOWN instead of retryable', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -603,12 +591,4 @@ async function main(): Promise<void> {
     assertCondition('Generic UNKNOWN ticket is not redispatched', walletMcp.calls.length === 1);
   });
 
-  console.log('\n====================================================');
-  console.log(`[SUCCESS] ${passedCaseCount} test cases passed with ${assertionCount} assertions.`);
-  console.log('====================================================');
-}
-
-main().catch((error: unknown) => {
-  console.error('[FATAL] pendingActionHandler.test.ts failed:', error);
-  process.exitCode = 1;
 });

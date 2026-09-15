@@ -5,19 +5,10 @@ import { WalletMcpRequestError } from '../src/services/walletMcpService.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
 import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
-
-console.log('====================================================');
-console.log('[test] Account Clarification Safety Regressions');
-console.log('====================================================\n');
-
-let assertionCount = 0;
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 function assertCondition(testName: string, condition: boolean): void {
-  assertionCount++;
-  if (!condition) {
-    throw new Error(`[FAIL] ${testName}`);
-  }
-  console.log(`[PASS] ${testName}`);
+  expect(condition, testName).toBe(true);
 }
 
 class MockMessagingGateway {
@@ -445,16 +436,12 @@ async function testFollowUpPromptDeliveryFailure(): Promise<void> {
   assertCondition('Completed draft is removed after resolution', successPendingService.getAllPendingAccountSelectionDrafts().length === 0);
 }
 
-async function main(): Promise<void> {
-  setActiveLanguage('id');
-  await testAmbiguousBareCancellation();
-  await testUnknownWarningDeliveryFailure();
-  await testInitialPromptFailureRollback();
-  await testFollowUpPromptDeliveryFailure();
-  console.log(`\n[SUCCESS] ${assertionCount} assertions passed.`);
-}
+describe('Account Clarification Safety Regressions', () => {
+  beforeEach(() => setActiveLanguage('id'));
+  afterEach(() => setActiveLanguage('id'));
 
-main().catch(error => {
-  console.error(error);
-  process.exit(1);
+  it('handles ambiguous bare cancellation safely', testAmbiguousBareCancellation);
+  it('retains UNKNOWN state when warning delivery fails', testUnknownWarningDeliveryFailure);
+  it('rolls back when the initial clarification prompt fails', testInitialPromptFailureRollback);
+  it('recovers safely when a follow-up prompt cannot be delivered', testFollowUpPromptDeliveryFailure);
 });

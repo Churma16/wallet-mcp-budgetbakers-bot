@@ -4,26 +4,14 @@ import { WalletMcpRequestError } from '../src/services/walletMcpService.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
 import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
-
-console.log('====================================================');
-console.log('[test] Pending Account Clarification Drafts (Issue #81)');
-console.log('====================================================\n');
-
-let passedCaseCount = 0;
-let assertionCount = 0;
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 function assertCondition(testName: string, condition: boolean, extraDetail?: string): void {
-  assertionCount++;
-  if (!condition) {
-    throw new Error(`[FAIL] ${testName}${extraDetail ? ` -> ${extraDetail}` : ''}`);
-  }
-  console.log(`[PASS] ${testName}`);
+  expect(condition, `${testName}${extraDetail ? ` -> ${extraDetail}` : ''}`).toBe(true);
 }
 
-async function runCase(testName: string, testFunction: () => Promise<void> | void): Promise<void> {
-  console.log(`\n--- ${testName} ---`);
-  await testFunction();
-  passedCaseCount++;
+function runCase(testName: string, testFunction: () => Promise<void> | void): void {
+  it(testName, testFunction);
 }
 
 class MockMessagingGateway {
@@ -179,10 +167,11 @@ function createHarness(
   return { pendingService, messaging, walletMcp, ai, fastPath, handler };
 }
 
-async function main(): Promise<void> {
-  setActiveLanguage('id');
+describe('Pending Account Clarification Drafts (Issue #81)', () => {
+  beforeEach(() => setActiveLanguage('id'));
+  afterEach(() => setActiveLanguage('id'));
 
-  await runCase('Suite 1: missing account becomes a draft and numeric selection finalizes it', async () => {
+  runCase('Suite 1: missing account becomes a draft and numeric selection finalizes it', async () => {
     const harness = createHarness([createRecord('')]);
 
     await harness.handler.handleIncomingUserMessage(createEvent('Makan siang 45rb'));
@@ -199,7 +188,7 @@ async function main(): Promise<void> {
     assertCondition('Clarification reply bypasses AI', harness.ai.textCalls === 1);
   });
 
-  await runCase('Suite 2: ambiguous account limits the prompt to matching candidates and accepts a name', async () => {
+  runCase('Suite 2: ambiguous account limits the prompt to matching candidates and accepts a name', async () => {
     const harness = createHarness([createRecord('BCA')]);
 
     await harness.handler.handleIncomingUserMessage(createEvent('Makan pakai BCA'));
@@ -215,7 +204,7 @@ async function main(): Promise<void> {
     assertCondition('Name selection resolves correct account', harness.walletMcp.calls[0][0].accountId === 'acc-bca-business');
   });
 
-  await runCase('Suite 3: invalid or still-ambiguous selection keeps the draft pending', async () => {
+  runCase('Suite 3: invalid or still-ambiguous selection keeps the draft pending', async () => {
     const harness = createHarness([createRecord('BCA')]);
 
     await harness.handler.handleIncomingUserMessage(createEvent('Makan pakai BCA'));
@@ -227,7 +216,7 @@ async function main(): Promise<void> {
     assertCondition('Invalid clarification reply bypasses AI', harness.ai.textCalls === 1);
   });
 
-  await runCase('Suite 4: cancellation discards the draft without writing to Wallet', async () => {
+  runCase('Suite 4: cancellation discards the draft without writing to Wallet', async () => {
     const harness = createHarness([createRecord('')]);
 
     await harness.handler.handleIncomingUserMessage(createEvent('Makan siang 45rb'));
@@ -238,7 +227,7 @@ async function main(): Promise<void> {
     assertCondition('Cancellation message is returned', harness.messaging.messages.at(-1)?.content.includes('dibatalkan') === true);
   });
 
-  await runCase('Suite 5: expired account-selection drafts are purged', () => {
+  runCase('Suite 5: expired account-selection drafts are purged', () => {
     const pendingService = new PendingTransactionService();
     const draft = pendingService.addPendingAccountSelectionDraft({
       sourceType: 'USER',
@@ -257,7 +246,7 @@ async function main(): Promise<void> {
     assertCondition('Expired draft state metadata is removed', pendingService.getPendingAccountSelectionDraftState(draft.ticketId) === undefined);
   });
 
-  await runCase('Suite 6: unambiguous account still follows the immediate create flow', async () => {
+  runCase('Suite 6: unambiguous account still follows the immediate create flow', async () => {
     const harness = createHarness([createRecord('Cash')]);
 
     await harness.handler.handleIncomingUserMessage(createEvent('Makan 45rb pakai Cash'));
@@ -267,7 +256,7 @@ async function main(): Promise<void> {
     assertCondition('Immediate flow resolves Cash correctly', harness.walletMcp.calls[0][0].accountId === 'acc-cash');
   });
 
-  await runCase('Suite 7: multi-record batch never partially writes before every account is resolved', async () => {
+  runCase('Suite 7: multi-record batch never partially writes before every account is resolved', async () => {
     const harness = createHarness([
       createRecord('', { note: 'Lunch' }),
       createRecord('Cash', { amount: -15000, note: 'Coffee' }),
@@ -285,7 +274,7 @@ async function main(): Promise<void> {
     assertCondition('Second record remains on its original resolved account', harness.walletMcp.calls[0][1].accountId === 'acc-cash');
   });
 
-  await runCase('Suite 8: UNKNOWN draft does not lock normal commands and cannot be cancelled before reconciliation', async () => {
+  runCase('Suite 8: UNKNOWN draft does not lock normal commands and cannot be cancelled before reconciliation', async () => {
     const harness = createHarness([createRecord('')]);
 
     await harness.handler.handleIncomingUserMessage(createEvent('Makan siang 45rb'));
@@ -324,7 +313,7 @@ async function main(): Promise<void> {
     assertCondition('Cancellation still does not retry Wallet', harness.walletMcp.calls.length === 1);
   });
 
-  await runCase('Suite 9: success acknowledgement failure cannot turn a committed write into UNKNOWN', async () => {
+  runCase('Suite 9: success acknowledgement failure cannot turn a committed write into UNKNOWN', async () => {
     const harness = createHarness([createRecord('')]);
 
     await harness.handler.handleIncomingUserMessage(createEvent('Makan siang 45rb'));
@@ -336,7 +325,7 @@ async function main(): Promise<void> {
     assertCondition('Resolved draft has no remaining dispatch state', harness.pendingService.getPendingAccountSelectionDraftState(1) === undefined);
   });
 
-  await runCase('Suite 10: numeric account choice remains stable across definitive MCP retry', async () => {
+  runCase('Suite 10: numeric account choice remains stable across definitive MCP retry', async () => {
     const harness = createHarness([createRecord('')]);
 
     await harness.handler.handleIncomingUserMessage(createEvent('Makan siang 45rb'));
@@ -354,7 +343,7 @@ async function main(): Promise<void> {
     assertCondition('Successful retry resolves the draft', harness.pendingService.getAllPendingAccountSelectionDrafts().length === 0);
   });
 
-  await runCase('Suite 11: mixed-currency candidates never invent a currency before selection', async () => {
+  runCase('Suite 11: mixed-currency candidates never invent a currency before selection', async () => {
     const mixedCurrencyAccounts: WalletAccountItem[] = [
       { id: 'acc-idr', name: 'Rupiah Wallet', currency: 'IDR' },
       { id: 'acc-usd', name: 'Dollar Wallet', currency: 'USD' },
@@ -370,7 +359,7 @@ async function main(): Promise<void> {
     assertCondition('Prompt does not falsely format the amount as IDR', !prompt.includes('*Nominal:* Rp'));
   });
 
-  await runCase('Suite 12: multi-step clarification advances to the next unresolved record before dispatch', async () => {
+  runCase('Suite 12: multi-step clarification advances to the next unresolved record before dispatch', async () => {
     const harness = createHarness([
       createRecord('', { note: 'Lunch' }),
       createRecord('BCA', { amount: -15000, note: 'Coffee' }),
@@ -391,7 +380,7 @@ async function main(): Promise<void> {
     assertCondition('Second record uses BCA Business selection', harness.walletMcp.calls[0][1].accountId === 'acc-bca-business');
   });
 
-  await runCase('Suite 13: PROCESSING draft reports busy state without starting another dispatch', async () => {
+  runCase('Suite 13: PROCESSING draft reports busy state without starting another dispatch', async () => {
     const harness = createHarness([createRecord('Cash')]);
     const draft = harness.pendingService.addPendingAccountSelectionDraft({
       sourceType: 'USER',
@@ -412,7 +401,7 @@ async function main(): Promise<void> {
     assertCondition('PROCESSING reply bypasses AI', harness.ai.textCalls === 0);
   });
 
-  await runCase('Suite 14: English mixed-currency prompt remains currency-neutral', async () => {
+  runCase('Suite 14: English mixed-currency prompt remains currency-neutral', async () => {
     setActiveLanguage('en');
     const mixedCurrencyAccounts: WalletAccountItem[] = [
       { id: 'acc-idr', name: 'Rupiah Wallet', currency: 'IDR' },
@@ -429,12 +418,4 @@ async function main(): Promise<void> {
     setActiveLanguage('id');
   });
 
-  console.log('\n====================================================');
-  console.log(`[SUCCESS] ${passedCaseCount} suites passed with ${assertionCount} assertions.`);
-  console.log('====================================================');
-}
-
-main().catch(error => {
-  console.error(error);
-  process.exit(1);
 });
