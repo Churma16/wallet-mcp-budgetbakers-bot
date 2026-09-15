@@ -1,4 +1,5 @@
 import fs from 'fs';
+import { describe, it } from 'vitest';
 import path from 'path';
 import { WhatsappMessagingAdapter } from '../src/services/messaging/whatsappAdapter.js';
 
@@ -315,14 +316,14 @@ async function runTestSuite(): Promise<void> {
   console.log('====================================================');
 
   if (testStatistics.failedCount > 0) {
-    process.exit(1);
+    throw new Error(`${testStatistics.failedCount} WhatsApp socket hardening assertions failed`);
   } else {
     console.log('[SUCCESS] All 11 WhatsApp socket hardening & typing presence test cases passed!\n');
-    process.exit(0);
   }
 }
 
-runTestSuite().catch(suiteError => {
-  console.error(`[ERROR] Test suite execution failed: ${suiteError}`);
-  process.exit(1);
+describe('WhatsApp socket hardening', () => {
+  it('preserves socket options and typing presence debouncing', async () => {
+    await runTestSuite();
+  });
 });

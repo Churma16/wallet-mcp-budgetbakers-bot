@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { describe, it } from 'vitest';
 import {
   FallbackAiProvider,
   isRecoverableProviderError,
@@ -272,7 +273,8 @@ async function runFallbackAiProviderTestSuite(): Promise<void> {
   console.log('\nAll FallbackAiProvider unit tests passed successfully!');
 }
 
-runFallbackAiProviderTestSuite().catch((err) => {
-  console.error('[ERROR] Unit test suite failed:', err);
-  process.exit(1);
+describe('fallback AI provider', () => {
+  it('preserves cascading failover and error classification', async () => {
+    await runFallbackAiProviderTestSuite();
+  });
 });

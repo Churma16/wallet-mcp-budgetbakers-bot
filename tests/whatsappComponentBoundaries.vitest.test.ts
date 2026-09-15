@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert';
+import { describe, it } from 'vitest';
 import { WhatsappMessagingAdapter } from '../src/services/messaging/whatsappAdapter.js';
 import { MessageIdTracker } from '../src/services/messaging/whatsapp/messageIdTracker.js';
 import { WhatsappOutboundMessageQueue } from '../src/services/messaging/whatsapp/outboundMessageQueue.js';
@@ -55,7 +56,8 @@ async function run(): Promise<void> {
   console.log('[SUCCESS] WhatsApp component boundaries and identifier-based loop prevention passed.');
 }
 
-run().catch(error => {
-  console.error(`[ERROR] WhatsApp component boundary test failed: ${error}`);
-  process.exit(1);
+describe('WhatsApp component boundaries', () => {
+  it('prevents identifier-based loops while preserving human messages', async () => {
+    await run();
+  });
 });

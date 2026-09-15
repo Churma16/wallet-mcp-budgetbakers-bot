@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { PassThrough } from 'node:stream';
-import test from 'node:test';
+import { it as test } from 'vitest';
 import { ConsoleMessagingAdapter } from '../src/services/messaging/consoleAdapter.js';
 import { MessagingGatewayService } from '../src/services/messaging/messagingGatewayService.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/types.js';

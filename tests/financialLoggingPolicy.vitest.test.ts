@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { describe, it } from 'vitest';
 import { applicationLogger } from '../src/utils/logger.js';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
 import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
@@ -276,7 +277,8 @@ async function runFinancialLoggingPolicyTests(): Promise<void> {
   console.log('[SUCCESS] Financial logging policy tests passed.');
 }
 
-runFinancialLoggingPolicyTests().catch(error => {
-  console.error(`[FAIL] ${error instanceof Error ? error.message : String(error)}`);
-  process.exit(1);
+describe('financial logging policy', () => {
+  it('minimizes payloads by default and honors debug opt-in', async () => {
+    await runFinancialLoggingPolicyTests();
+  });
 });

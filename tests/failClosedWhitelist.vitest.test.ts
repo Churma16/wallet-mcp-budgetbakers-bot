@@ -1,4 +1,5 @@
 import { TelegramMessagingAdapter } from '../src/services/messaging/telegramAdapter.js';
+import { describe, it } from 'vitest';
 import { WhatsappMessagingAdapter } from '../src/services/messaging/whatsappAdapter.js';
 import {
   validateApplicationConfiguration,
@@ -732,14 +733,14 @@ async function runTestSuite(): Promise<void> {
   console.log('====================================================');
 
   if (testStatistics.failedCount > 0) {
-    process.exit(1);
+    throw new Error(`${testStatistics.failedCount} fail-closed whitelist assertions failed`);
   } else {
     console.log('[SUCCESS] All fail-closed whitelist authorization test cases passed!\n');
-    process.exit(0);
   }
 }
 
-runTestSuite().catch(() => {
-  console.error('[ERROR] Test suite execution failed unexpectedly.');
-  process.exit(1);
+describe('fail-closed whitelist authorization', () => {
+  it('preserves Telegram and WhatsApp authorization boundaries', async () => {
+    await runTestSuite();
+  });
 });

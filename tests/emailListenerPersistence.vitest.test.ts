@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { describe, it } from 'vitest';
 import { EmailListenerService } from '../src/services/emailListenerService.js';
 
 interface FakeImapClient {
@@ -301,7 +302,8 @@ async function runEmailListenerPersistenceTests(): Promise<void> {
   console.log('  [PASS] Gate 1 rejection is cached immediately');
 }
 
-runEmailListenerPersistenceTests().catch((error: unknown) => {
-  console.error('[FAIL] Email listener persistence regression suite failed:', error);
-  process.exit(1);
+describe('email listener transactional persistence', () => {
+  it('preserves deduplication and downstream failure recovery', async () => {
+    await runEmailListenerPersistenceTests();
+  });
 });

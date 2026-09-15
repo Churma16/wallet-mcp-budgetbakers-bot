@@ -1,4 +1,5 @@
 import { MessagingGatewayService } from '../src/services/messaging/messagingGatewayService.js';
+import { describe, it } from 'vitest';
 import {
   MessagingAdapter,
   SupportedMessengerChannel,
@@ -262,14 +263,14 @@ async function runTestSuite(): Promise<void> {
   console.log('====================================================');
 
   if (testStatistics.failedCount > 0) {
-    process.exit(1);
+    throw new Error(`${testStatistics.failedCount} messaging gateway assertions failed`);
   } else {
     console.log('[SUCCESS] All Messaging Gateway resilience test cases passed!\n');
-    process.exit(0);
   }
 }
 
-runTestSuite().catch(suiteError => {
-  console.error(`[ERROR] Test suite execution failed: ${suiteError}`);
-  process.exit(1);
+describe('messaging gateway lifecycle resilience', () => {
+  it('preserves degraded mode, reconnection, broadcast, and shutdown behavior', async () => {
+    await runTestSuite();
+  });
 });

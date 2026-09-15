@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { describe, it } from 'vitest';
 import { Bot } from 'grammy';
 import { TelegramMessagingAdapter } from '../src/services/messaging/telegramAdapter.js';
 import { WhatsappMessagingAdapter } from '../src/services/messaging/whatsappAdapter.js';
@@ -917,13 +918,14 @@ async function runTestSuite(): Promise<void> {
   console.log('====================================================');
 
   if (testStatistics.failedCount > 0) {
-    process.exit(1);
+    throw new Error(`${testStatistics.failedCount} media download limit assertions failed`);
   } else {
     console.log('[SUCCESS] All incoming media download limit tests passed!\n');
   }
 }
 
-runTestSuite().catch(() => {
-  console.error('[ERROR] Unexpected test suite failure. Rerun with the --verbose offline runner to inspect the failing output.');
-  process.exit(1);
+describe('incoming media download limits', () => {
+  it('enforces cross-channel buffer and stream safeguards', async () => {
+    await runTestSuite();
+  });
 });

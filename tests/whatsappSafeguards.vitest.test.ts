@@ -1,4 +1,5 @@
 import { WhatsappMessagingAdapter } from '../src/services/messaging/whatsappAdapter.js';
+import { describe, it } from 'vitest';
 import { DisconnectReason, type proto } from '@whiskeysockets/baileys';
 
 interface AssertionStatistics {
@@ -444,14 +445,14 @@ async function runTestSuite(): Promise<void> {
   console.log('====================================================');
 
   if (testStatistics.failedCount > 0) {
-    process.exit(1);
+    throw new Error(`${testStatistics.failedCount} WhatsApp safeguard assertions failed`);
   } else {
     console.log('[SUCCESS] All 14 WhatsApp resilience & safeguard test cases passed!\n');
-    process.exit(0);
   }
 }
 
-runTestSuite().catch(suiteError => {
-  console.error(`[ERROR] Test suite execution failed: ${suiteError}`);
-  process.exit(1);
+describe('WhatsApp resilience and safeguards', () => {
+  it('preserves backoff, circuit breaker, and fail-closed authorization', async () => {
+    await runTestSuite();
+  });
 });

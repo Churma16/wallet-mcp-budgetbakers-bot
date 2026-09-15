@@ -1,4 +1,5 @@
 import { Context, GrammyError, HttpError } from 'grammy';
+import { describe, it } from 'vitest';
 import { TelegramMessagingAdapter } from '../src/services/messaging/telegramAdapter.js';
 
 interface AssertionStatistics {
@@ -308,14 +309,14 @@ async function runTestSuite(): Promise<void> {
   console.log('====================================================');
 
   if (testStatistics.failedCount > 0) {
-    process.exit(1);
+    throw new Error(`${testStatistics.failedCount} Telegram safeguard assertions failed`);
   } else {
     console.log('[SUCCESS] All Telegram resilience & safeguard test cases passed!\n');
-    process.exit(0);
   }
 }
 
-runTestSuite().catch(suiteError => {
-  console.error(`[ERROR] Test suite execution failed: ${suiteError}`);
-  process.exit(1);
+describe('Telegram resilience and safeguards', () => {
+  it('preserves rate limiting, retries, and fail-closed authorization', async () => {
+    await runTestSuite();
+  });
 });

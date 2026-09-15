@@ -202,14 +202,14 @@ These test suites run automatically as part of `npm test` and require no `.env` 
 | `npm run test:i18n` | `tests/responseDictionary.test.ts` | Multi-language dictionary key parity (Indonesian/English) |
 | `npm run test:budget` | `tests/budgetParsing.test.ts` | Budget metric parsing from spending.current & closed filter |
 | `npm run test:email-rules` | `tests/bankEmailRules.test.ts` | Bank email Gate 1 parsing rules & confirmation intent detector |
-| `npm run test:ai-fallback` | `tests/fallbackAiProvider.test.ts` | Cascading multi-provider failover (429/503) & error classification |
-| `npm run test:whatsapp-safeguards` | `tests/whatsappSafeguards.test.ts` | WhatsApp exponential backoff, circuit breaker & ban protections |
-| `npm run test:whatsapp-hardening` | `tests/whatsappSocketHardening.test.ts` | Baileys socket options & typing presence debouncing |
-| `npm run test:telegram-safeguards` | `tests/telegramSafeguards.test.ts` | Telegram rate limiting & unauthorized user whitelist gates |
-| `npm run test:media-limits` | `tests/mediaDownloadLimits.test.ts` | Inbound media download size limits & buffer exhaustion defense |
-| `npm run test:gateway-resilience` | `tests/messagingGatewayResilience.test.ts` | Multi-adapter gateway lifecycle, degraded mode & background reconnection |
+| `npm run test:ai-fallback` | `tests/fallbackAiProvider.vitest.test.ts` | Cascading multi-provider failover (429/503) & error classification |
+| `npm run test:whatsapp-safeguards` | `tests/whatsappSafeguards.vitest.test.ts` | WhatsApp exponential backoff, circuit breaker & ban protections |
+| `npm run test:whatsapp-hardening` | `tests/whatsappSocketHardening.vitest.test.ts` | Baileys socket options & typing presence debouncing |
+| `npm run test:telegram-safeguards` | `tests/telegramSafeguards.vitest.test.ts` | Telegram rate limiting & unauthorized user whitelist gates |
+| `npm run test:media-limits` | `tests/mediaDownloadLimits.vitest.test.ts` | Inbound media download size limits & buffer exhaustion defense |
+| `npm run test:gateway-resilience` | `tests/messagingGatewayResilience.vitest.test.ts`, `tests/messagingGatewayLifecycle.vitest.test.ts` | Multi-adapter gateway lifecycle, degraded mode & background reconnection |
 | `npm run test:redaction` | `tests/loggerRedaction.test.ts` | Credential redaction for tokens, passwords, and secrets |
-| `npm run test:sanitizer` | `tests/loggerSanitizer.test.ts` | Bank account number and PAN masking & circular reference safety |
+| `npm run test:sanitizer` | `tests/loggerSanitizer.vitest.test.ts` | Bank account number and PAN masking & circular reference safety |
 | `npm run test:receipt-ocr` | `tests/receiptOcrPrompt.test.ts` | Receipt vision OCR system instructions, timezone offset & QRIS rules |
 
 #### 2. Live Diagnostic Scripts (Require Active `.env` Credentials)

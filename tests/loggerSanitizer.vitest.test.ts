@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { describe, it } from 'vitest';
 import {
   maskSensitiveValue,
   maskAccountNumbersAndPansInString,
@@ -425,10 +426,14 @@ function runLoggerSanitizerTests(): void {
   // =========================================================================
   if (!allTestsPassed) {
     console.error('\n[FAIL] Some logger sanitizer unit tests failed.');
-    process.exit(1);
+    throw new Error('Logger sanitizer assertions failed');
   }
 
   console.log('\n[PASS] All logger sanitizer unit tests passed successfully.');
 }
 
-runLoggerSanitizerTests();
+describe('logger sanitizer', () => {
+  it('masks sensitive values and safely traverses payloads', () => {
+    runLoggerSanitizerTests();
+  });
+});
