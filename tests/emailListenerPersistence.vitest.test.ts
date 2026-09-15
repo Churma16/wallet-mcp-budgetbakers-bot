@@ -286,24 +286,20 @@ async function testGateOneRejectionCachesImmediately(): Promise<void> {
   }
 }
 
-async function runEmailListenerPersistenceTests(): Promise<void> {
-  console.log('[test] Email listener transactional persistence (Issue #75)');
-
-  await testSuccessfulCandidateCommitsAfterCallback();
-  console.log('  [PASS] successful candidate commits after downstream callback');
-
-  await testFailedCandidateRemainsRetryable();
-  console.log('  [PASS] downstream failure remains retryable and commits on retry');
-
-  await testProductionInFlightClaimPreventsDuplicateDispatch();
-  console.log('  [PASS] production in-flight claim prevents duplicate dispatch and cleans up');
-
-  await testGateOneRejectionCachesImmediately();
-  console.log('  [PASS] Gate 1 rejection is cached immediately');
-}
-
 describe('email listener transactional persistence', () => {
-  it('preserves deduplication and downstream failure recovery', async () => {
-    await runEmailListenerPersistenceTests();
+  it('commits a successful candidate after the downstream callback', async () => {
+    await testSuccessfulCandidateCommitsAfterCallback();
+  });
+
+  it('keeps a downstream failure retryable and commits it on retry', async () => {
+    await testFailedCandidateRemainsRetryable();
+  });
+
+  it('prevents duplicate in-flight dispatch and cleans up the claim', async () => {
+    await testProductionInFlightClaimPreventsDuplicateDispatch();
+  });
+
+  it('caches a Gate 1 rejection immediately', async () => {
+    await testGateOneRejectionCachesImmediately();
   });
 });

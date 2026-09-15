@@ -110,12 +110,13 @@ class MockFinancialAiProvider implements FinancialAiProvider {
   }
 }
 
-async function runFallbackAiProviderTestSuite(): Promise<void> {
+async function runFallbackAiProviderTest(testCase: number): Promise<void> {
   console.log('Running FallbackAiProvider Unit Tests...');
 
   const mockAccounts: WalletAccountItem[] = [{ id: 'acc-1', name: 'Cash', currency: 'IDR' }];
   const mockCategories: WalletCategoryItem[] = [{ id: 'cat-1', name: 'Food' }];
 
+  if (testCase === 1) {
   // Test 1: Recoverable Error Detection
   console.log('Test 1: isRecoverableProviderError detection');
   assert.equal(isRecoverableProviderError(null), false);
@@ -127,6 +128,9 @@ async function runFallbackAiProviderTestSuite(): Promise<void> {
   assert.equal(isRecoverableProviderError(new Error('Request timed out')), true);
   console.log('[SUCCESS] Test 1 Passed: Error recovery classifications verified.');
 
+  }
+
+  if (testCase === 2) {
   // Test 2: Primary succeeds, secondary is never invoked
   console.log('Test 2: Primary provider success');
   const primaryProvider = new MockFinancialAiProvider('gemini');
@@ -139,6 +143,9 @@ async function runFallbackAiProviderTestSuite(): Promise<void> {
   assert.ok(result1.records?.[0].note.includes('Processed by gemini'));
   console.log('[SUCCESS] Test 2 Passed: Primary executed exclusively on healthy state.');
 
+  }
+
+  if (testCase === 3) {
   // Test 3: Primary fails with 429, falls back to secondary
   console.log('Test 3: Primary 429 failover to secondary');
   const rateLimitedPrimary = new MockFinancialAiProvider('gemini', 429, 'Too Many Requests');
@@ -151,6 +158,9 @@ async function runFallbackAiProviderTestSuite(): Promise<void> {
   assert.ok(result2.records?.[0].note.includes('Processed by openrouter'));
   console.log('[SUCCESS] Test 3 Passed: 429 failover to secondary completed seamlessly.');
 
+  }
+
+  if (testCase === 4) {
   // Test 4: Cascade across 3 providers (1st fails -> 2nd fails -> 3rd succeeds)
   console.log('Test 4: 3-tier cascade fallback');
   const tier1 = new MockFinancialAiProvider('gemini', 503, 'Overloaded');
@@ -165,6 +175,9 @@ async function runFallbackAiProviderTestSuite(): Promise<void> {
   assert.ok(result3.records?.[0].note.includes('Processed by groq'));
   console.log('[SUCCESS] Test 4 Passed: 3-tier cascade executed in strict priority order.');
 
+  }
+
+  if (testCase === 5) {
   // Test 5: Image message fallback
   console.log('Test 5: Image message failover');
   const imageTier1 = new MockFinancialAiProvider('gemini', 429, 'Rate limit');
@@ -183,6 +196,9 @@ async function runFallbackAiProviderTestSuite(): Promise<void> {
   assert.ok(imageResult.records?.[0].note.includes('Image processed by openrouter'));
   console.log('[SUCCESS] Test 5 Passed: Image message failover verified.');
 
+  }
+
+  if (testCase === 6) {
   // Test 6: All providers fail throws last error
   console.log('Test 6: All providers fail');
   const failed1 = new MockFinancialAiProvider('gemini', 429, 'Rate limit 1');
@@ -200,6 +216,9 @@ async function runFallbackAiProviderTestSuite(): Promise<void> {
   );
   console.log('[SUCCESS] Test 6 Passed: Exhaustion error propagated cleanly.');
 
+  }
+
+  if (testCase === 7) {
   // Test 7: Factory multi-provider resolution
   console.log('Test 7: Factory creation with multiple providers');
   const mockConfig = {
@@ -221,6 +240,9 @@ async function runFallbackAiProviderTestSuite(): Promise<void> {
   assert.equal((createdProvider as FallbackAiProvider).getProviders().length, 2);
   console.log('[SUCCESS] Test 7 Passed: Factory instantiated FallbackAiProvider correctly.');
 
+  }
+
+  if (testCase === 8) {
   // Test 8: Factory single provider backward compatibility
   console.log('Test 8: Factory single provider backward compatibility');
   const singleConfig = {
@@ -237,6 +259,9 @@ async function runFallbackAiProviderTestSuite(): Promise<void> {
   assert.equal(singleProvider.providerName, 'gemini');
   console.log('[SUCCESS] Test 8 Passed: Single provider maintains 100% backward compatibility.');
 
+  }
+
+  if (testCase === 9) {
   // Test 9: JSON response extraction from markdown code fences
   console.log('Test 9: extractAndParseJsonObject markdown code fence handling');
   const fencedJsonWithLabel = '```json\n{"nominal": 50000, "merchant": "Kopi"}\n```';
@@ -257,6 +282,9 @@ async function runFallbackAiProviderTestSuite(): Promise<void> {
   assert.equal(parsedUnclosedFenceJson.nominal, 75000);
   console.log('[SUCCESS] Test 9 Passed: Markdown fenced and raw JSON responses parsed deterministically.');
 
+  }
+
+  if (testCase === 10) {
   // Test 10: OpenAI-compatible provider base URL trailing slash normalization
   console.log('Test 10: OpenAiCompatibleAiProvider base URL trailing slash trimming');
   const openAiCompatibleProvider = new OpenAiCompatibleAiProvider({
@@ -270,11 +298,16 @@ async function runFallbackAiProviderTestSuite(): Promise<void> {
   assert.equal(normalizedBaseUrl, 'http://localhost:11434/v1');
   console.log('[SUCCESS] Test 10 Passed: Trailing slashes normalized without regex backtracking.');
 
+  }
+
   console.log('\nAll FallbackAiProvider unit tests passed successfully!');
 }
 
 describe('fallback AI provider', () => {
-  it('preserves cascading failover and error classification', async () => {
-    await runFallbackAiProviderTestSuite();
-  });
+  it.each(Array.from({ length: 10 }, (_, index) => index + 1))(
+    'runs fallback scenario %s in isolation',
+    async testCase => {
+      await runFallbackAiProviderTest(testCase);
+    }
+  );
 });

@@ -1,5 +1,5 @@
 import { Context, GrammyError, HttpError } from 'grammy';
-import { describe, it } from 'vitest';
+import { beforeEach, describe, it } from 'vitest';
 import { TelegramMessagingAdapter } from '../src/services/messaging/telegramAdapter.js';
 
 interface AssertionStatistics {
@@ -25,7 +25,7 @@ function assertCondition(testCaseIdentifier: string, conditionMet: boolean, fail
   }
 }
 
-async function runTestSuite(): Promise<void> {
+async function runTestGroup(testGroup: number): Promise<void> {
   console.log('====================================================');
   console.log('[INFO] Running Telegram Connection Resilience & Safeguards Test Suite');
   console.log('====================================================\n');
@@ -38,7 +38,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 1: Configuration & Default Values
   // ----------------------------------------------------
   console.log('[TEST GROUP 1] Configuration & Default Values');
-  {
+  if (testGroup === 1) {
     const defaultAdapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback);
     assertCondition('TG-1.1: Default maxStartupAttempts is 5', defaultAdapter.getMaxStartupAttempts() === 5);
     assertCondition('TG-1.2: Default startupRetryBaseDelayMs is 2000', defaultAdapter.getStartupRetryBaseDelayMs() === 2000);
@@ -62,7 +62,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 2: Backoff Delay Math & Jitter Bounds
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 2] Backoff Delay Math & Jitter Bounds');
-  {
+  if (testGroup === 2) {
     const adapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback, {
       maxStartupAttempts: 5,
       startupRetryBaseDelayMs: 2000,
@@ -107,7 +107,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 3: Error Classification (Transient vs Permanent)
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 3] Transient vs Permanent Error Classification');
-  {
+  if (testGroup === 3) {
     const adapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback);
 
     // Grammy HttpError (network level failure)
@@ -178,7 +178,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 4: Retry Execution Loop
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 4] Retry Execution Loop (executeWithStartupRetry)');
-  {
+  if (testGroup === 4) {
     // Fast adapter with 10ms base delay for instant test execution
     const fastAdapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback, {
       maxStartupAttempts: 3,
@@ -247,7 +247,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 5: Whitelist Authorization Gates (Fail-Closed)
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 5] Whitelist Authorization Gates (Fail-Closed)');
-  {
+  if (testGroup === 5) {
     const emptyAllowlistAdapter = new TelegramMessagingAdapter(dummyToken, '', dummyCallback);
     assertCondition(
       'TG-5.1: Missing allowlist rejects arbitrary sender in isAuthorizedSender',
@@ -315,8 +315,17 @@ async function runTestSuite(): Promise<void> {
   }
 }
 
+beforeEach(() => {
+  testStatistics.totalCount = 0;
+  testStatistics.passedCount = 0;
+  testStatistics.failedCount = 0;
+});
+
 describe('Telegram resilience and safeguards', () => {
-  it('preserves rate limiting, retries, and fail-closed authorization', async () => {
-    await runTestSuite();
-  });
+  it.each(Array.from({ length: 5 }, (_, index) => index + 1))(
+    'runs logical group %s in isolation',
+    async testGroup => {
+      await runTestGroup(testGroup);
+    }
+  );
 });

@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { describe, it } from 'vitest';
+import { beforeEach, describe, it } from 'vitest';
 import path from 'path';
 import { WhatsappMessagingAdapter } from '../src/services/messaging/whatsappAdapter.js';
 
@@ -26,7 +26,7 @@ function assertCondition(testCaseIdentifier: string, conditionMet: boolean, fail
   }
 }
 
-async function runTestSuite(): Promise<void> {
+async function runTestGroup(testGroup: number): Promise<void> {
   console.log('====================================================');
   console.log('[INFO] Running WhatsApp Socket Hardening & Typing Presence Test Suite (11 Test Cases)');
   console.log('====================================================\n');
@@ -39,7 +39,7 @@ async function runTestSuite(): Promise<void> {
   // TH-6: Static Verification of makeWASocket Hardened Options
   // ----------------------------------------------------
   console.log('[TEST GROUP 1] Baileys makeWASocket Hardened Configuration');
-  {
+  if (testGroup === 1) {
     const adapterSourceFilePath = path.resolve('src/services/messaging/whatsappAdapter.ts');
     const adapterFileContent = fs.readFileSync(adapterSourceFilePath, 'utf-8');
 
@@ -69,7 +69,7 @@ async function runTestSuite(): Promise<void> {
   // TH-1, TH-2, TH-3, TH-4, TH-5: Core Typing Presence Lifecycle
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 2] Typing Presence Debouncing Lifecycle');
-  {
+  if (testGroup === 2) {
     const dispatchedPresenceEvents: Array<{ action: string; jid: string; timestamp: number }> = [];
 
     const mockSocket = {
@@ -144,7 +144,7 @@ async function runTestSuite(): Promise<void> {
   console.log('\n[TEST GROUP 3] Edge Cases (EC-1 through EC-5)');
 
   // EC-1: Per-JID Cooldown Isolation
-  {
+  if (testGroup === 3) {
     const presenceEvents: Array<{ action: string; jid: string }> = [];
     const mockSocket = {
       sendPresenceUpdate: async (action: string, jid: string) => {
@@ -322,8 +322,14 @@ async function runTestSuite(): Promise<void> {
   }
 }
 
+beforeEach(() => {
+  testStatistics.totalCount = 0;
+  testStatistics.passedCount = 0;
+  testStatistics.failedCount = 0;
+});
+
 describe('WhatsApp socket hardening', () => {
-  it('preserves socket options and typing presence debouncing', async () => {
-    await runTestSuite();
+  it.each([1, 2, 3])('runs logical group %s in isolation', async testGroup => {
+    await runTestGroup(testGroup);
   });
 });

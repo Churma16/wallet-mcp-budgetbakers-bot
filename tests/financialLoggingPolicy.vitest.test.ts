@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { describe, it } from 'vitest';
+import { afterEach, beforeEach, describe, it } from 'vitest';
 import { applicationLogger } from '../src/utils/logger.js';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
 import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
@@ -15,6 +15,20 @@ import {
 } from '../src/utils/financialLoggingPolicy.js';
 
 let allTestsPassed = true;
+let originalDebugFlag: string | undefined;
+
+beforeEach(() => {
+  originalDebugFlag = process.env.DEBUG_FINANCIAL_PAYLOADS;
+  allTestsPassed = true;
+});
+
+afterEach(() => {
+  if (originalDebugFlag === undefined) {
+    delete process.env.DEBUG_FINANCIAL_PAYLOADS;
+  } else {
+    process.env.DEBUG_FINANCIAL_PAYLOADS = originalDebugFlag;
+  }
+});
 
 function assertCondition(description: string, condition: boolean): void {
   if (!condition) {
@@ -43,8 +57,6 @@ function readLogBlock(startMarker: string, endMarker: string): string {
 }
 
 async function runFinancialLoggingPolicyTests(): Promise<void> {
-  const originalDebugFlag = process.env.DEBUG_FINANCIAL_PAYLOADS;
-
   try {
     process.env.DEBUG_FINANCIAL_PAYLOADS = 'false';
     assertCondition('debug flag defaults to disabled semantics', isFinancialPayloadDebugEnabled() === false);

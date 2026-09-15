@@ -187,16 +187,17 @@ npm test
 # or with verbose sub-test output:
 npm test -- --verbose
 ```
-This command executes all 14 hermetic offline test suites in sequence. It requires no live network calls, active credentials, or running MCP instances, making it completely deterministic and safe for local development and CI pipelines.
+This command executes the remaining legacy hermetic suites in sequence. Run `npm run test:vitest` for the migrated native Vitest suites. Both commands require no live network calls, active credentials, or running MCP instances; complete local and CI verification runs both suite families.
 
 ### Test Suites Overview
 
 #### 1. Automated Offline Test Suites (Hermetic & Mocked)
-These test suites run automatically as part of `npm test` and require no `.env` credentials:
+These suites require no `.env` credentials. The legacy runner and native Vitest runner are separate commands:
 
 | Script | Test Target | Description |
 | :--- | :--- | :--- |
-| `npm test` | All 14 Suites | Executes all hermetic test suites sequentially with execution summary |
+| `npm test` | Remaining legacy suites | Executes the legacy hermetic suites sequentially with an execution summary |
+| `npm run test:vitest` | `tests/**/*.vitest.test.ts` | Executes all migrated native Vitest suites |
 | `npm run test:format` | `tests/messageFormatHelper.test.ts` | WhatsApp markdown to Telegram HTML conversion & escaping |
 | `npm run test:formatter` | `tests/humanResponseFormatter.test.ts` | WhatsApp confirmation & balance response templates |
 | `npm run test:i18n` | `tests/responseDictionary.test.ts` | Multi-language dictionary key parity (Indonesian/English) |
@@ -270,11 +271,11 @@ This repository follows the [Conventional Commits](https://www.conventionalcommi
 
 ## Pull Request Process
 
-Pull requests must target `main`, keep a focused scope, and pass the mandatory CI checks (`npm run build` plus all 14 offline hermetic test suites). The repository ships an automated pull request template at `.github/pull_request_template.md` that pre-fills the required structure below whenever a new PR is opened on GitHub.
+Pull requests must target `main`, keep a focused scope, and pass the mandatory CI checks (`npm run build`, `npm test`, and `npm run test:vitest`). The repository ships an automated pull request template at `.github/pull_request_template.md` that pre-fills the required structure below whenever a new PR is opened on GitHub.
 
 1. **Keep Pull Requests Focused**: Limit a single PR to one feature, fix, or cohesive refactoring task. If an issue spans multiple distinct concerns, propose splitting it into separate, reviewable PRs.
 2. **Work on Assigned Issues Only**: Implement only issues assigned to you. See [Finding an Issue & Claiming Workflow](#finding-an-issue--claiming-workflow).
-3. **Verify Locally**: Ensure `npm run build` and `npm test` (all 14 offline hermetic suites) pass before pushing, along with any additional `npm run test:*` scripts relevant to the areas you changed.
+3. **Verify Locally**: Ensure `npm run build`, `npm test` (remaining legacy suites), and `npm run test:vitest` (native Vitest suites) pass before pushing, along with any additional `npm run test:*` scripts relevant to the areas you changed.
 4. **Use the Mandatory 5-Section PR Description**: Every PR description must contain the following sections (mirroring `.github/pull_request_template.md`):
    - **`## Summary`**: High-level overview of what the PR accomplishes and the core problem it solves.
    - **`## Motivation & Context`**: Why the change is necessary, citing previous limitations, edge cases, or the bug being addressed.

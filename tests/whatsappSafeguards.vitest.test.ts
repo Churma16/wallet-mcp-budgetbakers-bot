@@ -1,5 +1,5 @@
 import { WhatsappMessagingAdapter } from '../src/services/messaging/whatsappAdapter.js';
-import { describe, it } from 'vitest';
+import { beforeEach, describe, it } from 'vitest';
 import { DisconnectReason, type proto } from '@whiskeysockets/baileys';
 
 interface AssertionStatistics {
@@ -25,7 +25,7 @@ function assertCondition(testCaseIdentifier: string, conditionMet: boolean, fail
   }
 }
 
-async function runTestSuite(): Promise<void> {
+async function runTestGroup(testGroup: number): Promise<void> {
   console.log('====================================================');
   console.log('[INFO] Running WhatsApp Connection Resilience & Safeguards Test Suite (14 Test Cases)');
   console.log('====================================================\n');
@@ -50,7 +50,7 @@ async function runTestSuite(): Promise<void> {
   // TC-0: Configuration & Default Values
   // ----------------------------------------------------
   console.log('[TEST GROUP 0] Configuration & Default Values');
-  {
+  if (testGroup === 1) {
     const defaultAdapter = new WhatsappMessagingAdapter(dummySessionDirectory, dummyPhoneNumber, dummyCallback);
     assertCondition('TC-0.1: Default maxMediaDownloadBytes is 10 MB (10485760 bytes)', defaultAdapter.getMaxMediaDownloadBytes() === 10 * 1024 * 1024);
     assertCondition('TC-0.2: Custom maxMediaDownloadBytes is respected', adapter.getMaxMediaDownloadBytes() === 5 * 1024 * 1024);
@@ -60,7 +60,7 @@ async function runTestSuite(): Promise<void> {
   // TC-1: Exponential Backoff & Jitter Bounds
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 1] Backoff & Delay Math');
-  {
+  if (testGroup === 2) {
     const delayAttempt0 = adapter.calculateBackoffDelayMilliseconds(0);
     const delayAttempt1 = adapter.calculateBackoffDelayMilliseconds(1);
     const delayAttempt2 = adapter.calculateBackoffDelayMilliseconds(2);
@@ -83,7 +83,7 @@ async function runTestSuite(): Promise<void> {
   // TC-2 & TC-3: Circuit Breaker Tripping & Success Reset
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 2] Circuit Breaker Lifecycle');
-  {
+  if (testGroup === 3) {
     adapter.resetSafeguardsState();
 
     // Trigger 5 connection failures (threshold is 6)
@@ -109,7 +109,7 @@ async function runTestSuite(): Promise<void> {
   // TC-4, TC-5: Baileys Status Code Specific Behaviors
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 3] Granular Status Code Dispatcher');
-  {
+  if (testGroup === 4) {
     adapter.resetSafeguardsState();
 
     // TC-4: Status 440 (connectionReplaced) must abort immediately
@@ -129,7 +129,7 @@ async function runTestSuite(): Promise<void> {
   // TC-6: Reconnection Mutex Guard
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 4] Concurrency & Mutex Lock');
-  {
+  if (testGroup === 5) {
     adapter.resetSafeguardsState();
 
     // Test mutex flag behavior using internal reflection
@@ -153,7 +153,7 @@ async function runTestSuite(): Promise<void> {
   // TC-7: Outbound Message FIFO Throttling
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 5] Outbound Message Queue Throttling');
-  {
+  if (testGroup === 6) {
     adapter.resetSafeguardsState();
 
     const dispatchTimestamps: number[] = [];
@@ -190,7 +190,7 @@ async function runTestSuite(): Promise<void> {
   // TC-8: Clean Timer Cancellation on stopConnection
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 6] Lifecycle Stop Cleanup');
-  {
+  if (testGroup === 7) {
     adapter.resetSafeguardsState();
     adapter.handleConnectionClose(DisconnectReason.timedOut, new Error('Timeout'));
 
@@ -206,7 +206,7 @@ async function runTestSuite(): Promise<void> {
   // Edge Case EC-1: Undefined / Unknown Status Code Fall-Through
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 7] Edge Cases (EC-1 through EC-6)');
-  {
+  if (testGroup === 8) {
     adapter.resetSafeguardsState();
 
     // Passing undefined status code (raw network drop without Baileys status)
@@ -353,7 +353,7 @@ async function runTestSuite(): Promise<void> {
   // TEST GROUP 7: Whitelist Inbound Authorization Gates (Fail-Closed)
   // ----------------------------------------------------
   console.log('\n[TEST GROUP 7] Whitelist Inbound Authorization Gates (Fail-Closed)');
-  {
+  if (testGroup === 9) {
     let receivedCallback = false;
     const testCallback = async () => {
       receivedCallback = true;
@@ -451,8 +451,17 @@ async function runTestSuite(): Promise<void> {
   }
 }
 
+beforeEach(() => {
+  testStatistics.totalCount = 0;
+  testStatistics.passedCount = 0;
+  testStatistics.failedCount = 0;
+});
+
 describe('WhatsApp resilience and safeguards', () => {
-  it('preserves backoff, circuit breaker, and fail-closed authorization', async () => {
-    await runTestSuite();
-  });
+  it.each(Array.from({ length: 9 }, (_, index) => index + 1))(
+    'runs logical group %s in isolation',
+    async testGroup => {
+      await runTestGroup(testGroup);
+    }
+  );
 });
