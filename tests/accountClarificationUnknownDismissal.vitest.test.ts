@@ -215,10 +215,11 @@ it('preserves UNKNOWN clarification drafts until ticket-specific reconciliation'
     'Separate standard pending transaction remains available',
     pendingService.hasPendingTransactions()
   );
+});
 
-  // Regression: an active PENDING clarification must not swallow ticket-specific commands that
-  // target a standard pending transaction. Exercise the real UserMessageHandler ordering so the
-  // test proves those commands actually reach PendingActionHandler.
+it('routes ticket-specific standard pending commands around an active clarification draft', async () => {
+  setActiveLanguage('id');
+
   const routingPendingService = new PendingTransactionService();
   const routingMessaging = new MockMessagingGateway();
   const routingWalletMcp = new MockWalletMcpClient();
@@ -286,5 +287,4 @@ it('preserves UNKNOWN clarification drafts until ticket-specific reconciliation'
     'Ticket-specific standard commands do not dispatch clarification Wallet writes',
     routingWalletMcp.calls.length === 0
   );
-
 });

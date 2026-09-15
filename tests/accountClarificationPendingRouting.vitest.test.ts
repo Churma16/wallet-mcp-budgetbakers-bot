@@ -160,86 +160,63 @@ function assertClarificationUntouched(
   assertCondition(`${label} does not dispatch clarification Wallet write`, harness.walletDispatch.calls === 0);
 }
 
-it('routes ticket-specific pending commands without disturbing clarification drafts', async () => {
-  const rejectHarness = createHarness();
-  await rejectHarness.handler.handleIncomingUserMessage(
-    createEvent(`batal #${rejectHarness.standardPending.ticketId}`)
-  );
+async function assertPendingRoute(
+  textPayload: string | ((harness: ReturnType<typeof createHarness>) => string),
+  expectedActionType: 'CONFIRM' | 'REJECT',
+  expectedTargetScope: 'LATEST' | 'ALL' | ((harness: ReturnType<typeof createHarness>) => number),
+  label: string
+): Promise<void> {
+  const harness = createHarness();
+  const message = typeof textPayload === 'function' ? textPayload(harness) : textPayload;
+  const targetScope = typeof expectedTargetScope === 'function'
+    ? expectedTargetScope(harness)
+    : expectedTargetScope;
+
+  await harness.handler.handleIncomingUserMessage(createEvent(message));
 
   assertCondition(
-    'Ticket-specific rejection reaches the standard pending handler',
-    rejectHarness.pendingActionHandler.calls.length === 1 &&
-      rejectHarness.pendingActionHandler.calls[0].actionType === 'REJECT' &&
-      rejectHarness.pendingActionHandler.calls[0].targetScope === rejectHarness.standardPending.ticketId
+    `${label} reaches the standard pending handler`,
+    harness.pendingActionHandler.calls.length === 1 &&
+      harness.pendingActionHandler.calls[0].actionType === expectedActionType &&
+      harness.pendingActionHandler.calls[0].targetScope === targetScope
   );
-  assertClarificationUntouched('Ticket-specific rejection', rejectHarness);
+  assertClarificationUntouched(label, harness);
+}
 
-  const confirmHarness = createHarness();
-  await confirmHarness.handler.handleIncomingUserMessage(
-    createEvent(`ya #${confirmHarness.standardPending.ticketId}`)
+it('routes ticket-specific rejection without disturbing the clarification draft', async () => {
+  await assertPendingRoute(
+    harness => `batal #${harness.standardPending.ticketId}`,
+    'REJECT',
+    harness => harness.standardPending.ticketId,
+    'Ticket-specific rejection'
   );
+});
 
-  assertCondition(
-    'Ticket-specific confirmation reaches the standard pending handler',
-    confirmHarness.pendingActionHandler.calls.length === 1 &&
-      confirmHarness.pendingActionHandler.calls[0].actionType === 'CONFIRM' &&
-      confirmHarness.pendingActionHandler.calls[0].targetScope === confirmHarness.standardPending.ticketId
+it('routes ticket-specific confirmation without disturbing the clarification draft', async () => {
+  await assertPendingRoute(
+    harness => `ya #${harness.standardPending.ticketId}`,
+    'CONFIRM',
+    harness => harness.standardPending.ticketId,
+    'Ticket-specific confirmation'
   );
-  assertClarificationUntouched('Ticket-specific confirmation', confirmHarness);
+});
 
-  const latestConfirmHarness = createHarness();
-  await latestConfirmHarness.handler.handleIncomingUserMessage(createEvent('ya'));
+it('routes generic latest confirmation without disturbing the clarification draft', async () => {
+  await assertPendingRoute('ya', 'CONFIRM', 'LATEST', 'Generic latest confirmation');
+});
 
-  assertCondition(
-    'Generic latest confirmation reaches the standard pending handler',
-    latestConfirmHarness.pendingActionHandler.calls.length === 1 &&
-      latestConfirmHarness.pendingActionHandler.calls[0].actionType === 'CONFIRM' &&
-      latestConfirmHarness.pendingActionHandler.calls[0].targetScope === 'LATEST'
-  );
-  assertClarificationUntouched('Generic latest confirmation', latestConfirmHarness);
+it('routes English generic confirmation without disturbing the clarification draft', async () => {
+  await assertPendingRoute('confirm', 'CONFIRM', 'LATEST', 'English generic confirmation');
+});
 
-  const confirmWordHarness = createHarness();
-  await confirmWordHarness.handler.handleIncomingUserMessage(createEvent('confirm'));
+it('routes confirm-all without disturbing the clarification draft', async () => {
+  await assertPendingRoute('ya semua', 'CONFIRM', 'ALL', 'Confirm-all');
+});
 
-  assertCondition(
-    'English generic confirmation reaches the standard pending handler',
-    confirmWordHarness.pendingActionHandler.calls.length === 1 &&
-      confirmWordHarness.pendingActionHandler.calls[0].actionType === 'CONFIRM' &&
-      confirmWordHarness.pendingActionHandler.calls[0].targetScope === 'LATEST'
-  );
-  assertClarificationUntouched('English generic confirmation', confirmWordHarness);
+it('routes reject-all without disturbing the clarification draft', async () => {
+  await assertPendingRoute('batal semua', 'REJECT', 'ALL', 'Reject-all');
+});
 
-  const confirmAllHarness = createHarness();
-  await confirmAllHarness.handler.handleIncomingUserMessage(createEvent('ya semua'));
-
-  assertCondition(
-    'Confirm-all reaches the standard pending handler',
-    confirmAllHarness.pendingActionHandler.calls.length === 1 &&
-      confirmAllHarness.pendingActionHandler.calls[0].actionType === 'CONFIRM' &&
-      confirmAllHarness.pendingActionHandler.calls[0].targetScope === 'ALL'
-  );
-  assertClarificationUntouched('Confirm-all', confirmAllHarness);
-
-  const rejectAllHarness = createHarness();
-  await rejectAllHarness.handler.handleIncomingUserMessage(createEvent('batal semua'));
-
-  assertCondition(
-    'Reject-all reaches the standard pending handler',
-    rejectAllHarness.pendingActionHandler.calls.length === 1 &&
-      rejectAllHarness.pendingActionHandler.calls[0].actionType === 'REJECT' &&
-      rejectAllHarness.pendingActionHandler.calls[0].targetScope === 'ALL'
-  );
-  assertClarificationUntouched('Reject-all', rejectAllHarness);
-
-  const latestRejectHarness = createHarness();
-  await latestRejectHarness.handler.handleIncomingUserMessage(createEvent('tolak'));
-
-  assertCondition(
-    'Unambiguous generic latest rejection reaches the standard pending handler',
-    latestRejectHarness.pendingActionHandler.calls.length === 1 &&
-      latestRejectHarness.pendingActionHandler.calls[0].actionType === 'REJECT' &&
-      latestRejectHarness.pendingActionHandler.calls[0].targetScope === 'LATEST'
-  );
-  assertClarificationUntouched('Unambiguous generic latest rejection', latestRejectHarness);
-
+it('routes unambiguous latest rejection without disturbing the clarification draft', async () => {
+  await assertPendingRoute('tolak', 'REJECT', 'LATEST', 'Unambiguous generic latest rejection');
 });
