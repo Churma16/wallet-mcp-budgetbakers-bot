@@ -1,4 +1,3 @@
-import axios, { AxiosInstance } from 'axios';
 import {
   WalletAccountItem,
   WalletCategoryItem,
@@ -10,14 +9,42 @@ import {
   TransactionHistoryQueryOptions,
   WalletRecordItem,
   TransactionHistoryPage,
+  WalletAgentHint,
 } from '../types/walletTypes.js';
 import { applicationLogger } from '../utils/logger.js';
 import { matchesTransactionRecordSearch } from '../utils/transactionSearchMatcher.js';
 import { normalizeTransactionRecordDate } from '../utils/recordDateNormalizer.js';
+import {
+  OfficialWalletMcpProtocolClient,
+  classifyWalletMcpProtocolFailure,
+  formatWalletMcpProtocolError,
+  type WalletMcpProtocolClient,
+  type WalletMcpProtocolToolResult,
+} from './walletMcpProtocolClient.js';
 
 export const DEFAULT_TRANSACTION_HISTORY_LIMIT = 10;
 export const MAX_TRANSACTION_HISTORY_LIMIT = 50;
 export const MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST = 5;
+
+export interface WalletMcpToolCapability {
+  name: string;
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
+}
+
+export interface WalletMcpRateLimitMetadata {
+  limit?: number;
+  remaining?: number;
+  resetAt?: string;
+  retryAfterSeconds?: number;
+  retryAfterMilliseconds?: number;
+}
+
+export interface WalletMcpResponseMetadata {
+  rateLimit?: WalletMcpRateLimitMetadata;
+  agentHints?: Array<Pick<WalletAgentHint, 'type' | 'severity' | 'text'>>;
+}
 
 interface TransactionSearchScanCacheEntry {
   matchedRecords: WalletRecordItem[];
@@ -48,7 +75,8 @@ export function isWalletMcpDefinitiveFailure(error: unknown): boolean {
 }
 
 export class WalletMcpClientService {
-  private readonly httpClient: AxiosInstance;
+  private readonly protocolClient: WalletMcpProtocolClient;
+  private readonly responseMetadataByToolName = new Map<string, WalletMcpResponseMetadata>();
   private cachedAccountList: WalletAccountItem[] = [];
   private cachedCategoryList: WalletCategoryItem[] = [];
   private cachedLabelList: WalletLabelItem[] = [];
@@ -58,109 +86,75 @@ export class WalletMcpClientService {
   private readonly transactionSearchScanCacheTtlMilliseconds = 1000 * 60 * 2; // 2 minutes
   private readonly maxTransactionSearchScanCacheEntries = 20;
 
-  constructor(private readonly baseUrl: string, private readonly accessToken: string) {
-    this.httpClient = axios.create({
-      baseURL: this.baseUrl,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.accessToken}`,
-        'Accept': 'application/json, text/event-stream',
-      },
-      timeout: 15000,
-    });
+  constructor(
+    private readonly baseUrl: string,
+    private readonly accessToken: string = '',
+    protocolClient?: WalletMcpProtocolClient
+  ) {
+    this.protocolClient = protocolClient ?? new OfficialWalletMcpProtocolClient(
+      this.baseUrl,
+      this.accessToken
+    );
   }
 
   /**
-   * Send a generic JSON-RPC 2.0 request to the Wallet MCP Server.
-   * Transport failures where the server may already have received/committed the request
-   * are marked UNKNOWN so callers do not blindly retry writes.
+   * Close the underlying MCP session when the application shuts down.
    */
-  private async executeJsonRpcRequest<TResult>(methodName: string, requestParameters: Record<string, unknown> = {}): Promise<TResult> {
-    const jsonRpcPayload = {
-      jsonrpc: '2.0',
-      id: Date.now(),
-      method: methodName,
-      params: requestParameters,
-    };
-
-    applicationLogger.fileDetail('mcp', `Dispatched Wallet MCP Request [${methodName}]`, {
-      method: methodName,
-      params: requestParameters,
-    });
-
-    try {
-      const httpResponse = await this.httpClient.post('', jsonRpcPayload);
-      const responseBody = httpResponse.data;
-
-      if (responseBody.error) {
-        applicationLogger.fileDetail('error', `Wallet MCP Server Returned Error [${methodName}]`, {
-          error: responseBody.error,
-          payloadSent: jsonRpcPayload,
-        });
-        throw new WalletMcpRequestError(
-          `[error] MCP JSON-RPC Error: ${responseBody.error.message || JSON.stringify(responseBody.error)}`,
-          'DEFINITIVE_FAILURE'
-        );
-      }
-
-      applicationLogger.fileDetail('mcp', `Received Wallet MCP Response [${methodName}]`, {
-        method: methodName,
-        resultSummary: responseBody.result,
-      });
-
-      return responseBody.result as TResult;
-    } catch (error: unknown) {
-      applicationLogger.fileDetail('error', `Wallet MCP HTTP/Network Failure [${methodName}]`, {
-        error: error instanceof Error ? { name: error.name, message: error.message, stack: error.stack } : String(error),
-        payloadSent: jsonRpcPayload,
-      });
-
-      if (error instanceof WalletMcpRequestError) {
-        throw error;
-      }
-
-      if (axios.isAxiosError(error)) {
-        if (error.response) {
-          const errorDataString = typeof error.response.data === 'object'
-            ? JSON.stringify(error.response.data)
-            : String(error.response.data);
-          const statusCode = error.response.status;
-          const dispatchOutcome: WalletMcpDispatchOutcome =
-            statusCode === 408 || statusCode >= 500 ? 'UNKNOWN' : 'DEFINITIVE_FAILURE';
-
-          throw new WalletMcpRequestError(
-            `[error] Wallet MCP HTTP ${statusCode}: ${errorDataString}`,
-            dispatchOutcome
-          );
-        }
-
-        throw new WalletMcpRequestError(
-          `[error] Wallet MCP transport failure: ${error.message}`,
-          'UNKNOWN'
-        );
-      }
-
-      throw error;
-    }
+  public async close(): Promise<void> {
+    await this.protocolClient.close();
   }
 
   /**
-   * Helper to execute a tool call via tools/call and unpack text content.
+   * Execute a Wallet tool through the official MCP client and unpack its typed payload.
+   * This remains an internal adapter boundary; advertised tools are never granted semantic
+   * authority merely because the server listed them.
    */
   public async callMcpTool<TToolOutput>(toolName: string, toolArguments: Record<string, unknown> = {}): Promise<TToolOutput> {
-    const toolCallResult = await this.executeJsonRpcRequest<{
-      content?: Array<{ type: string; text: string }>;
-      structuredContent?: any;
-      isError?: boolean;
-    }>('tools/call', {
-      name: toolName,
+    applicationLogger.fileDetail('mcp', `Dispatched Wallet MCP Tool [${toolName}]`, {
+      toolName,
       arguments: toolArguments,
     });
 
+    let toolCallResult: WalletMcpProtocolToolResult;
+    try {
+      toolCallResult = await this.protocolClient.callTool(toolName, toolArguments);
+    } catch (error) {
+      const dispatchOutcome = classifyWalletMcpProtocolFailure(error);
+      applicationLogger.fileDetail('error', `Wallet MCP SDK Failure [${toolName}]`, {
+        error: error instanceof Error
+          ? { name: error.name, message: formatWalletMcpProtocolError(error) }
+          : formatWalletMcpProtocolError(error),
+        toolName,
+      });
+      if (dispatchOutcome) {
+        throw new WalletMcpRequestError(
+          `[error] Wallet MCP request failed: ${formatWalletMcpProtocolError(error)}`,
+          dispatchOutcome
+        );
+      }
+      throw error;
+    }
+
+    const normalizedMetadata = this.normalizeResponseMetadata(toolCallResult);
+    if (normalizedMetadata) {
+      this.responseMetadataByToolName.set(toolName, normalizedMetadata);
+    } else {
+      this.responseMetadataByToolName.delete(toolName);
+    }
+
+    applicationLogger.fileDetail('mcp', `Received Wallet MCP Tool Response [${toolName}]`, {
+      toolName,
+      resultSummary: toolCallResult.structuredContent ?? toolCallResult.content,
+      metadata: normalizedMetadata,
+    });
+
     if (toolCallResult.isError) {
-      const errorMessage = toolCallResult.content?.map(contentItem => contentItem.text).join('\n') || 'Unknown tool error';
+      const errorMessage = toolCallResult.content
+        ?.filter(contentItem => contentItem.type === 'text' && typeof contentItem.text === 'string')
+        .map(contentItem => contentItem.text)
+        .join('\n') || 'Unknown tool error';
       throw new WalletMcpRequestError(
-        `[error] MCP Tool '${toolName}' failed: ${errorMessage}`,
+        `[error] MCP Tool '${toolName}' failed: ${formatWalletMcpProtocolError(errorMessage)}`,
         'DEFINITIVE_FAILURE'
       );
     }
@@ -169,8 +163,10 @@ export class WalletMcpClientService {
       return toolCallResult.structuredContent as TToolOutput;
     }
 
-    if (toolCallResult.content && toolCallResult.content.length > 0) {
-      const primaryTextContent = toolCallResult.content[0].text;
+    const primaryTextContent = toolCallResult.content?.find(
+      contentItem => contentItem.type === 'text' && typeof contentItem.text === 'string'
+    )?.text;
+    if (primaryTextContent !== undefined) {
       try {
         return JSON.parse(primaryTextContent) as TToolOutput;
       } catch {
@@ -178,7 +174,104 @@ export class WalletMcpClientService {
       }
     }
 
-    return toolCallResult as unknown as TToolOutput;
+    const { _meta: _discardedRawMetadata, ...toolResultWithoutRawMetadata } = toolCallResult;
+    return toolResultWithoutRawMetadata as unknown as TToolOutput;
+  }
+
+  /**
+   * Returns a bounded capability view for diagnostics and typed policy consumers.
+   * Discovery does not authorize a tool for semantic/model execution.
+   */
+  public async listTools(): Promise<WalletMcpToolCapability[]> {
+    try {
+      const tools = await this.protocolClient.listTools();
+      return tools
+        .filter(tool => typeof tool.name === 'string' && tool.name.length > 0)
+        .map(tool => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema,
+          outputSchema: tool.outputSchema,
+        }));
+    } catch (error) {
+      const dispatchOutcome = classifyWalletMcpProtocolFailure(error);
+      if (dispatchOutcome) {
+        throw new WalletMcpRequestError(
+          `[error] Wallet MCP tool discovery failed: ${formatWalletMcpProtocolError(error)}`,
+          dispatchOutcome
+        );
+      }
+      throw error;
+    }
+  }
+
+  public getLastResponseMetadata(toolName: string): WalletMcpResponseMetadata | undefined {
+    const metadata = this.responseMetadataByToolName.get(toolName);
+    return metadata
+      ? {
+          rateLimit: metadata.rateLimit ? { ...metadata.rateLimit } : undefined,
+          agentHints: metadata.agentHints?.map(hint => ({ ...hint })),
+        }
+      : undefined;
+  }
+
+  private normalizeResponseMetadata(
+    toolCallResult: WalletMcpProtocolToolResult
+  ): WalletMcpResponseMetadata | undefined {
+    const rawRateLimit = toolCallResult._meta?.rateLimit;
+    const structuredAgentHints = (
+      toolCallResult.structuredContent &&
+      typeof toolCallResult.structuredContent === 'object' &&
+      !Array.isArray(toolCallResult.structuredContent)
+    )
+      ? (toolCallResult.structuredContent as Record<string, unknown>).agentHints
+      : undefined;
+    const rawAgentHints = toolCallResult._meta?.agentHints ?? structuredAgentHints;
+
+    const rateLimit = this.normalizeRateLimitMetadata(rawRateLimit);
+    const agentHints = Array.isArray(rawAgentHints)
+      ? rawAgentHints.slice(0, 20).flatMap(rawHint => {
+          if (!rawHint || typeof rawHint !== 'object' || Array.isArray(rawHint)) {
+            return [];
+          }
+          const hint = rawHint as Record<string, unknown>;
+          if (typeof hint.type !== 'string' || hint.type.length === 0) {
+            return [];
+          }
+          return [{
+            type: hint.type,
+            severity: typeof hint.severity === 'string' ? hint.severity : undefined,
+            text: typeof hint.text === 'string' ? hint.text : undefined,
+          }];
+        })
+      : undefined;
+
+    return rateLimit || (agentHints && agentHints.length > 0)
+      ? { rateLimit, agentHints }
+      : undefined;
+  }
+
+  private normalizeRateLimitMetadata(rawRateLimit: unknown): WalletMcpRateLimitMetadata | undefined {
+    if (!rawRateLimit || typeof rawRateLimit !== 'object' || Array.isArray(rawRateLimit)) {
+      return undefined;
+    }
+    const metadata = rawRateLimit as Record<string, unknown>;
+    const normalized: WalletMcpRateLimitMetadata = {};
+    const numericFields: Array<keyof Omit<WalletMcpRateLimitMetadata, 'resetAt'>> = [
+      'limit',
+      'remaining',
+      'retryAfterSeconds',
+      'retryAfterMilliseconds',
+    ];
+    for (const field of numericFields) {
+      if (typeof metadata[field] === 'number' && Number.isFinite(metadata[field])) {
+        normalized[field] = metadata[field] as number;
+      }
+    }
+    if (typeof metadata.resetAt === 'string') {
+      normalized.resetAt = metadata.resetAt;
+    }
+    return Object.keys(normalized).length > 0 ? normalized : undefined;
   }
 
   /**

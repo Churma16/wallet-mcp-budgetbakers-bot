@@ -224,24 +224,17 @@ describe('native paired transfers (issue #143)', () => {
 
   it('dispatches the verified MCP transfer shape and accepts explained mirror writes', async () => {
     const client = new WalletMcpClientService('https://example.invalid', 'test-token');
-    const post = vi.fn().mockResolvedValue({
-      data: {
-        result: {
-          structuredContent: {
-            summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 2 },
-            results: [{
-              inputIndex: 0,
-              id: 'root-record',
-              success: true,
-              pairingMode: 'new',
-              createdMirrorRecordId: 'mirror-record',
-            }],
-            agentHints: [{ type: 'transfer.fx_derived', severity: 'info' }],
-          },
-        },
-      },
+    const call = vi.spyOn(client, 'callMcpTool').mockResolvedValue({
+      summary: { total: 1, succeeded: 1, clientErrors: 0, serverErrors: 0, documentsWritten: 2 },
+      results: [{
+        inputIndex: 0,
+        id: 'root-record',
+        success: true,
+        pairingMode: 'new',
+        createdMirrorRecordId: 'mirror-record',
+      }],
+      agentHints: [{ type: 'transfer.fx_derived', severity: 'info' }],
     });
-    (client as any).httpClient.post = post;
 
     const response = await client.createRecords([{
       accountId: 'acc-jago',
@@ -250,7 +243,7 @@ describe('native paired transfers (issue #143)', () => {
       transfer: { pairingMode: 'new', accountId: 'acc-gopay' },
     }]);
 
-    const sentRecord = post.mock.calls[0][1].params.arguments.records[0];
+    const sentRecord = (call.mock.calls[0][1] as { records: Array<Record<string, unknown>> }).records[0];
     expect(sentRecord).toMatchObject({
       accountId: 'acc-jago',
       amount: -20_000,

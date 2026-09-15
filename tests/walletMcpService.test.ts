@@ -57,6 +57,8 @@ async function runWalletMcpVerification(): Promise<void> {
     } else {
       console.error(String(error));
     }
+  } finally {
+    await walletMcpClient.close();
   }
 }
 
