@@ -91,7 +91,10 @@ const ALLOWED_RECORD_KEYS = new Set([
   'labels',
   'labelIds',
   'currency',
+  'transfer',
 ]);
+const ALLOWED_TRANSFER_KEYS = new Set(['pairingMode', 'accountId', 'accountHint', 'counterAmount']);
+const ALLOWED_COUNTER_AMOUNT_KEYS = new Set(['value', 'currencyCode']);
 const MAXIMUM_PROPOSED_RECORDS = 20;
 const MAXIMUM_TEXT_FIELD_LENGTH = 2_000;
 const MAXIMUM_LABELS_PER_RECORD = 20;
@@ -226,6 +229,43 @@ function validateAndCloneRecord(
     return reject('INVALID_ARGUMENTS', 'Transaction proposal labels are malformed or exceed limits.');
   }
 
+  if (rawRecord.transfer !== undefined) {
+    if (
+      !isPlainObject(rawRecord.transfer) ||
+      !containsOnlyAllowedKeys(rawRecord.transfer, ALLOWED_TRANSFER_KEYS) ||
+      rawRecord.transfer.pairingMode !== 'new'
+    ) {
+      return reject('INVALID_ARGUMENTS', 'Transaction proposal transfer shape is unsupported.');
+    }
+    for (const fieldName of ['accountId', 'accountHint'] as const) {
+      const fieldValue = rawRecord.transfer[fieldName];
+      if (fieldValue !== undefined && !isBoundedString(fieldValue, true)) {
+        return reject('INVALID_ARGUMENTS', 'Transaction proposal transfer account reference is malformed.');
+      }
+    }
+    if (rawRecord.transfer.counterAmount !== undefined) {
+      const counterAmount = rawRecord.transfer.counterAmount;
+      if (
+        !isPlainObject(counterAmount) ||
+        !containsOnlyAllowedKeys(counterAmount, ALLOWED_COUNTER_AMOUNT_KEYS) ||
+        typeof counterAmount.value !== 'number' ||
+        !Number.isFinite(counterAmount.value) ||
+        typeof counterAmount.currencyCode !== 'string' ||
+        !/^[A-Za-z]{3}$/.test(counterAmount.currencyCode.trim())
+      ) {
+        return reject('INVALID_ARGUMENTS', 'Transaction proposal transfer counter amount is malformed.');
+      }
+    }
+    const destinationReferenceRejection = validateKnownExplicitIdentifier(
+      typeof rawRecord.transfer.accountId === 'string' ? rawRecord.transfer.accountId : undefined,
+      knownAccountIds,
+      'account'
+    );
+    if (destinationReferenceRejection) {
+      return destinationReferenceRejection;
+    }
+  }
+
   const accountReferenceRejection = validateKnownExplicitIdentifier(
     typeof rawRecord.accountId === 'string' ? rawRecord.accountId : undefined,
     knownAccountIds,
@@ -256,6 +296,14 @@ function validateAndCloneRecord(
   delete clonedRecord.labelIds;
   if (Array.isArray(rawRecord.labels)) {
     clonedRecord.labels = [...rawRecord.labels];
+  }
+  if (isPlainObject(rawRecord.transfer)) {
+    clonedRecord.transfer = {
+      ...rawRecord.transfer,
+      ...(isPlainObject(rawRecord.transfer.counterAmount)
+        ? { counterAmount: { ...rawRecord.transfer.counterAmount } }
+        : {}),
+    };
   }
 
   return {

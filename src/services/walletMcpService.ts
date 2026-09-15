@@ -254,6 +254,20 @@ export class WalletMcpClientService {
       id: item.id || item.categoryId,
       name: item.name || item.categoryName || 'Unnamed Category',
       parentCategoryId: item.parentId || item.parentCategoryId,
+      parentCategoryName: item.parentName || item.parentCategoryName,
+      group: item.group && typeof item.group === 'object'
+        ? { id: String(item.group.id), name: String(item.group.name) }
+        : undefined,
+      systemId: item.systemId,
+      cardinality: item.cardinality,
+      customCategory: item.customCategory,
+      archived: item.archived,
+      enabled: item.enabled,
+      isAssignable: typeof item.isAssignable === 'boolean'
+        ? item.isAssignable
+        : typeof item.assignable === 'boolean'
+          ? item.assignable
+          : item.enabled !== false && item.archived !== true && item.group?.id !== 'system_categories',
     }));
 
     return this.cachedCategoryList;
@@ -790,6 +804,21 @@ export class WalletMcpClientService {
       if (Array.isArray(recordItem.labelIds) && recordItem.labelIds.length > 0) {
         sanitizedRecordItem.labelIds = recordItem.labelIds;
       }
+      if (recordItem.transfer) {
+        const transfer: Record<string, unknown> = {
+          pairingMode: recordItem.transfer.pairingMode,
+        };
+        if (recordItem.transfer.accountId) {
+          transfer.accountId = recordItem.transfer.accountId;
+        }
+        if (recordItem.transfer.recordId) {
+          transfer.recordId = recordItem.transfer.recordId;
+        }
+        if (recordItem.transfer.counterAmount) {
+          transfer.counterAmount = recordItem.transfer.counterAmount;
+        }
+        sanitizedRecordItem.transfer = transfer;
+      }
 
       return sanitizedRecordItem;
     });
@@ -852,7 +881,8 @@ export class WalletMcpClientService {
       const succeededValid =
         typeof summary?.succeeded === 'number' && Number.isInteger(summary.succeeded) && summary.succeeded >= 0;
 
-      if (!totalValid || !succeededValid || summary?.total !== expectedRecordCount) {
+      const expectedSummaryTotal = hasResults ? results.length : expectedRecordCount;
+      if (!totalValid || !succeededValid || summary?.total !== expectedSummaryTotal) {
         throw new WalletMcpRequestError(
           `[error] MCP Tool 'create_records' returned an invalid or mismatched summary`,
           'UNKNOWN'
@@ -898,7 +928,7 @@ export class WalletMcpClientService {
       }
 
       if (summaryResolvedErrors !== undefined) {
-        if ((summary?.succeeded ?? 0) + summaryResolvedErrors !== summary?.total) {
+        if ((summary?.succeeded ?? 0) + summaryResolvedErrors !== expectedRecordCount) {
           throw new WalletMcpRequestError(
             `[error] MCP Tool 'create_records' returned an invalid or mismatched summary`,
             'UNKNOWN'
@@ -906,21 +936,36 @@ export class WalletMcpClientService {
         }
       }
 
-      if (summary?.documentsWritten !== undefined) {
-        if (summary.documentsWritten !== summary.succeeded) {
-          throw new WalletMcpRequestError(
-            `[error] MCP Tool 'create_records' returned an invalid or mismatched summary`,
-            'UNKNOWN'
-          );
-        }
+      // Native transfers can write a root plus a mirror for one successful input.
+      // documentsWritten therefore counts documents, not successful input rows.
+      if (
+        summary?.documentsWritten !== undefined &&
+        summary.documentsWritten < summary.succeeded
+      ) {
+        throw new WalletMcpRequestError(
+          `[error] MCP Tool 'create_records' returned an invalid or mismatched summary`,
+          'UNKNOWN'
+        );
+      }
+      if (
+        summary?.documentsWritten !== undefined &&
+        summary.documentsWritten > summary.succeeded &&
+        !hasResults
+      ) {
+        throw new WalletMcpRequestError(
+          `[error] MCP Tool 'create_records' returned unexplained document-write evidence`,
+          'UNKNOWN'
+        );
       }
     }
 
     let resultSuccessCount = 0;
     let resultFailureCount = 0;
+    let rootResults: NonNullable<WalletCreateRecordsResponse['results']> = [];
+    let mirrorResults: NonNullable<WalletCreateRecordsResponse['results']> = [];
 
     if (hasResults) {
-      if (results.length !== expectedRecordCount) {
+      if (results.length < expectedRecordCount) {
         throw new WalletMcpRequestError(
           `[error] MCP Tool 'create_records' returned an unexpected number of per-record results`,
           'UNKNOWN'
@@ -935,14 +980,108 @@ export class WalletMcpClientService {
         );
       }
 
-      resultSuccessCount = results.filter(result => result.success === true).length;
-      resultFailureCount = results.length - resultSuccessCount;
+      const rootResultsByInputIndex = new Map<number, (typeof results)[number]>();
+      for (const result of results) {
+        if (
+          !Number.isInteger(result.inputIndex) ||
+          (result.inputIndex as number) < 0 ||
+          (result.inputIndex as number) >= expectedRecordCount
+        ) {
+          throw new WalletMcpRequestError(
+            `[error] MCP Tool 'create_records' returned uncorrelated per-record results`,
+            'UNKNOWN'
+          );
+        }
+        const isMirrorResult = result.isMirror === true || result.resultType === 'mirror';
+        if (isMirrorResult) {
+          mirrorResults.push(result);
+          continue;
+        }
+        if (rootResultsByInputIndex.has(result.inputIndex as number)) {
+          throw new WalletMcpRequestError(
+            `[error] MCP Tool 'create_records' returned duplicate root results`,
+            'UNKNOWN'
+          );
+        }
+        rootResultsByInputIndex.set(result.inputIndex as number, result);
+      }
+
+      if (rootResultsByInputIndex.size !== expectedRecordCount) {
+        throw new WalletMcpRequestError(
+          `[error] MCP Tool 'create_records' returned missing root results`,
+          'UNKNOWN'
+        );
+      }
+
+      rootResults = [...rootResultsByInputIndex.values()];
+      const mirrorInputIndexes = new Set<number>();
+      for (const mirrorResult of mirrorResults) {
+        if (mirrorInputIndexes.has(mirrorResult.inputIndex as number)) {
+          throw new WalletMcpRequestError(
+            `[error] MCP Tool 'create_records' returned duplicate mirror results`,
+            'UNKNOWN'
+          );
+        }
+        mirrorInputIndexes.add(mirrorResult.inputIndex as number);
+        const rootResult = rootResultsByInputIndex.get(mirrorResult.inputIndex as number)!;
+        const mirrorIdMatches =
+          typeof mirrorResult.id === 'string' &&
+          rootResult.createdMirrorRecordId === mirrorResult.id;
+        const rootIdMatches =
+          typeof mirrorResult.mirrorOfRecordId === 'string' &&
+          rootResult.id === mirrorResult.mirrorOfRecordId;
+        if (!mirrorIdMatches && !rootIdMatches) {
+          throw new WalletMcpRequestError(
+            `[error] MCP Tool 'create_records' returned an uncorrelated mirror result`,
+            'UNKNOWN'
+          );
+        }
+        if (mirrorResult.success !== true || rootResult.success !== true) {
+          throw new WalletMcpRequestError(
+            `[error] MCP Tool 'create_records' returned contradictory mirror evidence`,
+            'UNKNOWN'
+          );
+        }
+      }
+
+      resultSuccessCount = rootResults.filter(result => result.success === true).length;
+      resultFailureCount = rootResults.length - resultSuccessCount;
     }
 
     if (hasSummary && hasResults) {
       if (summary?.succeeded !== resultSuccessCount) {
         throw new WalletMcpRequestError(
           `[error] MCP Tool 'create_records' returned inconsistent summary and per-record results`,
+          'UNKNOWN'
+        );
+      }
+
+      const confirmedSecondaryDocumentIds = new Set<string>();
+      for (const result of rootResults) {
+        if (result.success === true && typeof result.createdMirrorRecordId === 'string') {
+          confirmedSecondaryDocumentIds.add(result.createdMirrorRecordId);
+        }
+      }
+      for (const result of mirrorResults) {
+        if (result.success === true && typeof result.id === 'string') {
+          confirmedSecondaryDocumentIds.add(result.id);
+        }
+      }
+      const confirmedExistingWrites = rootResults.filter(result =>
+        result.success === true && (
+          result.pairingMode === 'existing'
+        )
+      ).length;
+      const minimumDocumentsWritten = summary?.succeeded ?? 0;
+      const maximumExplainedDocumentsWritten =
+        minimumDocumentsWritten + confirmedSecondaryDocumentIds.size + confirmedExistingWrites;
+      if (
+        summary?.documentsWritten !== undefined &&
+        (summary.documentsWritten < minimumDocumentsWritten ||
+          summary.documentsWritten > maximumExplainedDocumentsWritten)
+      ) {
+        throw new WalletMcpRequestError(
+          `[error] MCP Tool 'create_records' returned unexplained document-write evidence`,
           'UNKNOWN'
         );
       }
@@ -955,12 +1094,12 @@ export class WalletMcpClientService {
     if (totalFailureCount > 0 || (hasResults && resultFailureCount > 0)) {
       const failureCount = Math.max(totalFailureCount, resultFailureCount);
       const firstFailureItem = hasResults
-        ? results.find(result => result.success === false)
+        ? rootResults.find(result => result.success === false)
         : undefined;
       const firstFailureDetail = firstFailureItem?.error;
 
       const hasServerErrors = (summary?.serverErrors !== undefined && summary.serverErrors > 0) ||
-        (hasResults && results.some(r => r.success === false && r.errorType === 'server_error'));
+        (hasResults && rootResults.some(r => r.success === false && r.errorType === 'server_error'));
 
       const hasPartialSuccess = (summary?.succeeded !== undefined && summary.succeeded > 0) ||
         (hasResults && resultSuccessCount > 0);

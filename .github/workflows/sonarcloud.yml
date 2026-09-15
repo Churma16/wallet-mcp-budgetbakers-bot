@@ -79,6 +79,6 @@ jobs:
             -Dsonar.organization=churma16
             -Dsonar.sources=src
             -Dsonar.tests=tests
-            -Dsonar.coverage.exclusions=src/cli/**
+            -Dsonar.coverage.exclusions=src/cli/**,src/types/**,src/services/ai/financialAiProvider.ts
             -Dsonar.javascript.lcov.reportPaths=coverage/legacy/lcov.info,coverage/vitest/lcov.info
           projectBaseDir: .

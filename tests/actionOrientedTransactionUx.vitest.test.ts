@@ -1289,7 +1289,7 @@ describe('Issue #154: Action-Oriented Pending & Uncertain Transaction UX', () =>
       expect(mockGateway.lastMessage).toContain('2 Transaksi Berhasil Dicatat ke Wallet');
     });
 
-    it('handles confirmation of TRANSFER transaction with dual records', async () => {
+    it('handles confirmation of TRANSFER transaction with one native paired record', async () => {
       const transferItem = pendingService.addPendingTransaction({
         sourceType: 'WHATSAPP',
         amount: 200000,
@@ -1308,7 +1308,11 @@ describe('Issue #154: Action-Oriented Pending & Uncertain Transaction UX', () =>
         Date.now()
       );
 
-      expect(mockClient.calls.length).toBe(2);
+      expect(mockClient.calls.length).toBe(1);
+      expect(mockClient.calls[0][0].transfer).toEqual({
+        pairingMode: 'new',
+        accountId: 'acc-2',
+      });
       expect(mockGateway.lastMessage).toContain('Transfer Dicatat ke Wallet');
       expect(mockGateway.lastMessage).toContain('BCA Prioritas ➔ Jago Utama');
     });

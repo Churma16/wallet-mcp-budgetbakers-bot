@@ -24,6 +24,15 @@ export interface ExtractedFinancialRecordItem {
   counterParty?: string;
   labels?: string[];
   currency?: string;
+  transfer?: {
+    pairingMode: 'new';
+    accountHint?: string;
+    accountId?: string;
+    counterAmount?: {
+      value: number;
+      currencyCode: string;
+    };
+  };
 }
 
 export interface ExtractedFinancialIntent {

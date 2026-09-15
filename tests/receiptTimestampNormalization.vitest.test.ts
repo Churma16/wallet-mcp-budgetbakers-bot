@@ -759,7 +759,7 @@ describe('Receipt Timestamp Normalization & Timezone Preservation (Issue #147)',
       const walletMcpClient = new WalletMcpClientService('https://example.invalid', 'test-token');
       const toolCallSpy = vi.spyOn(walletMcpClient, 'callMcpTool').mockResolvedValue({
         summary: { total: 1, succeeded: 1, failed: 0, documentsWritten: 1 },
-        results: [{ success: true, id: 'mock-rec-id' }],
+        results: [{ inputIndex: 0, success: true, id: 'mock-rec-id' }],
       } as any);
 
       await walletMcpClient.createRecords(validationResult.sanitizedRecords);

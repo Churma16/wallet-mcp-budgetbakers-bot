@@ -157,7 +157,8 @@ describe('PR #155 changed-condition coverage', () => {
       const flattened = calls.flat();
       expect(flattened.some(record => record.amount === 50_000)).toBe(true);
       expect(flattened.some(record => record.note === 'Transfer ke akun lain')).toBe(true);
-      expect(flattened.some(record => record.note === 'Transfer dari akun lain')).toBe(true);
+      expect(flattened.some(record => record.transfer?.accountId === 'acc-dest')).toBe(true);
+      expect(flattened.filter(record => record.transfer).length).toBe(1);
     });
 
     it('covers email success with and without reference number', async () => {
