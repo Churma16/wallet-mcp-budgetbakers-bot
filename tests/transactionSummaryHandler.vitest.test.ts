@@ -1,42 +1,28 @@
-import assert from 'node:assert';
-import { describe, test, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
 import { TransactionHistoryService } from '../src/services/transactionHistoryService.js';
 import { TransactionSummaryService } from '../src/services/transactionSummaryService.js';
+import { WalletMcpClientService } from '../src/services/walletMcpService.js';
+import { WalletCacheService } from '../src/services/walletCacheService.js';
 import { detectFastPathAction } from '../src/utils/fastPathIntentDetector.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import type {
-  TransactionHistoryPage,
   TransactionSummaryQueryOptions,
   TransactionSummaryResult,
-  WalletRecordItem,
+  WalletAccountItem,
+  WalletCategoryItem,
+  WalletRecordAggregationQueryPayload,
+  WalletRecordAggregationResponse,
 } from '../src/types/walletTypes.js';
 
-function createHistoryPage(
-  records: WalletRecordItem[],
-  overrides: Partial<TransactionHistoryPage> = {}
-): TransactionHistoryPage {
-  return {
-    records,
-    total: records.length,
-    limit: 50,
-    offset: 0,
-    page: 1,
-    totalPages: 1,
-    nextOffset: null,
-    hasMore: false,
-    sort: 'newest',
-    ...overrides,
-  };
-}
-
-describe('Transaction Summary Fast-Path Handler Tests (Issue #103)', () => {
+describe('Transaction Summary Fast-Path Handler Tests (Issue #103 & #140)', () => {
   beforeEach(() => {
     setActiveLanguage('id');
   });
 
   afterEach(() => {
     setActiveLanguage('id');
+    vi.restoreAllMocks();
   });
 
   describe('Suite 1: FastPathHandler dispatches transaction summaries end-to-end', () => {
@@ -92,8 +78,8 @@ describe('Transaction Summary Fast-Path Handler Tests (Issue #103)', () => {
       );
 
       const action = detectFastPathAction('total pengeluaran bulan ini');
-      assert.strictEqual(typeof action, 'object');
-      assert.strictEqual((action as any)?.type, 'TRANSACTION_SUMMARY');
+      expect(typeof action).toBe('object');
+      expect((action as any)?.type).toBe('TRANSACTION_SUMMARY');
 
       const processingStartTimestamp = Date.parse('2026-09-12T10:00:00.000Z');
       const event = {
@@ -107,141 +93,300 @@ describe('Transaction Summary Fast-Path Handler Tests (Issue #103)', () => {
 
       const handled = await handler.handleFastPath(event, action, processingStartTimestamp);
 
-      assert.strictEqual(handled, true);
-      assert.strictEqual(capturedOptions.length, 1);
-      assert.strictEqual(capturedOptions[0].recordType, 'expense');
-      assert.strictEqual(capturedOptions[0].datePeriod, 'this_month');
-      assert.strictEqual(capturedOptions[0].groupBy, 'none');
-      assert.strictEqual(capturedReferenceDates.length, 1);
-      assert.strictEqual(capturedReferenceDates[0].toISOString(), '2026-09-12T10:00:00.000Z');
+      expect(handled).toBe(true);
+      expect(capturedOptions.length).toBe(1);
+      expect(capturedOptions[0].recordType).toBe('expense');
+      expect(capturedOptions[0].datePeriod).toBe('this_month');
+      expect(capturedOptions[0].groupBy).toBe('none');
+      expect(capturedReferenceDates.length).toBe(1);
+      expect(capturedReferenceDates[0].toISOString()).toBe('2026-09-12T10:00:00.000Z');
 
-      assert.strictEqual(sentMessages.length, 1);
-      assert.strictEqual(sentMessages[0].channel, 'whatsapp');
-      assert.strictEqual(sentMessages[0].chatIdentifier, '123456@s.whatsapp.net');
-      assert.match(sentMessages[0].message, /Transaction Summary/);
-      assert.match(sentMessages[0].message, /Expenses/);
-      assert.doesNotMatch(sentMessages[0].message, /Income:/);
-      assert.doesNotMatch(sentMessages[0].message, /Net:/);
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].channel).toBe('whatsapp');
+      expect(sentMessages[0].chatIdentifier).toBe('123456@s.whatsapp.net');
+      expect(sentMessages[0].message).toMatch(/Transaction Summary/);
+      expect(sentMessages[0].message).toMatch(/Expenses/);
+      expect(sentMessages[0].message).not.toMatch(/Income:/);
+      expect(sentMessages[0].message).not.toMatch(/Net:/);
     });
   });
 
-  describe('Suite 2: Duplicate pages stop safely and preserve fallback category/currency buckets', () => {
-    it('stops safely on duplicate page and flags isComplete=false', async () => {
-      const duplicateRecord: WalletRecordItem = {
-        id: 'duplicate-record',
-        accountId: 'acc-unknown',
-        amount: -10000,
-        currency: '   ',
-        recordDate: '2026-09-12T01:00:00.000Z',
-        recordType: 'expense',
+  describe('Suite 2: FastPathHandler handles empty summary results gracefully', () => {
+    it('formats and sends empty-state response when no transactions match', async () => {
+      setActiveLanguage('id');
+
+      const emptySummaryResult: TransactionSummaryResult = {
+        transactionCount: 0,
+        excludedTransferCount: 0,
+        totals: [],
+        breakdown: [],
+        groupBy: 'none',
+        isMultiCurrency: false,
+        isComplete: true,
       };
-      let callCount = 0;
-      const mockHistoryService = {
-        getTransactionHistory: async (): Promise<TransactionHistoryPage> => {
-          callCount += 1;
-          return callCount === 1
-            ? createHistoryPage([duplicateRecord], { hasMore: true, nextOffset: 1 })
-            : createHistoryPage([duplicateRecord], { offset: 1, page: 2, hasMore: true, nextOffset: 2 });
+
+      const mockSummaryService = {
+        getTransactionSummary: async (): Promise<TransactionSummaryResult> => emptySummaryResult,
+      } as unknown as TransactionSummaryService;
+
+      const sentMessages: Array<{ channel: string; chatIdentifier: string; message: string }> = [];
+      const mockGateway = {
+        sendMessage: async (channel: string, chatIdentifier: string, message: string) => {
+          sentMessages.push({ channel, chatIdentifier, message });
         },
-      } as unknown as TransactionHistoryService;
+      } as any;
 
-      const service = new TransactionSummaryService(mockHistoryService);
-      const result = await service.getTransactionSummary({ groupBy: 'category' });
+      const handler = new FastPathHandler(
+        {} as any,
+        {} as any,
+        mockGateway,
+        {} as unknown as TransactionHistoryService,
+        mockSummaryService
+      );
 
-      assert.strictEqual(callCount, 2);
-      assert.strictEqual(result.isComplete, false);
-      assert.strictEqual(result.transactionCount, 1);
-      assert.strictEqual(result.totals[0].currency, 'UNKNOWN');
-      assert.strictEqual(result.breakdown[0].key, '__uncategorized__');
-      assert.strictEqual(result.breakdown[0].name, undefined);
+      const action = detectFastPathAction('total pengeluaran bulan ini');
+      const processingStartTimestamp = Date.now();
+      const event = {
+        channel: 'whatsapp' as const,
+        chatIdentifier: '123456@s.whatsapp.net',
+        senderIdentifier: '123456',
+        messageType: 'text' as const,
+        textPayload: 'total pengeluaran bulan ini',
+        rawMessageTimestamp: new Date(processingStartTimestamp),
+      };
+
+      const handled = await handler.handleFastPath(event, action, processingStartTimestamp);
+
+      expect(handled).toBe(true);
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].message).toMatch(/Tidak ada transaksi/);
     });
   });
 
-  describe('Suite 3: Missing nextOffset falls back to the consumed record count', () => {
-    it('falls back to consumed record count when nextOffset is null with hasMore=true', async () => {
-      const offsets: number[] = [];
-      const record: WalletRecordItem = {
-        id: 'fallback-offset',
-        accountId: 'acc-bca',
-        accountName: 'BCA',
-        amount: -20000,
-        currency: 'IDR',
-        recordDate: '2026-09-12T02:00:00.000Z',
-        recordType: 'expense',
+  describe('Suite 3: FastPathHandler handles unresolved summary filters', () => {
+    it('formats and sends unresolved filter warnings without throwing', async () => {
+      setActiveLanguage('id');
+
+      const unresolvedSummaryResult: TransactionSummaryResult = {
+        transactionCount: 0,
+        excludedTransferCount: 0,
+        totals: [],
+        breakdown: [],
+        groupBy: 'none',
+        isMultiCurrency: false,
+        isComplete: false,
+        unresolvedFilters: [
+          {
+            filterKey: 'account',
+            rawValue: 'bank-xyz',
+            reason: 'NOT_FOUND',
+            message: 'Akun tidak ditemukan.',
+          },
+        ],
       };
-      const mockHistoryService = {
-        getTransactionHistory: async (options: { offset?: number }): Promise<TransactionHistoryPage> => {
-          offsets.push(options.offset || 0);
-          return offsets.length === 1
-            ? createHistoryPage([record], { hasMore: true, nextOffset: null })
-            : createHistoryPage([], { offset: 1, page: 2 });
+
+      const mockSummaryService = {
+        getTransactionSummary: async (): Promise<TransactionSummaryResult> => unresolvedSummaryResult,
+      } as unknown as TransactionSummaryService;
+
+      const sentMessages: Array<{ channel: string; chatIdentifier: string; message: string }> = [];
+      const mockGateway = {
+        sendMessage: async (channel: string, chatIdentifier: string, message: string) => {
+          sentMessages.push({ channel, chatIdentifier, message });
         },
-      } as unknown as TransactionHistoryService;
+      } as any;
 
-      const service = new TransactionSummaryService(mockHistoryService);
-      const result = await service.getTransactionSummary();
+      const handler = new FastPathHandler(
+        {} as any,
+        {} as any,
+        mockGateway,
+        {} as unknown as TransactionHistoryService,
+        mockSummaryService
+      );
 
-      assert.deepStrictEqual(offsets, [0, 1]);
-      assert.strictEqual(result.isComplete, true);
-      assert.strictEqual(result.transactionCount, 1);
+      const action = detectFastPathAction('total pengeluaran bulan ini');
+      const processingStartTimestamp = Date.now();
+      const event = {
+        channel: 'whatsapp' as const,
+        chatIdentifier: '123456@s.whatsapp.net',
+        senderIdentifier: '123456',
+        messageType: 'text' as const,
+        textPayload: 'total pengeluaran bulan ini',
+        rawMessageTimestamp: new Date(processingStartTimestamp),
+      };
+
+      const handled = await handler.handleFastPath(event, action, processingStartTimestamp);
+
+      expect(handled).toBe(true);
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].message).toMatch(/tidak ditemukan/i);
     });
   });
 
-  describe('Suite 4: Unknown continuation metadata probes another offset and preserves unknown account grouping', () => {
-    it('probes next offset when continuation is unknown', async () => {
-      const offsets: number[] = [];
-      const record: WalletRecordItem = {
-        id: 'unknown-continuation',
-        accountId: '   ',
-        accountName: '   ',
-        amount: 30000,
-        currency: 'idr',
-        recordDate: '2026-09-12T03:00:00.000Z',
-        recordType: 'income',
+  describe('Suite 4: FastPathHandler formats multi-currency summary breakdown', () => {
+    it('formats multi-currency summaries with isolated currency blocks', async () => {
+      setActiveLanguage('en');
+
+      const multiCurrencyResult: TransactionSummaryResult = {
+        transactionCount: 2,
+        excludedTransferCount: 0,
+        totals: [
+          {
+            currency: 'IDR',
+            income: 0,
+            expense: 50000,
+            net: -50000,
+            transactionCount: 1,
+          },
+          {
+            currency: 'USD',
+            income: 100,
+            expense: 0,
+            net: 100,
+            transactionCount: 1,
+          },
+        ],
+        breakdown: [],
+        groupBy: 'none',
+        isMultiCurrency: true,
+        isComplete: true,
       };
-      const mockHistoryService = {
-        getTransactionHistory: async (options: { offset?: number }): Promise<TransactionHistoryPage> => {
-          offsets.push(options.offset || 0);
-          return offsets.length === 1
-            ? createHistoryPage([record], { continuationUnknown: true })
-            : createHistoryPage([], { offset: 1, page: 2 });
+
+      const mockSummaryService = {
+        getTransactionSummary: async (): Promise<TransactionSummaryResult> => multiCurrencyResult,
+      } as unknown as TransactionSummaryService;
+
+      const sentMessages: Array<{ channel: string; chatIdentifier: string; message: string }> = [];
+      const mockGateway = {
+        sendMessage: async (channel: string, chatIdentifier: string, message: string) => {
+          sentMessages.push({ channel, chatIdentifier, message });
         },
-      } as unknown as TransactionHistoryService;
+      } as any;
 
-      const service = new TransactionSummaryService(mockHistoryService);
-      const result = await service.getTransactionSummary({ groupBy: 'account' });
+      const handler = new FastPathHandler(
+        {} as any,
+        {} as any,
+        mockGateway,
+        {} as unknown as TransactionHistoryService,
+        mockSummaryService
+      );
 
-      assert.deepStrictEqual(offsets, [0, 1]);
-      assert.strictEqual(result.isComplete, true);
-      assert.strictEqual(result.totals[0].currency, 'IDR');
-      assert.strictEqual(result.breakdown[0].key, '__unknown_account__');
-      assert.strictEqual(result.breakdown[0].name, undefined);
+      const action = detectFastPathAction('total pengeluaran bulan ini');
+      const processingStartTimestamp = Date.now();
+      const event = {
+        channel: 'whatsapp' as const,
+        chatIdentifier: '123456@s.whatsapp.net',
+        senderIdentifier: '123456',
+        messageType: 'text' as const,
+        textPayload: 'total pengeluaran bulan ini',
+        rawMessageTimestamp: new Date(processingStartTimestamp),
+      };
+
+      const handled = await handler.handleFastPath(event, action, processingStartTimestamp);
+
+      expect(handled).toBe(true);
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].message).toMatch(/Currencies are shown separately/);
+      expect(sentMessages[0].message).toMatch(/IDR/);
+      expect(sentMessages[0].message).toMatch(/USD/);
     });
   });
 
-  describe('Suite 5: Non-advancing pagination offsets stop with a partial result', () => {
-    it('stops with partial result when nextOffset does not advance', async () => {
-      const record: WalletRecordItem = {
-        id: 'non-advancing',
-        accountId: 'acc-bca',
-        accountName: 'BCA',
-        amount: -40000,
-        currency: 'IDR',
-        recordDate: '2026-09-12T04:00:00.000Z',
-        recordType: 'expense',
-      };
+  describe('Suite 5: FastPathHandler native integration executes without invoking history pagination', () => {
+    it('dispatches native aggregation through FastPathHandler and never calls getTransactionHistory', async () => {
+      setActiveLanguage('en');
+
+      const cachedAccounts: WalletAccountItem[] = [
+        { id: 'acc-bca', name: 'BCA Account', currency: 'IDR' },
+      ];
+      const cachedCategories: WalletCategoryItem[] = [];
+
+      const mockCache: WalletCacheService = {
+        getAccounts: () => cachedAccounts,
+        getCategories: () => cachedCategories,
+        getLabels: () => [],
+        getBudgets: () => [],
+        refreshCache: async () => {},
+        isCacheValid: () => true,
+      } as unknown as WalletCacheService;
+
+      const capturedAggregationPayloads: WalletRecordAggregationQueryPayload[] = [];
+      const mockMcpClient = new WalletMcpClientService('https://wallet.example.com', 'test-token');
+      vi.spyOn(mockMcpClient, 'fetchRecordsAggregation').mockImplementation(async (payload) => {
+        capturedAggregationPayloads.push(payload);
+        if (payload.isTransfer === true) {
+          return { results: [{ count: 0 }], limit: 1000, offset: 0 };
+        }
+        return {
+          results: [
+            {
+              currency: 'IDR',
+              recordType: 'expense',
+              count: 1,
+              'amount:sum': -200000,
+            },
+          ],
+          limit: 1000,
+          offset: 0,
+        };
+      });
+
       const mockHistoryService = {
-        getTransactionHistory: async (): Promise<TransactionHistoryPage> => createHistoryPage(
-          [record],
-          { hasMore: true, nextOffset: 0 }
-        ),
+        getTransactionHistory: vi.fn(),
       } as unknown as TransactionHistoryService;
 
-      const service = new TransactionSummaryService(mockHistoryService);
-      const result = await service.getTransactionSummary();
+      const summaryService = new TransactionSummaryService(
+        mockMcpClient,
+        mockCache,
+        mockHistoryService
+      );
 
-      assert.strictEqual(result.transactionCount, 1);
-      assert.strictEqual(result.isComplete, false);
+      const sentMessages: Array<{ channel: string; chatIdentifier: string; message: string }> = [];
+      const mockGateway = {
+        sendMessage: async (channel: string, chatIdentifier: string, message: string) => {
+          sentMessages.push({ channel, chatIdentifier, message });
+        },
+      } as any;
+
+      const handler = new FastPathHandler(
+        mockMcpClient,
+        mockCache,
+        mockGateway,
+        mockHistoryService,
+        summaryService
+      );
+
+      const action = detectFastPathAction('total pengeluaran bulan ini');
+      const processingStartTimestamp = Date.now();
+      const event = {
+        channel: 'whatsapp' as const,
+        chatIdentifier: '123456@s.whatsapp.net',
+        senderIdentifier: '123456',
+        messageType: 'text' as const,
+        textPayload: 'total pengeluaran bulan ini',
+        rawMessageTimestamp: new Date(processingStartTimestamp),
+      };
+
+      const handled = await handler.handleFastPath(event, action, processingStartTimestamp);
+
+      expect(handled).toBe(true);
+
+      // Verify native aggregation was invoked
+      expect(capturedAggregationPayloads.length).toBe(2);
+      expect(capturedAggregationPayloads[0]).toMatchObject({
+        groupBy: ['currency', 'recordType'],
+        compute: ['amount:sum'],
+        isTransfer: false,
+      });
+
+      // REQUIRED REGRESSION TEST: getTransactionHistory was NOT called
+      expect(mockHistoryService.getTransactionHistory).not.toHaveBeenCalled();
+
+      // Verify outbound message was delivered
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0].channel).toBe('whatsapp');
+      expect(sentMessages[0].message).toMatch(/Transaction Summary/);
+      expect(sentMessages[0].message).toMatch(/Expenses/);
     });
   });
 });
