@@ -760,7 +760,27 @@ export class WalletMcpClientService {
       mcpCallPayload.recordDate = queryOptions.dateRange;
     }
 
-    if (queryOptions?.searchQuery) {
+    if (queryOptions?.counterParty) {
+      const rawCounterParty = String(queryOptions.counterParty).trim();
+      mcpCallPayload.counterParty =
+        rawCounterParty.startsWith('contains-i.') ||
+        rawCounterParty.startsWith('eq.') ||
+        rawCounterParty.startsWith('contains.')
+          ? rawCounterParty
+          : `contains-i.${rawCounterParty}`;
+    }
+
+    if (queryOptions?.note) {
+      const rawNote = String(queryOptions.note).trim();
+      mcpCallPayload.note =
+        rawNote.startsWith('contains-i.') ||
+        rawNote.startsWith('eq.') ||
+        rawNote.startsWith('contains.')
+          ? rawNote
+          : `contains-i.${rawNote}`;
+    }
+
+    if (queryOptions?.searchQuery && queryOptions?.searchScanFallback === false) {
       mcpCallPayload.query = queryOptions.searchQuery;
     }
 
@@ -847,6 +867,8 @@ export class WalletMcpClientService {
           categoryGroup: payload.categoryGroup,
           recordType: payload.recordType,
           recordDate: payload.recordDate,
+          counterParty: payload.counterParty,
+          note: payload.note,
           query: payload.query,
         },
       });
@@ -854,7 +876,12 @@ export class WalletMcpClientService {
       return await this.callMcpTool<any>('get_records', payload);
     };
 
-    if (queryOptions?.searchQuery && queryOptions?.searchScanFallback === true) {
+    // Upstream Wallet MCP get_records has no cross-field `query` parameter (verified via live
+    // server characterization outside CI; sending `query` causes protocol validation failure).
+    // Per Issue #162 Decision Rule, the application executes the bounded local scan-and-match
+    // compatibility shim by default for multi-field `searchQuery`, unless `searchScanFallback === false`
+    // is explicitly set to test a forward-compatible upstream server.
+    if (queryOptions?.searchQuery && queryOptions?.searchScanFallback !== false) {
       return await this.executeSearchScanCompatibilityShim(
         queryOptions as TransactionHistoryQueryOptions & { searchQuery: string },
         mcpCallPayload,
@@ -913,9 +940,10 @@ export class WalletMcpClientService {
   }
 
   /**
-   * Bounded local scan-and-match compatibility shim.
-   * Retained strictly as an opt-in fallback for legacy testing / unsupported upstream environments
-   * until #140 completes the final Vitest cutover. Normal execution always uses native search.
+   * Bounded local scan-and-match compatibility shim for multi-field searchQuery.
+   * Based on live Wallet MCP capability audit (Issue #162), upstream lacks a cross-field
+   * text search parameter across counterParty and note. This shim provides bounded,
+   * paginated local matching over upstream-filtered candidate pages.
    */
   private async executeSearchScanCompatibilityShim(
     queryOptions: TransactionHistoryQueryOptions & { searchQuery: string },
@@ -928,12 +956,14 @@ export class WalletMcpClientService {
     callGetRecords: (payload: Record<string, unknown>) => Promise<any>
   ): Promise<TransactionHistoryPage> {
     const searchCacheKey = JSON.stringify({
-      query: mcpCallPayload.query,
+      searchQuery: queryOptions.searchQuery,
       accountId: mcpCallPayload.accountId,
       categoryId: mcpCallPayload.categoryId,
       categoryGroup: mcpCallPayload.categoryGroup,
       recordType: mcpCallPayload.recordType,
       recordDate: mcpCallPayload.recordDate,
+      counterParty: mcpCallPayload.counterParty,
+      note: mcpCallPayload.note,
       sortBy: upstreamSortBy,
     });
     const currentTimestamp = Date.now();

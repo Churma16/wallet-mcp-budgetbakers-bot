@@ -103,7 +103,7 @@ test('incremental local search keeps records and pagination on the same semantic
     } as T;
   };
 
-  const firstPage = await client.fetchRecords({ searchQuery: 'target merchant', limit: 2, page: 1, searchScanFallback: true });
+  const firstPage = await client.fetchRecords({ searchQuery: 'target merchant', limit: 2, page: 1 });
   assert.strictEqual(firstPage.records.length, 2);
   assert.strictEqual(firstPage.total, undefined);
   assert.strictEqual(firstPage.totalPages, undefined);
@@ -111,7 +111,7 @@ test('incremental local search keeps records and pagination on the same semantic
   assert.strictEqual(firstPage.nextOffset, 2);
   assert.deepStrictEqual(capturedOffsets, [0, 10]);
 
-  const secondPage = await client.fetchRecords({ searchQuery: 'target merchant', limit: 2, page: 2, searchScanFallback: true });
+  const secondPage = await client.fetchRecords({ searchQuery: 'target merchant', limit: 2, page: 2 });
   assert.deepStrictEqual(capturedOffsets, [0, 10, 20]);
   assert.strictEqual(secondPage.page, 2);
   assert.strictEqual(secondPage.offset, 2);
@@ -146,7 +146,7 @@ test('broad search stops after page lookahead and reuses cached candidates', asy
     } as T;
   };
 
-  const firstPage = await client.fetchRecords({ searchQuery: 'target merchant', limit: 5, page: 1, searchScanFallback: true });
+  const firstPage = await client.fetchRecords({ searchQuery: 'target merchant', limit: 5, page: 1 });
   assert.strictEqual(firstPage.records.length, 5);
   assert.strictEqual(firstPage.records[0].id, 'broad-0');
   assert.strictEqual(firstPage.total, undefined);
@@ -155,7 +155,7 @@ test('broad search stops after page lookahead and reuses cached candidates', asy
   assert.deepStrictEqual(capturedOffsets, [0, 5]);
 
   const callsAfterFirstPage = capturedOffsets.length;
-  const secondPage = await client.fetchRecords({ searchQuery: 'target merchant', limit: 5, page: 2, searchScanFallback: true });
+  const secondPage = await client.fetchRecords({ searchQuery: 'target merchant', limit: 5, page: 2 });
   assert.strictEqual(secondPage.records.length, 5);
   assert.strictEqual(secondPage.records[0].id, 'broad-5');
   assert.strictEqual(secondPage.hasMore, true);
@@ -186,7 +186,7 @@ test('sparse search stops at the per-request MCP scan budget and returns an acti
     } as T;
   };
 
-  const firstAttempt = await client.fetchRecords({ searchQuery: 'needle merchant', limit: 10, page: 1, searchScanFallback: true });
+  const firstAttempt = await client.fetchRecords({ searchQuery: 'needle merchant', limit: 10, page: 1 });
   assert.strictEqual(capturedOffsets.length, MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST);
   assert.deepStrictEqual(capturedOffsets, [0, 10, 60, 110, 160]);
   assert.strictEqual(firstAttempt.records.length, 0);
@@ -210,7 +210,7 @@ test('sparse search stops at the per-request MCP scan budget and returns an acti
   assert.match(formattedId, /filter akun, kategori, atau tanggal/i);
 
   const firstAttemptCallCount = capturedOffsets.length;
-  const secondAttempt = await client.fetchRecords({ searchQuery: 'needle merchant', limit: 10, page: 1, searchScanFallback: true });
+  const secondAttempt = await client.fetchRecords({ searchQuery: 'needle merchant', limit: 10, page: 1 });
   assert.strictEqual(capturedOffsets.length, firstAttemptCallCount + MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST);
   assert.strictEqual(capturedOffsets[firstAttemptCallCount], 210);
   assert.strictEqual(secondAttempt.unresolvedFilters?.[0].reason, 'UNRESOLVED');
@@ -245,7 +245,7 @@ test('unknown lookahead stays resumable until the next match is verified', async
     } as T;
   };
 
-  const firstAttempt = await client.fetchRecords({ searchQuery: 'target merchant', limit: 10, page: 1, searchScanFallback: true });
+  const firstAttempt = await client.fetchRecords({ searchQuery: 'target merchant', limit: 10, page: 1 });
   assert.strictEqual(capturedOffsets.length, MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST);
   assert.strictEqual(firstAttempt.records.length, 10);
   assert.strictEqual(firstAttempt.unresolvedFilters, undefined);
@@ -265,7 +265,7 @@ test('unknown lookahead stays resumable until the next match is verified', async
   assert.match(firstFormattedId, /transaksi yang cocok mungkin masih ada/i);
   assert.match(firstFormattedId, /ulangi pencarian yang sama/i);
 
-  const retry = await client.fetchRecords({ searchQuery: 'target merchant', limit: 10, page: 1, searchScanFallback: true });
+  const retry = await client.fetchRecords({ searchQuery: 'target merchant', limit: 10, page: 1 });
   assert.strictEqual(capturedOffsets.length, MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST + 1);
   assert.strictEqual(retry.records.length, 10);
   assert.strictEqual(retry.hasMore, true);

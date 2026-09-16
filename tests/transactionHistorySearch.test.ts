@@ -43,14 +43,6 @@ function createMockClient() {
   client.callMcpTool = async <T>(toolName: string, args: Record<string, unknown> = {}): Promise<T> => {
     calls.push({ toolName, args });
     if (error) throw error;
-    if (args.query && typeof args.query === 'string' && Array.isArray(response?.records)) {
-      const queryLower = args.query.toLowerCase();
-      const filtered = response.records.filter((recordItem: any) =>
-        (recordItem.counterParty && String(recordItem.counterParty).toLowerCase().includes(queryLower)) ||
-        (recordItem.note && String(recordItem.note).toLowerCase().includes(queryLower))
-      );
-      return { ...response, records: filtered, total: filtered.length } as T;
-    }
     return response as T;
   };
 
@@ -125,7 +117,7 @@ test('Suite 1: search matcher and production pipeline semantics', async () => {
   setResponse({ records: RECORDS, total: RECORDS.length });
 
   const merchant = await client.fetchRecords({ searchQuery: 'sTaRbUcKs' });
-  assert.strictEqual(calls[0].args.query, 'sTaRbUcKs');
+  assert.strictEqual(calls[0].args.query, undefined);
   assert.deepStrictEqual(merchant.records.map(item => item.id), ['rec-1']);
 
   const note = await client.fetchRecords({ searchQuery: 'PADANG' });
@@ -181,7 +173,7 @@ test('Suite 3: upstream query dispatch and query-specific error classification',
 
   setResponse({ records: [RECORDS[0]], total: 1 });
   const page = await service.getTransactionHistory({ searchQuery: 'Starbucks' });
-  assert.strictEqual(calls[0].args.query, 'Starbucks');
+  assert.strictEqual(calls[0].args.query, undefined);
   assert.strictEqual(page.records.length, 1);
 
   setError(new Error('Wallet MCP Error: search query not supported by upstream data source'));
@@ -241,7 +233,7 @@ test('Suite 4: search composes with account, category, type, date, sort, and lim
     REFERENCE_DATE
   );
   const args = calls[4].args;
-  assert.strictEqual(args.query, 'Pertamax');
+  assert.strictEqual(args.query, undefined);
   assert.strictEqual(args.accountId, 'acc-cash');
   assert.deepStrictEqual(args.categoryId, ['cat-transport']);
   assert.strictEqual(args.recordType, 'expense');

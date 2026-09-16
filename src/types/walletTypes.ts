@@ -133,6 +133,8 @@ export interface TransactionHistoryFilters {
   dateRange?: string[] | TransactionDateRangeFilter;
   datePeriod?: RelativeDatePeriod;
   searchQuery?: string;
+  counterParty?: string;
+  note?: string;
 }
 
 export interface TransactionHistoryQueryOptions extends TransactionHistoryFilters {
@@ -141,9 +143,11 @@ export interface TransactionHistoryQueryOptions extends TransactionHistoryFilter
   page?: number;
   sort?: TransactionSortOrder;
   /**
-   * Optional compatibility flag to invoke the legacy local scan-and-match fallback
-   * for upstream environments or regression tests lacking native text-search support.
-   * Normal execution defaults to native Wallet MCP get_records(query=...).
+   * Compatibility flag for multi-field searchQuery.
+   * Based on the live upstream capability audit (Issue #162), Wallet MCP get_records
+   * has no cross-field query parameter (only separate counterParty and note filters).
+   * Defaults to true (executing the bounded local scan-and-match compatibility shim).
+   * Set to false to force dispatching raw `query` to upstream for forward-compatible / mock testing.
    */
   searchScanFallback?: boolean;
 }
