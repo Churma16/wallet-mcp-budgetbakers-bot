@@ -292,6 +292,9 @@ export class TransactionSummaryService {
     if (normalizationResult.upstreamCategoryGroup) {
       transferCountPayload.categoryGroup = normalizationResult.upstreamCategoryGroup;
     }
+    if (normalizationResult.upstreamRecordType) {
+      transferCountPayload.recordType = normalizationResult.upstreamRecordType;
+    }
     if (normalizationResult.upstreamRecordDate && normalizationResult.upstreamRecordDate.length > 0) {
       transferCountPayload.recordDate = normalizationResult.upstreamRecordDate;
     }

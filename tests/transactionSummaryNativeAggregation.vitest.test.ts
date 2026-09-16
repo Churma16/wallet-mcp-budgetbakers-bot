@@ -202,7 +202,10 @@ describe('native Wallet MCP summary aggregation (Issue #161)', () => {
       datePeriod: 'today',
     });
 
+    expect(capturedPayloads).toHaveLength(2);
     expect(capturedPayloads[0].recordType).toBe('expense');
+    expect(capturedPayloads[1].recordType).toBe('expense');
+    expect(capturedPayloads[1].isTransfer).toBe(true);
     expect(summaryResult.totals[0]).toEqual({
       currency: 'IDR',
       income: 0,
@@ -211,6 +214,44 @@ describe('native Wallet MCP summary aggregation (Issue #161)', () => {
       transactionCount: 8,
     });
     expect(summaryResult.appliedFilters?.recordType).toBe('expense');
+  });
+
+  it('passes recordType filter to both main aggregation and transfer probe for income', async () => {
+    const capturedPayloads: WalletRecordAggregationQueryPayload[] = [];
+    const mockClient = createMockWalletMcpClient(async (payload) => {
+      capturedPayloads.push(payload);
+      if (payload.isTransfer === true) {
+        return { results: [{ count: 0 }], limit: 1000, offset: 0 };
+      }
+      return {
+        results: [
+          {
+            currency: 'IDR',
+            recordType: 'income',
+            count: 3,
+            'amount:sum': 500000,
+          },
+        ],
+        limit: 1000,
+        offset: 0,
+      };
+    });
+
+    const mockCache = createMockWalletCacheService();
+    const service = new TransactionSummaryService(mockClient, mockCache);
+
+    const summaryResult = await service.getTransactionSummary({
+      recordType: 'income',
+      datePeriod: 'this_month',
+    });
+
+    expect(capturedPayloads).toHaveLength(2);
+    expect(capturedPayloads[0].recordType).toBe('income');
+    expect(capturedPayloads[1].recordType).toBe('income');
+    expect(capturedPayloads[1].isTransfer).toBe(true);
+    expect(summaryResult.totals[0].income).toBe(500000);
+    expect(summaryResult.totals[0].expense).toBe(0);
+    expect(summaryResult.appliedFilters?.recordType).toBe('income');
   });
 
   it('performs category breakdown with name enrichment and expense-descending ranking', async () => {
