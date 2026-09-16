@@ -257,6 +257,15 @@ describe('official MCP client boundary (issue #165)', () => {
     expect(harness.close).not.toHaveBeenCalled();
   });
 
+  it('discards the shared client when list-tools reports a closed connection', async () => {
+    const harness = createHarness({
+      listToolsError: new SdkError(SdkErrorCode.ConnectionClosed, 'connection closed'),
+    });
+
+    await expectDispatchOutcome(() => harness.service.listTools(), 'UNKNOWN');
+    expect(harness.close).toHaveBeenCalledTimes(1);
+  });
+
   it('retains only bounded rate-limit and agent-hint metadata', async () => {
     const agentHints = Array.from({ length: MAX_WALLET_MCP_AGENT_HINTS + 4 }, (_, index) => ({
       type: `hint.${index}`,
