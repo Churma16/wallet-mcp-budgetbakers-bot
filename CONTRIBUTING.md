@@ -233,8 +233,9 @@ Compiles TypeScript source code (`tsc`) to verify strict type compliance across 
 
 ### Adding New Tests
 
-- When introducing a new feature, utility, or safeguard, add a corresponding test suite under `tests/` following the naming convention `<targetModule>.test.ts`.
-- If the test is hermetic and mocked, register it in `OFFLINE_TEST_SUITES` in `tests/runOfflineTests.ts` so it is automatically included in `npm test`.
+- When introducing a new feature, utility, or safeguard, add a corresponding hermetic test suite under `tests/` following the naming convention `<targetModule>.vitest.test.ts`.
+- All hermetic tests are authored with Vitest (`describe`, `it`, `expect`, `vi`) and are automatically discovered and executed by `npm test`.
+- For live/diagnostic checks requiring real external credentials, name the file `<targetModule>.test.ts` so it is excluded from default offline CI and can be invoked on demand via `npm run test:*:live`.
 - Ensure all tests exit cleanly with status code `0` on success and code `1` on failure.
 
 ---

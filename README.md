@@ -481,27 +481,13 @@ wallet-mcp-budgetbakers-bot/
 │   ├── app.ts                           # Application container and lifecycle coordinator
 │   └── index.ts                         # Entrypoint bootstrap
 ├── tests/                               # Diagnostic & verification test suites
-│   ├── runOfflineTests.ts               # Unified offline test runner executing 14 hermetic test suites
+│   ├── *.vitest.test.ts                 # Hermetic unit, integration, and regression suites run via Vitest
 │   ├── aiProvider.test.ts               # Diagnostic script for active AI provider NLU
-│   ├── fallbackAiProvider.test.ts       # Unit tests for multi-provider fallback & error failover
-│   ├── bankEmailRules.test.ts           # Unit test suite for Gate 1 filtering logic
-│   ├── budgetParsing.test.ts            # Unit tests for budget metric parsing & closed filtering
 │   ├── emailListenerService.test.ts     # Diagnostic script for Gmail IMAP connectivity
 │   ├── fetchRealEmailsGate.test.ts      # Live inbox diagnostic for Gate 1 rule evaluation
-│   ├── humanResponseFormatter.test.ts   # Validation script for human-friendly response strings
 │   ├── geminiAiProvider.test.ts         # Diagnostic script for Gemini AI provider
-│   ├── loggerRedaction.test.ts          # Redaction test for secrets and tokens in logs
-│   ├── loggerSanitizer.test.ts          # Masking test for bank account numbers and PANs in logs
-│   ├── mediaDownloadLimits.test.ts      # Boundary tests for oversized media protection
-│   ├── messageFormatHelper.test.ts      # Unit test for WhatsApp markup to Telegram HTML converter
-│   ├── messagingGatewayResilience.test.ts # Gateway failover, retry, and disconnect resilience
-│   ├── receiptOcrPrompt.test.ts         # Verification for receipt vision OCR prompt structure
-│   ├── responseDictionary.test.ts       # Verification script for i18n & multi-currency formatting
 │   ├── telegramBot.test.ts              # Diagnostic script for Telegram bot connectivity & dispatch
-│   ├── telegramSafeguards.test.ts       # Startup retry and network resilience for Telegram
-│   ├── walletMcpService.test.ts         # Diagnostic script for BudgetBakers MCP endpoints
-│   ├── whatsappSafeguards.test.ts       # Safeguards & session recovery tests for WhatsApp
-│   └── whatsappSocketHardening.test.ts  # Socket reconnection & backoff tests for WhatsApp
+│   └── walletMcpService.test.ts         # Diagnostic script for BudgetBakers MCP endpoints
 ├── .env.example                         # Environment variable template
 ├── package.json                         # Node dependencies and execution scripts
 ├── tsconfig.json                        # TypeScript compiler configuration
@@ -546,7 +532,7 @@ This project follows [Semantic Versioning](https://semver.org/) and [Conventiona
 
 - **Continuous Integration & PR Validation (Automated)**:
   - Every pull request and push targeting `main` automatically triggers the **Continuous Integration** workflow (`ci.yml`).
-  - Executes `npm ci`, compiles TypeScript via `npm run build`, and runs all 14 hermetic offline test suites via `npm test`.
+  - Executes `npm ci`, compiles TypeScript via `npm run build`, and runs all hermetic offline test suites via `npm test`.
   - Serves as a mandatory status check to guarantee zero compilation errors or test regressions before changes are merged.
 
 - **Snapshot Pre-Releases (Automated)**:

@@ -131,13 +131,13 @@ Do not apply this audit to unrelated presentation-only messaging, localization, 
 
 For relevant PRs, record a concise decision such as the native Wallet capability and official protocol layer used, whether local compatibility remains, or the concrete gap and evidence that justify a bounded shim. Do not require this note, a live Wallet call, or live external-service testing for unrelated PRs.
 
-## Vitest Invariant for New Test Suites
-Following the Vitest bootstrap (Issue #113), all new hermetic unit, integration, and regression test suites in this repository MUST be authored directly in Vitest:
-- **File Naming & Discovery**: New test files must be named `tests/**/*.vitest.test.ts` to match the include pattern in `vitest.config.ts`.
-- **Test Authoring API**: Import and use Vitest APIs explicitly (`describe`, `it`, `expect`, `vi`, `beforeEach`, `afterEach` from `'vitest'`). Do not write custom procedural runners or ad-hoc `assert` scripts.
-- **Execution**: Run with `npm run test:vitest` or `npx vitest run tests/<filename>.vitest.test.ts`.
-- **No Expansion of Legacy Runner**: Do **NOT** register new test suites into `tests/runOfflineTests.ts`. That legacy runner is frozen and reserved strictly for existing offline test suites pending eventual migration.
-- **Verification Requirement**: PRs introducing new capabilities or refactorings must verify both `npm run test:vitest` and `npm run test:offline`.
+## Vitest Invariant for Hermetic Test Suites
+Following the Vitest cutover (Issues #113 & #140), all hermetic unit, integration, and regression test suites in this repository MUST be authored directly in Vitest:
+- **File Naming & Discovery**: Hermetic test files must be named `tests/**/*.vitest.test.ts` to match the include pattern in `vitest.config.ts`.
+- **Test Authoring API**: Import and use Vitest APIs explicitly (`describe`, `it`, `expect`, `vi`, `beforeEach`, `afterEach` from `'vitest'`). Do not write custom procedural runners or ad-hoc scripts.
+- **Execution**: Run with `npm test`, `npm run test:vitest`, or `npx vitest run tests/<filename>.vitest.test.ts`.
+- **Legacy Runner Retired**: The legacy `tests/runOfflineTests.ts` runner has been completely retired and removed. All offline suites execute through Vitest.
+- **Verification Requirement**: PRs introducing new capabilities or refactorings must verify `npm test` and `npm run build`.
 
 ## Complexity-Based Handler & File Splitting Guidelines
 To maintain codebase maintainability without premature fragmentation or unnecessary navigation overhead:
