@@ -12,8 +12,10 @@ import {
   WalletRecordAggregationQueryPayload,
   TransactionHistoryPage,
   TransactionHistoryQueryOptions,
+  TransactionSummaryResult,
   WalletRecordItem,
 } from '../src/types/walletTypes.js';
+import { formatTransactionSummaryMessage } from '../src/utils/transactionSummaryFormatter.js';
 import type {
   WalletMcpSdkClient,
   WalletMcpTransportDependencies,
@@ -1043,6 +1045,83 @@ describe('native Wallet MCP summary aggregation (Issue #161)', () => {
 
       // Must fail closed (reject) rather than returning a default 0 / complete summary
       await expect(service.getTransactionSummary()).rejects.toThrow(WalletMcpRequestError);
+    });
+  });
+
+  describe('formatTransactionSummaryMessage partial and unknown transfer state', () => {
+    it('surfaces transferCountUnknown and partial state when transactionCount is zero', () => {
+      const zeroResult: TransactionSummaryResult = {
+        transactionCount: 0,
+        excludedTransferCount: 0,
+        transferCountUnknown: true,
+        isComplete: false,
+        totals: [],
+        breakdown: [],
+        groupBy: 'none',
+        isMultiCurrency: false,
+      };
+
+      const formattedEn = formatTransactionSummaryMessage(zeroResult, 'en');
+      expect(formattedEn).toContain('No transactions match these filters.');
+      expect(formattedEn).toContain('Transfer count could not be verified.');
+      expect(formattedEn).toContain(
+        'This summary is partial because the upstream history could not be scanned completely.'
+      );
+
+      const formattedId = formatTransactionSummaryMessage(zeroResult, 'id');
+      expect(formattedId).toContain('Tidak ada transaksi yang cocok dengan filter ini.');
+      expect(formattedId).toContain('Jumlah transfer tidak dapat diverifikasi.');
+      expect(formattedId).toContain(
+        'Ringkasan ini bersifat parsial karena riwayat upstream tidak dapat dipindai sepenuhnya.'
+      );
+    });
+
+    it('surfaces partial state warning when transactionCount is zero but isComplete is false without transferCountUnknown', () => {
+      const partialZeroResult: TransactionSummaryResult = {
+        transactionCount: 0,
+        excludedTransferCount: 0,
+        isComplete: false,
+        totals: [],
+        breakdown: [],
+        groupBy: 'none',
+        isMultiCurrency: false,
+      };
+
+      const formattedEn = formatTransactionSummaryMessage(partialZeroResult, 'en');
+      expect(formattedEn).toContain('No transactions match these filters.');
+      expect(formattedEn).not.toContain('Transfer count could not be verified.');
+      expect(formattedEn).toContain(
+        'This summary is partial because the upstream history could not be scanned completely.'
+      );
+    });
+
+    it('surfaces transferCountUnknown when transactionCount is non-zero', () => {
+      const nonZeroResult: TransactionSummaryResult = {
+        transactionCount: 1,
+        excludedTransferCount: 0,
+        transferCountUnknown: true,
+        isComplete: false,
+        totals: [
+          {
+            currency: 'IDR',
+            income: 100000,
+            expense: 0,
+            net: 100000,
+            transactionCount: 1,
+          },
+        ],
+        breakdown: [],
+        groupBy: 'none',
+        isMultiCurrency: false,
+      };
+
+      const formattedEn = formatTransactionSummaryMessage(nonZeroResult, 'en');
+      expect(formattedEn).toContain('Transfer count could not be verified.');
+      expect(formattedEn).toContain('This summary is partial');
+
+      const formattedId = formatTransactionSummaryMessage(nonZeroResult, 'id');
+      expect(formattedId).toContain('Jumlah transfer tidak dapat diverifikasi.');
+      expect(formattedId).toContain('Ringkasan ini bersifat parsial');
     });
   });
 });

@@ -96,6 +96,24 @@ export function formatTransactionSummaryMessage(
             ? 'No transactions match these filters.'
             : 'Tidak ada transaksi yang cocok dengan filter ini.')
     );
+
+    if (summaryResult.transferCountUnknown) {
+      messageParts.push(
+        isEnglish
+          ? '_Transfer count could not be verified._'
+          : '_Jumlah transfer tidak dapat diverifikasi._'
+      );
+    }
+
+    if (!summaryResult.isComplete) {
+      messageParts.push('');
+      messageParts.push(
+        isEnglish
+          ? '⚠️ _This summary is partial because the upstream history could not be scanned completely._'
+          : '⚠️ _Ringkasan ini bersifat parsial karena riwayat upstream tidak dapat dipindai sepenuhnya._'
+      );
+    }
+
     return messageParts.join('\n');
   }
 
@@ -137,6 +155,12 @@ export function formatTransactionSummaryMessage(
       isEnglish
         ? `_Excluded ${summaryResult.excludedTransferCount} transfer record(s) from income/expense totals._`
         : `_Mengabaikan ${summaryResult.excludedTransferCount} transaksi transfer dari total pemasukan/pengeluaran._`
+    );
+  } else if (summaryResult.transferCountUnknown) {
+    messageParts.push(
+      isEnglish
+        ? '_Transfer count could not be verified._'
+        : '_Jumlah transfer tidak dapat diverifikasi._'
     );
   }
 
