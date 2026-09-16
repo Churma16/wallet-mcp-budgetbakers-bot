@@ -306,18 +306,30 @@ export class TransactionSummaryService {
       }),
     ]);
 
-    const excludedTransferCount = transferResponse?.results?.[0]?.count ?? 0;
+    const isTransferCountAvailable =
+      transferResponse !== undefined &&
+      Array.isArray(transferResponse.results) &&
+      transferResponse.results.length > 0 &&
+      typeof transferResponse.results[0]?.count === 'number';
+
+    const excludedTransferCount = isTransferCountAvailable
+      ? transferResponse.results[0].count
+      : 0;
+
+    const transferCountUnknown = !isTransferCountAvailable;
+    const isComplete = isTransferCountAvailable;
     const rawResults = aggregationResponse.results || [];
 
     if (rawResults.length === 0 || (rawResults.length === 1 && rawResults[0].count === 0)) {
       return {
         transactionCount: 0,
         excludedTransferCount,
+        transferCountUnknown: transferCountUnknown || undefined,
         totals: [],
         breakdown: [],
         groupBy,
         isMultiCurrency: false,
-        isComplete: true,
+        isComplete,
         appliedFilters: normalizationResult.appliedFilters,
       };
     }
@@ -367,11 +379,12 @@ export class TransactionSummaryService {
     return {
       transactionCount: totalTransactionCount,
       excludedTransferCount,
+      transferCountUnknown: transferCountUnknown || undefined,
       totals,
       breakdown,
       groupBy,
       isMultiCurrency,
-      isComplete: true,
+      isComplete,
       appliedFilters: normalizationResult.appliedFilters,
     };
   }

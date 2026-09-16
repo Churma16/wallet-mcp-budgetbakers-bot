@@ -245,6 +245,7 @@ export interface TransactionSummaryBreakdownItem {
 export interface TransactionSummaryResult {
   transactionCount: number;
   excludedTransferCount: number;
+  transferCountUnknown?: boolean;
   totals: TransactionCurrencyTotals[];
   breakdown: TransactionSummaryBreakdownItem[];
   groupBy: TransactionSummaryGroupBy;

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { WalletMcpClientService } from '../src/services/walletMcpService.js';
+import { WalletMcpClientService, WalletMcpRequestError } from '../src/services/walletMcpService.js';
 import { WalletCacheService } from '../src/services/walletCacheService.js';
 import { TransactionSummaryService } from '../src/services/transactionSummaryService.js';
 import { TransactionHistoryService } from '../src/services/transactionHistoryService.js';
@@ -745,6 +745,8 @@ describe('native Wallet MCP summary aggregation (Issue #161)', () => {
 
     expect(summary.transactionCount).toBe(1);
     expect(summary.excludedTransferCount).toBe(0);
+    expect(summary.transferCountUnknown).toBe(true);
+    expect(summary.isComplete).toBe(false);
   });
 
   it('skips non-positive rows and handles uncategorized / unknown-account rows in breakdown', async () => {
@@ -877,5 +879,129 @@ describe('native Wallet MCP summary aggregation (Issue #161)', () => {
     expect(summary.transactionCount).toBe(2);
     expect(summary.totals[0].expense).toBe(30000);
     expect(summary.isComplete).toBe(true);
+  });
+
+  describe('Wallet MCP aggregation response validation', () => {
+    const client = new WalletMcpClientService('https://wallet.example.com', 'test-token');
+
+    it('rejects non-object raw response', () => {
+      expect(() =>
+        client.validateRecordAggregationResponse('invalid', {
+          groupBy: ['currency', 'recordType'],
+        })
+      ).toThrow(WalletMcpRequestError);
+    });
+
+    it('rejects response missing results array', () => {
+      expect(() =>
+        client.validateRecordAggregationResponse({}, {
+          groupBy: ['currency', 'recordType'],
+        })
+      ).toThrow(WalletMcpRequestError);
+
+      expect(() =>
+        client.validateRecordAggregationResponse({ results: null }, {
+          groupBy: ['currency', 'recordType'],
+        })
+      ).toThrow(WalletMcpRequestError);
+    });
+
+    it('rejects malformed row elements or invalid count', () => {
+      expect(() =>
+        client.validateRecordAggregationResponse(
+          { results: ['not-an-object'] },
+          { groupBy: ['currency', 'recordType'] }
+        )
+      ).toThrow(WalletMcpRequestError);
+
+      expect(() =>
+        client.validateRecordAggregationResponse(
+          { results: [{ count: -1, currency: 'IDR', recordType: 'expense' }] },
+          { groupBy: ['currency', 'recordType'] }
+        )
+      ).toThrow(WalletMcpRequestError);
+
+      expect(() =>
+        client.validateRecordAggregationResponse(
+          { results: [{ count: 'two', currency: 'IDR', recordType: 'expense' }] },
+          { groupBy: ['currency', 'recordType'] }
+        )
+      ).toThrow(WalletMcpRequestError);
+    });
+
+    it('rejects missing or invalid currency when currency is grouped', () => {
+      expect(() =>
+        client.validateRecordAggregationResponse(
+          { results: [{ count: 1, recordType: 'expense' }] },
+          { groupBy: ['currency', 'recordType'] }
+        )
+      ).toThrow(WalletMcpRequestError);
+
+      expect(() =>
+        client.validateRecordAggregationResponse(
+          { results: [{ count: 1, currency: '   ', recordType: 'expense' }] },
+          { groupBy: ['currency', 'recordType'] }
+        )
+      ).toThrow(WalletMcpRequestError);
+    });
+
+    it('rejects missing or invalid recordType when recordType is grouped', () => {
+      expect(() =>
+        client.validateRecordAggregationResponse(
+          { results: [{ count: 1, currency: 'IDR' }] },
+          { groupBy: ['currency', 'recordType'] }
+        )
+      ).toThrow(WalletMcpRequestError);
+
+      expect(() =>
+        client.validateRecordAggregationResponse(
+          { results: [{ count: 1, currency: 'IDR', recordType: 'transfer' }] },
+          { groupBy: ['currency', 'recordType'] }
+        )
+      ).toThrow(WalletMcpRequestError);
+    });
+
+    it('rejects non-numeric or missing amount:sum when amount:sum is computed', () => {
+      expect(() =>
+        client.validateRecordAggregationResponse(
+          { results: [{ count: 1, currency: 'IDR', recordType: 'expense' }] },
+          { groupBy: ['currency', 'recordType'], compute: ['amount:sum'] }
+        )
+      ).toThrow(WalletMcpRequestError);
+
+      expect(() =>
+        client.validateRecordAggregationResponse(
+          { results: [{ count: 1, currency: 'IDR', recordType: 'expense', 'amount:sum': 'not-a-number' }] },
+          { groupBy: ['currency', 'recordType'], compute: ['amount:sum'] }
+        )
+      ).toThrow(WalletMcpRequestError);
+    });
+
+    it('prevents malformed aggregation responses from becoming valid empty/zero/complete summaries', async () => {
+      const sdkClient = {
+        connect: vi.fn().mockResolvedValue(undefined),
+        callTool: vi.fn().mockResolvedValue({
+          content: [],
+          structuredContent: {
+            // Missing results array entirely
+            invalidField: true,
+          },
+        }),
+        listTools: vi.fn().mockResolvedValue({ tools: [] }),
+        close: vi.fn().mockResolvedValue(undefined),
+      } as unknown as WalletMcpSdkClient;
+
+      const clientWithMockTransport = new WalletMcpClientService(
+        'https://wallet.example.com',
+        'test-token',
+        { createClient: () => sdkClient }
+      );
+
+      const mockCache = createMockWalletCacheService();
+      const service = new TransactionSummaryService(clientWithMockTransport, mockCache);
+
+      // Must fail closed (reject) rather than returning a default 0 / complete summary
+      await expect(service.getTransactionSummary()).rejects.toThrow(WalletMcpRequestError);
+    });
   });
 });

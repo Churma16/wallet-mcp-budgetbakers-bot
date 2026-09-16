@@ -20,6 +20,7 @@ import {
   TransactionHistoryPage,
   WalletRecordAggregationQueryPayload,
   WalletRecordAggregationResponse,
+  WalletRecordAggregationResultItem,
 } from '../types/walletTypes.js';
 import { applicationLogger, redactSensitiveData } from '../utils/logger.js';
 import { matchesTransactionRecordSearch } from '../utils/transactionSearchMatcher.js';
@@ -1089,10 +1090,122 @@ export class WalletMcpClientService {
       },
     });
 
-    return await this.callMcpTool<WalletRecordAggregationResponse>(
+    const rawResponse = await this.callMcpTool<unknown>(
       'get_records_aggregation',
       queryPayload as Record<string, unknown>
     );
+
+    return this.validateRecordAggregationResponse(rawResponse, queryPayload);
+  }
+
+  /**
+   * Validates and parses raw MCP aggregation responses before treating them as authoritative.
+   * Enforces fail-closed validation on missing results, malformed rows, invalid counts,
+   * missing record types, missing currencies, and non-numeric computed fields.
+   */
+  public validateRecordAggregationResponse(
+    rawResponse: unknown,
+    queryPayload: WalletRecordAggregationQueryPayload
+  ): WalletRecordAggregationResponse {
+    if (!isRecord(rawResponse)) {
+      throw new WalletMcpRequestError(
+        `[error] MCP Tool 'get_records_aggregation' returned an unverifiable non-object response`,
+        'UNKNOWN'
+      );
+    }
+
+    const rawResults = rawResponse.results;
+    if (!Array.isArray(rawResults)) {
+      throw new WalletMcpRequestError(
+        `[error] MCP Tool 'get_records_aggregation' response is missing a valid results array`,
+        'UNKNOWN'
+      );
+    }
+
+    const expectCurrency = queryPayload.groupBy?.includes('currency') ?? false;
+    const expectRecordType = queryPayload.groupBy?.includes('recordType') ?? false;
+    const expectAmountSum = queryPayload.compute?.includes('amount:sum') ?? false;
+
+    const validatedResults: WalletRecordAggregationResultItem[] = [];
+
+    for (let rowIndex = 0; rowIndex < rawResults.length; rowIndex += 1) {
+      const row = rawResults[rowIndex];
+      if (!isRecord(row)) {
+        throw new WalletMcpRequestError(
+          `[error] MCP Tool 'get_records_aggregation' returned malformed row at index ${rowIndex}`,
+          'UNKNOWN'
+        );
+      }
+
+      const rawCount = row.count;
+      if (typeof rawCount !== 'number' || !Number.isFinite(rawCount) || rawCount < 0) {
+        throw new WalletMcpRequestError(
+          `[error] MCP Tool 'get_records_aggregation' row at index ${rowIndex} has invalid count: ${String(rawCount)}`,
+          'UNKNOWN'
+        );
+      }
+
+      // Authoritative empty result signal: [{ count: 0 }] without groupings
+      if (rawCount === 0 && rawResults.length === 1 && !row.currency && !row.recordType) {
+        validatedResults.push({ count: 0 });
+        break;
+      }
+
+      if (expectCurrency) {
+        if (typeof row.currency !== 'string' || row.currency.trim().length === 0) {
+          throw new WalletMcpRequestError(
+            `[error] MCP Tool 'get_records_aggregation' row at index ${rowIndex} is missing required currency`,
+            'UNKNOWN'
+          );
+        }
+      }
+
+      if (expectRecordType) {
+        if (row.recordType !== 'expense' && row.recordType !== 'income') {
+          throw new WalletMcpRequestError(
+            `[error] MCP Tool 'get_records_aggregation' row at index ${rowIndex} is missing or has invalid recordType: ${String(row.recordType)}`,
+            'UNKNOWN'
+          );
+        }
+      }
+
+      if (expectAmountSum) {
+        const amountSum = row['amount:sum'];
+        if (typeof amountSum !== 'number' || !Number.isFinite(amountSum)) {
+          throw new WalletMcpRequestError(
+            `[error] MCP Tool 'get_records_aggregation' row at index ${rowIndex} has non-numeric 'amount:sum': ${String(amountSum)}`,
+            'UNKNOWN'
+          );
+        }
+      }
+
+      validatedResults.push(row as WalletRecordAggregationResultItem);
+    }
+
+    const validatedResponse: WalletRecordAggregationResponse = {
+      results: validatedResults,
+      limit: typeof rawResponse.limit === 'number' && Number.isFinite(rawResponse.limit)
+        ? rawResponse.limit
+        : 1000,
+      offset: typeof rawResponse.offset === 'number' && Number.isFinite(rawResponse.offset)
+        ? rawResponse.offset
+        : 0,
+    };
+
+    if (typeof rawResponse.isTransfer === 'boolean' || rawResponse.isTransfer === null) {
+      validatedResponse.isTransfer = rawResponse.isTransfer;
+    }
+    if (typeof rawResponse.baseCurrency === 'string') {
+      validatedResponse.baseCurrency = rawResponse.baseCurrency;
+    }
+    if (Array.isArray(rawResponse.agentHints)) {
+      validatedResponse.agentHints = rawResponse.agentHints as WalletRecordAggregationResponse['agentHints'];
+    }
+    if (isRecord(rawResponse._meta)) {
+      validatedResponse._meta = rawResponse._meta as WalletRecordAggregationResponse['_meta'];
+    }
+
+    return validatedResponse;
   }
 
 
