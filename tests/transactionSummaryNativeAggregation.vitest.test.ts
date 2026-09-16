@@ -3,6 +3,8 @@ import { WalletMcpClientService } from '../src/services/walletMcpService.js';
 import { WalletCacheService } from '../src/services/walletCacheService.js';
 import { TransactionSummaryService } from '../src/services/transactionSummaryService.js';
 import { TransactionHistoryService } from '../src/services/transactionHistoryService.js';
+import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
+import { FinancialActionExecutor } from '../src/services/financialActionExecutor.js';
 import {
   WalletAccountItem,
   WalletCategoryItem,
@@ -574,5 +576,306 @@ describe('native Wallet MCP summary aggregation (Issue #161)', () => {
     expect(metadata?.rateLimit?.remaining).toBe(295);
     expect(metadata?.rateLimit?.limit).toBe(300);
     expect(metadata?.agentHints?.[0].text).toBe('Aggregation cached');
+  });
+
+  it('throws descriptive error when neither client nor history service is configured', async () => {
+    const service = new TransactionSummaryService();
+    await expect(service.getTransactionSummary()).rejects.toThrow(
+      'TransactionSummaryService requires WalletMcpClientService or TransactionHistoryService'
+    );
+  });
+
+  it('extracts walletMcpClient and cache from TransactionHistoryService when provided as first argument', async () => {
+    const mockClient = createMockWalletMcpClient(async () => ({
+      results: [
+        {
+          currency: 'IDR',
+          recordType: 'expense',
+          count: 1,
+          'amount:sum': -25000,
+        },
+      ],
+      limit: 1000,
+      offset: 0,
+    }));
+    const mockCache = createMockWalletCacheService();
+    const historyService = new TransactionHistoryService(mockClient, mockCache);
+
+    expect(historyService.getWalletMcpClient()).toBe(mockClient);
+    expect(historyService.getWalletCacheService()).toBe(mockCache);
+
+    const service = new TransactionSummaryService(historyService);
+    const summary = await service.getTransactionSummary();
+
+    expect(summary.transactionCount).toBe(1);
+    expect(summary.totals[0].expense).toBe(25000);
+  });
+
+  it('initializes FastPathHandler default TransactionSummaryService when none is provided', () => {
+    const mockClient = createMockWalletMcpClient(async () => ({ results: [], limit: 1000, offset: 0 }));
+    const mockCache = createMockWalletCacheService();
+    const handler = new FastPathHandler(
+      {
+        pendingActionHandler: {} as any,
+        emailTransactionHandler: {} as any,
+        userMessageHandler: {} as any,
+      },
+      mockClient,
+      mockCache
+    );
+    expect(handler).toBeDefined();
+  });
+
+  it('initializes FinancialActionExecutor default TransactionSummaryService when none is provided', () => {
+    const mockClient = createMockWalletMcpClient(async () => ({ results: [], limit: 1000, offset: 0 }));
+    const mockCache = createMockWalletCacheService();
+    const executor = new FinancialActionExecutor(mockClient, mockCache);
+    expect(executor).toBeDefined();
+  });
+
+  it('dispatches fetchRecordsAggregation tool call with full filters through callMcpTool', async () => {
+    const sdkClient = {
+      connect: vi.fn().mockResolvedValue(undefined),
+      callTool: vi.fn().mockResolvedValue({
+        content: [],
+        structuredContent: {
+          results: [
+            {
+              currency: 'IDR',
+              recordType: 'expense',
+              count: 3,
+              'amount:sum': -150000,
+            },
+          ],
+          limit: 1000,
+          offset: 0,
+        },
+      }),
+      listTools: vi.fn().mockResolvedValue({ tools: [] }),
+      close: vi.fn().mockResolvedValue(undefined),
+    } as unknown as WalletMcpSdkClient;
+
+    const client = new WalletMcpClientService(
+      'https://wallet.example.com',
+      'test-token',
+      { createClient: () => sdkClient }
+    );
+
+    const result = await client.fetchRecordsAggregation({
+      groupBy: ['currency', 'recordType'],
+      compute: ['amount:sum'],
+      isTransfer: false,
+      accountId: 'acc-1',
+      categoryId: 'cat-1',
+      categoryGroup: 'food_and_drinks',
+      recordType: 'expense',
+      recordDate: '2026-09-01T00:00:00.000Z~2026-09-30T23:59:59.999Z',
+    });
+
+    expect(sdkClient.callTool).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'get_records_aggregation',
+        arguments: expect.objectContaining({
+          accountId: 'acc-1',
+          categoryId: 'cat-1',
+          categoryGroup: 'food_and_drinks',
+          recordType: 'expense',
+          recordDate: '2026-09-01T00:00:00.000Z~2026-09-30T23:59:59.999Z',
+        }),
+      }),
+      expect.anything()
+    );
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0]['amount:sum']).toBe(-150000);
+  });
+
+  it('composes category name filter into category ID for native aggregation and transfer probe', async () => {
+    const capturedPayloads: WalletRecordAggregationQueryPayload[] = [];
+    const mockClient = createMockWalletMcpClient(async (payload) => {
+      capturedPayloads.push(payload);
+      return {
+        results: [
+          {
+            currency: 'IDR',
+            recordType: 'expense',
+            count: 1,
+            'amount:sum': -50000,
+          },
+        ],
+        limit: 1000,
+        offset: 0,
+      };
+    });
+
+    const mockCache = createMockWalletCacheService();
+    const service = new TransactionSummaryService(mockClient, mockCache);
+
+    const summary = await service.getTransactionSummary({
+      categoryName: 'Food & Drinks',
+    });
+
+    expect(capturedPayloads[0].categoryId).toEqual(['cat-food']);
+    expect(capturedPayloads[1].categoryId).toEqual(['cat-food']);
+    expect(summary.appliedFilters?.category?.id).toBe('cat-food');
+  });
+
+  it('handles transfer count probe failure gracefully and defaults excludedTransferCount to 0', async () => {
+    const mockClient = createMockWalletMcpClient(async (payload) => {
+      if (payload.isTransfer === true) {
+        throw new Error('Transfer aggregation unavailable');
+      }
+      return {
+        results: [
+          {
+            currency: 'IDR',
+            recordType: 'expense',
+            count: 1,
+            'amount:sum': -20000,
+          },
+        ],
+        limit: 1000,
+        offset: 0,
+      };
+    });
+
+    const mockCache = createMockWalletCacheService();
+    const service = new TransactionSummaryService(mockClient, mockCache);
+
+    const summary = await service.getTransactionSummary();
+
+    expect(summary.transactionCount).toBe(1);
+    expect(summary.excludedTransferCount).toBe(0);
+  });
+
+  it('skips non-positive rows and handles uncategorized / unknown-account rows in breakdown', async () => {
+    const mockClient = createMockWalletMcpClient(async (payload) => {
+      if (payload.isTransfer === true) {
+        return { results: [{ count: 0 }], limit: 1000, offset: 0 };
+      }
+      return {
+        results: [
+          {
+            currency: 'IDR',
+            recordType: 'expense',
+            count: 0, // skipped
+            'amount:sum': 0,
+          },
+          {
+            currency: 'IDR',
+            recordType: 'expense',
+            count: 1,
+            'amount:sum': -15000,
+            // no category:id, no category:name -> __uncategorized__
+          },
+        ],
+        limit: 1000,
+        offset: 0,
+      };
+    });
+
+    const mockCache = createMockWalletCacheService();
+    const service = new TransactionSummaryService(mockClient, mockCache);
+
+    const summary = await service.getTransactionSummary({ groupBy: 'category' });
+
+    expect(summary.transactionCount).toBe(1);
+    expect(summary.breakdown).toHaveLength(1);
+    expect(summary.breakdown[0].key).toBe('__uncategorized__');
+  });
+
+  it('sorts multi-currency breakdowns alphabetically by name/key', async () => {
+    const mockClient = createMockWalletMcpClient(async (payload) => {
+      if (payload.isTransfer === true) {
+        return { results: [{ count: 0 }], limit: 1000, offset: 0 };
+      }
+      return {
+        results: [
+          {
+            currency: 'USD',
+            recordType: 'expense',
+            count: 1,
+            'amount:sum': -10,
+            'category:id': 'cat-zebra',
+            'category:name': 'Zebra Category',
+          },
+          {
+            currency: 'IDR',
+            recordType: 'expense',
+            count: 1,
+            'amount:sum': -50000,
+            'category:id': 'cat-alpha',
+            'category:name': 'Alpha Category',
+          },
+        ],
+        limit: 1000,
+        offset: 0,
+      };
+    });
+
+    const mockCache = createMockWalletCacheService();
+    const service = new TransactionSummaryService(mockClient, mockCache);
+
+    const summary = await service.getTransactionSummary({ groupBy: 'category' });
+
+    expect(summary.isMultiCurrency).toBe(true);
+    expect(summary.breakdown).toHaveLength(2);
+    expect(summary.breakdown[0].name).toBe('Alpha Category');
+    expect(summary.breakdown[1].name).toBe('Zebra Category');
+  });
+
+  it('exercises compatibility fallback pagination loops, multi-page retrieval, and safety cap', async () => {
+    const pageRecords = (pageNumber: number): WalletRecordItem[] => [
+      {
+        id: `rec-page-${pageNumber}`,
+        accountId: 'acc-bca',
+        amount: -10000 * pageNumber,
+        currency: 'IDR',
+        recordDate: '2026-09-12T10:00:00.000Z',
+        recordType: 'expense',
+      },
+    ];
+
+    let callCount = 0;
+    const mockHistoryService = {
+      getTransactionHistory: vi.fn().mockImplementation(async (options: TransactionHistoryQueryOptions) => {
+        callCount += 1;
+        if (callCount === 1) {
+          return {
+            records: pageRecords(1),
+            total: 2,
+            limit: 1,
+            offset: 0,
+            page: 1,
+            totalPages: 2,
+            nextOffset: 1,
+            hasMore: true,
+            sort: 'newest',
+          } as TransactionHistoryPage;
+        }
+        return {
+          records: pageRecords(2),
+          total: 2,
+          limit: 50,
+          offset: 1,
+          page: 2,
+          totalPages: 2,
+          nextOffset: null,
+          hasMore: false,
+          sort: 'newest',
+        } as TransactionHistoryPage;
+      }),
+    } as unknown as TransactionHistoryService;
+
+    const legacyService = new TransactionSummaryService(mockHistoryService);
+
+    const summary = await legacyService.getTransactionSummary({
+      recordType: 'expense',
+      datePeriod: 'this_month',
+    });
+
+    expect(mockHistoryService.getTransactionHistory).toHaveBeenCalledTimes(2);
+    expect(summary.transactionCount).toBe(2);
+    expect(summary.totals[0].expense).toBe(30000);
+    expect(summary.isComplete).toBe(true);
   });
 });

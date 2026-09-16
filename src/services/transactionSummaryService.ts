@@ -128,6 +128,13 @@ function buildBreakdown(
     addRecordToCurrencyTotals(groupedItem.totalsByCurrency, recordItem);
   }
 
+  return finalizeAndSortBreakdown(groupedItemMap, isMultiCurrency);
+}
+
+function finalizeAndSortBreakdown(
+  groupedItemMap: Map<string, MutableBreakdownItem>,
+  isMultiCurrency: boolean
+): TransactionSummaryBreakdownItem[] {
   const finalizedBreakdown = [...groupedItemMap.values()].map(groupedItem => ({
     key: groupedItem.key,
     name: groupedItem.name,
@@ -164,18 +171,19 @@ export class TransactionSummaryService {
   private readonly transactionHistoryService?: TransactionHistoryService;
 
   constructor(
-    walletMcpClientOrHistoryService: WalletMcpClientService | TransactionHistoryService,
+    walletMcpClientOrHistoryService?: WalletMcpClientService | TransactionHistoryService,
     walletCacheService?: WalletCacheService,
     transactionHistoryService?: TransactionHistoryService
   ) {
     if (
-      'fetchRecordsAggregation' in walletMcpClientOrHistoryService ||
-      'callMcpTool' in walletMcpClientOrHistoryService
+      walletMcpClientOrHistoryService &&
+      ('fetchRecordsAggregation' in walletMcpClientOrHistoryService ||
+        'callMcpTool' in walletMcpClientOrHistoryService)
     ) {
       this.walletMcpClient = walletMcpClientOrHistoryService as WalletMcpClientService;
       this.walletCacheService = walletCacheService;
       this.transactionHistoryService = transactionHistoryService;
-    } else {
+    } else if (walletMcpClientOrHistoryService) {
       const historyService = walletMcpClientOrHistoryService as TransactionHistoryService;
       this.transactionHistoryService = historyService;
       this.walletCacheService = walletCacheService ?? historyService.getWalletCacheService?.();
@@ -450,34 +458,7 @@ export class TransactionSummaryService {
       }
     }
 
-    const finalizedBreakdown = [...groupedItemMap.values()].map(groupedItem => ({
-      key: groupedItem.key,
-      name: groupedItem.name,
-      transactionCount: groupedItem.transactionCount,
-      totals: finalizeCurrencyTotals(groupedItem.totalsByCurrency),
-    }));
-
-    if (isMultiCurrency) {
-      return finalizedBreakdown.sort((left, right) =>
-        (left.name || left.key).localeCompare(right.name || right.key)
-      );
-    }
-
-    return finalizedBreakdown.sort((left, right) => {
-      const leftTotals = left.totals[0];
-      const rightTotals = right.totals[0];
-      const expenseDifference = (rightTotals?.expense || 0) - (leftTotals?.expense || 0);
-      if (expenseDifference !== 0) {
-        return expenseDifference;
-      }
-
-      const incomeDifference = (rightTotals?.income || 0) - (leftTotals?.income || 0);
-      if (incomeDifference !== 0) {
-        return incomeDifference;
-      }
-
-      return (left.name || left.key).localeCompare(right.name || right.key);
-    });
+    return finalizeAndSortBreakdown(groupedItemMap, isMultiCurrency);
   }
 
   /**
