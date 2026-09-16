@@ -42,7 +42,11 @@ export class FastPathHandler {
       new TransactionHistoryService(walletMcpClient, walletCacheService);
     this.transactionSummaryService =
       transactionSummaryService ||
-      new TransactionSummaryService(this.transactionHistoryService);
+      new TransactionSummaryService(
+        walletMcpClient,
+        walletCacheService,
+        this.transactionHistoryService
+      );
     this.financialActionExecutor =
       financialActionExecutor ||
       new FinancialActionExecutor(

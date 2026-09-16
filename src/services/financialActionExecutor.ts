@@ -37,7 +37,11 @@ export class FinancialActionExecutor {
       new TransactionHistoryService(walletMcpClient, walletCacheService);
     this.transactionSummaryService =
       transactionSummaryService ||
-      new TransactionSummaryService(this.transactionHistoryService);
+      new TransactionSummaryService(
+        walletMcpClient,
+        walletCacheService,
+        this.transactionHistoryService
+      );
   }
 
   /**

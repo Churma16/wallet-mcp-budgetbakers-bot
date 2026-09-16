@@ -14,6 +14,15 @@ export class TransactionHistoryService {
     private readonly walletCacheService?: WalletCacheService
   ) {}
 
+  public getWalletMcpClient(): WalletMcpClientService {
+    return this.walletMcpClient;
+  }
+
+  public getWalletCacheService(): WalletCacheService | undefined {
+    return this.walletCacheService;
+  }
+
+
   /**
    * Retrieves transaction history records with composable filters, pagination, and sorting.
    * Enforces fail-closed validation on invalid filters and enriches missing entity names from cache.
