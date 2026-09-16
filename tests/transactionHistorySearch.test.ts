@@ -43,6 +43,14 @@ function createMockClient() {
   client.callMcpTool = async <T>(toolName: string, args: Record<string, unknown> = {}): Promise<T> => {
     calls.push({ toolName, args });
     if (error) throw error;
+    if (args.query && typeof args.query === 'string' && Array.isArray(response?.records)) {
+      const queryLower = args.query.toLowerCase();
+      const filtered = response.records.filter((recordItem: any) =>
+        (recordItem.counterParty && String(recordItem.counterParty).toLowerCase().includes(queryLower)) ||
+        (recordItem.note && String(recordItem.note).toLowerCase().includes(queryLower))
+      );
+      return { ...response, records: filtered, total: filtered.length } as T;
+    }
     return response as T;
   };
 

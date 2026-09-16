@@ -140,6 +140,12 @@ export interface TransactionHistoryQueryOptions extends TransactionHistoryFilter
   offset?: number;
   page?: number;
   sort?: TransactionSortOrder;
+  /**
+   * Optional compatibility flag to invoke the legacy local scan-and-match fallback
+   * for upstream environments or regression tests lacking native text-search support.
+   * Normal execution defaults to native Wallet MCP get_records(query=...).
+   */
+  searchScanFallback?: boolean;
 }
 
 export interface AppliedTransactionHistoryFilters {
