@@ -298,6 +298,7 @@ export class Application {
     }
 
     await this.messagingGateway.stopAll();
+    await this.walletMcpClient.close();
 
     this.isRunning = false;
     applicationLogger.info('All services stopped gracefully.');

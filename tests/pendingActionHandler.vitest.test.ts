@@ -8,7 +8,7 @@ import {
 import { CreateRecordInputPayload, WalletCreateRecordsResponse } from '../src/types/walletTypes.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
 import { PendingConfirmationIntent } from '../src/utils/fastPathIntentDetector.js';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 function assertCondition(testName: string, condition: boolean, extraDetail?: string): void {
   expect(condition, `${testName}${extraDetail ? ` -> ${extraDetail}` : ''}`).toBe(true);
@@ -149,13 +149,7 @@ async function expectWalletMcpRequestError(
 
 function createWalletClientWithToolResult(toolResult: unknown): WalletMcpClientService {
   const client = new WalletMcpClientService('https://example.invalid', 'test-token');
-  (client as any).httpClient.post = async () => ({
-    data: {
-      result: {
-        structuredContent: toolResult,
-      },
-    },
-  });
+  vi.spyOn(client, 'callMcpTool').mockResolvedValue(toolResult as never);
   return client;
 }
 
@@ -371,15 +365,9 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery (Issue #72
 
   runCase('Suite 9: create_records per-item rejection is treated as definitive failure', async () => {
     const client = new WalletMcpClientService('https://example.invalid', 'test-token');
-    (client as any).httpClient.post = async () => ({
-      data: {
-        result: {
-          structuredContent: {
-            summary: { total: 1, succeeded: 0, failed: 1 },
-            results: [{ inputIndex: 0, success: false, error: 'invalid category' }],
-          },
-        },
-      },
+    vi.spyOn(client, 'callMcpTool').mockResolvedValue({
+      summary: { total: 1, succeeded: 0, failed: 1 },
+      results: [{ inputIndex: 0, success: false, error: 'invalid category' }],
     });
 
     await expectWalletMcpRequestError(
@@ -390,13 +378,9 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery (Issue #72
 
   runCase('Suite 10: transport timeout is classified UNKNOWN', async () => {
     const client = new WalletMcpClientService('https://example.invalid', 'test-token');
-    const timeoutError = Object.assign(new Error('request timed out'), {
-      isAxiosError: true,
-      code: 'ECONNABORTED',
-    });
-    (client as any).httpClient.post = async () => {
-      throw timeoutError;
-    };
+    vi.spyOn(client, 'callMcpTool').mockRejectedValue(
+      new WalletMcpRequestError('request timed out', 'UNKNOWN')
+    );
 
     const error = await expectWalletMcpRequestError(
       () => client.createRecords([sampleRecord]),
@@ -407,13 +391,9 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery (Issue #72
 
   runCase('Suite 11: explicit HTTP 400 is definitive while HTTP 503 is ambiguous', async () => {
     const definitiveClient = new WalletMcpClientService('https://example.invalid', 'test-token');
-    const badRequestError = Object.assign(new Error('bad request'), {
-      isAxiosError: true,
-      response: { status: 400, data: { message: 'invalid payload' } },
-    });
-    (definitiveClient as any).httpClient.post = async () => {
-      throw badRequestError;
-    };
+    vi.spyOn(definitiveClient, 'callMcpTool').mockRejectedValue(
+      new WalletMcpRequestError('bad request', 'DEFINITIVE_FAILURE')
+    );
 
     await expectWalletMcpRequestError(
       () => definitiveClient.createRecords([sampleRecord]),
@@ -421,13 +401,9 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery (Issue #72
     );
 
     const ambiguousClient = new WalletMcpClientService('https://example.invalid', 'test-token');
-    const serviceUnavailableError = Object.assign(new Error('service unavailable'), {
-      isAxiosError: true,
-      response: { status: 503, data: { message: 'upstream unavailable' } },
-    });
-    (ambiguousClient as any).httpClient.post = async () => {
-      throw serviceUnavailableError;
-    };
+    vi.spyOn(ambiguousClient, 'callMcpTool').mockRejectedValue(
+      new WalletMcpRequestError('service unavailable', 'UNKNOWN')
+    );
 
     await expectWalletMcpRequestError(
       () => ambiguousClient.createRecords([sampleRecord]),
@@ -443,13 +419,7 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery (Issue #72
     await expectWalletMcpRequestError(() => emptyObjectClient.createRecords([sampleRecord]), 'UNKNOWN');
 
     const plainTextClient = new WalletMcpClientService('https://example.invalid', 'test-token');
-    (plainTextClient as any).httpClient.post = async () => ({
-      data: {
-        result: {
-          content: [{ type: 'text', text: 'created' }],
-        },
-      },
-    });
+    vi.spyOn(plainTextClient, 'callMcpTool').mockResolvedValue('created');
     await expectWalletMcpRequestError(() => plainTextClient.createRecords([sampleRecord]), 'UNKNOWN');
 
     const mismatchedSummaryClient = createWalletClientWithToolResult({

@@ -75,7 +75,11 @@ async function probeWalletMcp(config: ApplicationEnvironmentConfiguration): Prom
     config.walletMcpBaseUrl,
     config.walletMcpAccessToken
   );
-  await walletClient.verifyClientProfile();
+  try {
+    await walletClient.verifyClientProfile();
+  } finally {
+    await walletClient.close();
+  }
 }
 
 async function probeAiProvider(
