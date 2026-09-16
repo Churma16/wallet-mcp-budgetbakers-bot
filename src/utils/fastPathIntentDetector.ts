@@ -94,7 +94,8 @@ function extractHistoryQueryOptionsFromTokens(
   rawTokens: string,
   baseOptions: Partial<TransactionHistoryQueryOptions> = {},
   isDedicatedSearchCommand: boolean = false,
-  allowNaturalCategoryPhrase: boolean = false
+  allowNaturalCategoryPhrase: boolean = false,
+  hasLeadingScopeWord: boolean = false
 ): TransactionHistoryQueryOptions | null {
   let remainingTokens = rawTokens.trim();
   let resolvedLimit: number | undefined = baseOptions.limit;
@@ -279,6 +280,7 @@ function extractHistoryQueryOptionsFromTokens(
   if (scopeMatches) {
     remainingTokens = remainingTokens.replace(/\b(?:all|semua|semuanya)\b/gi, ' ').trim();
   }
+  const isGroupScope = Boolean(scopeMatches || hasLeadingScopeWord);
 
   if (!resolvedSearchQuery) {
     const standaloneQuotedMatch = remainingTokens.match(/(?:"([^"]+)"|'([^']+)')/);
@@ -299,9 +301,12 @@ function extractHistoryQueryOptionsFromTokens(
       const cleanWord = rawWord.toLowerCase();
       if (KNOWN_ACCOUNT_KEYWORDS.has(cleanWord) && !resolvedAccountName) {
         resolvedAccountName = cleanWord;
-      } else if (canConsumeNaturalCategoryPhrase && /[A-Za-z]/.test(rawWord)) {
+      } else if (
+        canConsumeNaturalCategoryPhrase &&
+        (/[A-Za-z]/.test(rawWord) || (/^[&/+\-_]+$/.test(rawWord) && categoryPhraseWords.length > 0))
+      ) {
         categoryPhraseWords.push(rawWord);
-      } else if (KNOWN_CATEGORY_KEYWORDS.has(cleanWord) && !resolvedCategoryName) {
+      } else if (!isDedicatedSearchCommand && KNOWN_CATEGORY_KEYWORDS.has(cleanWord) && !resolvedCategoryName) {
         resolvedCategoryName = cleanWord;
       } else {
         searchWords.push(rawWord);
@@ -309,10 +314,15 @@ function extractHistoryQueryOptionsFromTokens(
     }
 
     if (categoryPhraseWords.length > 0) {
-      const categoryPhrase = categoryPhraseWords.join(' ').toLowerCase();
-      resolvedCategoryName = resolvedCategoryName
-        ? `${resolvedCategoryName} ${categoryPhrase}`.trim()
-        : categoryPhrase;
+      const categoryPhrase = categoryPhraseWords
+        .join(' ')
+        .replace(/^[&/+\-_\s]+|[&/+\-_\s]+$/g, '')
+        .toLowerCase();
+      if (categoryPhrase) {
+        resolvedCategoryName = resolvedCategoryName
+          ? `${resolvedCategoryName} ${categoryPhrase}`.trim()
+          : categoryPhrase;
+      }
     }
 
     if (searchWords.length > 0) {
@@ -343,13 +353,14 @@ function extractHistoryQueryOptionsFromTokens(
   if (resolvedDateRange !== undefined) resultOptions.dateRange = resolvedDateRange;
   if (resolvedAccountName !== undefined) resultOptions.accountName = resolvedAccountName;
   if (resolvedCategoryName !== undefined) resultOptions.categoryName = resolvedCategoryName;
+  if (isGroupScope) resultOptions.isGroupQuery = true;
   if (resolvedSearchQuery !== undefined) resultOptions.searchQuery = resolvedSearchQuery;
 
   return resultOptions;
 }
 
 function parseTransactionHistoryIntent(userMessageText: string): FastPathTransactionHistoryAction | null {
-  const trimmedText = userMessageText.trim();
+  const trimmedText = userMessageText.trim().replace(/[?!.]+\s*$/, '');
   const trimmedLowerText = trimmedText.toLowerCase();
 
   const hasTransactionAmountPattern =
@@ -413,11 +424,13 @@ function parseTransactionHistoryIntent(userMessageText: string): FastPathTransac
 
     const matchPrefixLength = trimmedText.length - rawRemainderLower.length;
     const rawRemainder = trimmedText.slice(matchPrefixLength);
+    const hasLeadingScopeWord = /^(?:semua|all)\s+/i.test(trimmedLowerText);
     const parsedOptions = extractHistoryQueryOptionsFromTokens(
       rawRemainder,
       { sort: 'newest' },
       false,
-      true
+      true,
+      hasLeadingScopeWord
     );
     if (parsedOptions) {
       return { type: 'TRANSACTION_HISTORY', options: parsedOptions };

@@ -2,6 +2,12 @@ import { FinancialActionContext } from '../../actions/types.js';
 import { TransactionHistoryQueryOptions, WalletAccountItem, WalletCategoryItem } from '../../types/walletTypes.js';
 import { IncomingUserMessageEvent } from '../messaging/index.js';
 import {
+  extractDynamicCategoryGroups,
+  matchDynamicCategoryGroup,
+  MAX_GROUP_CATEGORIES_LIMIT,
+  DynamicCategoryGroupInfo,
+} from '../../utils/transactionHistoryFilterNormalizer.js';
+import {
   ExtractedFinancialIntent,
   ExtractedFinancialRecordItem,
 } from './financialAiProvider.js';
@@ -78,7 +84,21 @@ type RecordShapeDecision =
   | RejectedSemanticToolBoundaryDecision;
 
 const ALLOWED_TRANSACTION_ARGUMENT_KEYS = new Set(['records']);
-const ALLOWED_HISTORY_ARGUMENT_KEYS = new Set(['accountName', 'categoryId', 'categoryName', 'recordType', 'startDate', 'endDate', 'datePeriod', 'searchQuery', 'limit', 'page', 'sort']);
+const ALLOWED_HISTORY_ARGUMENT_KEYS = new Set([
+  'accountName',
+  'categoryId',
+  'categoryName',
+  'categoryGroup',
+  'isGroupQuery',
+  'recordType',
+  'startDate',
+  'endDate',
+  'datePeriod',
+  'searchQuery',
+  'limit',
+  'page',
+  'sort',
+]);
 const ALLOWED_RECORD_KEYS = new Set([
   'accountId',
   'accountHint',
@@ -375,24 +395,169 @@ export function validateSemanticHistoryQueryOptions(
   if (!isPlainObject(rawArguments) || !containsOnlyAllowedKeys(rawArguments, ALLOWED_HISTORY_ARGUMENT_KEYS)) {
     return reject('INVALID_ARGUMENTS', 'Transaction-history proposal contains unsupported fields.');
   }
-  const stringFields = ['accountName', 'categoryName', 'startDate', 'endDate', 'searchQuery'] as const;
+  const stringFields = ['accountName', 'categoryName', 'categoryGroup', 'startDate', 'endDate', 'searchQuery'] as const;
   for (const field of stringFields) {
     const value = rawArguments[field];
     if (value !== undefined && (!isBoundedString(value) || value.length > 200)) return reject('INVALID_ARGUMENTS', `Transaction-history ${field} is malformed or too large.`);
   }
 
-  let resolvedCategoryId = rawArguments.categoryId as string | undefined;
+  if (rawArguments.isGroupQuery !== undefined && typeof rawArguments.isGroupQuery !== 'boolean') {
+    return reject('INVALID_ARGUMENTS', 'Transaction-history isGroupQuery is invalid.');
+  }
 
-  if (rawArguments.categoryId !== undefined) {
-    if (!isBoundedString(rawArguments.categoryId) || rawArguments.categoryId.length > 200) {
-      return reject('INVALID_ARGUMENTS', 'Transaction-history categoryId is malformed or too large.');
+  const dynamicGroupMap = extractDynamicCategoryGroups(availableCategoryList);
+  let resolvedCategoryId: string | string[] | undefined = undefined;
+  let resolvedCategoryGroup: string | undefined = undefined;
+  let resolvedIsGroupQuery: boolean | undefined = rawArguments.isGroupQuery as boolean | undefined;
+
+  if (rawArguments.categoryGroup !== undefined) {
+    const rawGroup = (rawArguments.categoryGroup as string).trim();
+    if (rawGroup.length === 0) {
+      return reject('INVALID_ARGUMENTS', 'Transaction-history categoryGroup cannot be empty.');
     }
-    if (!availableCategoryList.some(category => category.id === rawArguments.categoryId)) {
+    const matchResult = matchDynamicCategoryGroup(rawGroup, dynamicGroupMap);
+    if (matchResult.status === 'AMBIGUOUS') {
       return reject(
         'INVALID_ENTITY_REFERENCE',
-        'Transaction-history categoryId is not present in the deterministic Wallet cache.'
+        'Transaction-history categoryGroup is ambiguous in the deterministic Wallet cache.'
       );
     }
+    if (matchResult.status === 'NO_MATCH') {
+      return reject(
+        'INVALID_ENTITY_REFERENCE',
+        'Transaction-history categoryGroup is not present in the deterministic Wallet cache.'
+      );
+    }
+    const matchedGroup = matchResult.group!;
+    if (matchedGroup.categoryIds.length > MAX_GROUP_CATEGORIES_LIMIT) {
+      return reject(
+        'INVALID_ARGUMENTS',
+        `Transaction-history categoryGroup exceeds maximum supported limit of ${MAX_GROUP_CATEGORIES_LIMIT} categories.`
+      );
+    }
+
+    resolvedCategoryGroup = matchedGroup.id;
+    resolvedCategoryId = [...matchedGroup.categoryIds];
+    resolvedIsGroupQuery = true;
+
+    // If model also provided categoryId array, verify it exactly matches the trusted group
+    if (rawArguments.categoryId !== undefined) {
+      if (!Array.isArray(rawArguments.categoryId)) {
+        return reject(
+          'INVALID_ARGUMENTS',
+          'Transaction-history categoryId must be an array matching the categoryGroup.'
+        );
+      }
+      const proposedSet = new Set(rawArguments.categoryId);
+      if (proposedSet.size !== rawArguments.categoryId.length) {
+        return reject(
+          'INVALID_ARGUMENTS',
+          'Transaction-history categoryId array contains duplicate category IDs.'
+        );
+      }
+      const trustedSet = new Set(matchedGroup.categoryIds);
+      if (proposedSet.size !== trustedSet.size || !matchedGroup.categoryIds.every(id => proposedSet.has(id))) {
+        return reject(
+          'INVALID_ENTITY_REFERENCE',
+          'Transaction-history categoryId array does not represent a complete trusted category group.'
+        );
+      }
+    }
+  } else if (rawArguments.categoryId !== undefined) {
+    if (Array.isArray(rawArguments.categoryId)) {
+      if (rawArguments.categoryId.length === 0 || rawArguments.categoryId.length > MAX_GROUP_CATEGORIES_LIMIT) {
+        return reject('INVALID_ARGUMENTS', 'Transaction-history categoryId array is empty or too large.');
+      }
+      const proposedSet = new Set(rawArguments.categoryId);
+      if (proposedSet.size !== rawArguments.categoryId.length) {
+        return reject(
+          'INVALID_ARGUMENTS',
+          'Transaction-history categoryId array contains duplicate category IDs.'
+        );
+      }
+      for (const idEntry of rawArguments.categoryId) {
+        if (!isBoundedString(idEntry) || idEntry.length > 200) {
+          return reject('INVALID_ARGUMENTS', 'Transaction-history categoryId contains invalid identifier.');
+        }
+        if (!availableCategoryList.some(category => category.id === idEntry)) {
+          return reject(
+            'INVALID_ENTITY_REFERENCE',
+            'Transaction-history categoryId is not present in the deterministic Wallet cache.'
+          );
+        }
+      }
+
+      // When categoryId is supplied as an array without categoryGroup,
+      // it must represent the complete, exact membership of one trusted group.
+      if (dynamicGroupMap.size === 0) {
+        return reject(
+          'INVALID_ENTITY_REFERENCE',
+          'Transaction-history multi-category arrays require trusted category group metadata, which is not available in the deterministic Wallet cache.'
+        );
+      }
+
+      const firstCatId = rawArguments.categoryId[0];
+      let matchedGroup: DynamicCategoryGroupInfo | undefined = undefined;
+      for (const groupEntry of dynamicGroupMap.values()) {
+        if (groupEntry.categoryIds.includes(firstCatId)) {
+          matchedGroup = groupEntry;
+          break;
+        }
+      }
+
+      if (!matchedGroup) {
+        return reject(
+          'INVALID_ENTITY_REFERENCE',
+          'Transaction-history categoryId array does not belong to any trusted category group.'
+        );
+      }
+
+      // Reject cross-group mixing
+      for (const idEntry of rawArguments.categoryId) {
+        if (!matchedGroup.categoryIds.includes(idEntry)) {
+          return reject(
+            'INVALID_ENTITY_REFERENCE',
+            'Transaction-history categoryId array contains categories from multiple distinct groups.'
+          );
+        }
+      }
+
+      // Exact unique set equality check against complete trusted group
+      const trustedSet = new Set(matchedGroup.categoryIds);
+      if (proposedSet.size !== trustedSet.size || !matchedGroup.categoryIds.every(id => proposedSet.has(id))) {
+        return reject(
+          'INVALID_ENTITY_REFERENCE',
+          'Transaction-history categoryId array does not represent a complete trusted category group.'
+        );
+      }
+
+      resolvedCategoryGroup = matchedGroup.id;
+      resolvedIsGroupQuery = true;
+      resolvedCategoryId = [...rawArguments.categoryId];
+    } else if (isBoundedString(rawArguments.categoryId) && rawArguments.categoryId.length <= 200) {
+      if (!availableCategoryList.some(category => category.id === rawArguments.categoryId)) {
+        return reject(
+          'INVALID_ENTITY_REFERENCE',
+          'Transaction-history categoryId is not present in the deterministic Wallet cache.'
+        );
+      }
+      if (rawArguments.isGroupQuery === true) {
+        return reject(
+          'INVALID_ARGUMENTS',
+          'Transaction-history isGroupQuery requires categoryGroup to identify the target category group, not a single categoryId.'
+        );
+      }
+      resolvedCategoryId = rawArguments.categoryId;
+    } else {
+      return reject('INVALID_ARGUMENTS', 'Transaction-history categoryId is malformed or too large.');
+    }
+  }
+
+  if (rawArguments.isGroupQuery === true && resolvedCategoryGroup === undefined) {
+    return reject(
+      'INVALID_ARGUMENTS',
+      'Transaction-history isGroupQuery requires a resolvable categoryGroup identity.'
+    );
   }
 
   let matchedCategoryName: string | undefined = undefined;
@@ -404,16 +569,18 @@ export function validateSemanticHistoryQueryOptions(
     );
 
     if (resolvedCategoryId !== undefined) {
-      const selectedCategory = availableCategoryList.find(
-        category => category.id === resolvedCategoryId
-      );
-      if (selectedCategory?.name.trim().toLowerCase() !== normalizedCategoryName) {
-        return reject(
-          'INVALID_ENTITY_REFERENCE',
-          'Transaction-history categoryId does not match categoryName in the deterministic Wallet cache.'
+      if (typeof resolvedCategoryId === 'string') {
+        const selectedCategory = availableCategoryList.find(
+          category => category.id === resolvedCategoryId
         );
+        if (selectedCategory?.name.trim().toLowerCase() !== normalizedCategoryName) {
+          return reject(
+            'INVALID_ENTITY_REFERENCE',
+            'Transaction-history categoryId does not match categoryName in the deterministic Wallet cache.'
+          );
+        }
+        matchedCategoryName = selectedCategory.name;
       }
-      matchedCategoryName = selectedCategory.name;
     } else if (exactNameMatches.length === 0) {
       return reject(
         'INVALID_ENTITY_REFERENCE',
@@ -440,6 +607,8 @@ export function validateSemanticHistoryQueryOptions(
   return {
     ...rawArguments,
     ...(resolvedCategoryId !== undefined ? { categoryId: resolvedCategoryId } : {}),
+    ...(resolvedCategoryGroup !== undefined ? { categoryGroup: resolvedCategoryGroup } : {}),
+    ...(resolvedIsGroupQuery !== undefined ? { isGroupQuery: resolvedIsGroupQuery } : {}),
     ...(matchedCategoryName !== undefined ? { categoryName: matchedCategoryName } : {}),
   } as TransactionHistoryQueryOptions;
 }

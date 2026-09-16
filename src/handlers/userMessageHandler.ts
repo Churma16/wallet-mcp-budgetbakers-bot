@@ -418,6 +418,12 @@ export class UserMessageHandler {
                 const mergedQueryOptions: TransactionHistoryQueryOptions = {
                   ...deferredHistoryFastPathOptions,
                   categoryId: semanticCategoryId,
+                  ...(boundaryDecision.context.queryOptions?.categoryGroup
+                    ? { categoryGroup: boundaryDecision.context.queryOptions.categoryGroup }
+                    : {}),
+                  ...(boundaryDecision.context.queryOptions?.isGroupQuery !== undefined
+                    ? { isGroupQuery: boundaryDecision.context.queryOptions.isGroupQuery }
+                    : {}),
                 };
                 delete mergedQueryOptions.categoryName;
                 await this.financialActionRegistry.execute({
