@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import { describe, it, beforeEach, afterEach } from 'vitest';
 import {
   WalletMcpClientService,
   DEFAULT_TRANSACTION_HISTORY_LIMIT,
@@ -20,8 +21,6 @@ import {
   WalletCategoryItem,
   WalletRecordItem,
 } from '../src/types/walletTypes.js';
-
-console.log('[TEST] Starting Composable Transaction History Filters Tests (Issue #101)...');
 
 // Mock data
 const MOCK_ACCOUNTS: WalletAccountItem[] = [
@@ -67,11 +66,18 @@ function createSeededCacheService(client: WalletMcpClientService): WalletCacheSe
   return cache;
 }
 
-// -----------------------------------------------------------------------------
-// Suite 1: Account Filtering & Resolution
-// -----------------------------------------------------------------------------
-console.log('\n[Suite 1] Testing Account Filtering & Resolution...');
-{
+describe('Composable Transaction History Filters Tests (Issue #101)', () => {
+  beforeEach(() => {
+    setActiveLanguage('id');
+  });
+
+  afterEach(() => {
+    setActiveLanguage('id');
+  });
+
+  describe('Suite 1: Account Filtering & Resolution', () => {
+    it('resolves IDs, names, digits, and enforces fail-closed safety', async () => {
+
   const { client, capturedCalls, setNextResponse } = createMockClient();
   const cache = createSeededCacheService(client);
   const service = new TransactionHistoryService(client, cache);
@@ -113,13 +119,13 @@ console.log('\n[Suite 1] Testing Account Filtering & Resolution...');
   assert.strictEqual(unresolvedPage.unresolvedFilters[0].reason, 'NOT_FOUND');
 
   console.log('  [PASS] Account filtering resolves IDs, names, digits, and enforces fail-closed safety.');
-}
 
-// -----------------------------------------------------------------------------
-// Suite 2: Category Filtering & Resolution
-// -----------------------------------------------------------------------------
-console.log('\n[Suite 2] Testing Category Filtering & Resolution...');
-{
+    });
+  });
+
+  describe('Suite 2: Category Filtering & Resolution', () => {
+    it('resolves IDs, names, groups, and enforces fail-closed safety', async () => {
+
   const { client, capturedCalls, setNextResponse } = createMockClient();
   const cache = createSeededCacheService(client);
   const service = new TransactionHistoryService(client, cache);
@@ -229,13 +235,13 @@ console.log('\n[Suite 2] Testing Category Filtering & Resolution...');
   assert.strictEqual(dupResult.unresolvedFilters?.[0].reason, 'UNRESOLVED');
 
   console.log('  [PASS] Category filtering resolves IDs, names, groups, and enforces fail-closed safety.');
-}
 
-// -----------------------------------------------------------------------------
-// Suite 3: Record Type Filtering (Expense vs Income)
-// -----------------------------------------------------------------------------
-console.log('\n[Suite 3] Testing Record Type Filtering...');
-{
+    });
+  });
+
+  describe('Suite 3: Record Type Filtering', () => {
+    it('correctly filters expense/income and accepts synonyms', async () => {
+
   const { client, capturedCalls, setNextResponse } = createMockClient();
   const cache = createSeededCacheService(client);
   const service = new TransactionHistoryService(client, cache);
@@ -266,13 +272,13 @@ console.log('\n[Suite 3] Testing Record Type Filtering...');
   assert.strictEqual(invalidTypePage.unresolvedFilters?.[0].reason, 'INVALID_FORMAT');
 
   console.log('  [PASS] Record type correctly filters expense/income and accepts synonyms.');
-}
 
-// -----------------------------------------------------------------------------
-// Suite 4: Date & Date Range Filtering
-// -----------------------------------------------------------------------------
-console.log('\n[Suite 4] Testing Date & Date Range Filtering...');
-{
+    });
+  });
+
+  describe('Suite 4: Date & Date Range Filtering', () => {
+    it('verifies timezone UTC boundaries, calendar validation, and boundary handling', async () => {
+
   const { client, capturedCalls, setNextResponse } = createMockClient();
   const cache = createSeededCacheService(client);
   const service = new TransactionHistoryService(client, cache);
@@ -901,13 +907,13 @@ console.log('\n[Suite 4] Testing Date & Date Range Filtering...');
   assert.deepStrictEqual(standardReorderedA.appliedFilters.dateRange, standardReorderedB.appliedFilters.dateRange);
 
   console.log('  [PASS] Timezone UTC boundaries, strict calendar validation, and reversed bounds verified.');
-}
 
-// -----------------------------------------------------------------------------
-// Suite 5: Composable Multi-Filter Queries
-// -----------------------------------------------------------------------------
-console.log('\n[Suite 5] Testing Composable Multi-Filter Queries...');
-{
+    });
+  });
+
+  describe('Suite 5: Composable Multi-Filter Queries', () => {
+    it('accurately combines all dimensions simultaneously', async () => {
+
   const { client, capturedCalls, setNextResponse } = createMockClient();
   const cache = createSeededCacheService(client);
   const service = new TransactionHistoryService(client, cache);
@@ -960,13 +966,13 @@ console.log('\n[Suite 5] Testing Composable Multi-Filter Queries...');
   assert.strictEqual(comboResult.appliedFilters?.recordType, 'expense');
 
   console.log('  [PASS] Composable multi-filter query accurately combines all dimensions simultaneously.');
-}
 
-// -----------------------------------------------------------------------------
-// Suite 6: Empty Matches & Filtered State Handling
-// -----------------------------------------------------------------------------
-console.log('\n[Suite 6] Testing Empty Matches & Filtered State Handling...');
-{
+    });
+  });
+
+  describe('Suite 6: Empty Matches & Filtered State Handling', () => {
+    it('renders non-misleading filtered empty state', async () => {
+
   const { client, setNextResponse } = createMockClient();
   const cache = createSeededCacheService(client);
   const service = new TransactionHistoryService(client, cache);
@@ -986,13 +992,13 @@ console.log('\n[Suite 6] Testing Empty Matches & Filtered State Handling...');
   assert.match(formattedEmpty, /BCA Tabungan/);
 
   console.log('  [PASS] Empty results with active filters render non-misleading filtered empty state.');
-}
 
-// -----------------------------------------------------------------------------
-// Suite 7: Human-Facing Response Formatting & i18n
-// -----------------------------------------------------------------------------
-console.log('\n[Suite 7] Testing Human-Facing Response Formatting & i18n...');
-{
+    });
+  });
+
+  describe('Suite 7: Human-Facing Response Formatting & i18n', () => {
+    it('formats localized headers, badges, warnings, and navigation hints properly', () => {
+
   // 7.1 Filter badges in Indonesian header
   const samplePage: any = {
     records: [
@@ -1529,13 +1535,13 @@ console.log('\n[Suite 7] Testing Human-Facing Response Formatting & i18n...');
   assert.match(idFormattedUnresolved, /Akun "NonExistentBank" tidak ditemukan/);
 
   console.log('  [PASS] Localized headers, badges, warnings, and navigation hints formatted properly.');
-}
 
-// -----------------------------------------------------------------------------
-// Suite 8: Fast-Path Intent Detection with Composable Filters
-// -----------------------------------------------------------------------------
-console.log('\n[Suite 8] Testing Fast-Path Intent Detection with Composable Filters...');
-{
+    });
+  });
+
+  describe('Suite 8: Fast-Path Intent Detection with Composable Filters', () => {
+    it('correctly identifies composable history filter commands and preserves datetime across pagination', () => {
+
   // 8.1 Single filters
   const actionExpense = detectFastPathAction('riwayat pengeluaran');
   assert.strictEqual((actionExpense as any)?.type, 'TRANSACTION_HISTORY');
@@ -1665,13 +1671,13 @@ console.log('\n[Suite 8] Testing Fast-Path Intent Detection with Composable Filt
   assert.deepStrictEqual(page2NormMixed.upstreamRecordDate, mixedPage1Norm.upstreamRecordDate);
 
   console.log('  [PASS] Fast-path intent detector correctly identifies composable history filter commands.');
-}
 
-// -----------------------------------------------------------------------------
-// Suite 9: FastPathHandler Integration with Filters
-// -----------------------------------------------------------------------------
-console.log('\n[Suite 9] Testing FastPathHandler Integration with Filters...');
-{
+    });
+  });
+
+  describe('Suite 9: FastPathHandler Integration with Filters', () => {
+    it('verifies FastPathHandler integration with filters end-to-end', async () => {
+
   const { client, setNextResponse } = createMockClient();
   const cache = createSeededCacheService(client);
   const sentMessages: Array<{ channel: string; text: string }> = [];
@@ -1721,10 +1727,11 @@ console.log('\n[Suite 9] Testing FastPathHandler Integration with Filters...');
   assert.match(sentMessages[0].text, /Pizza Hut/);
 
   console.log('  [PASS] FastPathHandler integration with filters verified end-to-end.');
-}
 
-// Verify Issue #148 scope grammar and prompt/boundary coverage in legacy suite
-{
+    });
+
+    it('verifies Issue #148 scope grammar and semantic tool boundary coverage', () => {
+
   const actionAll = detectFastPathAction('riwayat makan semua');
   assert.ok(actionAll);
   if (actionAll.type === 'TRANSACTION_HISTORY') {
@@ -1782,6 +1789,7 @@ console.log('\n[Suite 9] Testing FastPathHandler Integration with Filters...');
     categoryId: 'cat-health-001',
     categoryName: 'Food',
   }).accepted, false);
-}
 
-console.log('\n[SUCCESS] All Composable Transaction History Filter tests passed cleanly!');
+    });
+  });
+});
