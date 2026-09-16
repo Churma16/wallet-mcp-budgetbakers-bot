@@ -279,6 +279,59 @@ describe('official MCP client boundary (issue #165)', () => {
     );
   });
 
+  it('keeps a shared client alive when one concurrent request receives a protocol rejection', async () => {
+    let resolvePendingCall: ((result: unknown) => void) | undefined;
+    const pendingResult = new Promise(resolve => {
+      resolvePendingCall = resolve;
+    });
+    const connect = vi.fn().mockResolvedValue(undefined);
+    const close = vi.fn().mockResolvedValue(undefined);
+    const callTool = vi.fn()
+      .mockRejectedValueOnce(new ProtocolError(-32602, 'invalid params'))
+      .mockReturnValueOnce(pendingResult);
+    const client = {
+      connect,
+      callTool,
+      listTools: vi.fn().mockResolvedValue({ tools: [] }),
+      close,
+    } as unknown as WalletMcpSdkClient;
+    const service = new WalletMcpClientService(
+      'https://wallet.example/mcp',
+      'secret-wallet-token',
+      {
+        createClient: () => client,
+        createTransport: () => ({} as Transport),
+      }
+    );
+
+    const rejectedRequest = service.createRecords([{ accountId: 'account-1', amount: -100 }]);
+    const pendingRequest = service.verifyClientProfile();
+
+    await expectDispatchOutcome(() => rejectedRequest, 'DEFINITIVE_FAILURE');
+    expect(close).not.toHaveBeenCalled();
+
+    resolvePendingCall?.({ content: [], structuredContent: { profile: 'ready' } });
+    await expect(pendingRequest).resolves.toEqual({ profile: 'ready' });
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(close).not.toHaveBeenCalled();
+
+    await service.close();
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    SdkErrorCode.NotConnected,
+    SdkErrorCode.ConnectionClosed,
+    SdkErrorCode.SendFailed,
+  ])('discards an unusable shared client after SDK error %s', async code => {
+    const harness = createHarness({
+      callToolError: new SdkError(code, 'connection unavailable'),
+    });
+
+    await expect(harness.service.verifyClientProfile()).rejects.toBeInstanceOf(WalletMcpRequestError);
+    expect(harness.close).toHaveBeenCalledTimes(1);
+  });
+
   it('maps ambiguous mutation transport failures to UNKNOWN without retrying', async () => {
     const harness = createHarness({
       callToolError: new SdkError(

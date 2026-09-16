@@ -1,5 +1,7 @@
 import {
   Client,
+  SdkError,
+  SdkErrorCode,
   StreamableHTTPClientTransport,
   type CallToolResult,
   type ClientOptions,
@@ -72,7 +74,9 @@ export class WalletMcpTransport {
         }
       );
     } catch (error) {
-      await this.discardClient(client);
+      if (this.isUnusableConnectionError(error)) {
+        await this.discardClient(client);
+      }
       throw error;
     }
   }
@@ -86,7 +90,9 @@ export class WalletMcpTransport {
         cacheMode: 'refresh',
       });
     } catch (error) {
-      await this.discardClient(client);
+      if (this.isUnusableConnectionError(error)) {
+        await this.discardClient(client);
+      }
       throw error;
     }
   }
@@ -183,5 +189,13 @@ export class WalletMcpTransport {
     } catch {
       // Preserve the original request failure.
     }
+  }
+
+  private isUnusableConnectionError(error: unknown): boolean {
+    return error instanceof SdkError && (
+      error.code === SdkErrorCode.NotConnected
+      || error.code === SdkErrorCode.ConnectionClosed
+      || error.code === SdkErrorCode.SendFailed
+    );
   }
 }
