@@ -709,8 +709,8 @@ export class WalletMcpClientService {
 
   /**
    * Retrieve transaction records with pagination and deterministic sorting.
-   * Search pagination incrementally verifies upstream candidates and reuses a short-lived
-   * per-query scan cache so later pages resume instead of rescanning from offset zero.
+   * Prefers native upstream Wallet MCP get_records(query=...) for text search,
+   * while maintaining a bounded compatibility fallback shim for legacy testing.
    */
   public async fetchRecords(queryOptions?: TransactionHistoryQueryOptions): Promise<TransactionHistoryPage> {
     const rawLimit = queryOptions?.limit;
@@ -760,7 +760,27 @@ export class WalletMcpClientService {
       mcpCallPayload.recordDate = queryOptions.dateRange;
     }
 
-    if (queryOptions?.searchQuery) {
+    if (queryOptions?.counterParty) {
+      const rawCounterParty = String(queryOptions.counterParty).trim();
+      mcpCallPayload.counterParty =
+        rawCounterParty.startsWith('contains-i.') ||
+        rawCounterParty.startsWith('eq.') ||
+        rawCounterParty.startsWith('contains.')
+          ? rawCounterParty
+          : `contains-i.${rawCounterParty}`;
+    }
+
+    if (queryOptions?.note) {
+      const rawNote = String(queryOptions.note).trim();
+      mcpCallPayload.note =
+        rawNote.startsWith('contains-i.') ||
+        rawNote.startsWith('eq.') ||
+        rawNote.startsWith('contains.')
+          ? rawNote
+          : `contains-i.${rawNote}`;
+    }
+
+    if (queryOptions?.searchQuery && queryOptions?.searchScanFallback === false) {
       mcpCallPayload.query = queryOptions.searchQuery;
     }
 
@@ -847,6 +867,8 @@ export class WalletMcpClientService {
           categoryGroup: payload.categoryGroup,
           recordType: payload.recordType,
           recordDate: payload.recordDate,
+          counterParty: payload.counterParty,
+          note: payload.note,
           query: payload.query,
         },
       });
@@ -854,178 +876,22 @@ export class WalletMcpClientService {
       return await this.callMcpTool<any>('get_records', payload);
     };
 
-    if (queryOptions?.searchQuery) {
-      const searchCacheKey = JSON.stringify({
-        query: mcpCallPayload.query,
-        accountId: mcpCallPayload.accountId,
-        categoryId: mcpCallPayload.categoryId,
-        categoryGroup: mcpCallPayload.categoryGroup,
-        recordType: mcpCallPayload.recordType,
-        recordDate: mcpCallPayload.recordDate,
-        sortBy: upstreamSortBy,
-      });
-      const currentTimestamp = Date.now();
-
-      for (const [cacheKey, cacheEntry] of this.transactionSearchScanCache.entries()) {
-        if (currentTimestamp - cacheEntry.updatedAt > this.transactionSearchScanCacheTtlMilliseconds) {
-          this.transactionSearchScanCache.delete(cacheKey);
-        }
-      }
-
-      let searchCacheEntry = this.transactionSearchScanCache.get(searchCacheKey);
-      if (!searchCacheEntry) {
-        if (this.transactionSearchScanCache.size >= this.maxTransactionSearchScanCacheEntries) {
-          const oldestCacheKey = this.transactionSearchScanCache.keys().next().value as string | undefined;
-          if (oldestCacheKey) {
-            this.transactionSearchScanCache.delete(oldestCacheKey);
-          }
-        }
-
-        searchCacheEntry = {
-          matchedRecords: [],
-          seenMatchedRecordIds: new Set<string>(),
-          nextOffset: 0,
-          exhausted: false,
-          updatedAt: currentTimestamp,
-        };
-        this.transactionSearchScanCache.set(searchCacheKey, searchCacheEntry);
-      }
-
-      const requestedPageEndOffset = resolvedOffset + resolvedLimit;
-      const lookaheadTargetCount = requestedPageEndOffset + 1;
-      let scanCallCount = 0;
-
-      while (
-        !searchCacheEntry.exhausted &&
-        searchCacheEntry.matchedRecords.length < lookaheadTargetCount &&
-        scanCallCount < MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST
-      ) {
-        const scanOffset = searchCacheEntry.nextOffset ?? 0;
-        const isFreshScan = scanOffset === 0 && searchCacheEntry.matchedRecords.length === 0;
-        const scanLimit = isFreshScan ? resolvedLimit : MAX_TRANSACTION_HISTORY_LIMIT;
-        const scanPayload: Record<string, unknown> = {
-          ...mcpCallPayload,
-          limit: scanLimit,
-          offset: scanOffset,
-        };
-
-        scanCallCount += 1;
-        const rawResponse = await callGetRecords(scanPayload);
-        const rawRecordArray: any[] = Array.isArray(rawResponse)
-          ? rawResponse
-          : (rawResponse?.records || rawResponse?.items || []);
-
-        if (rawRecordArray.length === 0) {
-          searchCacheEntry.exhausted = true;
-          searchCacheEntry.nextOffset = null;
-          searchCacheEntry.updatedAt = Date.now();
-          break;
-        }
-
-        const normalizedRecords = normalizeRawRecords(rawRecordArray);
-        for (const recordItem of normalizedRecords) {
-          if (!matchesTransactionRecordSearch(recordItem, queryOptions.searchQuery)) {
-            continue;
-          }
-
-          if (recordItem.id) {
-            if (searchCacheEntry.seenMatchedRecordIds.has(recordItem.id)) {
-              continue;
-            }
-            searchCacheEntry.seenMatchedRecordIds.add(recordItem.id);
-          }
-
-          searchCacheEntry.matchedRecords.push(recordItem);
-        }
-
-        const hasExplicitTotal = typeof rawResponse?.total === 'number' && Number.isFinite(rawResponse.total);
-        const upstreamTotal = hasExplicitTotal ? Math.max(0, rawResponse.total) : undefined;
-        const hasExplicitNextOffset = typeof rawResponse?.nextOffset === 'number' && Number.isFinite(rawResponse.nextOffset);
-
-        let nextScanOffset: number | null = null;
-        if (hasExplicitNextOffset) {
-          nextScanOffset = rawResponse.nextOffset;
-        } else if (rawResponse?.nextOffset === null) {
-          nextScanOffset = null;
-        } else if (typeof upstreamTotal === 'number' && scanOffset + rawRecordArray.length < upstreamTotal) {
-          nextScanOffset = scanOffset + rawRecordArray.length;
-        } else if (Array.isArray(rawResponse) && rawRecordArray.length === scanLimit) {
-          nextScanOffset = scanOffset + rawRecordArray.length;
-        }
-
-        if (nextScanOffset === null) {
-          searchCacheEntry.exhausted = true;
-          searchCacheEntry.nextOffset = null;
-          searchCacheEntry.updatedAt = Date.now();
-          break;
-        }
-
-        if (nextScanOffset <= scanOffset) {
-          this.transactionSearchScanCache.delete(searchCacheKey);
-          throw new WalletMcpRequestError(
-            '[error] Wallet MCP search pagination did not make forward progress',
-            'DEFINITIVE_FAILURE'
-          );
-        }
-
-        searchCacheEntry.nextOffset = nextScanOffset;
-        searchCacheEntry.updatedAt = Date.now();
-      }
-
-      const scanBudgetReached =
-        !searchCacheEntry.exhausted &&
-        searchCacheEntry.matchedRecords.length < lookaheadTargetCount &&
-        scanCallCount >= MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST;
-      const requestedPageComplete = searchCacheEntry.matchedRecords.length >= requestedPageEndOffset;
-      const pageNumber = Math.floor(resolvedOffset / resolvedLimit) + 1;
-
-      if (scanBudgetReached && !requestedPageComplete) {
-        return {
-          records: [],
-          total: undefined,
-          limit: resolvedLimit,
-          offset: resolvedOffset,
-          page: pageNumber,
-          totalPages: undefined,
-          nextOffset: null,
-          hasMore: false,
-          sort: resolvedSort,
-          unresolvedFilters: [
-            {
-              filterKey: 'searchQuery',
-              rawValue: queryOptions.searchQuery,
-              reason: 'UNRESOLVED',
-              message: 'Search verification reached its per-request scan budget. Add account, category, or date filters, or retry the same search to continue from the cached scan position.',
-            },
-          ],
-        };
-      }
-
-      const pageRecords = searchCacheEntry.matchedRecords.slice(resolvedOffset, requestedPageEndOffset);
-      const hasBufferedLookahead = searchCacheEntry.matchedRecords.length > requestedPageEndOffset;
-      const continuationUnknown = scanBudgetReached && requestedPageComplete && !hasBufferedLookahead;
-      const hasMore = continuationUnknown
-        ? false
-        : (hasBufferedLookahead || !searchCacheEntry.exhausted);
-      const resolvedTotalCount = searchCacheEntry.exhausted
-        ? searchCacheEntry.matchedRecords.length
-        : undefined;
-      const totalPagesCount = typeof resolvedTotalCount === 'number'
-        ? Math.max(1, Math.ceil(resolvedTotalCount / resolvedLimit))
-        : undefined;
-
-      return {
-        records: pageRecords,
-        total: resolvedTotalCount,
-        limit: resolvedLimit,
-        offset: resolvedOffset,
-        page: pageNumber,
-        totalPages: totalPagesCount,
-        nextOffset: hasMore ? requestedPageEndOffset : null,
-        hasMore,
-        continuationUnknown,
-        sort: resolvedSort,
-      };
+    // Upstream Wallet MCP get_records has no cross-field `query` parameter (verified via live
+    // server characterization outside CI; sending `query` causes protocol validation failure).
+    // Per Issue #162 Decision Rule, the application executes the bounded local scan-and-match
+    // compatibility shim by default for multi-field `searchQuery`, unless `searchScanFallback === false`
+    // is explicitly set to test a forward-compatible upstream server.
+    if (queryOptions?.searchQuery && queryOptions?.searchScanFallback !== false) {
+      return await this.executeSearchScanCompatibilityShim(
+        queryOptions as TransactionHistoryQueryOptions & { searchQuery: string },
+        mcpCallPayload,
+        resolvedLimit,
+        resolvedOffset,
+        resolvedSort,
+        upstreamSortBy,
+        normalizeRawRecords,
+        callGetRecords
+      );
     }
 
     const rawResponse = await callGetRecords(mcpCallPayload);
@@ -1050,6 +916,9 @@ export class WalletMcpClientService {
     } else if (typeof resolvedTotalCount === 'number') {
       hasMore = (resolvedOffset + rawRecordArray.length) < resolvedTotalCount;
       nextOffset = hasMore ? (resolvedOffset + rawRecordArray.length) : null;
+    } else if (rawRecordArray.length === resolvedLimit) {
+      hasMore = true;
+      nextOffset = resolvedOffset + rawRecordArray.length;
     }
 
     const pageNumber = Math.floor(resolvedOffset / resolvedLimit) + 1;
@@ -1066,6 +935,197 @@ export class WalletMcpClientService {
       totalPages: totalPagesCount,
       nextOffset,
       hasMore,
+      sort: resolvedSort,
+    };
+  }
+
+  /**
+   * Bounded local scan-and-match compatibility shim for multi-field searchQuery.
+   * Based on live Wallet MCP capability audit (Issue #162), upstream lacks a cross-field
+   * text search parameter across counterParty and note. This shim provides bounded,
+   * paginated local matching over upstream-filtered candidate pages.
+   */
+  private async executeSearchScanCompatibilityShim(
+    queryOptions: TransactionHistoryQueryOptions & { searchQuery: string },
+    mcpCallPayload: Record<string, unknown>,
+    resolvedLimit: number,
+    resolvedOffset: number,
+    resolvedSort: TransactionSortOrder,
+    upstreamSortBy: string[],
+    normalizeRawRecords: (rawRecordArray: any[]) => WalletRecordItem[],
+    callGetRecords: (payload: Record<string, unknown>) => Promise<any>
+  ): Promise<TransactionHistoryPage> {
+    const searchCacheKey = JSON.stringify({
+      searchQuery: queryOptions.searchQuery,
+      accountId: mcpCallPayload.accountId,
+      categoryId: mcpCallPayload.categoryId,
+      categoryGroup: mcpCallPayload.categoryGroup,
+      recordType: mcpCallPayload.recordType,
+      recordDate: mcpCallPayload.recordDate,
+      counterParty: mcpCallPayload.counterParty,
+      note: mcpCallPayload.note,
+      sortBy: upstreamSortBy,
+    });
+    const currentTimestamp = Date.now();
+
+    for (const [cacheKey, cacheEntry] of this.transactionSearchScanCache.entries()) {
+      if (currentTimestamp - cacheEntry.updatedAt > this.transactionSearchScanCacheTtlMilliseconds) {
+        this.transactionSearchScanCache.delete(cacheKey);
+      }
+    }
+
+    let searchCacheEntry = this.transactionSearchScanCache.get(searchCacheKey);
+    if (!searchCacheEntry) {
+      if (this.transactionSearchScanCache.size >= this.maxTransactionSearchScanCacheEntries) {
+        const oldestCacheKey = this.transactionSearchScanCache.keys().next().value as string | undefined;
+        if (oldestCacheKey) {
+          this.transactionSearchScanCache.delete(oldestCacheKey);
+        }
+      }
+
+      searchCacheEntry = {
+        matchedRecords: [],
+        seenMatchedRecordIds: new Set<string>(),
+        nextOffset: 0,
+        exhausted: false,
+        updatedAt: currentTimestamp,
+      };
+      this.transactionSearchScanCache.set(searchCacheKey, searchCacheEntry);
+    }
+
+    const requestedPageEndOffset = resolvedOffset + resolvedLimit;
+    const lookaheadTargetCount = requestedPageEndOffset + 1;
+    let scanCallCount = 0;
+
+    while (
+      !searchCacheEntry.exhausted &&
+      searchCacheEntry.matchedRecords.length < lookaheadTargetCount &&
+      scanCallCount < MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST
+    ) {
+      const scanOffset = searchCacheEntry.nextOffset ?? 0;
+      const isFreshScan = scanOffset === 0 && searchCacheEntry.matchedRecords.length === 0;
+      const scanLimit = isFreshScan ? resolvedLimit : MAX_TRANSACTION_HISTORY_LIMIT;
+      const scanPayload: Record<string, unknown> = {
+        ...mcpCallPayload,
+        limit: scanLimit,
+        offset: scanOffset,
+      };
+
+      scanCallCount += 1;
+      const rawResponse = await callGetRecords(scanPayload);
+      const rawRecordArray: any[] = Array.isArray(rawResponse)
+        ? rawResponse
+        : (rawResponse?.records || rawResponse?.items || []);
+
+      if (rawRecordArray.length === 0) {
+        searchCacheEntry.exhausted = true;
+        searchCacheEntry.nextOffset = null;
+        searchCacheEntry.updatedAt = Date.now();
+        break;
+      }
+
+      const normalizedRecords = normalizeRawRecords(rawRecordArray);
+      for (const recordItem of normalizedRecords) {
+        if (!matchesTransactionRecordSearch(recordItem, queryOptions.searchQuery)) {
+          continue;
+        }
+
+        if (recordItem.id) {
+          if (searchCacheEntry.seenMatchedRecordIds.has(recordItem.id)) {
+            continue;
+          }
+          searchCacheEntry.seenMatchedRecordIds.add(recordItem.id);
+        }
+
+        searchCacheEntry.matchedRecords.push(recordItem);
+      }
+
+      const hasExplicitTotal = typeof rawResponse?.total === 'number' && Number.isFinite(rawResponse.total);
+      const upstreamTotal = hasExplicitTotal ? Math.max(0, rawResponse.total) : undefined;
+      const hasExplicitNextOffset = typeof rawResponse?.nextOffset === 'number' && Number.isFinite(rawResponse.nextOffset);
+
+      let nextScanOffset: number | null = null;
+      if (hasExplicitNextOffset) {
+        nextScanOffset = rawResponse.nextOffset;
+      } else if (rawResponse?.nextOffset === null) {
+        nextScanOffset = null;
+      } else if (typeof upstreamTotal === 'number' && scanOffset + rawRecordArray.length < upstreamTotal) {
+        nextScanOffset = scanOffset + rawRecordArray.length;
+      } else if (Array.isArray(rawResponse) && rawRecordArray.length === scanLimit) {
+        nextScanOffset = scanOffset + rawRecordArray.length;
+      }
+
+      if (nextScanOffset === null) {
+        searchCacheEntry.exhausted = true;
+        searchCacheEntry.nextOffset = null;
+        searchCacheEntry.updatedAt = Date.now();
+        break;
+      }
+
+      if (nextScanOffset <= scanOffset) {
+        this.transactionSearchScanCache.delete(searchCacheKey);
+        throw new WalletMcpRequestError(
+          '[error] Wallet MCP search pagination did not make forward progress',
+          'DEFINITIVE_FAILURE'
+        );
+      }
+
+      searchCacheEntry.nextOffset = nextScanOffset;
+      searchCacheEntry.updatedAt = Date.now();
+    }
+
+    const scanBudgetReached =
+      !searchCacheEntry.exhausted &&
+      searchCacheEntry.matchedRecords.length < lookaheadTargetCount &&
+      scanCallCount >= MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST;
+    const requestedPageComplete = searchCacheEntry.matchedRecords.length >= requestedPageEndOffset;
+    const pageNumber = Math.floor(resolvedOffset / resolvedLimit) + 1;
+
+    if (scanBudgetReached && !requestedPageComplete) {
+      return {
+        records: [],
+        total: undefined,
+        limit: resolvedLimit,
+        offset: resolvedOffset,
+        page: pageNumber,
+        totalPages: undefined,
+        nextOffset: null,
+        hasMore: false,
+        sort: resolvedSort,
+        unresolvedFilters: [
+          {
+            filterKey: 'searchQuery',
+            rawValue: queryOptions.searchQuery,
+            reason: 'UNRESOLVED',
+            message: 'Search verification reached its per-request scan budget. Add account, category, or date filters, or retry the same search to continue from the cached scan position.',
+          },
+        ],
+      };
+    }
+
+    const pageRecords = searchCacheEntry.matchedRecords.slice(resolvedOffset, requestedPageEndOffset);
+    const hasBufferedLookahead = searchCacheEntry.matchedRecords.length > requestedPageEndOffset;
+    const continuationUnknown = scanBudgetReached && requestedPageComplete && !hasBufferedLookahead;
+    const hasMore = continuationUnknown
+      ? false
+      : (hasBufferedLookahead || !searchCacheEntry.exhausted);
+    const resolvedTotalCount = searchCacheEntry.exhausted
+      ? searchCacheEntry.matchedRecords.length
+      : undefined;
+    const totalPagesCount = typeof resolvedTotalCount === 'number'
+      ? Math.max(1, Math.ceil(resolvedTotalCount / resolvedLimit))
+      : undefined;
+
+    return {
+      records: pageRecords,
+      total: resolvedTotalCount,
+      limit: resolvedLimit,
+      offset: resolvedOffset,
+      page: pageNumber,
+      totalPages: totalPagesCount,
+      nextOffset: hasMore ? requestedPageEndOffset : null,
+      hasMore,
+      continuationUnknown,
       sort: resolvedSort,
     };
   }
