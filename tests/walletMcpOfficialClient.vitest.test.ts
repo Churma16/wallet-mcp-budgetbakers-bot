@@ -20,11 +20,13 @@ import type {
   WalletMcpSdkClient,
   WalletMcpTransportDependencies,
 } from '../src/services/walletMcpTransport.js';
+import { WalletMcpTransport } from '../src/services/walletMcpTransport.js';
 
 interface HarnessOptions {
   readonly callToolResult?: unknown;
   readonly callToolError?: unknown;
   readonly listToolsResult?: unknown;
+  readonly listToolsError?: unknown;
 }
 
 function createHarness(options: HarnessOptions = {}) {
@@ -35,7 +37,9 @@ function createHarness(options: HarnessOptions = {}) {
         structuredContent: { profile: 'ready' },
       })
     : vi.fn().mockRejectedValue(options.callToolError);
-  const listTools = vi.fn().mockResolvedValue(options.listToolsResult ?? { tools: [] });
+  const listTools = options.listToolsError === undefined
+    ? vi.fn().mockResolvedValue(options.listToolsResult ?? { tools: [] })
+    : vi.fn().mockRejectedValue(options.listToolsError);
   const close = vi.fn().mockResolvedValue(undefined);
   const client = { connect, callTool, listTools, close } as unknown as WalletMcpSdkClient;
 
@@ -215,6 +219,44 @@ describe('official MCP client boundary (issue #165)', () => {
     expect(harness.callTool).not.toHaveBeenCalled();
   });
 
+  it('bounds primitive, invalid, and deeply nested advertised schema values', async () => {
+    const harness = createHarness({
+      listToolsResult: {
+        tools: [{
+          name: 'get_accounts',
+          inputSchema: {
+            type: 'object',
+            nullable: null,
+            enabled: true,
+            count: 3,
+            invalidNumber: Number.POSITIVE_INFINITY,
+            values: [false, 7],
+            nested: { a: { b: { c: { d: { e: { f: { omitted: 'too deep' } } } } } } },
+          },
+        }],
+      },
+    });
+
+    const [capability] = await harness.service.listTools();
+
+    expect(capability.inputSchema).toMatchObject({
+      nullable: null,
+      enabled: true,
+      count: 3,
+      values: [false, 7],
+    });
+    expect(capability.inputSchema).not.toHaveProperty('invalidNumber');
+  });
+
+  it('classifies list-tools failures without closing the client for request-level rejection', async () => {
+    const harness = createHarness({
+      listToolsError: new ProtocolError(-32602, 'invalid list request'),
+    });
+
+    await expectDispatchOutcome(() => harness.service.listTools(), 'DEFINITIVE_FAILURE');
+    expect(harness.close).not.toHaveBeenCalled();
+  });
+
   it('retains only bounded rate-limit and agent-hint metadata', async () => {
     const agentHints = Array.from({ length: MAX_WALLET_MCP_AGENT_HINTS + 4 }, (_, index) => ({
       type: `hint.${index}`,
@@ -254,6 +296,38 @@ describe('official MCP client boundary (issue #165)', () => {
     expect(metadata?.agentHints?.[0].data).toEqual({ safe: 0 });
     expect(metadata).not.toHaveProperty('arbitraryMetadata');
     expect(metadata?.rateLimit).not.toHaveProperty('arbitrarySecret');
+  });
+
+  it('ignores malformed agent hints and empty metadata', async () => {
+    const harness = createHarness({
+      callToolResult: {
+        content: [],
+        structuredContent: {
+          profile: 'ready',
+          agentHints: [null, {}, { type: '   ' }, { type: 'valid', data: [] }],
+        },
+        _meta: {
+          rateLimit: { limit: -1, remaining: Number.NaN },
+        },
+      },
+    });
+
+    await harness.service.verifyClientProfile();
+    expect(harness.service.getLastResponseMetadata('get_client_profile')).toEqual({
+      agentHints: [{ type: 'valid', severity: undefined, text: undefined, data: undefined }],
+      rateLimit: undefined,
+    });
+  });
+
+  it.each([
+    [{ content: [{ type: 'text', text: '{"profile":"ready"}' }] }, { profile: 'ready' }],
+    [{ content: [{ type: 'text', text: 'plain response' }] }, 'plain response'],
+    [{ content: [{ type: 'image', data: 'ignored', mimeType: 'image/png' }] }, {
+      content: [{ type: 'image', data: 'ignored', mimeType: 'image/png' }],
+    }],
+  ])('normalizes tool content fallback %#', async (callToolResult, expected) => {
+    const harness = createHarness({ callToolResult });
+    await expect(harness.service.verifyClientProfile()).resolves.toEqual(expected);
   });
 
   it('maps authoritative protocol and tool rejections to definitive failure', async () => {
@@ -330,6 +404,50 @@ describe('official MCP client boundary (issue #165)', () => {
 
     await expect(harness.service.verifyClientProfile()).rejects.toBeInstanceOf(WalletMcpRequestError);
     expect(harness.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes a client whose initial connection fails and preserves the connection error', async () => {
+    const connectionError = new Error('connect failed');
+    const close = vi.fn().mockRejectedValue(new Error('close failed'));
+    const client = {
+      connect: vi.fn().mockRejectedValue(connectionError),
+      callTool: vi.fn(),
+      listTools: vi.fn(),
+      close,
+    } as unknown as WalletMcpSdkClient;
+    const transport = new WalletMcpTransport('https://wallet.example/mcp', 'token', {
+      createClient: () => client,
+      createTransport: () => ({} as Transport),
+    });
+
+    await expect(transport.callTool('get_accounts', {})).rejects.toBe(connectionError);
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits for and closes a client that is still connecting', async () => {
+    let resolveConnect: (() => void) | undefined;
+    const connect = new Promise<void>(resolve => {
+      resolveConnect = resolve;
+    });
+    const close = vi.fn().mockResolvedValue(undefined);
+    const client = {
+      connect: vi.fn().mockReturnValue(connect),
+      callTool: vi.fn().mockResolvedValue({ content: [], structuredContent: {} }),
+      listTools: vi.fn(),
+      close,
+    } as unknown as WalletMcpSdkClient;
+    const transport = new WalletMcpTransport('https://wallet.example/mcp', 'token', {
+      createClient: () => client,
+      createTransport: () => ({} as Transport),
+    });
+
+    const request = transport.callTool('get_accounts', {});
+    const closing = transport.close();
+    resolveConnect?.();
+
+    await request;
+    await closing;
+    expect(close).toHaveBeenCalledTimes(1);
   });
 
   it('maps ambiguous mutation transport failures to UNKNOWN without retrying', async () => {
