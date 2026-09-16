@@ -253,3 +253,57 @@ export interface TransactionSummaryResult {
   appliedFilters?: AppliedTransactionHistoryFilters;
   unresolvedFilters?: UnresolvedFilterIssue[];
 }
+
+export interface WalletRecordAggregationQueryPayload {
+  groupBy?: string[];
+  compute?: string[];
+  sortBy?: string[];
+  accountId?: string | string[];
+  recordDate?: string[];
+  categoryId?: string[];
+  categoryGroup?: string;
+  labelId?: string;
+  recordType?: TransactionRecordTypeFilter;
+  source?: string[];
+  recordState?: string[];
+  isTransfer?: boolean;
+  amount?: string[];
+  note?: string;
+  counterParty?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface WalletRecordAggregationResultItem {
+  currency?: string;
+  recordType?: TransactionRecordTypeFilter;
+  count: number;
+  'amount:sum'?: number;
+  'amount:absSum'?: number;
+  'category:id'?: string;
+  'category:name'?: string;
+  'category:parentId'?: string | null;
+  'category:customCategory'?: boolean;
+  accountId?: string;
+  [key: string]: unknown;
+}
+
+export interface WalletRecordAggregationResponse {
+  results: WalletRecordAggregationResultItem[];
+  isTransfer?: boolean | null;
+  baseCurrency?: string;
+  limit: number;
+  offset: number;
+  agentHints?: WalletAgentHint[];
+  _meta?: {
+    rateLimit?: {
+      capacity?: number;
+      remaining?: number;
+      refillPerMinute?: number;
+      resetAt?: string;
+    };
+    syncedAt?: string;
+    lastResourceChange?: unknown;
+  };
+}
+

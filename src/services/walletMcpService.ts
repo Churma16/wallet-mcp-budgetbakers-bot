@@ -18,6 +18,8 @@ import {
   TransactionHistoryQueryOptions,
   WalletRecordItem,
   TransactionHistoryPage,
+  WalletRecordAggregationQueryPayload,
+  WalletRecordAggregationResponse,
 } from '../types/walletTypes.js';
 import { applicationLogger, redactSensitiveData } from '../utils/logger.js';
 import { matchesTransactionRecordSearch } from '../utils/transactionSearchMatcher.js';
@@ -43,6 +45,7 @@ export const WALLET_MCP_ALLOWED_TOOL_NAMES = [
   'get_budgets',
   'get_records',
   'create_records',
+  'get_records_aggregation',
 ] as const;
 
 export type WalletMcpToolName = typeof WALLET_MCP_ALLOWED_TOOL_NAMES[number];
@@ -1065,6 +1068,33 @@ export class WalletMcpClientService {
       sort: resolvedSort,
     };
   }
+
+  /**
+   * Retrieves aggregated transaction metrics natively from Wallet MCP
+   * using get_records_aggregation without scanning individual records.
+   */
+  public async fetchRecordsAggregation(
+    queryPayload: WalletRecordAggregationQueryPayload
+  ): Promise<WalletRecordAggregationResponse> {
+    applicationLogger.fileDetail('mcp', 'Dispatching fetchRecordsAggregation to Wallet MCP', {
+      groupBy: queryPayload.groupBy,
+      compute: queryPayload.compute,
+      isTransfer: queryPayload.isTransfer,
+      filters: {
+        accountId: queryPayload.accountId,
+        categoryId: queryPayload.categoryId,
+        categoryGroup: queryPayload.categoryGroup,
+        recordType: queryPayload.recordType,
+        recordDate: queryPayload.recordDate,
+      },
+    });
+
+    return await this.callMcpTool<WalletRecordAggregationResponse>(
+      'get_records_aggregation',
+      queryPayload as Record<string, unknown>
+    );
+  }
+
 
   /**
    * Normalizes recordDate using the canonical normalizeTransactionRecordDate helper.

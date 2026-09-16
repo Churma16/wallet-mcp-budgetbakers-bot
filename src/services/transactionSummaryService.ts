@@ -1,3 +1,5 @@
+import { WalletMcpClientService } from './walletMcpService.js';
+import { WalletCacheService } from './walletCacheService.js';
 import { TransactionHistoryService } from './transactionHistoryService.js';
 import {
   TransactionCurrencyTotals,
@@ -5,8 +7,13 @@ import {
   TransactionSummaryGroupBy,
   TransactionSummaryQueryOptions,
   TransactionSummaryResult,
+  WalletAccountItem,
+  WalletCategoryItem,
   WalletRecordItem,
+  WalletRecordAggregationQueryPayload,
+  WalletRecordAggregationResultItem,
 } from '../types/walletTypes.js';
+import { normalizeTransactionHistoryFilters } from '../utils/transactionHistoryFilterNormalizer.js';
 import { applicationLogger } from '../utils/logger.js';
 
 const SUMMARY_PAGE_SIZE = 50;
@@ -152,14 +159,333 @@ function buildBreakdown(
 }
 
 export class TransactionSummaryService {
-  constructor(private readonly transactionHistoryService: TransactionHistoryService) {}
+  private readonly walletMcpClient?: WalletMcpClientService;
+  private readonly walletCacheService?: WalletCacheService;
+  private readonly transactionHistoryService?: TransactionHistoryService;
+
+  constructor(
+    walletMcpClientOrHistoryService: WalletMcpClientService | TransactionHistoryService,
+    walletCacheService?: WalletCacheService,
+    transactionHistoryService?: TransactionHistoryService
+  ) {
+    if (
+      'fetchRecordsAggregation' in walletMcpClientOrHistoryService ||
+      'callMcpTool' in walletMcpClientOrHistoryService
+    ) {
+      this.walletMcpClient = walletMcpClientOrHistoryService as WalletMcpClientService;
+      this.walletCacheService = walletCacheService;
+      this.transactionHistoryService = transactionHistoryService;
+    } else {
+      const historyService = walletMcpClientOrHistoryService as TransactionHistoryService;
+      this.transactionHistoryService = historyService;
+      this.walletCacheService = walletCacheService ?? historyService.getWalletCacheService?.();
+      this.walletMcpClient = historyService.getWalletMcpClient?.();
+    }
+  }
 
   /**
-   * Aggregates matching transaction history records while preserving the exact
-   * history filter semantics. Currency buckets are always kept separate and
-   * transfers are excluded from income/expense totals.
+   * Aggregates matching transactions while preserving the exact history filter semantics.
+   * Prefers native Wallet MCP get_records_aggregation when available. Currency buckets
+   * are kept separate and transfers are excluded from income/expense totals.
    */
   public async getTransactionSummary(
+    queryOptions: TransactionSummaryQueryOptions = {},
+    referenceDate: Date = new Date()
+  ): Promise<TransactionSummaryResult> {
+    const hasProvenSearchGap = Boolean(queryOptions.searchQuery);
+    if (this.walletMcpClient && !hasProvenSearchGap) {
+      return await this.getNativeTransactionSummary(queryOptions, referenceDate);
+    }
+
+    if (this.transactionHistoryService) {
+      return await this.getCompatibilityFallbackSummary(queryOptions, referenceDate);
+    }
+
+    throw new Error('[error] TransactionSummaryService requires WalletMcpClientService or TransactionHistoryService');
+  }
+
+  /**
+   * Native Wallet MCP get_records_aggregation workflow. Uses authoritative upstream
+   * arithmetic and grouping without scanning all matching records page-by-page.
+   */
+  private async getNativeTransactionSummary(
+    queryOptions: TransactionSummaryQueryOptions,
+    referenceDate: Date
+  ): Promise<TransactionSummaryResult> {
+    const { groupBy = 'none', ...historyFilters } = queryOptions;
+
+    const cachedAccountList = this.walletCacheService?.getAccounts() || [];
+    const cachedCategoryList = this.walletCacheService?.getCategories() || [];
+
+    const normalizationResult = normalizeTransactionHistoryFilters(
+      historyFilters,
+      cachedAccountList,
+      cachedCategoryList,
+      referenceDate
+    );
+
+    if (!normalizationResult.isValid) {
+      applicationLogger.fileDetail('warn', 'Transaction summary filter resolution issues', {
+        unresolvedFilters: normalizationResult.unresolvedFilters,
+      });
+
+      return {
+        transactionCount: 0,
+        excludedTransferCount: 0,
+        totals: [],
+        breakdown: [],
+        groupBy,
+        isMultiCurrency: false,
+        isComplete: false,
+        appliedFilters: normalizationResult.appliedFilters,
+        unresolvedFilters: normalizationResult.unresolvedFilters,
+      };
+    }
+
+    const mcpGroupByFields: string[] = ['currency', 'recordType'];
+    if (groupBy === 'category') {
+      mcpGroupByFields.push('category:id', 'category:name');
+    } else if (groupBy === 'account') {
+      mcpGroupByFields.push('accountId');
+    }
+
+    const aggregationPayload: WalletRecordAggregationQueryPayload = {
+      groupBy: mcpGroupByFields,
+      compute: ['amount:sum'],
+      isTransfer: false,
+      limit: 1000,
+    };
+
+    if (normalizationResult.upstreamAccountId) {
+      aggregationPayload.accountId = normalizationResult.upstreamAccountId;
+    }
+    if (normalizationResult.upstreamCategoryId && normalizationResult.upstreamCategoryId.length > 0) {
+      aggregationPayload.categoryId = normalizationResult.upstreamCategoryId;
+    }
+    if (normalizationResult.upstreamCategoryGroup) {
+      aggregationPayload.categoryGroup = normalizationResult.upstreamCategoryGroup;
+    }
+    if (normalizationResult.upstreamRecordType) {
+      aggregationPayload.recordType = normalizationResult.upstreamRecordType;
+    }
+    if (normalizationResult.upstreamRecordDate && normalizationResult.upstreamRecordDate.length > 0) {
+      aggregationPayload.recordDate = normalizationResult.upstreamRecordDate;
+    }
+
+    const transferCountPayload: WalletRecordAggregationQueryPayload = {
+      isTransfer: true,
+    };
+    if (normalizationResult.upstreamAccountId) {
+      transferCountPayload.accountId = normalizationResult.upstreamAccountId;
+    }
+    if (normalizationResult.upstreamCategoryId && normalizationResult.upstreamCategoryId.length > 0) {
+      transferCountPayload.categoryId = normalizationResult.upstreamCategoryId;
+    }
+    if (normalizationResult.upstreamCategoryGroup) {
+      transferCountPayload.categoryGroup = normalizationResult.upstreamCategoryGroup;
+    }
+    if (normalizationResult.upstreamRecordDate && normalizationResult.upstreamRecordDate.length > 0) {
+      transferCountPayload.recordDate = normalizationResult.upstreamRecordDate;
+    }
+
+    const [aggregationResponse, transferResponse] = await Promise.all([
+      this.walletMcpClient!.fetchRecordsAggregation(aggregationPayload),
+      this.walletMcpClient!.fetchRecordsAggregation(transferCountPayload).catch(transferError => {
+        applicationLogger.fileDetail('warn', 'Failed to fetch excluded transfer count', {
+          error: transferError instanceof Error ? transferError.message : String(transferError),
+        });
+        return undefined;
+      }),
+    ]);
+
+    const excludedTransferCount = transferResponse?.results?.[0]?.count ?? 0;
+    const rawResults = aggregationResponse.results || [];
+
+    if (rawResults.length === 0 || (rawResults.length === 1 && rawResults[0].count === 0)) {
+      return {
+        transactionCount: 0,
+        excludedTransferCount,
+        totals: [],
+        breakdown: [],
+        groupBy,
+        isMultiCurrency: false,
+        isComplete: true,
+        appliedFilters: normalizationResult.appliedFilters,
+      };
+    }
+
+    const totalsByCurrency = new Map<string, MutableCurrencyTotals>();
+    for (const row of rawResults) {
+      if (!row.count || row.count <= 0) {
+        continue;
+      }
+      const currency = normalizeCurrencyCode(row.currency);
+      let currencyTotals = totalsByCurrency.get(currency);
+      if (!currencyTotals) {
+        currencyTotals = {
+          currency,
+          income: 0,
+          expense: 0,
+          transactionCount: 0,
+        };
+        totalsByCurrency.set(currency, currencyTotals);
+      }
+
+      const rawAmount = typeof row['amount:sum'] === 'number' ? row['amount:sum'] : 0;
+      currencyTotals.transactionCount += row.count;
+
+      if (row.recordType === 'expense') {
+        currencyTotals.expense += Math.abs(rawAmount);
+      } else {
+        currencyTotals.income += Math.abs(rawAmount);
+      }
+    }
+
+    const totals = finalizeCurrencyTotals(totalsByCurrency);
+    let totalTransactionCount = 0;
+    for (const currencyTotal of totals) {
+      totalTransactionCount += currencyTotal.transactionCount;
+    }
+
+    const isMultiCurrency = totals.length > 1;
+    const breakdown = this.buildNativeBreakdown(
+      rawResults,
+      groupBy,
+      isMultiCurrency,
+      cachedAccountList,
+      cachedCategoryList
+    );
+
+    return {
+      transactionCount: totalTransactionCount,
+      excludedTransferCount,
+      totals,
+      breakdown,
+      groupBy,
+      isMultiCurrency,
+      isComplete: true,
+      appliedFilters: normalizationResult.appliedFilters,
+    };
+  }
+
+  private buildNativeBreakdown(
+    rawResults: WalletRecordAggregationResultItem[],
+    groupBy: TransactionSummaryGroupBy,
+    isMultiCurrency: boolean,
+    cachedAccounts: WalletAccountItem[],
+    cachedCategories: WalletCategoryItem[]
+  ): TransactionSummaryBreakdownItem[] {
+    if (groupBy === 'none') {
+      return [];
+    }
+
+    const accountNameMap = new Map<string, string>();
+    for (const account of cachedAccounts) {
+      if (account.id) {
+        accountNameMap.set(account.id, account.name);
+      }
+    }
+
+    const categoryNameMap = new Map<string, string>();
+    for (const category of cachedCategories) {
+      if (category.id) {
+        categoryNameMap.set(category.id, category.name);
+      }
+    }
+
+    const groupedItemMap = new Map<string, MutableBreakdownItem>();
+
+    for (const row of rawResults) {
+      if (!row.count || row.count <= 0) {
+        continue;
+      }
+
+      let key: string;
+      let name: string | undefined;
+
+      if (groupBy === 'category') {
+        const rawCategoryId = (row['category:id'] as string | undefined)?.trim();
+        key = rawCategoryId || '__uncategorized__';
+        name = (row['category:name'] as string | undefined)?.trim() ||
+          (rawCategoryId ? categoryNameMap.get(rawCategoryId) : undefined);
+      } else {
+        const rawAccountId = (row.accountId as string | undefined)?.trim();
+        key = rawAccountId || '__unknown_account__';
+        name = rawAccountId ? accountNameMap.get(rawAccountId) : undefined;
+      }
+
+      let groupedItem = groupedItemMap.get(key);
+      if (!groupedItem) {
+        groupedItem = {
+          key,
+          name,
+          transactionCount: 0,
+          totalsByCurrency: new Map<string, MutableCurrencyTotals>(),
+        };
+        groupedItemMap.set(key, groupedItem);
+      } else if (!groupedItem.name && name) {
+        groupedItem.name = name;
+      }
+
+      const currency = normalizeCurrencyCode(row.currency);
+      let currencyTotals = groupedItem.totalsByCurrency.get(currency);
+      if (!currencyTotals) {
+        currencyTotals = {
+          currency,
+          income: 0,
+          expense: 0,
+          transactionCount: 0,
+        };
+        groupedItem.totalsByCurrency.set(currency, currencyTotals);
+      }
+
+      const rawAmount = typeof row['amount:sum'] === 'number' ? row['amount:sum'] : 0;
+      groupedItem.transactionCount += row.count;
+      currencyTotals.transactionCount += row.count;
+
+      if (row.recordType === 'expense') {
+        currencyTotals.expense += Math.abs(rawAmount);
+      } else {
+        currencyTotals.income += Math.abs(rawAmount);
+      }
+    }
+
+    const finalizedBreakdown = [...groupedItemMap.values()].map(groupedItem => ({
+      key: groupedItem.key,
+      name: groupedItem.name,
+      transactionCount: groupedItem.transactionCount,
+      totals: finalizeCurrencyTotals(groupedItem.totalsByCurrency),
+    }));
+
+    if (isMultiCurrency) {
+      return finalizedBreakdown.sort((left, right) =>
+        (left.name || left.key).localeCompare(right.name || right.key)
+      );
+    }
+
+    return finalizedBreakdown.sort((left, right) => {
+      const leftTotals = left.totals[0];
+      const rightTotals = right.totals[0];
+      const expenseDifference = (rightTotals?.expense || 0) - (leftTotals?.expense || 0);
+      if (expenseDifference !== 0) {
+        return expenseDifference;
+      }
+
+      const incomeDifference = (rightTotals?.income || 0) - (leftTotals?.income || 0);
+      if (incomeDifference !== 0) {
+        return incomeDifference;
+      }
+
+      return (left.name || left.key).localeCompare(right.name || right.key);
+    });
+  }
+
+  /**
+   * Compatibility fallback for environments without WalletMcpClientService access
+   * (e.g. legacy unit tests) or queries with search keywords where upstream native
+   * aggregation does not support free-text search.
+   */
+  private async getCompatibilityFallbackSummary(
     queryOptions: TransactionSummaryQueryOptions = {},
     referenceDate: Date = new Date()
   ): Promise<TransactionSummaryResult> {
@@ -172,7 +498,7 @@ export class TransactionSummaryService {
     let isComplete = false;
 
     for (let pageIndex = 0; pageIndex < MAX_SUMMARY_PAGES; pageIndex += 1) {
-      const historyPage = await this.transactionHistoryService.getTransactionHistory(
+      const historyPage = await this.transactionHistoryService!.getTransactionHistory(
         {
           ...historyFilters,
           limit: SUMMARY_PAGE_SIZE,
@@ -280,3 +606,4 @@ export class TransactionSummaryService {
     };
   }
 }
+

@@ -93,6 +93,8 @@ export class Application {
     );
 
     this.transactionSummaryService = new TransactionSummaryService(
+      this.walletMcpClient,
+      this.walletCacheService,
       this.transactionHistoryService
     );
 
