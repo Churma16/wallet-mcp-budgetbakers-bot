@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
+import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
 import { detectFastPathAction } from '../src/utils/fastPathIntentDetector.js';
 import {
   normalizeTransactionHistoryFilters,
@@ -55,28 +56,50 @@ const ISSUE_173_CATEGORIES: WalletCategoryItem[] = [
   { id: 'c-4', name: 'Makan Hangout', group: 'food_and_drinks' },
   { id: 'c-5', name: 'Software, apps, games', group: 'communication_pc' },
   { id: 'c-6', name: 'Transport', group: 'transportation' },
-  { id: 'c-7', name: 'Internet', group: 'communication_pc' },
+  { id: 'c-7', name: 'Internet & Wifi', group: 'communication_pc' },
   { id: 'c-8', name: 'Pengeluaran Digital', group: 'communication_pc' },
+  { id: 'c-9', name: 'Obat', group: 'health' },
 ];
 
-function createRegressionHandler(aiProvider: any, fastPathHandled = false, categories: WalletCategoryItem[] = COMPREHENSIVE_CATEGORIES, accounts: WalletAccountItem[] = MOCK_ACCOUNTS) {
+function createRegressionHandler(
+  aiProvider: any,
+  fastPathMode: boolean | 'real' = false,
+  categories: WalletCategoryItem[] = COMPREHENSIVE_CATEGORIES,
+  accounts: WalletAccountItem[] = MOCK_ACCOUNTS
+) {
   const gateway = { sendTypingPresence: vi.fn(), clearTypingPresence: vi.fn(), sendMessage: vi.fn() };
   const registry = { hasHandler: vi.fn().mockReturnValue(true), execute: vi.fn() };
-  const fastPath = { handleFastPath: vi.fn().mockResolvedValue(fastPathHandled) };
+  const walletCacheService = {
+    getAccounts: vi.fn().mockReturnValue(accounts),
+    getCategories: vi.fn().mockReturnValue(categories),
+  };
+  const fastPath =
+    fastPathMode === 'real'
+      ? new FastPathHandler(
+          {} as any,
+          walletCacheService as any,
+          gateway as any,
+          undefined,
+          undefined,
+          undefined,
+          registry as any
+        )
+      : { handleFastPath: vi.fn().mockResolvedValue(Boolean(fastPathMode)) };
+
   const handler = new UserMessageHandler(
     gateway as any,
     { hasPendingTransactions: vi.fn().mockReturnValue(false) } as any,
     {} as any,
     fastPath as any,
     aiProvider,
-    { getAccounts: vi.fn().mockReturnValue(accounts), getCategories: vi.fn().mockReturnValue(categories) } as any,
+    walletCacheService as any,
     {} as any,
     {} as any,
     {} as any,
     registry as any,
     { handlePendingAccountSelectionReply: vi.fn().mockResolvedValue(false) } as any
   );
-  return { handler, gateway, registry, fastPath };
+  return { handler, gateway, registry, fastPath, walletCacheService };
 }
 
 function textEvent(text: string) {
@@ -539,10 +562,11 @@ describe('Issue #160 comment checklist regression corpus', () => {
       { id: 'rec-D', recordType: 'expense', amount: -60000, note: 'Hokben dinner', category: { id: 'c-4', name: 'Makan Hangout' }, recordDate: '2026-09-16T09:00:00Z' },
       { id: 'rec-E', recordType: 'expense', amount: -150000, note: 'AI provider API', category: { id: 'c-5', name: 'Software, apps, games' }, recordDate: '2026-09-16T08:00:00Z' },
       { id: 'rec-F', recordType: 'expense', amount: -25000, note: 'Trip to Sarana Jaya', category: { id: 'c-6', name: 'Transport' }, recordDate: '2026-09-16T07:00:00Z' },
-      { id: 'rec-G', recordType: 'expense', amount: -100000, note: '10 GB data package', category: { id: 'c-7', name: 'Internet' }, recordDate: '2026-09-16T06:00:00Z' },
+      { id: 'rec-G', recordType: 'expense', amount: -100000, note: '10 GB data package', category: { id: 'c-7', name: 'Internet & Wifi' }, recordDate: '2026-09-16T06:00:00Z' },
       { id: 'rec-H', recordType: 'expense', amount: -120000, note: 'VPS hosting', category: { id: 'c-8', name: 'Pengeluaran Digital' }, recordDate: '2026-09-16T05:00:00Z' },
       { id: 'rec-I', recordType: 'income', amount: 50000, note: 'AI provider refund', category: { id: 'c-5', name: 'Software, apps, games' }, recordDate: '2026-09-16T04:00:00Z' },
       { id: 'rec-J', recordType: 'income', amount: 35000, note: 'Hangry refund', category: { id: 'c-3', name: 'Other' }, recordDate: '2026-09-16T03:00:00Z' },
+      { id: 'rec-K', recordType: 'expense', amount: -25000, note: 'Paracetamol', category: { id: 'c-9', name: 'Obat' }, recordDate: '2026-09-16T02:00:00Z' },
     ];
 
     function createFixtureHistoryService() {
@@ -657,6 +681,103 @@ describe('Issue #160 comment checklist regression corpus', () => {
       expect(page2.records).toHaveLength(5);
       expect(page2.records[0].id).toBe('rec-hangry-11');
       expect(page2.hasMore).toBe(false);
+    });
+
+    it('full routing: riwayat beli wifi with Internet & Wifi category in cache forces past fast-path to guarded description search', async () => {
+      const aiProvider = {
+        providerName: 'mock',
+        processTextMessage: vi.fn().mockResolvedValue({
+          action: 'TRANSACTION_HISTORY',
+          queryOptions: { searchQuery: 'wifi', recordType: 'expense' },
+          explanation: 'Showing wifi expense records',
+        }),
+        processImageMessage: vi.fn(),
+      };
+      const harness = createRegressionHandler(
+        aiProvider,
+        'real',
+        ISSUE_173_CATEGORIES
+      );
+
+      await harness.handler.handleIncomingUserMessage(textEvent('riwayat beli wifi'));
+
+      expect(aiProvider.processTextMessage).toHaveBeenCalled();
+      expect(harness.registry.execute).toHaveBeenCalledTimes(1);
+      const executedCall = harness.registry.execute.mock.calls[0][0];
+      expect(executedCall.action).toBe('TRANSACTION_HISTORY');
+      expect(executedCall.queryOptions).toMatchObject({
+        searchQuery: 'wifi',
+        recordType: 'expense',
+      });
+      expect(executedCall.queryOptions.categoryId).toBeUndefined();
+      expect(executedCall.queryOptions.categoryGroup).toBeUndefined();
+
+      // Verify against fixture: note lacks "wifi" so record G (Internet & Wifi) is excluded
+      const { historyService } = createFixtureHistoryService();
+      const result = await historyService.getTransactionHistory(executedCall.queryOptions);
+      expect(result.records).toHaveLength(0);
+      expect(result.records.map(r => r.id)).not.toContain('rec-G');
+    });
+
+    it('full routing: riwayat langganan wifi with Internet & Wifi category in cache forces past fast-path to guarded description search', async () => {
+      const aiProvider = {
+        providerName: 'mock',
+        processTextMessage: vi.fn().mockResolvedValue({
+          action: 'TRANSACTION_HISTORY',
+          queryOptions: { searchQuery: 'wifi', recordType: 'expense' },
+          explanation: 'Showing wifi subscription records',
+        }),
+        processImageMessage: vi.fn(),
+      };
+      const harness = createRegressionHandler(
+        aiProvider,
+        'real',
+        ISSUE_173_CATEGORIES
+      );
+
+      await harness.handler.handleIncomingUserMessage(textEvent('riwayat langganan wifi'));
+
+      expect(aiProvider.processTextMessage).toHaveBeenCalled();
+      expect(harness.registry.execute).toHaveBeenCalledTimes(1);
+      const executedCall = harness.registry.execute.mock.calls[0][0];
+      expect(executedCall.action).toBe('TRANSACTION_HISTORY');
+      expect(executedCall.queryOptions).toMatchObject({
+        searchQuery: 'wifi',
+        recordType: 'expense',
+      });
+      expect(executedCall.queryOptions.categoryId).toBeUndefined();
+      expect(executedCall.queryOptions.categoryGroup).toBeUndefined();
+
+      // Verify against fixture: note lacks "wifi" so record G (Internet & Wifi) is excluded
+      const { historyService } = createFixtureHistoryService();
+      const result = await historyService.getTransactionHistory(executedCall.queryOptions);
+      expect(result.records).toHaveLength(0);
+      expect(result.records.map(r => r.id)).not.toContain('rec-G');
+    });
+
+    it('full routing: preserves true category intent for riwayat beli obat via deterministic fast path', async () => {
+      const aiProvider = {
+        providerName: 'mock',
+        processTextMessage: vi.fn(),
+        processImageMessage: vi.fn(),
+      };
+      const harness = createRegressionHandler(
+        aiProvider,
+        'real',
+        ISSUE_173_CATEGORIES
+      );
+
+      await harness.handler.handleIncomingUserMessage(textEvent('riwayat beli obat'));
+
+      // Must stay on fast-path without invoking AI
+      expect(aiProvider.processTextMessage).not.toHaveBeenCalled();
+      expect(harness.registry.execute).toHaveBeenCalledTimes(1);
+      const executedCall = harness.registry.execute.mock.calls[0][0];
+      expect(executedCall.action).toBe('TRANSACTION_HISTORY');
+      expect(executedCall.routingSource).toBe('fast-path');
+      expect(executedCall.queryOptions.categoryName).toBe('obat');
+      expect(executedCall.queryOptions.recordType).toBe('expense');
+      expect(executedCall.queryOptions.searchQuery).toBeUndefined();
     });
   });
 

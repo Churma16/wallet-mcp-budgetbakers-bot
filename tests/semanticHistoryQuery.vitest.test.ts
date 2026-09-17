@@ -546,6 +546,38 @@ describe('single-call semantic transaction-history routing', () => {
       )).toBe(true);
     });
 
+    it('returns true for purchase/subscription description keywords (e.g. wifi) even if category contains matching substring', () => {
+      const categoriesWithWifi = [
+        ...categories,
+        { id: 'cat-internet-wifi', name: 'Internet & Wifi' },
+      ];
+      expect(shouldDeferHistoryCategoryToSemanticResolver(
+        { type: 'TRANSACTION_HISTORY', options: { categoryName: 'wifi', recordType: 'expense' } },
+        categoriesWithWifi,
+        refDate
+      )).toBe(true);
+
+      expect(shouldDeferHistoryCategoryToSemanticResolver(
+        { type: 'TRANSACTION_HISTORY', options: { categoryName: 'wifi' } },
+        categoriesWithWifi,
+        refDate,
+        'riwayat langganan wifi'
+      )).toBe(true);
+    });
+
+    it('returns false for true category intent (e.g. obat) when matching category exists', () => {
+      const categoriesWithObat = [
+        ...categories,
+        { id: 'cat-obat', name: 'Obat & Farmasi' },
+      ];
+      expect(shouldDeferHistoryCategoryToSemanticResolver(
+        { type: 'TRANSACTION_HISTORY', options: { categoryName: 'obat', recordType: 'expense' } },
+        categoriesWithObat,
+        refDate,
+        'riwayat beli obat'
+      )).toBe(false);
+    });
+
     it('continues message processing when fast-path handler does not handle an action', async () => {
       const processTextMessage = vi.fn().mockResolvedValue({ action: 'GENERAL_REPLY', explanation: 'ok' });
       const harness = createHandler(
