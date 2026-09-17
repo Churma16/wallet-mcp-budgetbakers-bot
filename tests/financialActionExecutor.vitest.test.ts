@@ -291,7 +291,6 @@ test('deferred category authority rejects unresolved categories and action switc
     sort: 'newest',
     datePeriod: 'last_month',
     categoryId: 'cat-health',
-    recordType: 'expense',
   });
 
   for (const rejectedResponse of [

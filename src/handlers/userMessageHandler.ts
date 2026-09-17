@@ -73,17 +73,13 @@ function hasPendingTransactions(manager: PendingTransactionService): boolean {
 
 /**
  * Keep canonical history queries on the fast path. Only an otherwise valid
- * history command with a category that deterministic resolution cannot find,
- * or purchase/subscription description intent queries (such as "beli wifi" or
- * "langganan wifi") that must not be hijacked by broad category matches (e.g. "Internet & Wifi"),
- * may use the guarded semantic fallback. True category intent cases (such as "beli obat"
- * and recurring bill payments like "bayar wifi") resolve cleanly and remain on the fast path.
+ * history command with a category that deterministic resolution cannot find
+ * may use the guarded semantic fallback.
  */
 export function shouldDeferHistoryCategoryToSemanticResolver(
   fastPathAction: ReturnType<typeof detectFastPathAction>,
   availableCategories: ReturnType<WalletCacheService['getCategories']>,
-  referenceDate: Date,
-  rawMessageText?: string
+  referenceDate: Date
 ): boolean {
   if (
     !fastPathAction ||
@@ -96,39 +92,6 @@ export function shouldDeferHistoryCategoryToSemanticResolver(
   const historyAction = fastPathAction as FastPathTransactionHistoryAction;
   if (!historyAction.options.categoryName || historyAction.options.searchQuery) {
     return false;
-  }
-
-  const normalizedCategoryHint = historyAction.options.categoryName.trim().toLowerCase();
-
-  // Explicit purchase or subscription description phrasing (e.g. "beli wifi", "langganan wifi")
-  // that must bypass deterministic category capture (preventing "wifi" from matching an "Internet & Wifi" category)
-  // and enter the guarded description-search path.
-  // NOTE: "bayar" / "pembayaran" is intentionally excluded here because recurring bill payments
-  // (e.g. "riwayat bayar wifi") represent category intent under #160 and must resolve deterministically.
-  if (rawMessageText) {
-    const isExplicitPurchaseOrSubscriptionPhrase =
-      /\b(?:beli|pembelian|langganan)\b/i.test(rawMessageText);
-
-    if (isExplicitPurchaseOrSubscriptionPhrase) {
-      const KNOWN_PURCHASE_DESCRIPTION_KEYWORDS = new Set([
-        'wifi',
-        'wi-fi',
-        'vps',
-        'ai',
-        'hangry',
-      ]);
-      if (KNOWN_PURCHASE_DESCRIPTION_KEYWORDS.has(normalizedCategoryHint)) {
-        return true;
-      }
-    }
-
-    const lowerRaw = rawMessageText.toLowerCase();
-    if (
-      /\b(?:beli|pembelian|langganan)\s+(?:wifi|wi-fi|vps|ai)\b/i.test(lowerRaw) ||
-      /\bmakan\s+hangry\b/i.test(lowerRaw)
-    ) {
-      return true;
-    }
   }
 
   const resolution = normalizeTransactionHistoryFilters(
@@ -350,8 +313,7 @@ export class UserMessageHandler {
           if (shouldDeferHistoryCategoryToSemanticResolver(
             fastPathAction,
             cachedCategories,
-            requestReferenceInstant,
-            event.textPayload
+            requestReferenceInstant
           )) {
             deferredHistoryFastPathOptions = (fastPathAction as FastPathTransactionHistoryAction).options;
           } else {

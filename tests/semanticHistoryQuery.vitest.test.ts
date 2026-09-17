@@ -546,36 +546,39 @@ describe('single-call semantic transaction-history routing', () => {
       )).toBe(true);
     });
 
-    it('returns true for purchase/subscription description keywords (beli/langganan wifi) even if category contains matching substring', () => {
+    it('returns true when natural phrase (e.g. beli wifi, langganan wifi, bayar wifi) does not match any category in cache', () => {
       const categoriesWithWifi = [
         ...categories,
         { id: 'cat-internet-wifi', name: 'Internet & Wifi' },
       ];
       expect(shouldDeferHistoryCategoryToSemanticResolver(
-        { type: 'TRANSACTION_HISTORY', options: { categoryName: 'wifi', recordType: 'expense' } },
+        { type: 'TRANSACTION_HISTORY', options: { categoryName: 'beli wifi' } },
         categoriesWithWifi,
-        refDate,
-        'riwayat beli wifi'
+        refDate
       )).toBe(true);
 
       expect(shouldDeferHistoryCategoryToSemanticResolver(
-        { type: 'TRANSACTION_HISTORY', options: { categoryName: 'wifi', recordType: 'expense' } },
+        { type: 'TRANSACTION_HISTORY', options: { categoryName: 'langganan wifi' } },
         categoriesWithWifi,
-        refDate,
-        'riwayat langganan wifi'
+        refDate
+      )).toBe(true);
+
+      expect(shouldDeferHistoryCategoryToSemanticResolver(
+        { type: 'TRANSACTION_HISTORY', options: { categoryName: 'bayar wifi' } },
+        categoriesWithWifi,
+        refDate
       )).toBe(true);
     });
 
-    it('returns false for recurring bill payment category intent (bayar wifi) when matching category exists', () => {
+    it('returns false when category matches exactly or via unambiguous substring', () => {
       const categoriesWithWifi = [
         ...categories,
         { id: 'cat-internet-wifi', name: 'Internet & Wifi' },
       ];
       expect(shouldDeferHistoryCategoryToSemanticResolver(
-        { type: 'TRANSACTION_HISTORY', options: { categoryName: 'wifi', recordType: 'expense' } },
+        { type: 'TRANSACTION_HISTORY', options: { categoryName: 'wifi' } },
         categoriesWithWifi,
-        refDate,
-        'riwayat bayar wifi'
+        refDate
       )).toBe(false);
     });
 
@@ -587,8 +590,7 @@ describe('single-call semantic transaction-history routing', () => {
       expect(shouldDeferHistoryCategoryToSemanticResolver(
         { type: 'TRANSACTION_HISTORY', options: { categoryName: 'obat', recordType: 'expense' } },
         categoriesWithObat,
-        refDate,
-        'riwayat beli obat'
+        refDate
       )).toBe(false);
     });
 

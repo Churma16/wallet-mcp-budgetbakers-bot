@@ -216,9 +216,7 @@ function extractHistoryQueryOptionsFromTokens(
     }
   }
 
-  const expenseMatch = remainingTokens.match(
-    /\b(pengeluaran|keluar|expenses?|spending|beli|pembelian|bayar|pembayaran|langganan)\b/i
-  );
+  const expenseMatch = remainingTokens.match(/\b(pengeluaran|keluar|expenses?|spending)\b/i);
   if (expenseMatch) {
     resolvedRecordType = 'expense';
     remainingTokens = remainingTokens.replace(expenseMatch[0], ' ').trim();

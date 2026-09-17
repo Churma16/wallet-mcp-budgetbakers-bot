@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
 import { detectFastPathAction } from '../src/utils/fastPathIntentDetector.js';
@@ -11,6 +13,9 @@ import { validateSemanticHistoryQueryOptions } from '../src/services/ai/semantic
 import { WalletAccountItem, WalletCategoryItem, WalletRecordItem } from '../src/types/walletTypes.js';
 import { WalletMcpClientService } from '../src/services/walletMcpService.js';
 import { TransactionHistoryService } from '../src/services/transactionHistoryService.js';
+import { FinancialActionExecutor } from '../src/services/financialActionExecutor.js';
+import { FinancialActionRegistry } from '../src/actions/financialActionRegistry.js';
+import { TransactionHistoryActionHandler } from '../src/actions/readActionHandlers.js';
 import { getDictionary } from '../src/i18n/index.js';
 
 const MOCK_ACCOUNTS: WalletAccountItem[] = [
@@ -61,17 +66,53 @@ const ISSUE_173_CATEGORIES: WalletCategoryItem[] = [
   { id: 'c-9', name: 'Obat', group: 'health' },
 ];
 
+const ISSUE_173_FIXTURE_RECORDS: any[] = [
+  { id: 'rec-A', recordType: 'expense', amount: -50000, note: 'Hangry dinner', category: { id: 'c-1', name: 'Makan Nafsu' }, recordDate: '2026-09-16T12:00:00Z' },
+  { id: 'rec-B', recordType: 'expense', amount: -40000, note: 'Hangry lunch', category: { id: 'c-2', name: 'Food & Drinks' }, recordDate: '2026-09-16T11:00:00Z' },
+  { id: 'rec-C', recordType: 'expense', amount: -45000, note: 'Hangry reimbursement', category: { id: 'c-3', name: 'Other' }, recordDate: '2026-09-16T10:00:00Z' },
+  { id: 'rec-D', recordType: 'expense', amount: -60000, note: 'Hokben dinner', category: { id: 'c-4', name: 'Makan Hangout' }, recordDate: '2026-09-16T09:00:00Z' },
+  { id: 'rec-E', recordType: 'expense', amount: -150000, note: 'AI provider API', category: { id: 'c-5', name: 'Software, apps, games' }, recordDate: '2026-09-16T08:00:00Z' },
+  { id: 'rec-F', recordType: 'expense', amount: -25000, note: 'Trip to Sarana Jaya', category: { id: 'c-6', name: 'Transport' }, recordDate: '2026-09-16T07:00:00Z' },
+  { id: 'rec-G', recordType: 'expense', amount: -100000, note: '10 GB data package', category: { id: 'c-7', name: 'Internet & Wifi' }, recordDate: '2026-09-16T06:00:00Z' },
+  { id: 'rec-H', recordType: 'expense', amount: -120000, note: 'VPS hosting', category: { id: 'c-8', name: 'Pengeluaran Digital' }, recordDate: '2026-09-16T05:00:00Z' },
+  { id: 'rec-I', recordType: 'income', amount: 50000, note: 'AI provider refund', category: { id: 'c-5', name: 'Software, apps, games' }, recordDate: '2026-09-16T04:00:00Z' },
+  { id: 'rec-J', recordType: 'income', amount: 35000, note: 'Hangry refund', category: { id: 'c-3', name: 'Other' }, recordDate: '2026-09-16T03:00:00Z' },
+  { id: 'rec-K', recordType: 'expense', amount: -25000, note: 'Paracetamol', category: { id: 'c-9', name: 'Obat' }, recordDate: '2026-09-16T02:00:00Z' },
+];
+
+function createFixtureHistoryService() {
+  const client = new WalletMcpClientService('https://mcp.wallet.budgetbakers.com', 'mock-token');
+  client.callMcpTool = vi.fn().mockImplementation(async <T>(_toolName: string, args: Record<string, unknown> = {}): Promise<T> => {
+    let filtered = [...ISSUE_173_FIXTURE_RECORDS];
+    if (args.recordType) {
+      filtered = filtered.filter(r => r.recordType === args.recordType);
+    }
+    if (args.categoryId && Array.isArray(args.categoryId)) {
+      filtered = filtered.filter(r => (args.categoryId as string[]).includes(r.category.id));
+    }
+    return { records: filtered, total: filtered.length } as T;
+  });
+  const cacheService = {
+    getAccounts: () => MOCK_ACCOUNTS,
+    getCategories: () => ISSUE_173_CATEGORIES,
+  } as any;
+  return { client, historyService: new TransactionHistoryService(client, cacheService) };
+}
+
 function createRegressionHandler(
   aiProvider: any,
   fastPathMode: boolean | 'real' = false,
   categories: WalletCategoryItem[] = COMPREHENSIVE_CATEGORIES,
-  accounts: WalletAccountItem[] = MOCK_ACCOUNTS
+  accounts: WalletAccountItem[] = MOCK_ACCOUNTS,
+  customRegistry?: any,
+  customGateway?: any
 ) {
-  const gateway = { sendTypingPresence: vi.fn(), clearTypingPresence: vi.fn(), sendMessage: vi.fn() };
-  const registry = { hasHandler: vi.fn().mockReturnValue(true), execute: vi.fn() };
+  const gateway = customGateway || { sendTypingPresence: vi.fn(), clearTypingPresence: vi.fn(), sendMessage: vi.fn() };
+  const registry = customRegistry || { hasHandler: vi.fn().mockReturnValue(true), execute: vi.fn() };
   const walletCacheService = {
     getAccounts: vi.fn().mockReturnValue(accounts),
     getCategories: vi.fn().mockReturnValue(categories),
+    refreshAccounts: vi.fn().mockResolvedValue(accounts),
   };
   const fastPath =
     fastPathMode === 'real'
@@ -555,38 +596,6 @@ describe('Issue #160 comment checklist regression corpus', () => {
   });
 
   describe('Issue #173 synthetic fixture & description search acceptance', () => {
-    const ISSUE_173_FIXTURE_RECORDS: any[] = [
-      { id: 'rec-A', recordType: 'expense', amount: -50000, note: 'Hangry dinner', category: { id: 'c-1', name: 'Makan Nafsu' }, recordDate: '2026-09-16T12:00:00Z' },
-      { id: 'rec-B', recordType: 'expense', amount: -40000, note: 'Hangry lunch', category: { id: 'c-2', name: 'Food & Drinks' }, recordDate: '2026-09-16T11:00:00Z' },
-      { id: 'rec-C', recordType: 'expense', amount: -45000, note: 'Hangry reimbursement', category: { id: 'c-3', name: 'Other' }, recordDate: '2026-09-16T10:00:00Z' },
-      { id: 'rec-D', recordType: 'expense', amount: -60000, note: 'Hokben dinner', category: { id: 'c-4', name: 'Makan Hangout' }, recordDate: '2026-09-16T09:00:00Z' },
-      { id: 'rec-E', recordType: 'expense', amount: -150000, note: 'AI provider API', category: { id: 'c-5', name: 'Software, apps, games' }, recordDate: '2026-09-16T08:00:00Z' },
-      { id: 'rec-F', recordType: 'expense', amount: -25000, note: 'Trip to Sarana Jaya', category: { id: 'c-6', name: 'Transport' }, recordDate: '2026-09-16T07:00:00Z' },
-      { id: 'rec-G', recordType: 'expense', amount: -100000, note: '10 GB data package', category: { id: 'c-7', name: 'Internet & Wifi' }, recordDate: '2026-09-16T06:00:00Z' },
-      { id: 'rec-H', recordType: 'expense', amount: -120000, note: 'VPS hosting', category: { id: 'c-8', name: 'Pengeluaran Digital' }, recordDate: '2026-09-16T05:00:00Z' },
-      { id: 'rec-I', recordType: 'income', amount: 50000, note: 'AI provider refund', category: { id: 'c-5', name: 'Software, apps, games' }, recordDate: '2026-09-16T04:00:00Z' },
-      { id: 'rec-J', recordType: 'income', amount: 35000, note: 'Hangry refund', category: { id: 'c-3', name: 'Other' }, recordDate: '2026-09-16T03:00:00Z' },
-      { id: 'rec-K', recordType: 'expense', amount: -25000, note: 'Paracetamol', category: { id: 'c-9', name: 'Obat' }, recordDate: '2026-09-16T02:00:00Z' },
-    ];
-
-    function createFixtureHistoryService() {
-      const client = new WalletMcpClientService('https://mcp.wallet.budgetbakers.com', 'mock-token');
-      client.callMcpTool = vi.fn().mockImplementation(async <T>(_toolName: string, args: Record<string, unknown> = {}): Promise<T> => {
-        let filtered = [...ISSUE_173_FIXTURE_RECORDS];
-        if (args.recordType) {
-          filtered = filtered.filter(r => r.recordType === args.recordType);
-        }
-        if (args.categoryId && Array.isArray(args.categoryId)) {
-          filtered = filtered.filter(r => (args.categoryId as string[]).includes(r.category.id));
-        }
-        return { records: filtered, total: filtered.length } as T;
-      });
-      const cacheService = {
-        getAccounts: () => MOCK_ACCOUNTS,
-        getCategories: () => ISSUE_173_CATEGORIES,
-      } as any;
-      return { client, historyService: new TransactionHistoryService(client, cacheService) };
-    }
 
     it('riwayat makan hangry: returns A, B, C, J and never D across categories and types', async () => {
       const { historyService, client } = createFixtureHistoryService();
@@ -755,10 +764,14 @@ describe('Issue #160 comment checklist regression corpus', () => {
       expect(result.records.map(r => r.id)).not.toContain('rec-G');
     });
 
-    it('full routing: preserves true category intent for riwayat beli obat via deterministic fast path', async () => {
+    it('full routing: preserves true category intent for riwayat beli obat via semantic resolution when not in categories', async () => {
       const aiProvider = {
         providerName: 'mock',
-        processTextMessage: vi.fn(),
+        processTextMessage: vi.fn().mockResolvedValue({
+          action: 'TRANSACTION_HISTORY',
+          queryOptions: { categoryId: 'c-9', recordType: 'expense' },
+          explanation: 'Showing medicine expenses',
+        }),
         processImageMessage: vi.fn(),
       };
       const harness = createRegressionHandler(
@@ -769,18 +782,57 @@ describe('Issue #160 comment checklist regression corpus', () => {
 
       await harness.handler.handleIncomingUserMessage(textEvent('riwayat beli obat'));
 
-      // Must stay on fast-path without invoking AI
-      expect(aiProvider.processTextMessage).not.toHaveBeenCalled();
+      // Natural implicit query defers to AI via category NOT_FOUND check
+      expect(aiProvider.processTextMessage).toHaveBeenCalled();
       expect(harness.registry.execute).toHaveBeenCalledTimes(1);
       const executedCall = harness.registry.execute.mock.calls[0][0];
       expect(executedCall.action).toBe('TRANSACTION_HISTORY');
-      expect(executedCall.routingSource).toBe('fast-path');
-      expect(executedCall.queryOptions.categoryName).toBe('obat');
+      expect(executedCall.routingSource).toBe('ai');
+      expect(executedCall.queryOptions.categoryId).toBe('c-9');
       expect(executedCall.queryOptions.recordType).toBe('expense');
-      expect(executedCall.queryOptions.searchQuery).toBeUndefined();
+
+      // Verify against fixture: resolves to Obat category (c-9) and returns record K
+      const { historyService } = createFixtureHistoryService();
+      const result = await historyService.getTransactionHistory(executedCall.queryOptions);
+      expect(result.records).toHaveLength(1);
+      expect(result.records[0].id).toBe('rec-K');
     });
 
-    it('full routing: preserves recurring bill payment category intent for riwayat bayar wifi via deterministic fast path', async () => {
+    it('full routing: preserves recurring bill payment category intent for riwayat bayar wifi via semantic resolution', async () => {
+      const aiProvider = {
+        providerName: 'mock',
+        processTextMessage: vi.fn().mockResolvedValue({
+          action: 'TRANSACTION_HISTORY',
+          queryOptions: { categoryId: 'c-7', recordType: 'expense' },
+          explanation: 'Showing internet bill payment',
+        }),
+        processImageMessage: vi.fn(),
+      };
+      const harness = createRegressionHandler(
+        aiProvider,
+        'real',
+        ISSUE_173_CATEGORIES
+      );
+
+      await harness.handler.handleIncomingUserMessage(textEvent('riwayat bayar wifi'));
+
+      // Natural implicit query defers to AI via category NOT_FOUND check
+      expect(aiProvider.processTextMessage).toHaveBeenCalled();
+      expect(harness.registry.execute).toHaveBeenCalledTimes(1);
+      const executedCall = harness.registry.execute.mock.calls[0][0];
+      expect(executedCall.action).toBe('TRANSACTION_HISTORY');
+      expect(executedCall.routingSource).toBe('ai');
+      expect(executedCall.queryOptions.categoryId).toBe('c-7');
+      expect(executedCall.queryOptions.recordType).toBe('expense');
+
+      // Verify against fixture: resolves to Internet & Wifi category (c-7) and returns record G
+      const { historyService } = createFixtureHistoryService();
+      const result = await historyService.getTransactionHistory(executedCall.queryOptions);
+      expect(result.records).toHaveLength(1);
+      expect(result.records[0].id).toBe('rec-G');
+    });
+
+    it('full routing: preserves explicit category syntax for riwayat kategori obat on deterministic fast path', async () => {
       const aiProvider = {
         providerName: 'mock',
         processTextMessage: vi.fn(),
@@ -792,23 +844,16 @@ describe('Issue #160 comment checklist regression corpus', () => {
         ISSUE_173_CATEGORIES
       );
 
-      await harness.handler.handleIncomingUserMessage(textEvent('riwayat bayar wifi'));
+      await harness.handler.handleIncomingUserMessage(textEvent('riwayat kategori obat'));
 
-      // Must stay on fast-path without invoking AI
+      // Finite explicit category syntax stays on fast-path without invoking AI
       expect(aiProvider.processTextMessage).not.toHaveBeenCalled();
       expect(harness.registry.execute).toHaveBeenCalledTimes(1);
       const executedCall = harness.registry.execute.mock.calls[0][0];
       expect(executedCall.action).toBe('TRANSACTION_HISTORY');
       expect(executedCall.routingSource).toBe('fast-path');
-      expect(executedCall.queryOptions.categoryName).toBe('wifi');
-      expect(executedCall.queryOptions.recordType).toBe('expense');
+      expect(executedCall.queryOptions.categoryName).toBe('obat');
       expect(executedCall.queryOptions.searchQuery).toBeUndefined();
-
-      // Verify against fixture: resolves to Internet & Wifi category (c-7) and returns record G
-      const { historyService } = createFixtureHistoryService();
-      const result = await historyService.getTransactionHistory(executedCall.queryOptions);
-      expect(result.records).toHaveLength(1);
-      expect(result.records[0].id).toBe('rec-G');
     });
 
     it('full routing: preserves explicit search fast path for riwayat cari wifi', async () => {
@@ -894,7 +939,7 @@ describe('Issue #160 comment checklist regression corpus', () => {
     it('preserves expense intent from purchase-description queries (riwayat beli vps)', async () => {
       const processTextMessage = vi.fn().mockResolvedValue({
         action: 'TRANSACTION_HISTORY',
-        queryOptions: { searchQuery: 'vps' },
+        queryOptions: { searchQuery: 'vps', recordType: 'expense' },
       });
       const harness = createRegressionHandler(
         { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
@@ -910,6 +955,180 @@ describe('Issue #160 comment checklist regression corpus', () => {
           recordType: 'expense',
         }),
       }));
+    });
+  });
+
+  describe('Synthetic open-ended terms fall-through to semantic resolution', () => {
+    it.each([
+      ['riwayat langganan spotify', 'spotify', 'expense'],
+      ['riwayat github', 'github', undefined],
+      ['riwayat netflix', 'netflix', 'expense'],
+    ])('routes synthetic phrase "%s" through real fast-path to semantic resolver without production keywords', async (input, expectedSearch, expectedType) => {
+      const aiProvider = {
+        providerName: 'mock',
+        processTextMessage: vi.fn().mockResolvedValue({
+          action: 'TRANSACTION_HISTORY',
+          queryOptions: {
+            searchQuery: expectedSearch,
+            ...(expectedType ? { recordType: expectedType } : {}),
+          },
+        }),
+        processImageMessage: vi.fn(),
+      };
+      const harness = createRegressionHandler(
+        aiProvider,
+        'real',
+        ISSUE_173_CATEGORIES
+      );
+
+      await harness.handler.handleIncomingUserMessage(textEvent(input));
+
+      // Must invoke AI because synthetic term is not a known category and has no hardcoded rule
+      expect(aiProvider.processTextMessage).toHaveBeenCalled();
+      expect(harness.registry.execute).toHaveBeenCalledTimes(1);
+      const executedCall = harness.registry.execute.mock.calls[0][0];
+      expect(executedCall.action).toBe('TRANSACTION_HISTORY');
+      expect(executedCall.routingSource).toBe('ai');
+      expect(executedCall.queryOptions.searchQuery).toBe(expectedSearch);
+      if (expectedType) {
+        expect(executedCall.queryOptions.recordType).toBe(expectedType);
+      }
+    });
+
+    it('verifies synthetic keywords (spotify, github, netflix) do not exist in production routing code', () => {
+      const fastPathSource = fs.readFileSync(
+        path.resolve(process.cwd(), 'src/utils/fastPathIntentDetector.ts'),
+        'utf-8'
+      );
+      const userHandlerSource = fs.readFileSync(
+        path.resolve(process.cwd(), 'src/handlers/userMessageHandler.ts'),
+        'utf-8'
+      );
+
+      for (const keyword of ['spotify', 'github', 'netflix', 'hangry', 'vps']) {
+        expect(fastPathSource.toLowerCase()).not.toContain(keyword);
+        expect(userHandlerSource.toLowerCase()).not.toContain(keyword);
+      }
+    });
+  });
+
+  describe('Real final WhatsApp reply path acceptance (#173)', () => {
+    it('riwayat makan hangry: renders all 4 matched records with truthful count and excludes Hokben dinner', async () => {
+      const { client, historyService } = createFixtureHistoryService();
+      const realGateway = {
+        sendTypingPresence: vi.fn().mockResolvedValue(undefined),
+        clearTypingPresence: vi.fn().mockResolvedValue(undefined),
+        sendMessage: vi.fn().mockResolvedValue(undefined),
+      };
+      const realExecutor = new FinancialActionExecutor(
+        client as any,
+        {
+          getAccounts: () => MOCK_ACCOUNTS,
+          getCategories: () => ISSUE_173_CATEGORIES,
+          refreshAccounts: async () => MOCK_ACCOUNTS,
+        } as any,
+        realGateway as any,
+        historyService
+      );
+      const realRegistry = new FinancialActionRegistry();
+      realRegistry.register(new TransactionHistoryActionHandler(realExecutor));
+
+      const aiProvider = {
+        providerName: 'mock',
+        processTextMessage: vi.fn().mockResolvedValue({
+          action: 'TRANSACTION_HISTORY',
+          queryOptions: { searchQuery: 'hangry' },
+          explanation: 'Menampilkan riwayat transaksi hangry',
+        }),
+        processImageMessage: vi.fn(),
+      };
+
+      const harness = createRegressionHandler(
+        aiProvider,
+        'real',
+        ISSUE_173_CATEGORIES,
+        MOCK_ACCOUNTS,
+        realRegistry,
+        realGateway
+      );
+
+      await harness.handler.handleIncomingUserMessage(textEvent('riwayat makan hangry'));
+
+      expect(realGateway.sendMessage).toHaveBeenCalledTimes(1);
+      const sentCall = realGateway.sendMessage.mock.calls[0];
+      expect(sentCall[0]).toBe('whatsapp');
+      expect(sentCall[1]).toBe('chat-reg');
+      const replyText: string = sentCall[2];
+
+      // Asserts WhatsApp reply contains the 4 matched descriptions
+      expect(replyText).toContain('Hangry dinner');
+      expect(replyText).toContain('Hangry lunch');
+      expect(replyText).toContain('Hangry reimbursement');
+      expect(replyText).toContain('Hangry refund');
+
+      // Excludes Hokben dinner
+      expect(replyText).not.toContain('Hokben dinner');
+
+      // Truthful count and page context
+      expect(replyText).toMatch(/4\s*(item|transaksi)/i);
+      expect(replyText).toMatch(/Hal\.\s*1/i);
+    });
+
+    it('riwayat beli wifi: renders explicit no-match response from fixture and never leaks rec-G or AI explanation', async () => {
+      const { client, historyService } = createFixtureHistoryService();
+      const realGateway = {
+        sendTypingPresence: vi.fn().mockResolvedValue(undefined),
+        clearTypingPresence: vi.fn().mockResolvedValue(undefined),
+        sendMessage: vi.fn().mockResolvedValue(undefined),
+      };
+      const realExecutor = new FinancialActionExecutor(
+        client as any,
+        {
+          getAccounts: () => MOCK_ACCOUNTS,
+          getCategories: () => ISSUE_173_CATEGORIES,
+          refreshAccounts: async () => MOCK_ACCOUNTS,
+        } as any,
+        realGateway as any,
+        historyService
+      );
+      const realRegistry = new FinancialActionRegistry();
+      realRegistry.register(new TransactionHistoryActionHandler(realExecutor));
+
+      const aiExplanation = 'Menampilkan riwayat transaksi pengeluaran untuk pembelian wifi.';
+      const aiProvider = {
+        providerName: 'mock',
+        processTextMessage: vi.fn().mockResolvedValue({
+          action: 'TRANSACTION_HISTORY',
+          queryOptions: { searchQuery: 'wifi', recordType: 'expense' },
+          explanation: aiExplanation,
+        }),
+        processImageMessage: vi.fn(),
+      };
+
+      const harness = createRegressionHandler(
+        aiProvider,
+        'real',
+        ISSUE_173_CATEGORIES,
+        MOCK_ACCOUNTS,
+        realRegistry,
+        realGateway
+      );
+
+      await harness.handler.handleIncomingUserMessage(textEvent('riwayat beli wifi'));
+
+      expect(realGateway.sendMessage).toHaveBeenCalledTimes(1);
+      const sentCall = realGateway.sendMessage.mock.calls[0];
+      expect(sentCall[0]).toBe('whatsapp');
+      expect(sentCall[1]).toBe('chat-reg');
+      const replyText: string = sentCall[2];
+
+      // Asserts WhatsApp reply contains explicit no-match response from fixture
+      expect(replyText).toMatch(/tidak ada transaksi|tidak ditemukan|belum ada transaksi/i);
+
+      // Never leaks rec-G (10 GB data package) or misleading AI explanation
+      expect(replyText).not.toContain('rec-G');
+      expect(replyText).not.toContain('10 GB data package');
+      expect(replyText).not.toContain(aiExplanation);
     });
   });
 });
