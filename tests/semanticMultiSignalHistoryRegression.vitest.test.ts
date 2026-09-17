@@ -67,30 +67,52 @@ const ISSUE_173_CATEGORIES: WalletCategoryItem[] = [
 ];
 
 const ISSUE_173_FIXTURE_RECORDS: any[] = [
-  { id: 'rec-A', recordType: 'expense', amount: -50000, note: 'Hangry dinner', category: { id: 'c-1', name: 'Makan Nafsu' }, recordDate: '2026-09-16T12:00:00Z' },
-  { id: 'rec-B', recordType: 'expense', amount: -40000, note: 'Hangry lunch', category: { id: 'c-2', name: 'Food & Drinks' }, recordDate: '2026-09-16T11:00:00Z' },
-  { id: 'rec-C', recordType: 'expense', amount: -45000, note: 'Hangry reimbursement', category: { id: 'c-3', name: 'Other' }, recordDate: '2026-09-16T10:00:00Z' },
-  { id: 'rec-D', recordType: 'expense', amount: -60000, note: 'Hokben dinner', category: { id: 'c-4', name: 'Makan Hangout' }, recordDate: '2026-09-16T09:00:00Z' },
-  { id: 'rec-E', recordType: 'expense', amount: -150000, note: 'AI provider API', category: { id: 'c-5', name: 'Software, apps, games' }, recordDate: '2026-09-16T08:00:00Z' },
-  { id: 'rec-F', recordType: 'expense', amount: -25000, note: 'Trip to Sarana Jaya', category: { id: 'c-6', name: 'Transport' }, recordDate: '2026-09-16T07:00:00Z' },
-  { id: 'rec-G', recordType: 'expense', amount: -100000, note: '10 GB data package', category: { id: 'c-7', name: 'Internet & Wifi' }, recordDate: '2026-09-16T06:00:00Z' },
-  { id: 'rec-H', recordType: 'expense', amount: -120000, note: 'VPS hosting', category: { id: 'c-8', name: 'Pengeluaran Digital' }, recordDate: '2026-09-16T05:00:00Z' },
-  { id: 'rec-I', recordType: 'income', amount: 50000, note: 'AI provider refund', category: { id: 'c-5', name: 'Software, apps, games' }, recordDate: '2026-09-16T04:00:00Z' },
-  { id: 'rec-J', recordType: 'income', amount: 35000, note: 'Hangry refund', category: { id: 'c-3', name: 'Other' }, recordDate: '2026-09-16T03:00:00Z' },
-  { id: 'rec-K', recordType: 'expense', amount: -25000, note: 'Paracetamol', category: { id: 'c-9', name: 'Obat' }, recordDate: '2026-09-16T02:00:00Z' },
+  { id: 'rec-A', recordType: 'expense', amount: -50000, note: 'Hangry dinner', category: { id: 'c-1', name: 'Makan Nafsu' }, recordDate: '2026-09-16T12:00:00Z', accountId: 'acc-bca', accountName: 'BCA' },
+  { id: 'rec-B', recordType: 'expense', amount: -40000, note: 'Hangry lunch', category: { id: 'c-2', name: 'Food & Drinks' }, recordDate: '2026-09-16T11:00:00Z', accountId: 'acc-bca', accountName: 'BCA' },
+  { id: 'rec-C', recordType: 'expense', amount: -45000, note: 'Hangry reimbursement', category: { id: 'c-3', name: 'Other' }, recordDate: '2026-09-16T10:00:00Z', accountId: 'acc-bca', accountName: 'BCA' },
+  { id: 'rec-D', recordType: 'expense', amount: -60000, note: 'Hokben dinner', category: { id: 'c-4', name: 'Makan Hangout' }, recordDate: '2026-09-16T09:00:00Z', accountId: 'acc-bca', accountName: 'BCA' },
+  { id: 'rec-E', recordType: 'expense', amount: -150000, note: 'AI provider API', category: { id: 'c-5', name: 'Software, apps, games' }, recordDate: '2026-09-16T08:00:00Z', accountId: 'acc-bca', accountName: 'BCA' },
+  { id: 'rec-F', recordType: 'expense', amount: -25000, note: 'Trip to Sarana Jaya', category: { id: 'c-6', name: 'Transport' }, recordDate: '2026-09-16T07:00:00Z', accountId: 'acc-bca', accountName: 'BCA' },
+  { id: 'rec-G', recordType: 'expense', amount: -100000, note: '10 GB data package', category: { id: 'c-7', name: 'Internet & Wifi' }, recordDate: '2026-09-16T06:00:00Z', accountId: 'acc-bca', accountName: 'BCA' },
+  { id: 'rec-H', recordType: 'expense', amount: -120000, note: 'VPS hosting', category: { id: 'c-8', name: 'Pengeluaran Digital' }, recordDate: '2026-09-16T05:00:00Z', accountId: 'acc-bca', accountName: 'BCA' },
+  { id: 'rec-I', recordType: 'income', amount: 50000, note: 'AI provider refund', category: { id: 'c-5', name: 'Software, apps, games' }, recordDate: '2026-09-16T04:00:00Z', accountId: 'acc-bca', accountName: 'BCA' },
+  { id: 'rec-J', recordType: 'income', amount: 35000, note: 'Hangry refund', category: { id: 'c-3', name: 'Other' }, recordDate: '2026-09-16T03:00:00Z', accountId: 'acc-bca', accountName: 'BCA' },
+  { id: 'rec-K', recordType: 'expense', amount: -25000, note: 'Paracetamol', category: { id: 'c-9', name: 'Obat' }, recordDate: '2026-09-16T02:00:00Z', accountId: 'acc-bca', accountName: 'BCA' },
 ];
 
-function createFixtureHistoryService() {
+function createFixtureHistoryService(customRecords?: any[]) {
+  const records = customRecords || ISSUE_173_FIXTURE_RECORDS;
   const client = new WalletMcpClientService('https://mcp.wallet.budgetbakers.com', 'mock-token');
   client.callMcpTool = vi.fn().mockImplementation(async <T>(_toolName: string, args: Record<string, unknown> = {}): Promise<T> => {
-    let filtered = [...ISSUE_173_FIXTURE_RECORDS];
+    let filtered = [...records];
     if (args.recordType) {
       filtered = filtered.filter(r => r.recordType === args.recordType);
     }
     if (args.categoryId && Array.isArray(args.categoryId)) {
-      filtered = filtered.filter(r => (args.categoryId as string[]).includes(r.category.id));
+      filtered = filtered.filter(r => (args.categoryId as string[]).includes(r.category?.id));
     }
-    return { records: filtered, total: filtered.length } as T;
+    if (args.accountId) {
+      const allowedAccounts = Array.isArray(args.accountId)
+        ? args.accountId
+        : String(args.accountId).split(',');
+      filtered = filtered.filter(r => allowedAccounts.includes(r.accountId));
+    }
+    if (args.recordDate && Array.isArray(args.recordDate)) {
+      for (const cond of args.recordDate as string[]) {
+        if (cond.startsWith('gte.')) {
+          const gteTime = new Date(cond.slice(4)).getTime();
+          filtered = filtered.filter(r => new Date(r.recordDate).getTime() >= gteTime);
+        } else if (cond.startsWith('lte.')) {
+          const lteTime = new Date(cond.slice(4)).getTime();
+          filtered = filtered.filter(r => new Date(r.recordDate).getTime() <= lteTime);
+        }
+      }
+    }
+    const offset = typeof args.offset === 'number' ? args.offset : 0;
+    const limit = typeof args.limit === 'number' ? args.limit : 10;
+    const total = filtered.length;
+    const paged = filtered.slice(offset, offset + limit);
+    return { records: paged, total } as T;
   });
   const cacheService = {
     getAccounts: () => MOCK_ACCOUNTS,
@@ -554,6 +576,7 @@ describe('Issue #160 comment checklist regression corpus', () => {
       ['bayar vps 100k'],
       ['langganan ai 15000'],
       ['pesen makan di grab 60000'],
+      ['beli VPS 50rb'],
     ])('strictly rejects transaction-entry message "%s" from fast-path history', (input) => {
       const fastPathResult = detectFastPathAction(input);
       expect(fastPathResult).toBeNull();
@@ -1289,6 +1312,402 @@ describe('Issue #160 comment checklist regression corpus', () => {
       const replyText: string = sentCall[2];
       expect(replyText).toContain('AI provider API');
       expect(replyText).not.toContain('AI provider refund');
+    });
+  });
+
+  describe('Additional Regression Cases (Issue #173 exact scenarios)', () => {
+    it('Riwayat beli AI: case-insensitivity preserves expense intent and description search without category lookup, rendering rec-E', async () => {
+      const { client, historyService } = createFixtureHistoryService();
+      const realGateway = {
+        sendTypingPresence: vi.fn().mockResolvedValue(undefined),
+        clearTypingPresence: vi.fn().mockResolvedValue(undefined),
+        sendMessage: vi.fn().mockResolvedValue(undefined),
+      };
+      const realExecutor = new FinancialActionExecutor(
+        client as any,
+        {
+          getAccounts: () => MOCK_ACCOUNTS,
+          getCategories: () => ISSUE_173_CATEGORIES,
+          refreshAccounts: async () => MOCK_ACCOUNTS,
+        } as any,
+        realGateway as any,
+        historyService
+      );
+      const realRegistry = new FinancialActionRegistry();
+      realRegistry.register(new TransactionHistoryActionHandler(realExecutor));
+      const executeSpy = vi.spyOn(realRegistry, 'execute');
+
+      const aiExplanation = 'Menampilkan riwayat transaksi pengeluaran untuk AI.';
+      const aiProvider = {
+        providerName: 'mock',
+        processTextMessage: vi.fn().mockResolvedValue({
+          action: 'TRANSACTION_HISTORY',
+          queryOptions: { searchQuery: 'AI', recordType: 'expense' },
+          explanation: aiExplanation,
+        }),
+        processImageMessage: vi.fn(),
+      };
+
+      const harness = createRegressionHandler(
+        aiProvider,
+        'real',
+        ISSUE_173_CATEGORIES,
+        MOCK_ACCOUNTS,
+        realRegistry,
+        realGateway
+      );
+
+      await harness.handler.handleIncomingUserMessage(textEvent('Riwayat beli AI'));
+
+      // Semantic fallback handles natural purchase query
+      expect(aiProvider.processTextMessage).toHaveBeenCalledTimes(1);
+
+      // Executed query preserves searchQuery 'AI' and recordType 'expense' without category lookup
+      expect(executeSpy).toHaveBeenCalledTimes(1);
+      const executedContext = executeSpy.mock.calls[0][0] as any;
+      expect(executedContext.action).toBe('TRANSACTION_HISTORY');
+      expect(executedContext.queryOptions.searchQuery).toBe('AI');
+      expect(executedContext.queryOptions.recordType).toBe('expense');
+      expect(executedContext.queryOptions.categoryName).toBeUndefined();
+      expect(executedContext.queryOptions.categoryId).toBeUndefined();
+      expect(executedContext.queryOptions.categoryGroup).toBeUndefined();
+
+      // Final WhatsApp reply contains record E (AI provider API) and excludes incidental Jaya (F) and refund (I)
+      expect(realGateway.sendMessage).toHaveBeenCalledTimes(1);
+      const sentCall = realGateway.sendMessage.mock.calls[0];
+      const replyText: string = sentCall[2];
+      expect(replyText).toContain('AI provider API');
+      expect(replyText).not.toContain('Trip to Sarana Jaya');
+      expect(replyText).not.toContain('AI provider refund');
+      expect(replyText).not.toMatch(/tidak ditemukan dalam daftar kategori/i);
+    });
+
+    it('riwayat beli ai bulan ini: returns only matching expense notes in requested month with fixed reference date and excludes older matching record', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-09-17T12:00:00.000Z'));
+      try {
+        const olderAiRecord = {
+          id: 'rec-E-older',
+          recordType: 'expense',
+          amount: -150000,
+          note: 'AI provider API older',
+          category: { id: 'c-5', name: 'Software, apps, games' },
+          recordDate: '2026-08-15T08:00:00Z',
+          accountId: 'acc-bca',
+          accountName: 'BCA',
+        };
+        const fixtureWithOlderRecord = [...ISSUE_173_FIXTURE_RECORDS, olderAiRecord];
+        const { client, historyService } = createFixtureHistoryService(fixtureWithOlderRecord);
+        const realGateway = {
+          sendTypingPresence: vi.fn().mockResolvedValue(undefined),
+          clearTypingPresence: vi.fn().mockResolvedValue(undefined),
+          sendMessage: vi.fn().mockResolvedValue(undefined),
+        };
+        const realExecutor = new FinancialActionExecutor(
+          client as any,
+          {
+            getAccounts: () => MOCK_ACCOUNTS,
+            getCategories: () => ISSUE_173_CATEGORIES,
+            refreshAccounts: async () => MOCK_ACCOUNTS,
+          } as any,
+          realGateway as any,
+          historyService
+        );
+        const realRegistry = new FinancialActionRegistry();
+        realRegistry.register(new TransactionHistoryActionHandler(realExecutor));
+        const executeSpy = vi.spyOn(realRegistry, 'execute');
+
+        const aiProvider = {
+          providerName: 'mock',
+          processTextMessage: vi.fn().mockResolvedValue({
+            action: 'TRANSACTION_HISTORY',
+            queryOptions: { searchQuery: 'ai', recordType: 'expense', datePeriod: 'this_month' },
+            explanation: 'Menampilkan riwayat pengeluaran AI bulan ini.',
+          }),
+          processImageMessage: vi.fn(),
+        };
+
+        const harness = createRegressionHandler(
+          aiProvider,
+          'real',
+          ISSUE_173_CATEGORIES,
+          MOCK_ACCOUNTS,
+          realRegistry,
+          realGateway
+        );
+
+        await harness.handler.handleIncomingUserMessage(textEvent('riwayat beli ai bulan ini'));
+
+        expect(aiProvider.processTextMessage).toHaveBeenCalledTimes(1);
+        expect(executeSpy).toHaveBeenCalledTimes(1);
+        const executedContext = executeSpy.mock.calls[0][0] as any;
+        expect(executedContext.action).toBe('TRANSACTION_HISTORY');
+        expect(executedContext.queryOptions.searchQuery).toBe('ai');
+        expect(executedContext.queryOptions.recordType).toBe('expense');
+        expect(executedContext.queryOptions.datePeriod).toBe('this_month');
+        expect(executedContext.queryOptions.categoryName).toBeUndefined();
+
+        // Proves date filter is retained: rec-E (September) is included, rec-E-older (August) is excluded
+        expect(realGateway.sendMessage).toHaveBeenCalledTimes(1);
+        const sentCall = realGateway.sendMessage.mock.calls[0];
+        const replyText: string = sentCall[2];
+        expect(replyText).toContain('AI provider API');
+        expect(replyText).not.toContain('AI provider API older');
+        expect(replyText).not.toContain('rec-E-older');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('riwayat beli vps dari BCA: returns only matching expense notes from selected account and excludes matching record in another account', async () => {
+      const mandiriVpsRecord = {
+        id: 'rec-H-mandiri',
+        recordType: 'expense',
+        amount: -120000,
+        note: 'VPS hosting',
+        category: { id: 'c-8', name: 'Pengeluaran Digital' },
+        recordDate: '2026-09-16T05:00:00Z',
+        accountId: 'acc-mandiri',
+        accountName: 'Mandiri Debit Card',
+      };
+      const fixtureWithSecondAccountVps = [...ISSUE_173_FIXTURE_RECORDS, mandiriVpsRecord];
+      const { client, historyService } = createFixtureHistoryService(fixtureWithSecondAccountVps);
+      const realGateway = {
+        sendTypingPresence: vi.fn().mockResolvedValue(undefined),
+        clearTypingPresence: vi.fn().mockResolvedValue(undefined),
+        sendMessage: vi.fn().mockResolvedValue(undefined),
+      };
+      const realExecutor = new FinancialActionExecutor(
+        client as any,
+        {
+          getAccounts: () => MOCK_ACCOUNTS,
+          getCategories: () => ISSUE_173_CATEGORIES,
+          refreshAccounts: async () => MOCK_ACCOUNTS,
+        } as any,
+        realGateway as any,
+        historyService
+      );
+      const realRegistry = new FinancialActionRegistry();
+      realRegistry.register(new TransactionHistoryActionHandler(realExecutor));
+      const executeSpy = vi.spyOn(realRegistry, 'execute');
+
+      const aiProvider = {
+        providerName: 'mock',
+        processTextMessage: vi.fn().mockResolvedValue({
+          action: 'TRANSACTION_HISTORY',
+          queryOptions: { searchQuery: 'vps', recordType: 'expense', accountName: 'bca' },
+          explanation: 'Menampilkan riwayat pengeluaran VPS dari BCA.',
+        }),
+        processImageMessage: vi.fn(),
+      };
+
+      const harness = createRegressionHandler(
+        aiProvider,
+        'real',
+        ISSUE_173_CATEGORIES,
+        MOCK_ACCOUNTS,
+        realRegistry,
+        realGateway
+      );
+
+      await harness.handler.handleIncomingUserMessage(textEvent('riwayat beli vps dari BCA'));
+
+      expect(aiProvider.processTextMessage).toHaveBeenCalledTimes(1);
+      expect(executeSpy).toHaveBeenCalledTimes(1);
+      const executedContext = executeSpy.mock.calls[0][0] as any;
+      expect(executedContext.action).toBe('TRANSACTION_HISTORY');
+      expect(executedContext.queryOptions.searchQuery).toBe('vps');
+      expect(executedContext.queryOptions.recordType).toBe('expense');
+      expect(executedContext.queryOptions.accountName).toBe('bca');
+
+      // Proves account filter is retained: rec-H (BCA) is included, rec-H-mandiri (Mandiri) is excluded
+      expect(realGateway.sendMessage).toHaveBeenCalledTimes(1);
+      const sentCall = realGateway.sendMessage.mock.calls[0];
+      const replyText: string = sentCall[2];
+      expect(replyText).toContain('VPS hosting');
+      expect(replyText).toContain('BCA');
+      expect(replyText).not.toContain('Mandiri');
+      expect(replyText).not.toContain('rec-H-mandiri');
+    });
+
+    it('riwayat makan hangry hal 2: natural-language request routes through page 2 returning second page across categories without duplicates', async () => {
+      const multiPageHangryRecords = Array.from({ length: 15 }, (_, index) => ({
+        id: `rec-hangry-${index + 1}`,
+        recordType: 'expense',
+        amount: -25000,
+        note: `Hangry meal #${index + 1}`,
+        category: { id: index % 2 === 0 ? 'c-1' : 'c-3', name: index % 2 === 0 ? 'Makan Nafsu' : 'Other' },
+        recordDate: new Date(Date.now() - index * 60000).toISOString(),
+        accountId: 'acc-bca',
+        accountName: 'BCA',
+      }));
+
+      const { client, historyService } = createFixtureHistoryService(multiPageHangryRecords);
+      const realGateway = {
+        sendTypingPresence: vi.fn().mockResolvedValue(undefined),
+        clearTypingPresence: vi.fn().mockResolvedValue(undefined),
+        sendMessage: vi.fn().mockResolvedValue(undefined),
+      };
+      const realExecutor = new FinancialActionExecutor(
+        client as any,
+        {
+          getAccounts: () => MOCK_ACCOUNTS,
+          getCategories: () => ISSUE_173_CATEGORIES,
+          refreshAccounts: async () => MOCK_ACCOUNTS,
+        } as any,
+        realGateway as any,
+        historyService
+      );
+      const realRegistry = new FinancialActionRegistry();
+      realRegistry.register(new TransactionHistoryActionHandler(realExecutor));
+      const executeSpy = vi.spyOn(realRegistry, 'execute');
+
+      const aiProvider = {
+        providerName: 'mock',
+        processTextMessage: vi.fn().mockResolvedValue({
+          action: 'TRANSACTION_HISTORY',
+          queryOptions: { searchQuery: 'hangry', page: 2 },
+          explanation: 'Menampilkan riwayat transaksi hangry halaman 2.',
+        }),
+        processImageMessage: vi.fn(),
+      };
+
+      const harness = createRegressionHandler(
+        aiProvider,
+        'real',
+        ISSUE_173_CATEGORIES,
+        MOCK_ACCOUNTS,
+        realRegistry,
+        realGateway
+      );
+
+      await harness.handler.handleIncomingUserMessage(textEvent('riwayat makan hangry hal 2'));
+
+      expect(aiProvider.processTextMessage).toHaveBeenCalledTimes(1);
+      expect(executeSpy).toHaveBeenCalledTimes(1);
+      const executedContext = executeSpy.mock.calls[0][0] as any;
+      expect(executedContext.action).toBe('TRANSACTION_HISTORY');
+      expect(executedContext.queryOptions.searchQuery).toBe('hangry');
+      expect(executedContext.queryOptions.page).toBe(2);
+      expect(executedContext.queryOptions.categoryId).toBeUndefined();
+      expect(executedContext.queryOptions.categoryGroup).toBeUndefined();
+
+      // Final reply renders page 2 (records 11-15) and excludes records 1-10
+      expect(realGateway.sendMessage).toHaveBeenCalledTimes(1);
+      const sentCall = realGateway.sendMessage.mock.calls[0];
+      const replyText: string = sentCall[2];
+      expect(replyText).toMatch(/Hal\.\s*2/i);
+      expect(replyText).toContain('Hangry meal #11');
+      expect(replyText).toContain('Hangry meal #15');
+      expect(replyText).not.toContain('Hangry meal #1\n');
+      expect(replyText).not.toContain('Hangry meal #10\n');
+    });
+
+    it('beli VPS 50rb: remains a transaction-recording request and is not intercepted by history routing', async () => {
+      // 1. Fast-path intent detection rejection
+      const fastPathResult = detectFastPathAction('beli VPS 50rb');
+      expect(fastPathResult).toBeNull();
+
+      // 2. Full routing verification: does not execute TRANSACTION_HISTORY
+      const executeSpy = vi.fn();
+      const mockRegistry = {
+        hasHandler: vi.fn().mockReturnValue(true),
+        execute: executeSpy,
+      };
+      const aiProvider = {
+        providerName: 'mock',
+        processTextMessage: vi.fn().mockResolvedValue({
+          action: 'CREATE_RECORD',
+          records: [{
+            amount: 50000,
+            note: 'beli VPS',
+          }],
+          explanation: 'Mencatat pengeluaran untuk beli VPS sebesar 50.000.',
+        }),
+        processImageMessage: vi.fn(),
+      };
+
+      const harness = createRegressionHandler(
+        aiProvider,
+        'real',
+        ISSUE_173_CATEGORIES,
+        MOCK_ACCOUNTS,
+        mockRegistry
+      );
+
+      await harness.handler.handleIncomingUserMessage(textEvent('beli VPS 50rb'));
+
+      expect(aiProvider.processTextMessage).toHaveBeenCalledTimes(1);
+      expect(executeSpy).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'CREATE_RECORD',
+      }));
+      expect(executeSpy).not.toHaveBeenCalledWith(expect.objectContaining({
+        action: 'TRANSACTION_HISTORY',
+      }));
+    });
+
+    it('riwayat kategori "Internet": continues to filter by exact category independently of description-search routing', async () => {
+      // 1. Fast-path extracts exact category without searchQuery
+      const fastPathResult = detectFastPathAction('riwayat kategori "Internet"');
+      expect(fastPathResult).not.toBeNull();
+      expect(fastPathResult!.type).toBe('TRANSACTION_HISTORY');
+      const historyAction = fastPathResult as { type: 'TRANSACTION_HISTORY'; options: any };
+      expect(historyAction.options.categoryName).toBe('internet');
+      expect(historyAction.options.searchQuery).toBeUndefined();
+
+      // 2. Full routing: stays on deterministic fast-path without AI invocation
+      const { client, historyService } = createFixtureHistoryService();
+      const realGateway = {
+        sendTypingPresence: vi.fn().mockResolvedValue(undefined),
+        clearTypingPresence: vi.fn().mockResolvedValue(undefined),
+        sendMessage: vi.fn().mockResolvedValue(undefined),
+      };
+      const realExecutor = new FinancialActionExecutor(
+        client as any,
+        {
+          getAccounts: () => MOCK_ACCOUNTS,
+          getCategories: () => ISSUE_173_CATEGORIES,
+          refreshAccounts: async () => MOCK_ACCOUNTS,
+        } as any,
+        realGateway as any,
+        historyService
+      );
+      const realRegistry = new FinancialActionRegistry();
+      realRegistry.register(new TransactionHistoryActionHandler(realExecutor));
+      const executeSpy = vi.spyOn(realRegistry, 'execute');
+
+      const aiProvider = {
+        providerName: 'mock',
+        processTextMessage: vi.fn(),
+        processImageMessage: vi.fn(),
+      };
+
+      const harness = createRegressionHandler(
+        aiProvider,
+        'real',
+        ISSUE_173_CATEGORIES,
+        MOCK_ACCOUNTS,
+        realRegistry,
+        realGateway
+      );
+
+      await harness.handler.handleIncomingUserMessage(textEvent('riwayat kategori "Internet"'));
+
+      expect(aiProvider.processTextMessage).not.toHaveBeenCalled();
+      expect(executeSpy).toHaveBeenCalledTimes(1);
+      const executedContext = executeSpy.mock.calls[0][0] as any;
+      expect(executedContext.action).toBe('TRANSACTION_HISTORY');
+      expect(executedContext.routingSource).toBe('fast-path');
+      expect(executedContext.queryOptions.categoryName).toBe('internet');
+      expect(executedContext.queryOptions.searchQuery).toBeUndefined();
+
+      // 3. Final WhatsApp reply renders rec-G (10 GB data package) by category c-7
+      // and does NOT contain description search banner [Cari: ...]
+      expect(realGateway.sendMessage).toHaveBeenCalledTimes(1);
+      const sentCall = realGateway.sendMessage.mock.calls[0];
+      const replyText: string = sentCall[2];
+      expect(replyText).toContain('10 GB data package');
+      expect(replyText).not.toContain('[Cari:');
     });
   });
 });
