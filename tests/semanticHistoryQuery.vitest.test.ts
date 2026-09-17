@@ -370,6 +370,11 @@ describe('single-call semantic transaction-history routing', () => {
     expect(harness.gateway.sendMessage).toHaveBeenCalledWith(
       'whatsapp',
       'chat',
+      expect.stringContaining('tidak ditemukan dalam daftar kategori')
+    );
+    expect(harness.gateway.sendMessage).not.toHaveBeenCalledWith(
+      'whatsapp',
+      'chat',
       'Kategori yang dimaksud belum jelas.'
     );
   });
@@ -539,6 +544,54 @@ describe('single-call semantic transaction-history routing', () => {
         categories,
         refDate
       )).toBe(true);
+    });
+
+    it('returns true when natural phrase (e.g. beli wifi, langganan wifi, bayar wifi) does not match any category in cache', () => {
+      const categoriesWithWifi = [
+        ...categories,
+        { id: 'cat-internet-wifi', name: 'Internet & Wifi' },
+      ];
+      expect(shouldDeferHistoryCategoryToSemanticResolver(
+        { type: 'TRANSACTION_HISTORY', options: { categoryName: 'beli wifi' } },
+        categoriesWithWifi,
+        refDate
+      )).toBe(true);
+
+      expect(shouldDeferHistoryCategoryToSemanticResolver(
+        { type: 'TRANSACTION_HISTORY', options: { categoryName: 'langganan wifi' } },
+        categoriesWithWifi,
+        refDate
+      )).toBe(true);
+
+      expect(shouldDeferHistoryCategoryToSemanticResolver(
+        { type: 'TRANSACTION_HISTORY', options: { categoryName: 'bayar wifi' } },
+        categoriesWithWifi,
+        refDate
+      )).toBe(true);
+    });
+
+    it('returns false when category matches exactly or via unambiguous substring', () => {
+      const categoriesWithWifi = [
+        ...categories,
+        { id: 'cat-internet-wifi', name: 'Internet & Wifi' },
+      ];
+      expect(shouldDeferHistoryCategoryToSemanticResolver(
+        { type: 'TRANSACTION_HISTORY', options: { categoryName: 'wifi' } },
+        categoriesWithWifi,
+        refDate
+      )).toBe(false);
+    });
+
+    it('returns false for true category intent (e.g. obat) when matching category exists', () => {
+      const categoriesWithObat = [
+        ...categories,
+        { id: 'cat-obat', name: 'Obat & Farmasi' },
+      ];
+      expect(shouldDeferHistoryCategoryToSemanticResolver(
+        { type: 'TRANSACTION_HISTORY', options: { categoryName: 'obat', recordType: 'expense' } },
+        categoriesWithObat,
+        refDate
+      )).toBe(false);
     });
 
     it('continues message processing when fast-path handler does not handle an action', async () => {
