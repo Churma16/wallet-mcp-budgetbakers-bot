@@ -300,7 +300,7 @@ function extractHistoryQueryOptionsFromTokens(
     const searchWords: string[] = [];
     const categoryPhraseWords: string[] = [];
     const canConsumeNaturalCategoryPhrase =
-      allowNaturalCategoryPhrase && !isDedicatedSearchCommand;
+      allowNaturalCategoryPhrase && !isDedicatedSearchCommand && !resolvedSearchQuery;
 
     for (const rawWord of leftoverWords) {
       const cleanWord = rawWord.toLowerCase();

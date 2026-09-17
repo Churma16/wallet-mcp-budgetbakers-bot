@@ -652,6 +652,34 @@ describe('Issue #160 comment checklist regression corpus', () => {
       expect(returnedIds).not.toContain('rec-G');
     });
 
+    it('riwayat beli "AI provider API": returns E and never I (income refund)', async () => {
+      const { historyService } = createFixtureHistoryService();
+      const result = await historyService.getTransactionHistory({
+        searchQuery: 'AI provider API',
+        recordType: 'expense',
+        sort: 'newest',
+      });
+
+      const returnedIds = result.records.map(r => r.id);
+      expect(returnedIds).toEqual(['rec-E']);
+      expect(returnedIds).not.toContain('rec-I');
+    });
+
+    it('fast-path intent detector: rejects leftover purchase verb in riwayat beli "AI provider API" to avoid false category filter', () => {
+      const fastPathResult = detectFastPathAction('riwayat beli "AI provider API"');
+      // Must return null so it falls through to semantic AI resolution rather than creating categoryName: "beli"
+      expect(fastPathResult).toBeNull();
+    });
+
+    it('fast-path intent detector: preserves standalone quoted literal in riwayat "AI provider API" on deterministic fast-path', () => {
+      const fastPathResult = detectFastPathAction('riwayat "AI provider API"');
+      expect(fastPathResult).not.toBeNull();
+      expect(fastPathResult!.type).toBe('TRANSACTION_HISTORY');
+      const historyAction = fastPathResult as { type: 'TRANSACTION_HISTORY'; options: any };
+      expect(historyAction.options.searchQuery).toBe('AI provider API');
+      expect(historyAction.options.categoryName).toBeUndefined();
+    });
+
     it('preserves multi-page pagination for cross-category note search without losing filter', async () => {
       const multiPageRecords = Array.from({ length: 15 }, (_, index) => ({
         id: `rec-hangry-${index + 1}`,
@@ -1129,6 +1157,138 @@ describe('Issue #160 comment checklist regression corpus', () => {
       expect(replyText).not.toContain('rec-G');
       expect(replyText).not.toContain('10 GB data package');
       expect(replyText).not.toContain(aiExplanation);
+    });
+
+    it('riwayat beli "AI provider API": runs real routing against #173 fixture, preserves quoted search literal and expense intent without category filter, and renders rec-E in WhatsApp reply', async () => {
+      const { client, historyService } = createFixtureHistoryService();
+      const realGateway = {
+        sendTypingPresence: vi.fn().mockResolvedValue(undefined),
+        clearTypingPresence: vi.fn().mockResolvedValue(undefined),
+        sendMessage: vi.fn().mockResolvedValue(undefined),
+      };
+      const realExecutor = new FinancialActionExecutor(
+        client as any,
+        {
+          getAccounts: () => MOCK_ACCOUNTS,
+          getCategories: () => ISSUE_173_CATEGORIES,
+          refreshAccounts: async () => MOCK_ACCOUNTS,
+        } as any,
+        realGateway as any,
+        historyService
+      );
+      const realRegistry = new FinancialActionRegistry();
+      realRegistry.register(new TransactionHistoryActionHandler(realExecutor));
+      const executeSpy = vi.spyOn(realRegistry, 'execute');
+
+      const aiExplanation = 'Menampilkan riwayat transaksi pengeluaran untuk AI provider API.';
+      const aiProvider = {
+        providerName: 'mock',
+        processTextMessage: vi.fn().mockResolvedValue({
+          action: 'TRANSACTION_HISTORY',
+          queryOptions: { searchQuery: 'AI provider API', recordType: 'expense' },
+          explanation: aiExplanation,
+        }),
+        processImageMessage: vi.fn(),
+      };
+
+      const harness = createRegressionHandler(
+        aiProvider,
+        'real',
+        ISSUE_173_CATEGORIES,
+        MOCK_ACCOUNTS,
+        realRegistry,
+        realGateway
+      );
+
+      await harness.handler.handleIncomingUserMessage(textEvent('riwayat beli "AI provider API"'));
+
+      // 1. Fast-path correctly rejected leftover purchase verb with quoted search query,
+      // falling through to semantic AI resolution without inventing a category constraint
+      expect(aiProvider.processTextMessage).toHaveBeenCalledTimes(1);
+
+      // 2. Executed query preserves searchQuery and recordType: 'expense',
+      // without inventing categoryName, categoryId, or categoryGroup
+      expect(executeSpy).toHaveBeenCalledTimes(1);
+      const executedContext = executeSpy.mock.calls[0][0] as any;
+      expect(executedContext.action).toBe('TRANSACTION_HISTORY');
+      expect(executedContext.queryOptions.searchQuery).toBe('AI provider API');
+      expect(executedContext.queryOptions.recordType).toBe('expense');
+      expect(executedContext.queryOptions.categoryName).toBeUndefined();
+      expect(executedContext.queryOptions.categoryId).toBeUndefined();
+      expect(executedContext.queryOptions.categoryGroup).toBeUndefined();
+
+      // 3. Final WhatsApp reply rendered through full pipeline contains record E (AI provider API)
+      expect(realGateway.sendMessage).toHaveBeenCalledTimes(1);
+      const sentCall = realGateway.sendMessage.mock.calls[0];
+      expect(sentCall[0]).toBe('whatsapp');
+      expect(sentCall[1]).toBe('chat-reg');
+      const replyText: string = sentCall[2];
+
+      // Matches record E
+      expect(replyText).toContain('AI provider API');
+      // Excludes record I (AI provider refund - income)
+      expect(replyText).not.toContain('AI provider refund');
+      expect(replyText).not.toContain('rec-I');
+      // Never reports a false category error
+      expect(replyText).not.toMatch(/tidak ditemukan dalam daftar kategori/i);
+    });
+
+    it('riwayat "AI provider API": stays on deterministic fast-path without AI invocation, preserving exact quoted description search', async () => {
+      const { client, historyService } = createFixtureHistoryService();
+      const realGateway = {
+        sendTypingPresence: vi.fn().mockResolvedValue(undefined),
+        clearTypingPresence: vi.fn().mockResolvedValue(undefined),
+        sendMessage: vi.fn().mockResolvedValue(undefined),
+      };
+      const realExecutor = new FinancialActionExecutor(
+        client as any,
+        {
+          getAccounts: () => MOCK_ACCOUNTS,
+          getCategories: () => ISSUE_173_CATEGORIES,
+          refreshAccounts: async () => MOCK_ACCOUNTS,
+        } as any,
+        realGateway as any,
+        historyService
+      );
+      const realRegistry = new FinancialActionRegistry();
+      realRegistry.register(new TransactionHistoryActionHandler(realExecutor));
+      const executeSpy = vi.spyOn(realRegistry, 'execute');
+
+      const aiProvider = {
+        providerName: 'mock',
+        processTextMessage: vi.fn(),
+        processImageMessage: vi.fn(),
+      };
+
+      const harness = createRegressionHandler(
+        aiProvider,
+        'real',
+        ISSUE_173_CATEGORIES,
+        MOCK_ACCOUNTS,
+        realRegistry,
+        realGateway
+      );
+
+      await harness.handler.handleIncomingUserMessage(textEvent('riwayat "AI provider API"'));
+
+      // Standalone quoted literal with no leftover words stays deterministically on fast-path
+      expect(aiProvider.processTextMessage).not.toHaveBeenCalled();
+
+      expect(executeSpy).toHaveBeenCalledTimes(1);
+      const executedContext = executeSpy.mock.calls[0][0] as any;
+      expect(executedContext.action).toBe('TRANSACTION_HISTORY');
+      expect(executedContext.routingSource).toBe('fast-path');
+      expect(executedContext.queryOptions.searchQuery).toBe('AI provider API');
+      expect(executedContext.queryOptions.categoryName).toBeUndefined();
+      expect(executedContext.queryOptions.categoryId).toBeUndefined();
+      expect(executedContext.queryOptions.categoryGroup).toBeUndefined();
+
+      // Final WhatsApp reply contains matching record E (AI provider API)
+      expect(realGateway.sendMessage).toHaveBeenCalledTimes(1);
+      const sentCall = realGateway.sendMessage.mock.calls[0];
+      const replyText: string = sentCall[2];
+      expect(replyText).toContain('AI provider API');
+      expect(replyText).not.toContain('AI provider refund');
     });
   });
 });
