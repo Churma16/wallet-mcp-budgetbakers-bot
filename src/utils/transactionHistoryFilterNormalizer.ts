@@ -33,24 +33,258 @@ export const SUPPORTED_BUDGETBAKERS_CATEGORY_GROUPS: readonly string[] = [
   'vehicle',
 ];
 
-const CATEGORY_GROUP_ALIASES: Readonly<Record<string, string>> = {
+export const MAX_GROUP_CATEGORIES_LIMIT = 50;
+
+export interface DynamicCategoryGroupInfo {
+  id: string;
+  name: string;
+  categoryIds: string[];
+  categories: WalletCategoryItem[];
+}
+
+export const CATEGORY_GROUP_ALIASES: Readonly<Record<string, string>> = {
   food: 'food_and_drinks',
+  makan: 'food_and_drinks',
   makanan: 'food_and_drinks',
   minuman: 'food_and_drinks',
+  minum: 'food_and_drinks',
   drink: 'food_and_drinks',
   drinks: 'food_and_drinks',
+  'food & drink': 'food_and_drinks',
+  'food and drink': 'food_and_drinks',
+  'food & drinks': 'food_and_drinks',
+  'food and drinks': 'food_and_drinks',
+  'makan & minum': 'food_and_drinks',
+  'makan dan minum': 'food_and_drinks',
+  'makanan & minuman': 'food_and_drinks',
+  'makanan dan minuman': 'food_and_drinks',
   transport: 'transportation',
   transportasi: 'transportation',
   belanja: 'shopping',
   shop: 'shopping',
+  shopping: 'shopping',
   hiburan: 'life_entertainment',
   entertainment: 'life_entertainment',
+  'life & entertainment': 'life_entertainment',
+  'life and entertainment': 'life_entertainment',
+  'hiburan & gaya hidup': 'life_entertainment',
+  'hiburan dan gaya hidup': 'life_entertainment',
+  'gaya hidup & hiburan': 'life_entertainment',
+  'gaya hidup dan hiburan': 'life_entertainment',
   tagihan: 'financial_expenses',
+  bills: 'financial_expenses',
+  'financial expense': 'financial_expenses',
+  'financial expenses': 'financial_expenses',
+  'biaya keuangan': 'financial_expenses',
   investasi: 'investments',
   investment: 'investments',
   rumah: 'housing',
+  housing: 'housing',
   kendaraan: 'vehicle',
+  vehicle: 'vehicle',
+  komunikasi: 'communication_pc',
+  communication: 'communication_pc',
+  'communication & pc': 'communication_pc',
+  'communication and pc': 'communication_pc',
+  'komunikasi & pc': 'communication_pc',
+  'komunikasi dan pc': 'communication_pc',
 };
+
+export function normalizeGroupMatchingText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[_]+/g, ' ')
+    .replace(/\b(?:dan|and)\b/gi, '&')
+    .replace(/\s*&\s*/g, ' & ')
+    .replace(/[\s+-]+/g, ' ')
+    .trim();
+}
+
+export function matchesCategorySubstring(categoryName: string, normalizedHint: string): boolean {
+  const normalizedCategoryName = categoryName.toLowerCase().trim();
+  if (!normalizedCategoryName || !normalizedHint) {
+    return false;
+  }
+  if (normalizedCategoryName.includes(normalizedHint)) {
+    return true;
+  }
+  if (normalizedCategoryName.length >= 2) {
+    const escapedCategoryName = normalizedCategoryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const wordBoundaryRegex = new RegExp(`\\b${escapedCategoryName}\\b`, 'i');
+    if (wordBoundaryRegex.test(normalizedHint)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function extractDynamicCategoryGroups(
+  availableCategoryList: WalletCategoryItem[]
+): Map<string, DynamicCategoryGroupInfo> {
+  const dynamicGroupMap = new Map<string, DynamicCategoryGroupInfo>();
+
+  for (const categoryItem of availableCategoryList) {
+    if (!categoryItem.group) {
+      continue;
+    }
+    const rawGroupId = (
+      typeof categoryItem.group === 'string'
+        ? categoryItem.group
+        : String(categoryItem.group.id || categoryItem.group.name || '')
+    ).trim();
+    const rawGroupName = (
+      typeof categoryItem.group === 'string'
+        ? categoryItem.group
+        : String(categoryItem.group.name || categoryItem.group.id || '')
+    ).trim();
+
+    if (!rawGroupId && !rawGroupName) {
+      continue;
+    }
+
+    const normalizedGroupId = (rawGroupId || rawGroupName).toLowerCase();
+    let existingGroup = dynamicGroupMap.get(normalizedGroupId);
+    if (!existingGroup) {
+      existingGroup = {
+        id: rawGroupId || rawGroupName,
+        name: rawGroupName || rawGroupId,
+        categoryIds: [],
+        categories: [],
+      };
+      dynamicGroupMap.set(normalizedGroupId, existingGroup);
+    }
+
+    if (!existingGroup.categoryIds.includes(categoryItem.id)) {
+      existingGroup.categoryIds.push(categoryItem.id);
+      existingGroup.categories.push(categoryItem);
+    }
+  }
+
+  return dynamicGroupMap;
+}
+
+export interface DynamicCategoryGroupMatchResult {
+  status: 'EXACT_MATCH' | 'FUZZY_MATCH' | 'AMBIGUOUS' | 'NO_MATCH';
+  group?: DynamicCategoryGroupInfo;
+  candidates?: DynamicCategoryGroupInfo[];
+}
+
+export function matchDynamicCategoryGroup(
+  groupHint: string,
+  dynamicGroupMap: Map<string, DynamicCategoryGroupInfo>
+): DynamicCategoryGroupMatchResult {
+  const normalizedHint = groupHint.toLowerCase().trim();
+  const standardizedHint = normalizeGroupMatchingText(normalizedHint);
+
+  // 1. Direct match on group id
+  const directIdMatch = dynamicGroupMap.get(normalizedHint);
+  if (directIdMatch) {
+    return { status: 'EXACT_MATCH', group: directIdMatch };
+  }
+
+  // 2. Direct match on group name (case-insensitive)
+  for (const groupEntry of dynamicGroupMap.values()) {
+    if (groupEntry.name.toLowerCase() === normalizedHint) {
+      return { status: 'EXACT_MATCH', group: groupEntry };
+    }
+  }
+
+  // 3. Match via alias
+  const aliasedGroupId = CATEGORY_GROUP_ALIASES[normalizedHint] || CATEGORY_GROUP_ALIASES[standardizedHint];
+  if (aliasedGroupId) {
+    const aliasedIdMatch = dynamicGroupMap.get(aliasedGroupId.toLowerCase());
+    if (aliasedIdMatch) {
+      return { status: 'EXACT_MATCH', group: aliasedIdMatch };
+    }
+    for (const groupEntry of dynamicGroupMap.values()) {
+      if (
+        groupEntry.id.toLowerCase() === aliasedGroupId.toLowerCase() ||
+        groupEntry.name.toLowerCase() === aliasedGroupId.toLowerCase()
+      ) {
+        return { status: 'EXACT_MATCH', group: groupEntry };
+      }
+    }
+  }
+
+  // 4. Standardized text match (handles "Food and Drinks" vs "Food & Drinks", "Kebugaran dan Kesehatan" vs "Kebugaran & Kesehatan")
+  for (const groupEntry of dynamicGroupMap.values()) {
+    const standardizedGroupName = normalizeGroupMatchingText(groupEntry.name);
+    const standardizedGroupId = normalizeGroupMatchingText(groupEntry.id);
+    if (standardizedGroupName === standardizedHint || standardizedGroupId === standardizedHint) {
+      return { status: 'EXACT_MATCH', group: groupEntry };
+    }
+    if (aliasedGroupId) {
+      const standardizedAliasedId = normalizeGroupMatchingText(aliasedGroupId);
+      if (standardizedGroupName === standardizedAliasedId || standardizedGroupId === standardizedAliasedId) {
+        return { status: 'EXACT_MATCH', group: groupEntry };
+      }
+    }
+  }
+
+  // 5. Slugified name match (e.g. "food_and_drinks" or "food & drinks")
+  const slugifiedHint = normalizedHint.replace(/[\s&_-]+/g, '_');
+  for (const groupEntry of dynamicGroupMap.values()) {
+    const slugifiedGroupName = groupEntry.name.toLowerCase().replace(/[\s&_-]+/g, '_');
+    const slugifiedGroupId = groupEntry.id.toLowerCase().replace(/[\s&_-]+/g, '_');
+    if (slugifiedGroupName === slugifiedHint || slugifiedGroupId === slugifiedHint) {
+      return { status: 'EXACT_MATCH', group: groupEntry };
+    }
+  }
+
+  // 6. Fuzzy token or substring match against group name or group id.
+  // Collect all matching candidate groups to avoid iteration-order dependence and fail closed on ambiguity!
+  const fuzzyCandidateMap = new Map<string, DynamicCategoryGroupInfo>();
+  for (const groupEntry of dynamicGroupMap.values()) {
+    const groupWords = groupEntry.name
+      .toLowerCase()
+      .split(/[\s&_,./-]+/)
+      .filter(w => w.length > 2);
+    const groupNameLower = groupEntry.name.toLowerCase();
+    const groupIdLower = groupEntry.id.toLowerCase();
+
+    let matched = false;
+    if (groupWords.includes(normalizedHint)) {
+      matched = true;
+    } else if (
+      normalizedHint.length >= 3 &&
+      (groupNameLower.includes(normalizedHint) || groupIdLower.includes(normalizedHint))
+    ) {
+      matched = true;
+    } else if (groupNameLower.length >= 3) {
+      const escapedGroupName = groupNameLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (new RegExp(`\\b${escapedGroupName}\\b`, 'i').test(normalizedHint)) {
+        matched = true;
+      }
+    }
+
+    if (matched) {
+      fuzzyCandidateMap.set(groupEntry.id, groupEntry);
+    }
+  }
+
+  if (fuzzyCandidateMap.size === 1) {
+    const singleGroup = Array.from(fuzzyCandidateMap.values())[0];
+    return { status: 'FUZZY_MATCH', group: singleGroup };
+  } else if (fuzzyCandidateMap.size > 1) {
+    const sortedCandidates = Array.from(fuzzyCandidateMap.values()).sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
+    return { status: 'AMBIGUOUS', candidates: sortedCandidates };
+  }
+
+  return { status: 'NO_MATCH' };
+}
+
+export function findMatchingDynamicCategoryGroup(
+  groupHint: string,
+  dynamicGroupMap: Map<string, DynamicCategoryGroupInfo>
+): DynamicCategoryGroupInfo | undefined {
+  const matchResult = matchDynamicCategoryGroup(groupHint, dynamicGroupMap);
+  if (matchResult.status === 'EXACT_MATCH' || matchResult.status === 'FUZZY_MATCH') {
+    return matchResult.group;
+  }
+  return undefined;
+}
 
 export interface NormalizedTransactionHistoryFilterResult {
   isValid: boolean;
@@ -446,6 +680,114 @@ export function calculateRelativeDateRange(
   }
 }
 
+function resolveCategoryGroupFilter(
+  rawCategoryHint: string,
+  dynamicGroupMap: Map<string, DynamicCategoryGroupInfo>,
+  availableCategoryList: WalletCategoryItem[],
+  unresolvedFilterIssues: UnresolvedFilterIssue[],
+  appliedFilters: AppliedTransactionHistoryFilters,
+  categorySelector?: string,
+  isExplicitGroup: boolean = false
+): { upstreamCategoryId?: string[]; upstreamCategoryGroup?: string } {
+  const normalizedHint = rawCategoryHint.toLowerCase().trim();
+  const matchResult = matchDynamicCategoryGroup(normalizedHint, dynamicGroupMap);
+
+  if (matchResult.status === 'EXACT_MATCH' || matchResult.status === 'FUZZY_MATCH') {
+    const matchedGroup = matchResult.group!;
+    if (matchedGroup.categoryIds.length > MAX_GROUP_CATEGORIES_LIMIT) {
+      unresolvedFilterIssues.push({
+        filterKey: 'category',
+        rawValue: rawCategoryHint,
+        reason: 'UNSUPPORTED',
+        message: `Grup kategori "${matchedGroup.name}" memiliki ${matchedGroup.categoryIds.length} kategori, melebihi batas maksimal ${MAX_GROUP_CATEGORIES_LIMIT} kategori per permintaan.`,
+      });
+      return {};
+    }
+
+    const categoryIds = [...matchedGroup.categoryIds];
+    appliedFilters.categoryGroup = matchedGroup.id;
+    appliedFilters.category = {
+      id: categoryIds.join(','),
+      name: matchedGroup.name,
+      selector: categorySelector ?? buildCanonicalCategorySelector(matchedGroup.id),
+    };
+    return {
+      upstreamCategoryId: categoryIds,
+      upstreamCategoryGroup: matchedGroup.id,
+    };
+  }
+
+  if (matchResult.status === 'AMBIGUOUS') {
+    const candidateNames = matchResult.candidates!.map(group => group.name).sort((a, b) => a.localeCompare(b));
+    unresolvedFilterIssues.push({
+      filterKey: 'category',
+      rawValue: rawCategoryHint,
+      reason: 'UNRESOLVED',
+      candidates: candidateNames,
+      subType: 'name',
+      message: `Grup kategori "${rawCategoryHint}" ambigu. Kandidat: ${candidateNames.join(', ')}.`,
+    });
+    return {};
+  }
+
+  if (dynamicGroupMap.size === 0) {
+    const aliasGroupSlug = CATEGORY_GROUP_ALIASES[normalizedHint];
+    if (aliasGroupSlug && SUPPORTED_BUDGETBAKERS_CATEGORY_GROUPS.includes(aliasGroupSlug)) {
+      appliedFilters.categoryGroup = aliasGroupSlug;
+      appliedFilters.category = {
+        id: aliasGroupSlug,
+        name: aliasGroupSlug,
+        selector: categorySelector ?? buildCanonicalCategorySelector(aliasGroupSlug),
+      };
+      return { upstreamCategoryGroup: aliasGroupSlug };
+    }
+    if (SUPPORTED_BUDGETBAKERS_CATEGORY_GROUPS.includes(normalizedHint)) {
+      appliedFilters.categoryGroup = normalizedHint;
+      appliedFilters.category = {
+        id: normalizedHint,
+        name: normalizedHint,
+        selector: categorySelector ?? buildCanonicalCategorySelector(normalizedHint),
+      };
+      return { upstreamCategoryGroup: normalizedHint };
+    }
+  }
+
+  if (!isExplicitGroup) {
+    const substringMatches = availableCategoryList.filter(
+      category => matchesCategorySubstring(category.name, normalizedHint)
+    );
+    if (substringMatches.length > 0) {
+      if (substringMatches.length > MAX_GROUP_CATEGORIES_LIMIT) {
+        unresolvedFilterIssues.push({
+          filterKey: 'category',
+          rawValue: rawCategoryHint,
+          reason: 'UNSUPPORTED',
+          message: `Kategori yang cocok melebihi batas maksimal ${MAX_GROUP_CATEGORIES_LIMIT} kategori per permintaan.`,
+        });
+        return {};
+      }
+
+      const matchedCategoryIds = substringMatches.map(category => category.id);
+      appliedFilters.category = {
+        id: matchedCategoryIds.join(','),
+        name: `${matchedCategoryIds.length} kategori`,
+        selector: categorySelector,
+      };
+      return { upstreamCategoryId: matchedCategoryIds };
+    }
+  }
+
+  unresolvedFilterIssues.push({
+    filterKey: 'category',
+    rawValue: rawCategoryHint,
+    reason: 'NOT_FOUND',
+    message: isExplicitGroup
+      ? `Grup kategori "${rawCategoryHint}" tidak ditemukan dalam daftar kategori Wallet Anda.`
+      : `Kategori "${rawCategoryHint}" tidak ditemukan dalam daftar kategori Wallet Anda.`,
+  });
+  return {};
+}
+
 /**
  * Normalizes, validates, and resolves channel-agnostic transaction history filter options.
  * Enforces a fail-closed policy: unresolvable accounts, unresolvable categories, or invalid date boundaries
@@ -600,31 +942,36 @@ export function normalizeTransactionHistoryFilters(
   const rawCategoryName = queryOptions.categoryName;
   const rawCategoryGroup = queryOptions.categoryGroup;
 
+  const dynamicGroupMap = extractDynamicCategoryGroups(availableCategoryList);
+
   if (rawCategoryGroup) {
-    const normalizedGroup = rawCategoryGroup.toLowerCase().trim();
-    if (SUPPORTED_BUDGETBAKERS_CATEGORY_GROUPS.includes(normalizedGroup)) {
-      upstreamCategoryGroup = normalizedGroup;
-      appliedFilters.categoryGroup = normalizedGroup;
-      appliedFilters.category = {
-        id: normalizedGroup,
-        name: normalizedGroup,
-        selector: buildCanonicalCategorySelector(normalizedGroup),
-      };
-    } else {
-      unresolvedFilterIssues.push({
-        filterKey: 'category',
-        rawValue: rawCategoryGroup,
-        reason: 'UNSUPPORTED',
-        message: `Grup kategori "${rawCategoryGroup}" tidak didukung oleh Wallet.`,
-      });
-    }
+    const groupResult = resolveCategoryGroupFilter(
+      rawCategoryGroup,
+      dynamicGroupMap,
+      availableCategoryList,
+      unresolvedFilterIssues,
+      appliedFilters,
+      undefined,
+      true
+    );
+    upstreamCategoryId = groupResult.upstreamCategoryId;
+    upstreamCategoryGroup = groupResult.upstreamCategoryGroup;
   } else if (rawCategoryId) {
     if (Array.isArray(rawCategoryId)) {
-      upstreamCategoryId = rawCategoryId.slice(0, 10);
-      appliedFilters.category = {
-        id: upstreamCategoryId.join(','),
-        name: `${upstreamCategoryId.length} kategori`,
-      };
+      if (rawCategoryId.length > MAX_GROUP_CATEGORIES_LIMIT) {
+        unresolvedFilterIssues.push({
+          filterKey: 'category',
+          rawValue: `${rawCategoryId.length} kategori`,
+          reason: 'UNSUPPORTED',
+          message: `Daftar kategori melebihi batas maksimal ${MAX_GROUP_CATEGORIES_LIMIT} kategori.`,
+        });
+      } else {
+        upstreamCategoryId = [...rawCategoryId];
+        appliedFilters.category = {
+          id: upstreamCategoryId.join(','),
+          name: `${upstreamCategoryId.length} kategori`,
+        };
+      }
     } else {
       upstreamCategoryId = [rawCategoryId];
       const matchedCategory = availableCategoryList.find(category => category.id === rawCategoryId);
@@ -638,18 +985,28 @@ export function normalizeTransactionHistoryFilters(
       };
     }
   } else if (rawCategoryName && rawCategoryName.trim().length > 0) {
-    const trimmedCategoryHint = rawCategoryName.trim();
+    let isGroupQuery = Boolean(queryOptions.isGroupQuery);
+    let trimmedCategoryHint = rawCategoryName.trim();
+    const groupScopePattern = /\b(?:semua|all|semuanya)\b/i;
+    if (groupScopePattern.test(trimmedCategoryHint)) {
+      isGroupQuery = true;
+      trimmedCategoryHint = trimmedCategoryHint.replace(groupScopePattern, ' ').replace(/\s+/g, ' ').trim();
+    }
     const normalizedCategoryHint = trimmedCategoryHint.toLowerCase();
     const categorySelector = buildCanonicalCategorySelector(trimmedCategoryHint);
 
     // Strategy A: Check 'unknown' / uncategorized
-    if (normalizedCategoryHint === 'unknown' || normalizedCategoryHint === 'uncategorized' || normalizedCategoryHint === 'tanpa kategori') {
+    if (
+      normalizedCategoryHint === 'unknown' ||
+      normalizedCategoryHint === 'uncategorized' ||
+      normalizedCategoryHint === 'tanpa kategori'
+    ) {
       upstreamCategoryId = ['unknown'];
       appliedFilters.category = { id: 'unknown', name: 'Tanpa Kategori', selector: categorySelector };
     } else {
       // Strategy B: Exact ID match
       const exactIdMatch = availableCategoryList.find(category => category.id === trimmedCategoryHint);
-      if (exactIdMatch) {
+      if (exactIdMatch && !isGroupQuery) {
         upstreamCategoryId = [exactIdMatch.id];
         appliedFilters.category = {
           id: exactIdMatch.id,
@@ -662,14 +1019,14 @@ export function normalizeTransactionHistoryFilters(
           category => category.name.toLowerCase() === normalizedCategoryHint
         );
 
-        if (exactNameMatches.length === 1) {
+        if (!isGroupQuery && exactNameMatches.length === 1) {
           upstreamCategoryId = [exactNameMatches[0].id];
           appliedFilters.category = {
             id: exactNameMatches[0].id,
             name: exactNameMatches[0].name,
             selector: categorySelector,
           };
-        } else if (exactNameMatches.length > 1) {
+        } else if (!isGroupQuery && exactNameMatches.length > 1) {
           const candidateNames = exactNameMatches.map(category => category.name).sort((a, b) => a.localeCompare(b));
           unresolvedFilterIssues.push({
             filterKey: 'category',
@@ -679,12 +1036,23 @@ export function normalizeTransactionHistoryFilters(
             subType: 'name',
             message: `Kategori "${trimmedCategoryHint}" ambigu. Ditemukan beberapa kategori dengan nama yang sama: ${candidateNames.join(', ')}.`,
           });
+        } else if (isGroupQuery) {
+          // Explicit category group query (e.g. "riwayat makan semua", "semua riwayat makan bulan ini")
+          const groupResult = resolveCategoryGroupFilter(
+            trimmedCategoryHint,
+            dynamicGroupMap,
+            availableCategoryList,
+            unresolvedFilterIssues,
+            appliedFilters,
+            categorySelector,
+            false
+          );
+          upstreamCategoryId = groupResult.upstreamCategoryId;
+          upstreamCategoryGroup = groupResult.upstreamCategoryGroup;
         } else {
-          // Strategy D: Substring match on category name
+          // Single-category query without group scope (isGroupQuery is false)
           const substringMatches = availableCategoryList.filter(
-            category =>
-              category.name.toLowerCase().includes(normalizedCategoryHint) ||
-              normalizedCategoryHint.includes(category.name.toLowerCase())
+            category => matchesCategorySubstring(category.name, normalizedCategoryHint)
           );
 
           if (substringMatches.length === 1) {
@@ -695,6 +1063,7 @@ export function normalizeTransactionHistoryFilters(
               selector: categorySelector,
             };
           } else if (substringMatches.length > 1) {
+            // Unclear query with multiple candidate categories -> fail closed and clarify!
             const candidateNames = substringMatches.map(category => category.name).sort((a, b) => a.localeCompare(b));
             unresolvedFilterIssues.push({
               filterKey: 'category',
@@ -705,24 +1074,69 @@ export function normalizeTransactionHistoryFilters(
               message: `Kategori "${trimmedCategoryHint}" ambigu. Kandidat: ${candidateNames.join(', ')}.`,
             });
           } else {
-            // Strategy E: Known category group slug or alias
-            const aliasGroupSlug = CATEGORY_GROUP_ALIASES[normalizedCategoryHint];
-            if (aliasGroupSlug && SUPPORTED_BUDGETBAKERS_CATEGORY_GROUPS.includes(aliasGroupSlug)) {
-              upstreamCategoryGroup = aliasGroupSlug;
-              appliedFilters.categoryGroup = aliasGroupSlug;
-              appliedFilters.category = {
-                id: aliasGroupSlug,
-                name: aliasGroupSlug,
-                selector: buildCanonicalCategorySelector(aliasGroupSlug),
-              };
-            } else if (SUPPORTED_BUDGETBAKERS_CATEGORY_GROUPS.includes(normalizedCategoryHint)) {
-              upstreamCategoryGroup = normalizedCategoryHint;
-              appliedFilters.categoryGroup = normalizedCategoryHint;
-              appliedFilters.category = {
-                id: normalizedCategoryHint,
-                name: normalizedCategoryHint,
-                selector: buildCanonicalCategorySelector(normalizedCategoryHint),
-              };
+            // No substring matches. Check if hint maps to a dynamic group or group alias
+            const matchResult = matchDynamicCategoryGroup(trimmedCategoryHint, dynamicGroupMap);
+
+            if (matchResult.status === 'EXACT_MATCH' || matchResult.status === 'FUZZY_MATCH') {
+              const matchedGroup = matchResult.group!;
+              if (matchedGroup.categoryIds.length === 1) {
+                // Exactly one category in the group -> unambiguous single category
+                upstreamCategoryId = [matchedGroup.categoryIds[0]];
+                appliedFilters.category = {
+                  id: matchedGroup.categoryIds[0],
+                  name: matchedGroup.categories[0].name,
+                  selector: categorySelector,
+                };
+              } else {
+                // Multiple categories exist in the group, but user did not specify "all" / "semua".
+                // Fails closed toward clarification rather than silently broadening.
+                const candidateNames = matchedGroup.categories.map(category => category.name).sort((a, b) => a.localeCompare(b));
+                unresolvedFilterIssues.push({
+                  filterKey: 'category',
+                  rawValue: trimmedCategoryHint,
+                  reason: 'UNRESOLVED',
+                  candidates: candidateNames,
+                  subType: 'name',
+                  message: `Kategori "${trimmedCategoryHint}" ambigu. Kandidat: ${candidateNames.join(', ')}.`,
+                });
+              }
+            } else if (matchResult.status === 'AMBIGUOUS') {
+              const candidateNames = matchResult.candidates!.map(group => group.name).sort((a, b) => a.localeCompare(b));
+              unresolvedFilterIssues.push({
+                filterKey: 'category',
+                rawValue: trimmedCategoryHint,
+                reason: 'UNRESOLVED',
+                candidates: candidateNames,
+                subType: 'name',
+                message: `Grup kategori "${trimmedCategoryHint}" ambigu. Kandidat: ${candidateNames.join(', ')}.`,
+              });
+            } else if (dynamicGroupMap.size === 0) {
+              // Backward-compatibility fallback when availableCategoryList contains no group metadata
+              const aliasGroupSlug = CATEGORY_GROUP_ALIASES[normalizedCategoryHint];
+              if (aliasGroupSlug && SUPPORTED_BUDGETBAKERS_CATEGORY_GROUPS.includes(aliasGroupSlug)) {
+                upstreamCategoryGroup = aliasGroupSlug;
+                appliedFilters.categoryGroup = aliasGroupSlug;
+                appliedFilters.category = {
+                  id: aliasGroupSlug,
+                  name: aliasGroupSlug,
+                  selector: buildCanonicalCategorySelector(aliasGroupSlug),
+                };
+              } else if (SUPPORTED_BUDGETBAKERS_CATEGORY_GROUPS.includes(normalizedCategoryHint)) {
+                upstreamCategoryGroup = normalizedCategoryHint;
+                appliedFilters.categoryGroup = normalizedCategoryHint;
+                appliedFilters.category = {
+                  id: normalizedCategoryHint,
+                  name: normalizedCategoryHint,
+                  selector: buildCanonicalCategorySelector(normalizedCategoryHint),
+                };
+              } else {
+                unresolvedFilterIssues.push({
+                  filterKey: 'category',
+                  rawValue: trimmedCategoryHint,
+                  reason: 'NOT_FOUND',
+                  message: `Kategori "${trimmedCategoryHint}" tidak ditemukan dalam daftar kategori Wallet Anda.`,
+                });
+              }
             } else {
               unresolvedFilterIssues.push({
                 filterKey: 'category',

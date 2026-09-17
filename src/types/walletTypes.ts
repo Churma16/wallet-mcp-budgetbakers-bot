@@ -127,6 +127,7 @@ export interface TransactionHistoryFilters {
   categoryId?: string | string[];
   categoryName?: string;
   categoryGroup?: string;
+  isGroupQuery?: boolean;
   recordType?: TransactionRecordTypeFilter;
   startDate?: string;
   endDate?: string;

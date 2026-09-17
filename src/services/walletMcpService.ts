@@ -556,7 +556,10 @@ export class WalletMcpClientService {
       parentCategoryId: item.parentId || item.parentCategoryId,
       parentCategoryName: item.parentName || item.parentCategoryName,
       group: item.group && typeof item.group === 'object'
-        ? { id: String(item.group.id), name: String(item.group.name) }
+        ? {
+            id: String(item.group.id || item.group.name || '').trim(),
+            name: String(item.group.name || item.group.id || '').trim(),
+          }
         : undefined,
       systemId: item.systemId,
       cardinality: item.cardinality,
@@ -748,7 +751,7 @@ export class WalletMcpClientService {
         : [queryOptions.categoryId];
     }
 
-    if (queryOptions?.categoryGroup) {
+    if (queryOptions?.categoryGroup && (!Array.isArray(queryOptions?.categoryId) || queryOptions.categoryId.length <= 1)) {
       mcpCallPayload.categoryGroup = queryOptions.categoryGroup;
     }
 
