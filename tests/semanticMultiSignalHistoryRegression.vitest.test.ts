@@ -779,6 +779,68 @@ describe('Issue #160 comment checklist regression corpus', () => {
       expect(executedCall.queryOptions.recordType).toBe('expense');
       expect(executedCall.queryOptions.searchQuery).toBeUndefined();
     });
+
+    it('full routing: preserves recurring bill payment category intent for riwayat bayar wifi via deterministic fast path', async () => {
+      const aiProvider = {
+        providerName: 'mock',
+        processTextMessage: vi.fn(),
+        processImageMessage: vi.fn(),
+      };
+      const harness = createRegressionHandler(
+        aiProvider,
+        'real',
+        ISSUE_173_CATEGORIES
+      );
+
+      await harness.handler.handleIncomingUserMessage(textEvent('riwayat bayar wifi'));
+
+      // Must stay on fast-path without invoking AI
+      expect(aiProvider.processTextMessage).not.toHaveBeenCalled();
+      expect(harness.registry.execute).toHaveBeenCalledTimes(1);
+      const executedCall = harness.registry.execute.mock.calls[0][0];
+      expect(executedCall.action).toBe('TRANSACTION_HISTORY');
+      expect(executedCall.routingSource).toBe('fast-path');
+      expect(executedCall.queryOptions.categoryName).toBe('wifi');
+      expect(executedCall.queryOptions.recordType).toBe('expense');
+      expect(executedCall.queryOptions.searchQuery).toBeUndefined();
+
+      // Verify against fixture: resolves to Internet & Wifi category (c-7) and returns record G
+      const { historyService } = createFixtureHistoryService();
+      const result = await historyService.getTransactionHistory(executedCall.queryOptions);
+      expect(result.records).toHaveLength(1);
+      expect(result.records[0].id).toBe('rec-G');
+    });
+
+    it('full routing: preserves explicit search fast path for riwayat cari wifi', async () => {
+      const aiProvider = {
+        providerName: 'mock',
+        processTextMessage: vi.fn(),
+        processImageMessage: vi.fn(),
+      };
+      const harness = createRegressionHandler(
+        aiProvider,
+        'real',
+        ISSUE_173_CATEGORIES
+      );
+
+      await harness.handler.handleIncomingUserMessage(textEvent('riwayat cari wifi'));
+
+      // Must stay on fast-path without invoking AI
+      expect(aiProvider.processTextMessage).not.toHaveBeenCalled();
+      expect(harness.registry.execute).toHaveBeenCalledTimes(1);
+      const executedCall = harness.registry.execute.mock.calls[0][0];
+      expect(executedCall.action).toBe('TRANSACTION_HISTORY');
+      expect(executedCall.routingSource).toBe('fast-path');
+      expect(executedCall.queryOptions.searchQuery).toBe('wifi');
+      expect(executedCall.queryOptions.categoryName).toBeUndefined();
+      expect(executedCall.queryOptions.categoryId).toBeUndefined();
+
+      // Verify against fixture: searches note for "wifi", so record G (10 GB data package) is excluded
+      const { historyService } = createFixtureHistoryService();
+      const result = await historyService.getTransactionHistory(executedCall.queryOptions);
+      expect(result.records).toHaveLength(0);
+      expect(result.records.map(r => r.id)).not.toContain('rec-G');
+    });
   });
 
   describe('Unexecuted deferred history fail-closed guards', () => {

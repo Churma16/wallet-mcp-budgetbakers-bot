@@ -76,8 +76,8 @@ function hasPendingTransactions(manager: PendingTransactionService): boolean {
  * history command with a category that deterministic resolution cannot find,
  * or purchase/subscription description intent queries (such as "beli wifi" or
  * "langganan wifi") that must not be hijacked by broad category matches (e.g. "Internet & Wifi"),
- * may use the guarded semantic fallback. True category intent cases (such as "beli obat")
- * resolve cleanly and remain on the fast path.
+ * may use the guarded semantic fallback. True category intent cases (such as "beli obat"
+ * and recurring bill payments like "bayar wifi") resolve cleanly and remain on the fast path.
  */
 export function shouldDeferHistoryCategoryToSemanticResolver(
   fastPathAction: ReturnType<typeof detectFastPathAction>,
@@ -100,30 +100,31 @@ export function shouldDeferHistoryCategoryToSemanticResolver(
 
   const normalizedCategoryHint = historyAction.options.categoryName.trim().toLowerCase();
 
-  // Known description intent keywords from purchase or subscription queries that
-  // must bypass deterministic category capture (e.g. preventing "wifi" from matching
-  // an "Internet & Wifi" category) and enter the guarded description-search path.
-  const isPurchaseOrSubscriptionIntent =
-    historyAction.options.recordType === 'expense' ||
-    (rawMessageText ? /\b(?:beli|pembelian|bayar|pembayaran|langganan)\b/i.test(rawMessageText) : false);
-
-  if (isPurchaseOrSubscriptionIntent) {
-    const KNOWN_PURCHASE_DESCRIPTION_KEYWORDS = new Set([
-      'wifi',
-      'wi-fi',
-      'vps',
-      'ai',
-      'hangry',
-    ]);
-    if (KNOWN_PURCHASE_DESCRIPTION_KEYWORDS.has(normalizedCategoryHint)) {
-      return true;
-    }
-  }
-
+  // Explicit purchase or subscription description phrasing (e.g. "beli wifi", "langganan wifi")
+  // that must bypass deterministic category capture (preventing "wifi" from matching an "Internet & Wifi" category)
+  // and enter the guarded description-search path.
+  // NOTE: "bayar" / "pembayaran" is intentionally excluded here because recurring bill payments
+  // (e.g. "riwayat bayar wifi") represent category intent under #160 and must resolve deterministically.
   if (rawMessageText) {
+    const isExplicitPurchaseOrSubscriptionPhrase =
+      /\b(?:beli|pembelian|langganan)\b/i.test(rawMessageText);
+
+    if (isExplicitPurchaseOrSubscriptionPhrase) {
+      const KNOWN_PURCHASE_DESCRIPTION_KEYWORDS = new Set([
+        'wifi',
+        'wi-fi',
+        'vps',
+        'ai',
+        'hangry',
+      ]);
+      if (KNOWN_PURCHASE_DESCRIPTION_KEYWORDS.has(normalizedCategoryHint)) {
+        return true;
+      }
+    }
+
     const lowerRaw = rawMessageText.toLowerCase();
     if (
-      /\b(?:beli|pembelian|bayar|pembayaran|langganan)\s+(?:wifi|wi-fi|vps|ai)\b/i.test(lowerRaw) ||
+      /\b(?:beli|pembelian|langganan)\s+(?:wifi|wi-fi|vps|ai)\b/i.test(lowerRaw) ||
       /\bmakan\s+hangry\b/i.test(lowerRaw)
     ) {
       return true;
