@@ -15,25 +15,10 @@ import type {
   WalletAccountItem,
   WalletCategoryItem,
 } from '../src/types/walletTypes.js';
-
-function createMockClient() {
-  const client = new WalletMcpClientService('http://localhost:8080', 'mock-token');
-  const capturedCalls: Array<{ toolName: string; args: Record<string, unknown> }> = [];
-  let nextResponse: any = { records: [], total: 0 };
-
-  client.callMcpTool = async <T>(toolName: string, args: Record<string, unknown> = {}): Promise<T> => {
-    capturedCalls.push({ toolName, args });
-    return nextResponse as T;
-  };
-
-  return {
-    client,
-    capturedCalls,
-    setNextResponse: (response: any) => {
-      nextResponse = response;
-    },
-  };
-}
+import {
+  createQueryExecutionContext,
+  type QueryExecutionContext,
+} from './fixtures/transactionFixtures.js';
 
 describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
   beforeEach(() => {
@@ -46,97 +31,110 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
   });
 
   describe('Suite 1: Configurable Limits & Safe Upper Bound', () => {
-    it('conforms to configurable default (10) and hard safety cap (50)', async () => {
-      const { client, capturedCalls, setNextResponse } = createMockClient();
+    let queryContext: QueryExecutionContext;
 
+    beforeEach(() => {
+      queryContext = createQueryExecutionContext();
+      queryContext.setNextResponse({ records: [], total: 0 });
+    });
+
+    it('conforms to configurable default (10) and hard safety cap (50)', async () => {
       // 1.1 Default limit is 10
-      setNextResponse({ records: [], total: 0 });
-      await client.fetchRecords();
-      expect(capturedCalls.length).toBe(1);
-      expect(capturedCalls[0].toolName).toBe('get_records');
-      expect(capturedCalls[0].args.limit).toBe(DEFAULT_TRANSACTION_HISTORY_LIMIT);
-      expect(capturedCalls[0].args.limit).toBe(10);
+      await queryContext.client.fetchRecords();
+      expect(queryContext.capturedCalls.length).toBe(1);
+      expect(queryContext.capturedCalls[0].toolName).toBe('get_records');
+      expect(queryContext.capturedCalls[0].args.limit).toBe(DEFAULT_TRANSACTION_HISTORY_LIMIT);
+      expect(queryContext.capturedCalls[0].args.limit).toBe(10);
 
       // 1.2 Custom valid limit
-      await client.fetchRecords({ limit: 25 });
-      expect(capturedCalls[1].args.limit).toBe(25);
+      await queryContext.client.fetchRecords({ limit: 25 });
+      expect(queryContext.capturedCalls[1].args.limit).toBe(25);
 
       // 1.3 Maximum limit cap at 50
-      await client.fetchRecords({ limit: 100 });
-      expect(capturedCalls[2].args.limit).toBe(MAX_TRANSACTION_HISTORY_LIMIT);
-      expect(capturedCalls[2].args.limit).toBe(50);
+      await queryContext.client.fetchRecords({ limit: 100 });
+      expect(queryContext.capturedCalls[2].args.limit).toBe(MAX_TRANSACTION_HISTORY_LIMIT);
+      expect(queryContext.capturedCalls[2].args.limit).toBe(50);
 
       // 1.4 Limits <= 0 or invalid normalized to default limit
-      await client.fetchRecords({ limit: 0 });
-      expect(capturedCalls[3].args.limit).toBe(DEFAULT_TRANSACTION_HISTORY_LIMIT);
+      await queryContext.client.fetchRecords({ limit: 0 });
+      expect(queryContext.capturedCalls[3].args.limit).toBe(DEFAULT_TRANSACTION_HISTORY_LIMIT);
 
-      await client.fetchRecords({ limit: -10 });
-      expect(capturedCalls[4].args.limit).toBe(DEFAULT_TRANSACTION_HISTORY_LIMIT);
+      await queryContext.client.fetchRecords({ limit: -10 });
+      expect(queryContext.capturedCalls[4].args.limit).toBe(DEFAULT_TRANSACTION_HISTORY_LIMIT);
 
-      await client.fetchRecords({ limit: NaN });
-      expect(capturedCalls[5].args.limit).toBe(DEFAULT_TRANSACTION_HISTORY_LIMIT);
+      await queryContext.client.fetchRecords({ limit: NaN });
+      expect(queryContext.capturedCalls[5].args.limit).toBe(DEFAULT_TRANSACTION_HISTORY_LIMIT);
 
       // 1.5 Fractional limit floored
-      await client.fetchRecords({ limit: 15.8 });
-      expect(capturedCalls[6].args.limit).toBe(15);
+      await queryContext.client.fetchRecords({ limit: 15.8 });
+      expect(queryContext.capturedCalls[6].args.limit).toBe(15);
     });
   });
 
   describe('Suite 2: Offset & Page-Based Pagination', () => {
-    it('verifies offset and page-based pagination calculations', async () => {
-      const { client, capturedCalls, setNextResponse } = createMockClient();
-      setNextResponse({ records: [], total: 0 });
+    let queryContext: QueryExecutionContext;
 
+    beforeEach(() => {
+      queryContext = createQueryExecutionContext();
+      queryContext.setNextResponse({ records: [], total: 0 });
+    });
+
+    it('verifies offset and page-based pagination calculations', async () => {
       // 2.1 Default offset is 0
-      await client.fetchRecords();
-      expect(capturedCalls[0].args.offset).toBe(0);
+      await queryContext.client.fetchRecords();
+      expect(queryContext.capturedCalls[0].args.offset).toBe(0);
 
       // 2.2 Explicit offset
-      await client.fetchRecords({ offset: 20 });
-      expect(capturedCalls[1].args.offset).toBe(20);
+      await queryContext.client.fetchRecords({ offset: 20 });
+      expect(queryContext.capturedCalls[1].args.offset).toBe(20);
 
       // 2.3 Negative offset normalized to 0
-      await client.fetchRecords({ offset: -5 });
-      expect(capturedCalls[2].args.offset).toBe(0);
+      await queryContext.client.fetchRecords({ offset: -5 });
+      expect(queryContext.capturedCalls[2].args.offset).toBe(0);
 
       // 2.4 Page calculation: page 1 -> offset 0
-      await client.fetchRecords({ page: 1 });
-      expect(capturedCalls[3].args.offset).toBe(0);
+      await queryContext.client.fetchRecords({ page: 1 });
+      expect(queryContext.capturedCalls[3].args.offset).toBe(0);
 
       // 2.5 Page calculation: page 2 with default limit (10) -> offset 10
-      await client.fetchRecords({ page: 2 });
-      expect(capturedCalls[4].args.offset).toBe(10);
+      await queryContext.client.fetchRecords({ page: 2 });
+      expect(queryContext.capturedCalls[4].args.offset).toBe(10);
 
       // 2.6 Page calculation: page 3 with limit 5 -> offset 10
-      await client.fetchRecords({ page: 3, limit: 5 });
-      expect(capturedCalls[5].args.offset).toBe(10);
+      await queryContext.client.fetchRecords({ page: 3, limit: 5 });
+      expect(queryContext.capturedCalls[5].args.offset).toBe(10);
 
       // 2.7 Explicit offset takes precedence when provided
-      await client.fetchRecords({ offset: 15, page: 4 });
-      expect(capturedCalls[6].args.offset).toBe(15);
+      await queryContext.client.fetchRecords({ offset: 15, page: 4 });
+      expect(queryContext.capturedCalls[6].args.offset).toBe(15);
     });
   });
 
   describe('Suite 3: Deterministic Sorting', () => {
-    it('verifies deterministic sorting orders for newest and oldest', async () => {
-      const { client, capturedCalls, setNextResponse } = createMockClient();
-      setNextResponse({ records: [], total: 0 });
+    let queryContext: QueryExecutionContext;
 
+    beforeEach(() => {
+      queryContext = createQueryExecutionContext();
+      queryContext.setNextResponse({ records: [], total: 0 });
+    });
+
+    it('verifies deterministic sorting orders for newest and oldest', async () => {
       // 3.1 Default sort is newest-first with createdAt tie-breaker
-      await client.fetchRecords();
-      expect(capturedCalls[0].args.sortBy).toEqual(['-recordDate', '-createdAt']);
+      await queryContext.client.fetchRecords();
+      expect(queryContext.capturedCalls[0].args.sortBy).toEqual(['-recordDate', '-createdAt']);
 
       // 3.2 Explicit newest-first
-      await client.fetchRecords({ sort: 'newest' });
-      expect(capturedCalls[1].args.sortBy).toEqual(['-recordDate', '-createdAt']);
+      await queryContext.client.fetchRecords({ sort: 'newest' });
+      expect(queryContext.capturedCalls[1].args.sortBy).toEqual(['-recordDate', '-createdAt']);
 
       // 3.3 Explicit oldest-first
-      await client.fetchRecords({ sort: 'oldest' });
-      expect(capturedCalls[2].args.sortBy).toEqual(['+recordDate', '+createdAt']);
+      await queryContext.client.fetchRecords({ sort: 'oldest' });
+      expect(queryContext.capturedCalls[2].args.sortBy).toEqual(['+recordDate', '+createdAt']);
     });
   });
 
   describe('Suite 4: Pagination Metadata & Multi-Page Navigation', () => {
+    let queryContext: QueryExecutionContext;
     const sampleRawRecords = Array.from({ length: 10 }, (_, index) => ({
       id: `rec-${index + 1}`,
       accountId: 'acc-1',
@@ -147,15 +145,18 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
       note: `Belanja item ${index + 1}`,
     }));
 
+    beforeEach(() => {
+      queryContext = createQueryExecutionContext();
+    });
+
     it('calculates page 1 metadata correctly', async () => {
-      const { client, setNextResponse } = createMockClient();
-      setNextResponse({
+      queryContext.setNextResponse({
         records: sampleRawRecords,
         total: 45,
         nextOffset: 10,
       });
 
-      const page1 = await client.fetchRecords({ limit: 10, offset: 0 });
+      const page1 = await queryContext.client.fetchRecords({ limit: 10, offset: 0 });
       expect(page1.records.length).toBe(10);
       expect(page1.total).toBe(45);
       expect(page1.page).toBe(1);
@@ -165,14 +166,13 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
     });
 
     it('calculates page 2 metadata correctly', async () => {
-      const { client, setNextResponse } = createMockClient();
-      setNextResponse({
+      queryContext.setNextResponse({
         records: sampleRawRecords,
         total: 45,
         nextOffset: 20,
       });
 
-      const page2 = await client.fetchRecords({ limit: 10, offset: 10 });
+      const page2 = await queryContext.client.fetchRecords({ limit: 10, offset: 10 });
       expect(page2.page).toBe(2);
       expect(page2.totalPages).toBe(5);
       expect(page2.hasMore).toBe(true);
@@ -180,14 +180,13 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
     });
 
     it('calculates last page metadata correctly', async () => {
-      const { client, setNextResponse } = createMockClient();
-      setNextResponse({
+      queryContext.setNextResponse({
         records: sampleRawRecords.slice(0, 5),
         total: 45,
         nextOffset: null,
       });
 
-      const lastPage = await client.fetchRecords({ limit: 10, offset: 40 });
+      const lastPage = await queryContext.client.fetchRecords({ limit: 10, offset: 40 });
       expect(lastPage.records.length).toBe(5);
       expect(lastPage.page).toBe(5);
       expect(lastPage.totalPages).toBe(5);
@@ -196,13 +195,12 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
     });
 
     it('handles response with records and nextOffset but no total (Issue #105 review)', async () => {
-      const { client, setNextResponse } = createMockClient();
-      setNextResponse({
+      queryContext.setNextResponse({
         records: sampleRawRecords,
         nextOffset: 10,
       });
 
-      const pageWithoutTotal = await client.fetchRecords({ limit: 10, offset: 0 });
+      const pageWithoutTotal = await queryContext.client.fetchRecords({ limit: 10, offset: 0 });
       expect(pageWithoutTotal.records.length).toBe(10);
       expect(pageWithoutTotal.total).toBeUndefined();
       expect(pageWithoutTotal.totalPages).toBeUndefined();
@@ -219,12 +217,11 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
     });
 
     it('handles last-page case with no nextOffset and no total', async () => {
-      const { client, setNextResponse } = createMockClient();
-      setNextResponse({
+      queryContext.setNextResponse({
         records: sampleRawRecords.slice(0, 5),
       });
 
-      const lastPageWithoutTotal = await client.fetchRecords({ limit: 10, offset: 10 });
+      const lastPageWithoutTotal = await queryContext.client.fetchRecords({ limit: 10, offset: 10 });
       expect(lastPageWithoutTotal.records.length).toBe(5);
       expect(lastPageWithoutTotal.total).toBeUndefined();
       expect(lastPageWithoutTotal.totalPages).toBeUndefined();
@@ -237,10 +234,15 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
   });
 
   describe('Suite 5: Empty Pages & End-of-History Behavior', () => {
+    let queryContext: QueryExecutionContext;
+
+    beforeEach(() => {
+      queryContext = createQueryExecutionContext();
+    });
+
     it('handles empty history when total is 0', async () => {
-      const { client, setNextResponse } = createMockClient();
-      setNextResponse({ records: [], total: 0 });
-      const emptyResult = await client.fetchRecords();
+      queryContext.setNextResponse({ records: [], total: 0 });
+      const emptyResult = await queryContext.client.fetchRecords();
       expect(emptyResult.records.length).toBe(0);
       expect(emptyResult.total).toBe(0);
       expect(emptyResult.hasMore).toBe(false);
@@ -256,9 +258,8 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
     });
 
     it('handles out-of-bounds offset where offset >= total', async () => {
-      const { client, setNextResponse } = createMockClient();
-      setNextResponse({ records: [], total: 20 });
-      const outOfBoundsResult = await client.fetchRecords({ offset: 30, limit: 10 });
+      queryContext.setNextResponse({ records: [], total: 20 });
+      const outOfBoundsResult = await queryContext.client.fetchRecords({ offset: 30, limit: 10 });
       expect(outOfBoundsResult.records.length).toBe(0);
       expect(outOfBoundsResult.hasMore).toBe(false);
       expect(outOfBoundsResult.nextOffset).toBeNull();
@@ -274,24 +275,18 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
   });
 
   describe('Suite 6: Data Normalization & Cache Enrichment', () => {
-    it('enriches accountName and category name from cache', async () => {
-      const { client, setNextResponse } = createMockClient();
+    let queryContext: QueryExecutionContext;
 
-      const mockCachedAccounts: WalletAccountItem[] = [
-        { id: 'acc-uuid-1', name: 'Bank Jago Main', currency: 'IDR', balance: 1000000 },
-      ];
-      const mockCachedCategories: WalletCategoryItem[] = [
-        { id: 'cat-uuid-1', name: 'Kebutuhan Harian' },
-      ];
-
-      const mockCacheService = {
-        getAccounts: () => mockCachedAccounts,
-        getCategories: () => mockCachedCategories,
-      } as unknown as WalletCacheService;
-
-      const historyService = new TransactionHistoryService(client, mockCacheService);
-
-      setNextResponse({
+    beforeEach(() => {
+      queryContext = createQueryExecutionContext({
+        accounts: [
+          { id: 'acc-uuid-1', name: 'Bank Jago Main', currency: 'IDR', balance: 1000000 },
+        ],
+        categories: [
+          { id: 'cat-uuid-1', name: 'Kebutuhan Harian' },
+        ],
+      });
+      queryContext.setNextResponse({
         records: [
           {
             id: 'rec-test-1',
@@ -307,9 +302,12 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
         ],
         total: 1,
       });
+    });
 
-      const enrichedResult = await historyService.getTransactionHistory();
+    it('enriches accountName and category name from cache', async () => {
+      const enrichedResult = await queryContext.service.getTransactionHistory();
       expect(enrichedResult.records.length).toBe(1);
+      expect(enrichedResult.records.map(record => record.id)).toEqual(['rec-test-1']);
       const record = enrichedResult.records[0];
 
       expect(record.accountName).toBe('Bank Jago Main');
@@ -539,10 +537,11 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
   });
 
   describe('Suite 9: FastPathHandler Integration', () => {
-    it('dispatches transaction history fast path end-to-end', async () => {
-      setActiveLanguage('id');
-      const { client, setNextResponse } = createMockClient();
-      setNextResponse({
+    let queryContext: QueryExecutionContext;
+
+    beforeEach(() => {
+      queryContext = createQueryExecutionContext();
+      queryContext.setNextResponse({
         records: [
           {
             id: 'r1',
@@ -557,7 +556,10 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
         ],
         total: 1,
       });
+    });
 
+    it('dispatches transaction history fast path end-to-end', async () => {
+      setActiveLanguage('id');
       const sentMessages: string[] = [];
       const mockGateway = {
         sendMessage: async (_channel: string, _chatId: string, message: string) => {
@@ -565,13 +567,7 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
         },
       } as any;
 
-      const mockCache = {
-        getAccounts: () => [],
-        getCategories: () => [],
-        refreshAccounts: async () => [],
-      } as any;
-
-      const handler = new FastPathHandler(client, mockCache, mockGateway);
+      const handler = new FastPathHandler(queryContext.client, queryContext.cache, mockGateway);
 
       const mockEvent = {
         channel: 'whatsapp' as const,

@@ -21,52 +21,15 @@ import {
   WalletCategoryItem,
   WalletRecordItem,
 } from '../src/types/walletTypes.js';
+import {
+  CANONICAL_FILTER_ACCOUNTS as MOCK_ACCOUNTS,
+  CANONICAL_FILTER_CATEGORIES as MOCK_CATEGORIES,
+  CANONICAL_REFERENCE_DATE as FIXED_TEST_REFERENCE_DATE,
+  createQueryExecutionContext,
+  type QueryExecutionContext,
+} from './fixtures/transactionFixtures.js';
 
-// Mock data
-const MOCK_ACCOUNTS: WalletAccountItem[] = [
-  { id: 'acc-bca-001', name: 'BCA Tabungan', currency: 'IDR', bankAccountNumber: '1234567890' },
-  { id: 'acc-mandiri-002', name: 'Mandiri Utama', currency: 'IDR', bankAccountNumber: '9876543210' },
-  { id: 'acc-cash-003', name: 'Cash Dompet', currency: 'IDR' },
-  { id: 'acc-jago-004', name: 'Bank Jago', currency: 'IDR', bankAccountNumber: '55551234' },
-];
-
-const MOCK_CATEGORIES: WalletCategoryItem[] = [
-  { id: 'cat-food-001', name: 'Makanan & Minuman' },
-  { id: 'cat-transport-002', name: 'Transportasi' },
-  { id: 'cat-salary-003', name: 'Gaji' },
-  { id: 'cat-bills-004', name: 'Tagihan Listrik' },
-];
-
-const FIXED_TEST_REFERENCE_DATE = new Date('2026-09-11T12:00:00Z');
-
-function createMockClient() {
-  const client = new WalletMcpClientService('http://localhost:8080', 'mock-token');
-  const capturedCalls: Array<{ toolName: string; args: Record<string, unknown> }> = [];
-  let nextResponse: any = { records: [], total: 0 };
-
-  client.callMcpTool = async <T>(toolName: string, args: Record<string, unknown> = {}): Promise<T> => {
-    capturedCalls.push({ toolName, args });
-    return nextResponse as T;
-  };
-
-  return {
-    client,
-    capturedCalls,
-    setNextResponse: (response: any) => {
-      nextResponse = response;
-    },
-  };
-}
-
-function createSeededCacheService(client: WalletMcpClientService): WalletCacheService {
-  const cache = new WalletCacheService(client);
-  (cache as any).cachedAccountList = [...MOCK_ACCOUNTS];
-  (cache as any).cachedCategoryList = [...MOCK_CATEGORIES];
-  (cache as any).cachedLabelList = [];
-  return cache;
-}
-
-describe('Composable Transaction History Filters Tests (Issue #101)', () => {
+describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () => {
   beforeEach(() => {
     setActiveLanguage('id');
   });
@@ -76,451 +39,446 @@ describe('Composable Transaction History Filters Tests (Issue #101)', () => {
   });
 
   describe('Suite 1: Account Filtering & Resolution', () => {
+    let queryContext: QueryExecutionContext;
+
+    beforeEach(() => {
+      queryContext = createQueryExecutionContext({
+        accounts: MOCK_ACCOUNTS,
+        categories: MOCK_CATEGORIES,
+      });
+      queryContext.setNextResponse({
+        records: [
+          { id: 'rec-1', accountId: 'acc-bca-001', amount: -25000, recordDate: '2026-09-01T10:00:00Z', recordType: 'expense' },
+        ],
+        total: 1,
+      });
+    });
+
     it('resolves IDs, names, digits, and enforces fail-closed safety', async () => {
+      // 1.1 Account filter by exact ID
+      const byIdPage = await queryContext.service.getTransactionHistory({ accountId: 'acc-bca-001' });
+      assert.strictEqual(byIdPage.records.length, 1);
+      assert.deepStrictEqual(byIdPage.records.map(record => record.id), ['rec-1']);
+      assert.strictEqual(byIdPage.records[0].accountName, 'BCA Tabungan');
+      assert.strictEqual(queryContext.capturedCalls[0].args.accountId, 'acc-bca-001');
 
-  const { client, capturedCalls, setNextResponse } = createMockClient();
-  const cache = createSeededCacheService(client);
-  const service = new TransactionHistoryService(client, cache);
+      // 1.2 Account filter by name (exact match, case-insensitive)
+      const byNamePage = await queryContext.service.getTransactionHistory({ accountName: 'bca tabungan' });
+      assert.strictEqual(queryContext.capturedCalls[1].args.accountId, 'acc-bca-001');
+      assert.strictEqual(byNamePage.appliedFilters?.account?.id, 'acc-bca-001');
 
-  setNextResponse({
-    records: [
-      { id: 'rec-1', accountId: 'acc-bca-001', amount: -25000, recordDate: '2026-09-01T10:00:00Z', recordType: 'expense' },
-    ],
-    total: 1,
-  });
+      // 1.3 Account filter by name (substring match)
+      const bySubPage = await queryContext.service.getTransactionHistory({ accountName: 'Mandiri' });
+      assert.strictEqual(queryContext.capturedCalls[2].args.accountId, 'acc-mandiri-002');
+      assert.strictEqual(bySubPage.appliedFilters?.account?.id, 'acc-mandiri-002');
 
-  // 1.1 Account filter by exact ID
-  const byIdPage = await service.getTransactionHistory({ accountId: 'acc-bca-001' });
-  assert.strictEqual(byIdPage.records.length, 1);
-  assert.strictEqual(byIdPage.records[0].accountName, 'BCA Tabungan');
-  assert.strictEqual(capturedCalls[0].args.accountId, 'acc-bca-001');
+      // 1.4 Account filter by bank account number digits
+      await queryContext.service.getTransactionHistory({ accountName: '7890' });
+      assert.strictEqual(queryContext.capturedCalls[3].args.accountId, 'acc-bca-001');
 
-  // 1.2 Account filter by name (exact match, case-insensitive)
-  const byNamePage = await service.getTransactionHistory({ accountName: 'bca tabungan' });
-  assert.strictEqual(capturedCalls[1].args.accountId, 'acc-bca-001');
-  assert.strictEqual(byNamePage.appliedFilters?.account?.id, 'acc-bca-001');
-
-  // 1.3 Account filter by name (substring match)
-  const bySubPage = await service.getTransactionHistory({ accountName: 'Mandiri' });
-  assert.strictEqual(capturedCalls[2].args.accountId, 'acc-mandiri-002');
-  assert.strictEqual(bySubPage.appliedFilters?.account?.id, 'acc-mandiri-002');
-
-  // 1.4 Account filter by bank account number digits
-  const byDigitsPage = await service.getTransactionHistory({ accountName: '7890' });
-  assert.strictEqual(capturedCalls[3].args.accountId, 'acc-bca-001');
-
-  // 1.5 Fail-closed: unresolvable account produces explicit error and skips MCP call
-  const callCountBefore = capturedCalls.length;
-  const unresolvedPage = await service.getTransactionHistory({ accountName: 'CryptoWalletNonExistent' });
-  assert.strictEqual(capturedCalls.length, callCountBefore); // No MCP call made!
-  assert.strictEqual(unresolvedPage.records.length, 0);
-  assert.strictEqual(unresolvedPage.unresolvedFilters?.length, 1);
-  assert.strictEqual(unresolvedPage.unresolvedFilters[0].filterKey, 'account');
-  assert.strictEqual(unresolvedPage.unresolvedFilters[0].reason, 'NOT_FOUND');
-
-  console.log('  [PASS] Account filtering resolves IDs, names, digits, and enforces fail-closed safety.');
-
+      // 1.5 Fail-closed: unresolvable account produces explicit error and skips MCP call
+      const callCountBefore = queryContext.capturedCalls.length;
+      const unresolvedPage = await queryContext.service.getTransactionHistory({ accountName: 'CryptoWalletNonExistent' });
+      assert.strictEqual(queryContext.capturedCalls.length, callCountBefore); // No MCP call made!
+      assert.strictEqual(unresolvedPage.records.length, 0);
+      assert.strictEqual(unresolvedPage.unresolvedFilters?.length, 1);
+      assert.strictEqual(unresolvedPage.unresolvedFilters[0].filterKey, 'account');
+      assert.strictEqual(unresolvedPage.unresolvedFilters[0].reason, 'NOT_FOUND');
     });
   });
 
   describe('Suite 2: Category Filtering & Resolution', () => {
+    let queryContext: QueryExecutionContext;
+
+    beforeEach(() => {
+      queryContext = createQueryExecutionContext({
+        accounts: MOCK_ACCOUNTS,
+        categories: MOCK_CATEGORIES,
+      });
+      queryContext.setNextResponse({ records: [], total: 0 });
+    });
+
     it('resolves IDs, names, groups, and enforces fail-closed safety', async () => {
+      // 2.1 Category filter by ID
+      await queryContext.service.getTransactionHistory({ categoryId: 'cat-food-001' });
+      assert.deepStrictEqual(queryContext.capturedCalls[0].args.categoryId, ['cat-food-001']);
 
-  const { client, capturedCalls, setNextResponse } = createMockClient();
-  const cache = createSeededCacheService(client);
-  const service = new TransactionHistoryService(client, cache);
+      // 2.2 Category filter by name (exact name match)
+      const byNameResult = await queryContext.service.getTransactionHistory({ categoryName: 'Makanan & Minuman' });
+      assert.deepStrictEqual(queryContext.capturedCalls[1].args.categoryId, ['cat-food-001']);
+      assert.strictEqual(byNameResult.appliedFilters?.category?.id, 'cat-food-001');
 
-  setNextResponse({ records: [], total: 0 });
+      // 2.3 Category filter by name (substring match)
+      await queryContext.service.getTransactionHistory({ categoryName: 'listrik' });
+      assert.deepStrictEqual(queryContext.capturedCalls[2].args.categoryId, ['cat-bills-004']);
 
-  // 2.1 Category filter by ID
-  await service.getTransactionHistory({ categoryId: 'cat-food-001' });
-  assert.deepStrictEqual(capturedCalls[0].args.categoryId, ['cat-food-001']);
+      // 2.4 Category filter by group slug enum
+      const byGroupResult = await queryContext.service.getTransactionHistory({ categoryGroup: 'food_and_drinks' });
+      assert.strictEqual(queryContext.capturedCalls[3].args.categoryGroup, 'food_and_drinks');
+      assert.strictEqual(byGroupResult.appliedFilters?.categoryGroup, 'food_and_drinks');
 
-  // 2.2 Category filter by name (exact name match)
-  const byNameResult = await service.getTransactionHistory({ categoryName: 'Makanan & Minuman' });
-  assert.deepStrictEqual(capturedCalls[1].args.categoryId, ['cat-food-001']);
-  assert.strictEqual(byNameResult.appliedFilters?.category?.id, 'cat-food-001');
+      // 2.5 Fail-closed: unresolvable category skips MCP call
+      const callCountBefore = queryContext.capturedCalls.length;
+      const unresolvedCategoryPage = await queryContext.service.getTransactionHistory({ categoryName: 'KategoriFiktif' });
+      assert.strictEqual(queryContext.capturedCalls.length, callCountBefore);
+      assert.strictEqual(unresolvedCategoryPage.records.length, 0);
+      assert.strictEqual(unresolvedCategoryPage.unresolvedFilters?.length, 1);
+      assert.strictEqual(unresolvedCategoryPage.unresolvedFilters[0].filterKey, 'category');
+      assert.strictEqual(unresolvedCategoryPage.unresolvedFilters[0].reason, 'NOT_FOUND');
 
-  // 2.3 Category filter by name (substring match)
-  await service.getTransactionHistory({ categoryName: 'listrik' });
-  assert.deepStrictEqual(capturedCalls[2].args.categoryId, ['cat-bills-004']);
+      // 2.6 Fail-closed: ambiguous category substring match produces explicit UNRESOLVED error listing candidates
+      const ambiguousCategories: WalletCategoryItem[] = [
+        { id: 'cat-bills-electric', name: 'Tagihan Listrik' },
+        { id: 'cat-bills-water', name: 'Tagihan Air' },
+        { id: 'cat-bills-inet', name: 'Tagihan Internet' },
+      ];
+      const ambiguousContext = createQueryExecutionContext({
+        accounts: MOCK_ACCOUNTS,
+        categories: ambiguousCategories,
+      });
+      const callsBeforeAmbiguousCategory = ambiguousContext.capturedCalls.length;
+      const ambiguousResult = await ambiguousContext.service.getTransactionHistory({ categoryName: 'tagihan' });
 
-  // 2.4 Category filter by group slug enum
-  const byGroupResult = await service.getTransactionHistory({ categoryGroup: 'food_and_drinks' });
-  assert.strictEqual(capturedCalls[3].args.categoryGroup, 'food_and_drinks');
-  assert.strictEqual(byGroupResult.appliedFilters?.categoryGroup, 'food_and_drinks');
+      assert.strictEqual(ambiguousContext.capturedCalls.length, callsBeforeAmbiguousCategory); // No MCP call made!
+      assert.strictEqual(ambiguousResult.records.length, 0);
+      assert.strictEqual(ambiguousResult.unresolvedFilters?.length, 1);
+      assert.strictEqual(ambiguousResult.unresolvedFilters[0].filterKey, 'category');
+      assert.strictEqual(ambiguousResult.unresolvedFilters[0].reason, 'UNRESOLVED');
+      assert.strictEqual(
+        ambiguousResult.unresolvedFilters[0].message,
+        'Kategori "tagihan" ambigu. Kandidat: Tagihan Air, Tagihan Internet, Tagihan Listrik.'
+      );
 
-  // 2.5 Fail-closed: unresolvable category skips MCP call
-  const callCountBefore = capturedCalls.length;
-  const unresolvedCategoryPage = await service.getTransactionHistory({ categoryName: 'KategoriFiktif' });
-  assert.strictEqual(capturedCalls.length, callCountBefore);
-  assert.strictEqual(unresolvedCategoryPage.records.length, 0);
-  assert.strictEqual(unresolvedCategoryPage.unresolvedFilters?.length, 1);
-  assert.strictEqual(unresolvedCategoryPage.unresolvedFilters[0].filterKey, 'category');
-  assert.strictEqual(unresolvedCategoryPage.unresolvedFilters[0].reason, 'NOT_FOUND');
+      // 2.7 Determinism invariant: reordering cached categories must not alter the ambiguous fail-closed outcome
+      const reorderedCategories: WalletCategoryItem[] = [
+        { id: 'cat-bills-water', name: 'Tagihan Air' },
+        { id: 'cat-bills-electric', name: 'Tagihan Listrik' },
+        { id: 'cat-bills-inet', name: 'Tagihan Internet' },
+      ];
+      const reorderedContext = createQueryExecutionContext({
+        accounts: MOCK_ACCOUNTS,
+        categories: reorderedCategories,
+      });
+      const reorderedResult = await reorderedContext.service.getTransactionHistory({ categoryName: 'tagihan' });
 
-  // 2.6 Fail-closed: ambiguous category substring match produces explicit UNRESOLVED error listing candidates
-  const ambiguousCategories: WalletCategoryItem[] = [
-    { id: 'cat-bills-electric', name: 'Tagihan Listrik' },
-    { id: 'cat-bills-water', name: 'Tagihan Air' },
-    { id: 'cat-bills-inet', name: 'Tagihan Internet' },
-  ];
-  const ambiguousCache = new WalletCacheService(client);
-  (ambiguousCache as any).cachedAccountList = [...MOCK_ACCOUNTS];
-  (ambiguousCache as any).cachedCategoryList = ambiguousCategories;
-  (ambiguousCache as any).cachedLabelList = [];
+      assert.strictEqual(reorderedContext.capturedCalls.length, 0); // Still no MCP call!
+      assert.deepStrictEqual(ambiguousResult.unresolvedFilters, reorderedResult.unresolvedFilters);
 
-  const ambiguousCategoryService = new TransactionHistoryService(client, ambiguousCache);
-  const callsBeforeAmbiguousCategory = capturedCalls.length;
-  const ambiguousResult = await ambiguousCategoryService.getTransactionHistory({ categoryName: 'tagihan' });
+      // 2.8 Exact name match takes precedence over ambiguous substrings
+      const withExactMatchCategories: WalletCategoryItem[] = [
+        { id: 'cat-exact', name: 'Tagihan' },
+        { id: 'cat-bills-electric', name: 'Tagihan Listrik' },
+        { id: 'cat-bills-water', name: 'Tagihan Air' },
+      ];
+      const exactContext = createQueryExecutionContext({
+        accounts: MOCK_ACCOUNTS,
+        categories: withExactMatchCategories,
+      });
+      const exactResult = await exactContext.service.getTransactionHistory({ categoryName: 'tagihan' });
+      assert.strictEqual(exactContext.capturedCalls.length, 1); // 1 MCP call made!
+      assert.deepStrictEqual(exactContext.capturedCalls[0].args.categoryId, ['cat-exact']);
+      assert.strictEqual(exactResult.appliedFilters?.category?.id, 'cat-exact');
 
-  assert.strictEqual(capturedCalls.length, callsBeforeAmbiguousCategory); // No MCP call made!
-  assert.strictEqual(ambiguousResult.records.length, 0);
-  assert.strictEqual(ambiguousResult.unresolvedFilters?.length, 1);
-  assert.strictEqual(ambiguousResult.unresolvedFilters[0].filterKey, 'category');
-  assert.strictEqual(ambiguousResult.unresolvedFilters[0].reason, 'UNRESOLVED');
-  assert.strictEqual(
-    ambiguousResult.unresolvedFilters[0].message,
-    'Kategori "tagihan" ambigu. Kandidat: Tagihan Air, Tagihan Internet, Tagihan Listrik.'
-  );
-
-  // 2.7 Determinism invariant: reordering cached categories must not alter the ambiguous fail-closed outcome
-  const reorderedCategories: WalletCategoryItem[] = [
-    { id: 'cat-bills-water', name: 'Tagihan Air' },
-    { id: 'cat-bills-electric', name: 'Tagihan Listrik' },
-    { id: 'cat-bills-inet', name: 'Tagihan Internet' },
-  ];
-  const reorderedCache = new WalletCacheService(client);
-  (reorderedCache as any).cachedAccountList = [...MOCK_ACCOUNTS];
-  (reorderedCache as any).cachedCategoryList = reorderedCategories;
-  (reorderedCache as any).cachedLabelList = [];
-
-  const reorderedCategoryService = new TransactionHistoryService(client, reorderedCache);
-  const reorderedResult = await reorderedCategoryService.getTransactionHistory({ categoryName: 'tagihan' });
-
-  assert.strictEqual(capturedCalls.length, callsBeforeAmbiguousCategory); // Still no MCP call!
-  assert.deepStrictEqual(ambiguousResult.unresolvedFilters, reorderedResult.unresolvedFilters);
-
-  // 2.8 Exact name match takes precedence over ambiguous substrings
-  const withExactMatchCategories: WalletCategoryItem[] = [
-    { id: 'cat-exact', name: 'Tagihan' },
-    { id: 'cat-bills-electric', name: 'Tagihan Listrik' },
-    { id: 'cat-bills-water', name: 'Tagihan Air' },
-  ];
-  const exactCache = new WalletCacheService(client);
-  (exactCache as any).cachedAccountList = [...MOCK_ACCOUNTS];
-  (exactCache as any).cachedCategoryList = withExactMatchCategories;
-  (exactCache as any).cachedLabelList = [];
-
-  const exactCategoryService = new TransactionHistoryService(client, exactCache);
-  const exactResult = await exactCategoryService.getTransactionHistory({ categoryName: 'tagihan' });
-  assert.strictEqual(capturedCalls.length, callsBeforeAmbiguousCategory + 1); // 1 MCP call made!
-  assert.deepStrictEqual(capturedCalls[capturedCalls.length - 1].args.categoryId, ['cat-exact']);
-  assert.strictEqual(exactResult.appliedFilters?.category?.id, 'cat-exact');
-
-  // 2.9 Multiple categories sharing identical exact name fail closed
-  const duplicateExactCategories: WalletCategoryItem[] = [
-    { id: 'cat-dup-1', name: 'Tagihan' },
-    { id: 'cat-dup-2', name: 'Tagihan' },
-  ];
-  const duplicateExactCache = new WalletCacheService(client);
-  (duplicateExactCache as any).cachedAccountList = [...MOCK_ACCOUNTS];
-  (duplicateExactCache as any).cachedCategoryList = duplicateExactCategories;
-  (duplicateExactCache as any).cachedLabelList = [];
-
-  const duplicateExactService = new TransactionHistoryService(client, duplicateExactCache);
-  const dupCallsBefore = capturedCalls.length;
-  const dupResult = await duplicateExactService.getTransactionHistory({ categoryName: 'Tagihan' });
-  assert.strictEqual(capturedCalls.length, dupCallsBefore); // No MCP call!
-  assert.strictEqual(dupResult.unresolvedFilters?.[0].reason, 'UNRESOLVED');
-
-  console.log('  [PASS] Category filtering resolves IDs, names, groups, and enforces fail-closed safety.');
-
+      // 2.9 Multiple categories sharing identical exact name fail closed
+      const duplicateExactCategories: WalletCategoryItem[] = [
+        { id: 'cat-dup-1', name: 'Tagihan' },
+        { id: 'cat-dup-2', name: 'Tagihan' },
+      ];
+      const duplicateExactContext = createQueryExecutionContext({
+        accounts: MOCK_ACCOUNTS,
+        categories: duplicateExactCategories,
+      });
+      const dupResult = await duplicateExactContext.service.getTransactionHistory({ categoryName: 'Tagihan' });
+      assert.strictEqual(duplicateExactContext.capturedCalls.length, 0); // No MCP call!
+      assert.strictEqual(dupResult.unresolvedFilters?.[0].reason, 'UNRESOLVED');
     });
   });
 
   describe('Suite 3: Record Type Filtering', () => {
+    let queryContext: QueryExecutionContext;
+
+    beforeEach(() => {
+      queryContext = createQueryExecutionContext({
+        accounts: MOCK_ACCOUNTS,
+        categories: MOCK_CATEGORIES,
+      });
+      queryContext.setNextResponse({ records: [], total: 0 });
+    });
+
     it('correctly filters expense/income and accepts synonyms', async () => {
+      // 3.1 Standard expense
+      await queryContext.service.getTransactionHistory({ recordType: 'expense' });
+      assert.strictEqual(queryContext.capturedCalls[0].args.recordType, 'expense');
 
-  const { client, capturedCalls, setNextResponse } = createMockClient();
-  const cache = createSeededCacheService(client);
-  const service = new TransactionHistoryService(client, cache);
+      // 3.2 Standard income
+      await queryContext.service.getTransactionHistory({ recordType: 'income' });
+      assert.strictEqual(queryContext.capturedCalls[1].args.recordType, 'income');
 
-  setNextResponse({ records: [], total: 0 });
+      // 3.3 Indonesian synonym: pengeluaran -> expense
+      await queryContext.service.getTransactionHistory({ recordType: 'pengeluaran' as any });
+      assert.strictEqual(queryContext.capturedCalls[2].args.recordType, 'expense');
 
-  // 3.1 Standard expense
-  await service.getTransactionHistory({ recordType: 'expense' });
-  assert.strictEqual(capturedCalls[0].args.recordType, 'expense');
+      // 3.4 Indonesian synonym: pemasukan -> income
+      await queryContext.service.getTransactionHistory({ recordType: 'pemasukan' as any });
+      assert.strictEqual(queryContext.capturedCalls[3].args.recordType, 'income');
 
-  // 3.2 Standard income
-  await service.getTransactionHistory({ recordType: 'income' });
-  assert.strictEqual(capturedCalls[1].args.recordType, 'income');
-
-  // 3.3 Indonesian synonym: pengeluaran -> expense
-  await service.getTransactionHistory({ recordType: 'pengeluaran' as any });
-  assert.strictEqual(capturedCalls[2].args.recordType, 'expense');
-
-  // 3.4 Indonesian synonym: pemasukan -> income
-  await service.getTransactionHistory({ recordType: 'pemasukan' as any });
-  assert.strictEqual(capturedCalls[3].args.recordType, 'income');
-
-  // 3.5 Fail-closed: invalid record type rejects before MCP call
-  const callCountBefore = capturedCalls.length;
-  const invalidTypePage = await service.getTransactionHistory({ recordType: 'invalid_type' as any });
-  assert.strictEqual(capturedCalls.length, callCountBefore);
-  assert.strictEqual(invalidTypePage.unresolvedFilters?.[0].filterKey, 'recordType');
-  assert.strictEqual(invalidTypePage.unresolvedFilters?.[0].reason, 'INVALID_FORMAT');
-
-  console.log('  [PASS] Record type correctly filters expense/income and accepts synonyms.');
-
+      // 3.5 Fail-closed: invalid record type rejects before MCP call
+      const callCountBefore = queryContext.capturedCalls.length;
+      const invalidTypePage = await queryContext.service.getTransactionHistory({ recordType: 'invalid_type' as any });
+      assert.strictEqual(queryContext.capturedCalls.length, callCountBefore);
+      assert.strictEqual(invalidTypePage.unresolvedFilters?.[0].filterKey, 'recordType');
+      assert.strictEqual(invalidTypePage.unresolvedFilters?.[0].reason, 'INVALID_FORMAT');
     });
   });
 
   describe('Suite 4: Date & Date Range Filtering', () => {
+    let queryContext: QueryExecutionContext;
+
+    beforeEach(() => {
+      queryContext = createQueryExecutionContext({
+        accounts: MOCK_ACCOUNTS,
+        categories: MOCK_CATEGORIES,
+      });
+      queryContext.setNextResponse({ records: [], total: 0 });
+    });
+
     it('verifies timezone UTC boundaries, calendar validation, and boundary handling', async () => {
+      // 4.1 Explicit dateRange array with operator prefixes (resolved to local timezone half-open UTC boundaries)
+      await queryContext.service.getTransactionHistory({ dateRange: ['gte.2024-01-01', 'lte.2024-06-30'] });
+      assert.deepStrictEqual(queryContext.capturedCalls[0].args.recordDate, [
+        'gte.2023-12-31T17:00:00.000Z',
+        'lt.2024-06-30T17:00:00.000Z',
+      ]);
 
-  const { client, capturedCalls, setNextResponse } = createMockClient();
-  const cache = createSeededCacheService(client);
-  const service = new TransactionHistoryService(client, cache);
+      // 4.2 Start date and end date normalization (resolved to local timezone half-open UTC boundaries)
+      await queryContext.service.getTransactionHistory({ startDate: '2024-03-01', endDate: '2024-03-31' });
+      assert.deepStrictEqual(queryContext.capturedCalls[1].args.recordDate, [
+        'gte.2024-02-29T17:00:00.000Z',
+        'lt.2024-03-31T17:00:00.000Z',
+      ]);
 
-  setNextResponse({ records: [], total: 0 });
+      // 4.3 Relative date periods: this_month with timezone-aware half-open UTC ISO boundaries
+      // Sep 11, 2026 12:00:00 UTC = Sep 11, 2026 19:00:00 WIB
+      const fixedRefDate = new Date('2026-09-11T12:00:00Z');
+      const monthNormal = normalizeTransactionHistoryFilters({ datePeriod: 'this_month' }, [], [], fixedRefDate);
+      assert.strictEqual(monthNormal.isValid, true);
+      // Start: 2026-09-01 00:00 WIB -> 2026-08-31T17:00:00.000Z. Next: 2026-10-01 00:00 WIB -> 2026-09-30T17:00:00.000Z
+      assert.deepStrictEqual(monthNormal.upstreamRecordDate, ['gte.2026-08-31T17:00:00.000Z', 'lt.2026-09-30T17:00:00.000Z']);
+      assert.strictEqual(monthNormal.appliedFilters.dateRange?.label, 'Bulan ini');
+      assert.strictEqual(monthNormal.appliedFilters.dateRange?.selector, 'bulan ini');
 
-  // 4.1 Explicit dateRange array with operator prefixes (resolved to local timezone half-open UTC boundaries)
-  await service.getTransactionHistory({ dateRange: ['gte.2024-01-01', 'lte.2024-06-30'] });
-  assert.deepStrictEqual(capturedCalls[0].args.recordDate, [
-    'gte.2023-12-31T17:00:00.000Z',
-    'lt.2024-06-30T17:00:00.000Z',
-  ]);
+      // 4.4 Relative date periods: today (half-open UTC interval for Asia/Jakarta)
+      // Start: 2026-09-11 00:00 WIB -> 2026-09-10T17:00:00.000Z. Next: 2026-09-12 00:00 WIB -> 2026-09-11T17:00:00.000Z
+      const todayNormal = normalizeTransactionHistoryFilters({ datePeriod: 'today' }, [], [], fixedRefDate);
+      assert.strictEqual(todayNormal.isValid, true);
+      assert.deepStrictEqual(todayNormal.upstreamRecordDate, ['gte.2026-09-10T17:00:00.000Z', 'lt.2026-09-11T17:00:00.000Z']);
+      assert.strictEqual(todayNormal.appliedFilters.dateRange?.label, 'Hari ini');
+      assert.strictEqual(todayNormal.appliedFilters.dateRange?.selector, 'hari ini');
 
-  // 4.2 Start date and end date normalization (resolved to local timezone half-open UTC boundaries)
-  await service.getTransactionHistory({ startDate: '2024-03-01', endDate: '2024-03-31' });
-  assert.deepStrictEqual(capturedCalls[1].args.recordDate, [
-    'gte.2024-02-29T17:00:00.000Z',
-    'lt.2024-03-31T17:00:00.000Z',
-  ]);
+      // 4.5 Relative date periods: yesterday (half-open UTC interval for Asia/Jakarta)
+      // Start: 2026-09-10 00:00 WIB -> 2026-09-09T17:00:00.000Z. Next: 2026-09-11 00:00 WIB -> 2026-09-10T17:00:00.000Z
+      const yesterdayNormal = normalizeTransactionHistoryFilters({ datePeriod: 'yesterday' }, [], [], fixedRefDate);
+      assert.strictEqual(yesterdayNormal.isValid, true);
+      assert.deepStrictEqual(yesterdayNormal.upstreamRecordDate, ['gte.2026-09-09T17:00:00.000Z', 'lt.2026-09-10T17:00:00.000Z']);
+      assert.strictEqual(yesterdayNormal.appliedFilters.dateRange?.label, 'Kemarin');
+      assert.strictEqual(yesterdayNormal.appliedFilters.dateRange?.selector, 'kemarin');
 
-  // 4.3 Relative date periods: this_month with timezone-aware half-open UTC ISO boundaries
-  // Sep 11, 2026 12:00:00 UTC = Sep 11, 2026 19:00:00 WIB
-  const fixedRefDate = new Date('2026-09-11T12:00:00Z');
-  const monthNormal = normalizeTransactionHistoryFilters({ datePeriod: 'this_month' }, [], [], fixedRefDate);
-  assert.strictEqual(monthNormal.isValid, true);
-  // Start: 2026-09-01 00:00 WIB -> 2026-08-31T17:00:00.000Z. Next: 2026-10-01 00:00 WIB -> 2026-09-30T17:00:00.000Z
-  assert.deepStrictEqual(monthNormal.upstreamRecordDate, ['gte.2026-08-31T17:00:00.000Z', 'lt.2026-09-30T17:00:00.000Z']);
-  assert.strictEqual(monthNormal.appliedFilters.dateRange?.label, 'Bulan ini');
-  assert.strictEqual(monthNormal.appliedFilters.dateRange?.selector, 'bulan ini');
+      // 4.6 Timezone boundary transaction matching regression test (Asia/Jakarta UTC+7)
+      // Today = 2026-09-11 WIB (Interval: [2026-09-10T17:00:00.000Z, 2026-09-11T17:00:00.000Z))
+      const [lowerBoundOp, upperBoundOp] = todayNormal.upstreamRecordDate!;
+      const lowerTimestamp = Date.parse(lowerBoundOp.replace('gte.', ''));
+      const upperTimestamp = Date.parse(upperBoundOp.replace('lt.', ''));
 
-  // 4.4 Relative date periods: today (half-open UTC interval for Asia/Jakarta)
-  // Start: 2026-09-11 00:00 WIB -> 2026-09-10T17:00:00.000Z. Next: 2026-09-12 00:00 WIB -> 2026-09-11T17:00:00.000Z
-  const todayNormal = normalizeTransactionHistoryFilters({ datePeriod: 'today' }, [], [], fixedRefDate);
-  assert.strictEqual(todayNormal.isValid, true);
-  assert.deepStrictEqual(todayNormal.upstreamRecordDate, ['gte.2026-09-10T17:00:00.000Z', 'lt.2026-09-11T17:00:00.000Z']);
-  assert.strictEqual(todayNormal.appliedFilters.dateRange?.label, 'Hari ini');
-  assert.strictEqual(todayNormal.appliedFilters.dateRange?.selector, 'hari ini');
+      const isIncludedInToday = (utcIsoString: string): boolean => {
+        const ts = Date.parse(utcIsoString);
+        return ts >= lowerTimestamp && ts < upperTimestamp;
+      };
 
-  // 4.5 Relative date periods: yesterday (half-open UTC interval for Asia/Jakarta)
-  // Start: 2026-09-10 00:00 WIB -> 2026-09-09T17:00:00.000Z. Next: 2026-09-11 00:00 WIB -> 2026-09-10T17:00:00.000Z
-  const yesterdayNormal = normalizeTransactionHistoryFilters({ datePeriod: 'yesterday' }, [], [], fixedRefDate);
-  assert.strictEqual(yesterdayNormal.isValid, true);
-  assert.deepStrictEqual(yesterdayNormal.upstreamRecordDate, ['gte.2026-09-09T17:00:00.000Z', 'lt.2026-09-10T17:00:00.000Z']);
-  assert.strictEqual(yesterdayNormal.appliedFilters.dateRange?.label, 'Kemarin');
-  assert.strictEqual(yesterdayNormal.appliedFilters.dateRange?.selector, 'kemarin');
+      // Transaction 1: 00:30 WIB on Sep 11 (2026-09-10T17:30:00.000Z) -> INCLUDED
+      assert.strictEqual(isIncludedInToday('2026-09-10T17:30:00.000Z'), true);
+      // Transaction 2: 23:30 WIB on Sep 11 (2026-09-11T16:30:00.000Z) -> INCLUDED
+      assert.strictEqual(isIncludedInToday('2026-09-11T16:30:00.000Z'), true);
+      // Transaction 3: 00:05 WIB on Sep 12 (2026-09-11T17:05:00.000Z) -> EXCLUDED (next local midnight)
+      assert.strictEqual(isIncludedInToday('2026-09-11T17:05:00.000Z'), false);
+      // Transaction 4: 23:55 WIB on Sep 10 (2026-09-10T16:55:00.000Z) -> EXCLUDED (before local midnight)
+      assert.strictEqual(isIncludedInToday('2026-09-10T16:55:00.000Z'), false);
 
-  // 4.6 Timezone boundary transaction matching regression test (Asia/Jakarta UTC+7)
-  // Today = 2026-09-11 WIB (Interval: [2026-09-10T17:00:00.000Z, 2026-09-11T17:00:00.000Z))
-  const [lowerBoundOp, upperBoundOp] = todayNormal.upstreamRecordDate!;
-  const lowerTimestamp = Date.parse(lowerBoundOp.replace('gte.', ''));
-  const upperTimestamp = Date.parse(upperBoundOp.replace('lt.', ''));
+      // 4.6.1 Explicit single date vs 'today' equivalence regression test (Item 1)
+      // Explicit 2026-09-11 must resolve to the EXACT SAME half-open interval as 'today' on 2026-09-11 WIB
+      const explicitSingleDateNormal = normalizeTransactionHistoryFilters(
+        { dateRange: ['eq.2026-09-11'] },
+        [],
+        [],
+        fixedRefDate
+      );
+      assert.strictEqual(explicitSingleDateNormal.isValid, true);
+      assert.deepStrictEqual(explicitSingleDateNormal.upstreamRecordDate, todayNormal.upstreamRecordDate);
+      assert.deepStrictEqual(explicitSingleDateNormal.upstreamRecordDate, [
+        'gte.2026-09-10T17:00:00.000Z',
+        'lt.2026-09-11T17:00:00.000Z',
+      ]);
+      assert.strictEqual(explicitSingleDateNormal.appliedFilters.dateRange?.selector, '2026-09-11');
+      assert.strictEqual(explicitSingleDateNormal.appliedFilters.dateRange?.label, '2026-09-11');
 
-  const isIncludedInToday = (utcIsoString: string): boolean => {
-    const ts = Date.parse(utcIsoString);
-    return ts >= lowerTimestamp && ts < upperTimestamp;
-  };
+      // Verify explicit date also includes 00:30 and 23:30 WIB and excludes next day
+      const [explicitLower, explicitUpper] = explicitSingleDateNormal.upstreamRecordDate!;
+      const explicitLowerTs = Date.parse(explicitLower.replace('gte.', ''));
+      const explicitUpperTs = Date.parse(explicitUpper.replace('lt.', ''));
+      const isIncludedInExplicitDate = (utcIso: string): boolean => {
+        const ts = Date.parse(utcIso);
+        return ts >= explicitLowerTs && ts < explicitUpperTs;
+      };
+      assert.strictEqual(isIncludedInExplicitDate('2026-09-10T17:30:00.000Z'), true); // 00:30 WIB
+      assert.strictEqual(isIncludedInExplicitDate('2026-09-11T16:30:00.000Z'), true); // 23:30 WIB
+      assert.strictEqual(isIncludedInExplicitDate('2026-09-11T17:05:00.000Z'), false); // 00:05 WIB next day
 
-  // Transaction 1: 00:30 WIB on Sep 11 (2026-09-10T17:30:00.000Z) -> INCLUDED
-  assert.strictEqual(isIncludedInToday('2026-09-10T17:30:00.000Z'), true);
-  // Transaction 2: 23:30 WIB on Sep 11 (2026-09-11T16:30:00.000Z) -> INCLUDED
-  assert.strictEqual(isIncludedInToday('2026-09-11T16:30:00.000Z'), true);
-  // Transaction 3: 00:05 WIB on Sep 12 (2026-09-11T17:05:00.000Z) -> EXCLUDED (next local midnight)
-  assert.strictEqual(isIncludedInToday('2026-09-11T17:05:00.000Z'), false);
-  // Transaction 4: 23:55 WIB on Sep 10 (2026-09-10T16:55:00.000Z) -> EXCLUDED (before local midnight)
-  assert.strictEqual(isIncludedInToday('2026-09-10T16:55:00.000Z'), false);
+      // 4.7 Date boundary: startDate > endDate fails closed before MCP
+      const callsBeforeReversedDates = queryContext.capturedCalls.length;
+      const invalidRangePage = await queryContext.service.getTransactionHistory({
+        startDate: '2024-12-31',
+        endDate: '2024-01-01',
+      });
+      assert.strictEqual(queryContext.capturedCalls.length, callsBeforeReversedDates); // No MCP call!
+      assert.strictEqual(invalidRangePage.unresolvedFilters?.[0].filterKey, 'dateRange');
+      assert.strictEqual(invalidRangePage.unresolvedFilters?.[0].reason, 'INVALID_RANGE');
 
-  // 4.6.1 Explicit single date vs 'today' equivalence regression test (Item 1)
-  // Explicit 2026-09-11 must resolve to the EXACT SAME half-open interval as 'today' on 2026-09-11 WIB
-  const explicitSingleDateNormal = normalizeTransactionHistoryFilters(
-    { dateRange: ['eq.2026-09-11'] },
-    [],
-    [],
-    fixedRefDate
-  );
-  assert.strictEqual(explicitSingleDateNormal.isValid, true);
-  assert.deepStrictEqual(explicitSingleDateNormal.upstreamRecordDate, todayNormal.upstreamRecordDate);
-  assert.deepStrictEqual(explicitSingleDateNormal.upstreamRecordDate, [
-    'gte.2026-09-10T17:00:00.000Z',
-    'lt.2026-09-11T17:00:00.000Z',
-  ]);
-  assert.strictEqual(explicitSingleDateNormal.appliedFilters.dateRange?.selector, '2026-09-11');
-  assert.strictEqual(explicitSingleDateNormal.appliedFilters.dateRange?.label, '2026-09-11');
+      // 4.8 Array dateRange: reversed bounds fails closed before MCP
+      const callsBeforeArrayReversed = queryContext.capturedCalls.length;
+      const arrayReversedPage = await queryContext.service.getTransactionHistory({
+        dateRange: ['gte.2026-09-30', 'lte.2026-09-01'],
+      });
+      assert.strictEqual(queryContext.capturedCalls.length, callsBeforeArrayReversed); // No MCP call!
+      assert.strictEqual(arrayReversedPage.records.length, 0);
+      assert.strictEqual(arrayReversedPage.unresolvedFilters?.[0].filterKey, 'dateRange');
+      assert.strictEqual(arrayReversedPage.unresolvedFilters?.[0].reason, 'INVALID_RANGE');
 
-  // Verify explicit date also includes 00:30 and 23:30 WIB and excludes next day
-  const [explicitLower, explicitUpper] = explicitSingleDateNormal.upstreamRecordDate!;
-  const explicitLowerTs = Date.parse(explicitLower.replace('gte.', ''));
-  const explicitUpperTs = Date.parse(explicitUpper.replace('lt.', ''));
-  const isIncludedInExplicitDate = (utcIso: string): boolean => {
-    const ts = Date.parse(utcIso);
-    return ts >= explicitLowerTs && ts < explicitUpperTs;
-  };
-  assert.strictEqual(isIncludedInExplicitDate('2026-09-10T17:30:00.000Z'), true); // 00:30 WIB
-  assert.strictEqual(isIncludedInExplicitDate('2026-09-11T16:30:00.000Z'), true); // 23:30 WIB
-  assert.strictEqual(isIncludedInExplicitDate('2026-09-11T17:05:00.000Z'), false); // 00:05 WIB next day
+      // 4.9 Fast-path reversed bounds: fails closed before MCP
+      const fastPathReversedAction = detectFastPathAction('history 2026-09-30 2026-09-01');
+      assert.ok(fastPathReversedAction);
+      assert.strictEqual((fastPathReversedAction as any).type, 'TRANSACTION_HISTORY');
+      const callsBeforeFpReversed = queryContext.capturedCalls.length;
+      const fpReversedPage = await queryContext.service.getTransactionHistory((fastPathReversedAction as any).options);
+      assert.strictEqual(queryContext.capturedCalls.length, callsBeforeFpReversed); // No MCP call!
+      assert.strictEqual(fpReversedPage.unresolvedFilters?.[0].reason, 'INVALID_RANGE');
 
-  // 4.7 Date boundary: startDate > endDate fails closed before MCP
-  const callsBeforeReversedDates = capturedCalls.length;
-  const invalidRangePage = await service.getTransactionHistory({
-    startDate: '2024-12-31',
-    endDate: '2024-01-01',
-  });
-  assert.strictEqual(capturedCalls.length, callsBeforeReversedDates); // No MCP call!
-  assert.strictEqual(invalidRangePage.unresolvedFilters?.[0].filterKey, 'dateRange');
-  assert.strictEqual(invalidRangePage.unresolvedFilters?.[0].reason, 'INVALID_RANGE');
+      // 4.10 Array dateRange: impossible calendar dates fail closed before MCP
+      const callsBeforeImpossibleDate = queryContext.capturedCalls.length;
+      const impossibleDatePage = await queryContext.service.getTransactionHistory({
+        dateRange: ['eq.2024-02-30'],
+      });
+      assert.strictEqual(queryContext.capturedCalls.length, callsBeforeImpossibleDate); // No MCP call!
+      assert.strictEqual(impossibleDatePage.records.length, 0);
+      assert.strictEqual(impossibleDatePage.unresolvedFilters?.[0].filterKey, 'dateRange');
+      assert.strictEqual(impossibleDatePage.unresolvedFilters?.[0].reason, 'INVALID_FORMAT');
 
-  // 4.8 Array dateRange: reversed bounds fails closed before MCP
-  const callsBeforeArrayReversed = capturedCalls.length;
-  const arrayReversedPage = await service.getTransactionHistory({
-    dateRange: ['gte.2026-09-30', 'lte.2026-09-01'],
-  });
-  assert.strictEqual(capturedCalls.length, callsBeforeArrayReversed); // No MCP call!
-  assert.strictEqual(arrayReversedPage.records.length, 0);
-  assert.strictEqual(arrayReversedPage.unresolvedFilters?.[0].filterKey, 'dateRange');
-  assert.strictEqual(arrayReversedPage.unresolvedFilters?.[0].reason, 'INVALID_RANGE');
+      // 4.11 Start date with impossible calendar date (2026-04-31) fails closed before MCP
+      const callsBeforeImpossibleApr31 = queryContext.capturedCalls.length;
+      const impossibleApr31Page = await queryContext.service.getTransactionHistory({
+        startDate: '2026-04-31',
+      });
+      assert.strictEqual(queryContext.capturedCalls.length, callsBeforeImpossibleApr31); // No MCP call!
+      assert.strictEqual(impossibleApr31Page.unresolvedFilters?.[0].reason, 'INVALID_FORMAT');
 
-  // 4.9 Fast-path reversed bounds: fails closed before MCP
-  const fastPathReversedAction = detectFastPathAction('history 2026-09-30 2026-09-01');
-  assert.ok(fastPathReversedAction);
-  assert.strictEqual((fastPathReversedAction as any).type, 'TRANSACTION_HISTORY');
-  const callsBeforeFpReversed = capturedCalls.length;
-  const fpReversedPage = await service.getTransactionHistory((fastPathReversedAction as any).options);
-  assert.strictEqual(capturedCalls.length, callsBeforeFpReversed); // No MCP call!
-  assert.strictEqual(fpReversedPage.unresolvedFilters?.[0].reason, 'INVALID_RANGE');
+      // 4.12 Non-leap year Feb 29 (2025-02-29) fails closed before MCP
+      const callsBeforeNonLeapFeb29 = queryContext.capturedCalls.length;
+      const nonLeapFeb29Page = await queryContext.service.getTransactionHistory({
+        startDate: '2025-02-29',
+      });
+      assert.strictEqual(queryContext.capturedCalls.length, callsBeforeNonLeapFeb29); // No MCP call!
+      assert.strictEqual(nonLeapFeb29Page.unresolvedFilters?.[0].reason, 'INVALID_FORMAT');
 
-  // 4.10 Array dateRange: impossible calendar dates fail closed before MCP
-  const callsBeforeImpossibleDate = capturedCalls.length;
-  const impossibleDatePage = await service.getTransactionHistory({
-    dateRange: ['eq.2024-02-30'],
-  });
-  assert.strictEqual(capturedCalls.length, callsBeforeImpossibleDate); // No MCP call!
-  assert.strictEqual(impossibleDatePage.records.length, 0);
-  assert.strictEqual(impossibleDatePage.unresolvedFilters?.[0].filterKey, 'dateRange');
-  assert.strictEqual(impossibleDatePage.unresolvedFilters?.[0].reason, 'INVALID_FORMAT');
+      // 4.13 Remaining relative date periods: this_week, last_week, last_month, this_year
+      const thisWeekResult = normalizeTransactionHistoryFilters({ datePeriod: 'this_week' }, [], [], fixedRefDate);
+      assert.strictEqual(thisWeekResult.isValid, true);
+      assert.strictEqual(thisWeekResult.appliedFilters.dateRange?.label, 'Minggu ini');
+      assert.strictEqual(thisWeekResult.appliedFilters.dateRange?.selector, 'minggu ini');
+      assert.strictEqual(thisWeekResult.upstreamRecordDate?.length, 2);
 
-  // 4.11 Start date with impossible calendar date (2026-04-31) fails closed before MCP
-  const callsBeforeImpossibleApr31 = capturedCalls.length;
-  const impossibleApr31Page = await service.getTransactionHistory({
-    startDate: '2026-04-31',
-  });
-  assert.strictEqual(capturedCalls.length, callsBeforeImpossibleApr31); // No MCP call!
-  assert.strictEqual(impossibleApr31Page.unresolvedFilters?.[0].reason, 'INVALID_FORMAT');
+      const lastWeekResult = normalizeTransactionHistoryFilters({ datePeriod: 'last_week' }, [], [], fixedRefDate);
+      assert.strictEqual(lastWeekResult.isValid, true);
+      assert.strictEqual(lastWeekResult.appliedFilters.dateRange?.label, 'Minggu lalu');
+      assert.strictEqual(lastWeekResult.appliedFilters.dateRange?.selector, 'minggu lalu');
+      assert.strictEqual(lastWeekResult.upstreamRecordDate?.length, 2);
 
-  // 4.12 Non-leap year Feb 29 (2025-02-29) fails closed before MCP
-  const callsBeforeNonLeapFeb29 = capturedCalls.length;
-  const nonLeapFeb29Page = await service.getTransactionHistory({
-    startDate: '2025-02-29',
-  });
-  assert.strictEqual(capturedCalls.length, callsBeforeNonLeapFeb29); // No MCP call!
-  assert.strictEqual(nonLeapFeb29Page.unresolvedFilters?.[0].reason, 'INVALID_FORMAT');
+      const lastMonthResult = normalizeTransactionHistoryFilters({ datePeriod: 'last_month' }, [], [], fixedRefDate);
+      assert.strictEqual(lastMonthResult.isValid, true);
+      assert.strictEqual(lastMonthResult.appliedFilters.dateRange?.label, 'Bulan lalu');
+      assert.strictEqual(lastMonthResult.appliedFilters.dateRange?.selector, 'bulan lalu');
+      assert.strictEqual(lastMonthResult.upstreamRecordDate?.length, 2);
 
-  // 4.13 Remaining relative date periods: this_week, last_week, last_month, this_year
-  const thisWeekResult = normalizeTransactionHistoryFilters({ datePeriod: 'this_week' }, [], [], fixedRefDate);
-  assert.strictEqual(thisWeekResult.isValid, true);
-  assert.strictEqual(thisWeekResult.appliedFilters.dateRange?.label, 'Minggu ini');
-  assert.strictEqual(thisWeekResult.appliedFilters.dateRange?.selector, 'minggu ini');
-  assert.strictEqual(thisWeekResult.upstreamRecordDate?.length, 2);
+      const thisYearResult = normalizeTransactionHistoryFilters({ datePeriod: 'this_year' }, [], [], fixedRefDate);
+      assert.strictEqual(thisYearResult.isValid, true);
+      assert.strictEqual(thisYearResult.appliedFilters.dateRange?.label, 'Tahun ini');
+      assert.strictEqual(thisYearResult.appliedFilters.dateRange?.selector, 'tahun ini');
+      assert.strictEqual(thisYearResult.upstreamRecordDate?.length, 2);
 
-  const lastWeekResult = normalizeTransactionHistoryFilters({ datePeriod: 'last_week' }, [], [], fixedRefDate);
-  assert.strictEqual(lastWeekResult.isValid, true);
-  assert.strictEqual(lastWeekResult.appliedFilters.dateRange?.label, 'Minggu lalu');
-  assert.strictEqual(lastWeekResult.appliedFilters.dateRange?.selector, 'minggu lalu');
-  assert.strictEqual(lastWeekResult.upstreamRecordDate?.length, 2);
+      // 4.14 Object dateRange { from, to } valid normalization (timezone-aware UTC boundaries)
+      const validObjRange = normalizeTransactionHistoryFilters({ dateRange: { from: '2026-05-01', to: '2026-05-31' } });
+      assert.strictEqual(validObjRange.isValid, true);
+      assert.deepStrictEqual(validObjRange.upstreamRecordDate, [
+        'gte.2026-04-30T17:00:00.000Z',
+        'lt.2026-05-31T17:00:00.000Z',
+      ]);
+      assert.strictEqual(validObjRange.appliedFilters.dateRange?.selector, '2026-05-01 2026-05-31');
 
-  const lastMonthResult = normalizeTransactionHistoryFilters({ datePeriod: 'last_month' }, [], [], fixedRefDate);
-  assert.strictEqual(lastMonthResult.isValid, true);
-  assert.strictEqual(lastMonthResult.appliedFilters.dateRange?.label, 'Bulan lalu');
-  assert.strictEqual(lastMonthResult.appliedFilters.dateRange?.selector, 'bulan lalu');
-  assert.strictEqual(lastMonthResult.upstreamRecordDate?.length, 2);
+      // 4.15 Object dateRange { from, to } with invalid 'to' fails closed before MCP
+      const callsBeforeObjInvalidTo = queryContext.capturedCalls.length;
+      const objInvalidToPage = await queryContext.service.getTransactionHistory({
+        dateRange: { from: '2026-05-01', to: '2026-02-30' },
+      });
+      assert.strictEqual(queryContext.capturedCalls.length, callsBeforeObjInvalidTo);
+      assert.strictEqual(objInvalidToPage.unresolvedFilters?.[0].reason, 'INVALID_FORMAT');
 
-  const thisYearResult = normalizeTransactionHistoryFilters({ datePeriod: 'this_year' }, [], [], fixedRefDate);
-  assert.strictEqual(thisYearResult.isValid, true);
-  assert.strictEqual(thisYearResult.appliedFilters.dateRange?.label, 'Tahun ini');
-  assert.strictEqual(thisYearResult.appliedFilters.dateRange?.selector, 'tahun ini');
-  assert.strictEqual(thisYearResult.upstreamRecordDate?.length, 2);
+      // 4.16 Direct unit tests for strict calendar validator function isValidCalendarDateString
+      assert.strictEqual(isValidCalendarDateString('2024-02-29'), true); // Leap year valid
+      assert.strictEqual(isValidCalendarDateString('2024-02-30'), false); // Leap year Feb 30 impossible
+      assert.strictEqual(isValidCalendarDateString('2025-02-29'), false); // Non-leap year Feb 29 impossible
+      assert.strictEqual(isValidCalendarDateString('2026-04-31'), false); // April has 30 days
+      assert.strictEqual(isValidCalendarDateString('2026-13-01'), false); // Invalid month 13
+      assert.strictEqual(isValidCalendarDateString('2026-00-10'), false); // Invalid month 0
+      assert.strictEqual(isValidCalendarDateString('2026-01-32'), false); // Invalid day 32
+      assert.strictEqual(isValidCalendarDateString('2026-01-00'), false); // Invalid day 0
+      assert.strictEqual(isValidCalendarDateString('not-a-date'), false);
+      assert.strictEqual(isValidCalendarDateString(12345 as any), false);
+      assert.strictEqual(isValidCalendarDateString('2026-09-10T17:00:00.000Z'), true);
+      assert.strictEqual(isValidCalendarDateString('2026-09-10T17:00:00+07:00'), true);
+      assert.strictEqual(isValidCalendarDateString('2026-02-30T17:00:00.000Z'), false);
+      assert.strictEqual(isValidCalendarDateString('2026-09-10T25:00:00.000Z'), false);
+      assert.strictEqual(isValidCalendarDateString('2026-09-10T12:60:00.000Z'), false);
 
-  // 4.14 Object dateRange { from, to } valid normalization (timezone-aware UTC boundaries)
-  const validObjRange = normalizeTransactionHistoryFilters({ dateRange: { from: '2026-05-01', to: '2026-05-31' } });
-  assert.strictEqual(validObjRange.isValid, true);
-  assert.deepStrictEqual(validObjRange.upstreamRecordDate, [
-    'gte.2026-04-30T17:00:00.000Z',
-    'lt.2026-05-31T17:00:00.000Z',
-  ]);
-  assert.strictEqual(validObjRange.appliedFilters.dateRange?.selector, '2026-05-01 2026-05-31');
+      // 4.17 Category group navigation token propagation (grammar-safe canonical selector)
+      const categoryGroupNorm = normalizeTransactionHistoryFilters({ categoryGroup: 'food_and_drinks' });
+      assert.strictEqual(categoryGroupNorm.isValid, true);
+      assert.strictEqual(categoryGroupNorm.appliedFilters.navigationTokens?.[0], 'kategori "food_and_drinks"');
 
-  // 4.15 Object dateRange { from, to } with invalid 'to' fails closed before MCP
-  const callsBeforeObjInvalidTo = capturedCalls.length;
-  const objInvalidToPage = await service.getTransactionHistory({
-    dateRange: { from: '2026-05-01', to: '2026-02-30' },
-  });
-  assert.strictEqual(capturedCalls.length, callsBeforeObjInvalidTo);
-  assert.strictEqual(objInvalidToPage.unresolvedFilters?.[0].reason, 'INVALID_FORMAT');
+      // 4.18 Datetime precision preservation: 1-hour same-day ISO range must preserve exact 1-hour interval
+      const oneHourStart = '2026-09-11T12:00:00.000Z';
+      const oneHourEnd = '2026-09-11T13:00:00.000Z';
+      const oneHourResult = normalizeTransactionHistoryFilters(
+        { startDate: oneHourStart, endDate: oneHourEnd },
+        [],
+        [],
+        fixedRefDate
+      );
+      assert.strictEqual(oneHourResult.isValid, true);
+      assert.deepStrictEqual(oneHourResult.upstreamRecordDate, [
+        `gte.${oneHourStart}`,
+        `lte.${oneHourEnd}`,
+      ]);
+      const startTimestamp = Date.parse(oneHourStart);
+      const endTimestamp = Date.parse(oneHourEnd);
+      assert.strictEqual(endTimestamp - startTimestamp, 3600000); // Exactly 1 hour, not 24 hours (86400000)
+      assert.strictEqual(oneHourResult.appliedFilters.dateRange?.from, oneHourStart);
+      assert.strictEqual(oneHourResult.appliedFilters.dateRange?.to, oneHourEnd);
 
-  // 4.16 Direct unit tests for strict calendar validator function isValidCalendarDateString
-  assert.strictEqual(isValidCalendarDateString('2024-02-29'), true); // Leap year valid
-  assert.strictEqual(isValidCalendarDateString('2024-02-30'), false); // Leap year Feb 30 impossible
-  assert.strictEqual(isValidCalendarDateString('2025-02-29'), false); // Non-leap year Feb 29 impossible
-  assert.strictEqual(isValidCalendarDateString('2026-04-31'), false); // April has 30 days
-  assert.strictEqual(isValidCalendarDateString('2026-13-01'), false); // Invalid month 13
-  assert.strictEqual(isValidCalendarDateString('2026-00-10'), false); // Invalid month 0
-  assert.strictEqual(isValidCalendarDateString('2026-01-32'), false); // Invalid day 32
-  assert.strictEqual(isValidCalendarDateString('2026-01-00'), false); // Invalid day 0
-  assert.strictEqual(isValidCalendarDateString('not-a-date'), false);
-  assert.strictEqual(isValidCalendarDateString(12345 as any), false);
-  assert.strictEqual(isValidCalendarDateString('2026-09-10T17:00:00.000Z'), true);
-  assert.strictEqual(isValidCalendarDateString('2026-09-10T17:00:00+07:00'), true);
-  assert.strictEqual(isValidCalendarDateString('2026-02-30T17:00:00.000Z'), false);
-  assert.strictEqual(isValidCalendarDateString('2026-09-10T25:00:00.000Z'), false);
-  assert.strictEqual(isValidCalendarDateString('2026-09-10T12:60:00.000Z'), false);
-
-  // 4.17 Category group navigation token propagation (grammar-safe canonical selector)
-  const categoryGroupNorm = normalizeTransactionHistoryFilters({ categoryGroup: 'food_and_drinks' });
-  assert.strictEqual(categoryGroupNorm.isValid, true);
-  assert.strictEqual(categoryGroupNorm.appliedFilters.navigationTokens?.[0], 'kategori "food_and_drinks"');
-
-  // 4.18 Datetime precision preservation: 1-hour same-day ISO range must preserve exact 1-hour interval
-  const oneHourStart = '2026-09-11T12:00:00.000Z';
-  const oneHourEnd = '2026-09-11T13:00:00.000Z';
-  const oneHourResult = normalizeTransactionHistoryFilters(
-    { startDate: oneHourStart, endDate: oneHourEnd },
-    [],
-    [],
-    fixedRefDate
-  );
-  assert.strictEqual(oneHourResult.isValid, true);
-  assert.deepStrictEqual(oneHourResult.upstreamRecordDate, [
-    `gte.${oneHourStart}`,
-    `lte.${oneHourEnd}`,
-  ]);
-  const startTimestamp = Date.parse(oneHourStart);
-  const endTimestamp = Date.parse(oneHourEnd);
-  assert.strictEqual(endTimestamp - startTimestamp, 3600000); // Exactly 1 hour, not 24 hours (86400000)
-  assert.strictEqual(oneHourResult.appliedFilters.dateRange?.from, oneHourStart);
-  assert.strictEqual(oneHourResult.appliedFilters.dateRange?.to, oneHourEnd);
-
-  // Verify MCP call passes exact 1-hour ISO strings through service
-  const callsBeforeOneHour = capturedCalls.length;
-  await service.getTransactionHistory({ startDate: oneHourStart, endDate: oneHourEnd });
-  assert.strictEqual(capturedCalls.length, callsBeforeOneHour + 1);
-  assert.deepStrictEqual(capturedCalls[capturedCalls.length - 1].args.recordDate, [
-    `gte.${oneHourStart}`,
-    `lte.${oneHourEnd}`,
-  ]);
+      // Verify MCP call passes exact 1-hour ISO strings through service
+      const callsBeforeOneHour = queryContext.capturedCalls.length;
+      await queryContext.service.getTransactionHistory({ startDate: oneHourStart, endDate: oneHourEnd });
+      assert.strictEqual(queryContext.capturedCalls.length, callsBeforeOneHour + 1);
+      assert.deepStrictEqual(queryContext.capturedCalls[queryContext.capturedCalls.length - 1].args.recordDate, [
+        `gte.${oneHourStart}`,
+        `lte.${oneHourEnd}`,
+      ]);
 
   // 4.19 Array format with full ISO timestamps also preserves exact precision
   const arrayIsoResult = normalizeTransactionHistoryFilters(
@@ -912,87 +870,92 @@ describe('Composable Transaction History Filters Tests (Issue #101)', () => {
   });
 
   describe('Suite 5: Composable Multi-Filter Queries', () => {
+    let queryContext: QueryExecutionContext;
+
+    beforeEach(() => {
+      queryContext = createQueryExecutionContext({
+        accounts: MOCK_ACCOUNTS,
+        categories: MOCK_CATEGORIES,
+      });
+      queryContext.setNextResponse({
+        records: [
+          {
+            id: 'rec-combo-1',
+            accountId: 'acc-bca-001',
+            amount: -45000,
+            currency: 'IDR',
+            recordDate: '2026-09-05T12:00:00Z',
+            recordType: 'expense',
+            category: { id: 'cat-food-001', name: 'Makanan & Minuman' },
+            note: 'Makan Siang Soto',
+          },
+        ],
+        total: 1,
+      });
+    });
+
     it('accurately combines all dimensions simultaneously', async () => {
-
-  const { client, capturedCalls, setNextResponse } = createMockClient();
-  const cache = createSeededCacheService(client);
-  const service = new TransactionHistoryService(client, cache);
-
-  setNextResponse({
-    records: [
-      {
-        id: 'rec-combo-1',
-        accountId: 'acc-bca-001',
-        amount: -45000,
-        currency: 'IDR',
-        recordDate: '2026-09-05T12:00:00Z',
+      // Combine account + category + recordType + dateRange + limit + sort
+      const comboResult = await queryContext.service.getTransactionHistory({
+        accountName: 'BCA',
+        categoryName: 'Makanan',
         recordType: 'expense',
-        category: { id: 'cat-food-001', name: 'Makanan & Minuman' },
-        note: 'Makan Siang Soto',
-      },
-    ],
-    total: 1,
-  });
+        startDate: '2026-09-01',
+        endDate: '2026-09-30',
+        limit: 5,
+        sort: 'oldest',
+      });
 
-  // Combine account + category + recordType + dateRange + limit + sort
-  const comboResult = await service.getTransactionHistory({
-    accountName: 'BCA',
-    categoryName: 'Makanan',
-    recordType: 'expense',
-    startDate: '2026-09-01',
-    endDate: '2026-09-30',
-    limit: 5,
-    sort: 'oldest',
-  });
+      assert.strictEqual(queryContext.capturedCalls.length, 1);
+      const mcpArgs = queryContext.capturedCalls[0].args;
+      assert.strictEqual(mcpArgs.accountId, 'acc-bca-001');
+      assert.deepStrictEqual(mcpArgs.categoryId, ['cat-food-001']);
+      assert.strictEqual(mcpArgs.recordType, 'expense');
+      assert.deepStrictEqual(mcpArgs.recordDate, [
+        'gte.2026-08-31T17:00:00.000Z',
+        'lt.2026-09-30T17:00:00.000Z',
+      ]);
+      assert.strictEqual(mcpArgs.limit, 5);
+      assert.deepStrictEqual(mcpArgs.sortBy, ['+recordDate', '+createdAt']);
 
-  assert.strictEqual(capturedCalls.length, 1);
-  const mcpArgs = capturedCalls[0].args;
-  assert.strictEqual(mcpArgs.accountId, 'acc-bca-001');
-  assert.deepStrictEqual(mcpArgs.categoryId, ['cat-food-001']);
-  assert.strictEqual(mcpArgs.recordType, 'expense');
-  assert.deepStrictEqual(mcpArgs.recordDate, [
-    'gte.2026-08-31T17:00:00.000Z',
-    'lt.2026-09-30T17:00:00.000Z',
-  ]);
-  assert.strictEqual(mcpArgs.limit, 5);
-  assert.deepStrictEqual(mcpArgs.sortBy, ['+recordDate', '+createdAt']);
+      assert.strictEqual(comboResult.records.length, 1);
+      assert.deepStrictEqual(comboResult.records.map(r => r.id), ['rec-combo-1']);
+      assert.strictEqual(comboResult.records[0].accountName, 'BCA Tabungan');
+      assert.strictEqual(comboResult.appliedFilters?.account?.name, 'BCA Tabungan');
+      assert.strictEqual(comboResult.appliedFilters?.account?.selector, 'bca');
+      assert.strictEqual(comboResult.appliedFilters?.category?.name, 'Makanan & Minuman');
+      assert.strictEqual(comboResult.appliedFilters?.category?.selector, 'makanan');
+      assert.strictEqual(comboResult.appliedFilters?.recordType, 'expense');
 
-  assert.strictEqual(comboResult.records.length, 1);
-  assert.strictEqual(comboResult.records[0].accountName, 'BCA Tabungan');
-  assert.strictEqual(comboResult.appliedFilters?.account?.name, 'BCA Tabungan');
-  assert.strictEqual(comboResult.appliedFilters?.account?.selector, 'bca');
-  assert.strictEqual(comboResult.appliedFilters?.category?.name, 'Makanan & Minuman');
-  assert.strictEqual(comboResult.appliedFilters?.category?.selector, 'makanan');
-  assert.strictEqual(comboResult.appliedFilters?.recordType, 'expense');
-
-  console.log('  [PASS] Composable multi-filter query accurately combines all dimensions simultaneously.');
-
+      console.log('  [PASS] Composable multi-filter query accurately combines all dimensions simultaneously.');
     });
   });
 
   describe('Suite 6: Empty Matches & Filtered State Handling', () => {
+    let queryContext: QueryExecutionContext;
+
+    beforeEach(() => {
+      queryContext = createQueryExecutionContext({
+        accounts: MOCK_ACCOUNTS,
+        categories: MOCK_CATEGORIES,
+      });
+      queryContext.setNextResponse({ records: [], total: 0 });
+    });
+
     it('renders non-misleading filtered empty state', async () => {
+      const emptyFilteredPage = await queryContext.service.getTransactionHistory({
+        accountName: 'BCA',
+        categoryName: 'Makanan',
+      });
 
-  const { client, setNextResponse } = createMockClient();
-  const cache = createSeededCacheService(client);
-  const service = new TransactionHistoryService(client, cache);
+      assert.strictEqual(emptyFilteredPage.records.length, 0);
+      assert.strictEqual(emptyFilteredPage.total, 0);
 
-  setNextResponse({ records: [], total: 0 });
+      const formattedEmpty = formatTransactionHistoryMessage(emptyFilteredPage, 'id');
+      assert.match(formattedEmpty, /Belum ada transaksi yang cocok dengan filter/);
+      assert.match(formattedEmpty, /BCA Tabungan/);
 
-  const emptyFilteredPage = await service.getTransactionHistory({
-    accountName: 'BCA',
-    categoryName: 'Makanan',
-  });
-
-  assert.strictEqual(emptyFilteredPage.records.length, 0);
-  assert.strictEqual(emptyFilteredPage.total, 0);
-
-  const formattedEmpty = formatTransactionHistoryMessage(emptyFilteredPage, 'id');
-  assert.match(formattedEmpty, /Belum ada transaksi yang cocok dengan filter/);
-  assert.match(formattedEmpty, /BCA Tabungan/);
-
-  console.log('  [PASS] Empty results with active filters render non-misleading filtered empty state.');
-
+      console.log('  [PASS] Empty results with active filters render non-misleading filtered empty state.');
     });
   });
 
@@ -1677,57 +1640,57 @@ describe('Composable Transaction History Filters Tests (Issue #101)', () => {
 
   describe('Suite 9: FastPathHandler Integration with Filters', () => {
     it('verifies FastPathHandler integration with filters end-to-end', async () => {
+      const queryContext = createQueryExecutionContext({
+        accounts: MOCK_ACCOUNTS,
+        categories: MOCK_CATEGORIES,
+      });
+      const sentMessages: Array<{ channel: string; text: string }> = [];
 
-  const { client, setNextResponse } = createMockClient();
-  const cache = createSeededCacheService(client);
-  const sentMessages: Array<{ channel: string; text: string }> = [];
+      const mockGateway: any = {
+        sendMessage: async (channel: string, target: string, text: string) => {
+          sentMessages.push({ channel, text });
+          return true;
+        },
+      };
 
-  const mockGateway: any = {
-    sendMessage: async (channel: string, target: string, text: string) => {
-      sentMessages.push({ channel, text });
-      return true;
-    },
-  };
+      const handler = new FastPathHandler(queryContext.client, queryContext.cache, mockGateway);
 
-  const handler = new FastPathHandler(client, cache, mockGateway);
+      queryContext.setNextResponse({
+        records: [
+          {
+            id: 'rec-101',
+            accountId: 'acc-bca-001',
+            amount: -50000,
+            currency: 'IDR',
+            recordDate: '2026-09-10T15:00:00Z',
+            recordType: 'expense',
+            note: 'Pizza Hut',
+          },
+        ],
+        total: 1,
+      });
 
-  setNextResponse({
-    records: [
-      {
-        id: 'rec-101',
-        accountId: 'acc-bca-001',
-        amount: -50000,
-        currency: 'IDR',
-        recordDate: '2026-09-10T15:00:00Z',
-        recordType: 'expense',
-        note: 'Pizza Hut',
-      },
-    ],
-    total: 1,
-  });
+      const fastPathAction = detectFastPathAction('riwayat bca');
+      assert.ok(fastPathAction);
 
-  const fastPathAction = detectFastPathAction('riwayat bca');
-  assert.ok(fastPathAction);
+      const handled = await handler.handleFastPath(
+        {
+          channel: 'whatsapp',
+          chatIdentifier: '628123456789@s.whatsapp.net',
+          messageType: 'text',
+          textPayload: 'riwayat bca',
+        },
+        fastPathAction,
+        Date.now()
+      );
 
-  const handled = await handler.handleFastPath(
-    {
-      channel: 'whatsapp',
-      chatIdentifier: '628123456789@s.whatsapp.net',
-      messageType: 'text',
-      textPayload: 'riwayat bca',
-    },
-    fastPathAction,
-    Date.now()
-  );
+      assert.strictEqual(handled, true);
+      assert.strictEqual(sentMessages.length, 1);
+      assert.match(sentMessages[0].text, /Riwayat Transaksi/);
+      assert.match(sentMessages[0].text, /BCA Tabungan/);
+      assert.match(sentMessages[0].text, /Pizza Hut/);
 
-  assert.strictEqual(handled, true);
-  assert.strictEqual(sentMessages.length, 1);
-  assert.match(sentMessages[0].text, /Riwayat Transaksi/);
-  assert.match(sentMessages[0].text, /BCA Tabungan/);
-  assert.match(sentMessages[0].text, /Pizza Hut/);
-
-  console.log('  [PASS] FastPathHandler integration with filters verified end-to-end.');
-
+      console.log('  [PASS] FastPathHandler integration with filters verified end-to-end.');
     });
 
     it('verifies Issue #148 scope grammar and semantic tool boundary coverage', () => {
