@@ -407,23 +407,25 @@ export class UserMessageHandler {
               );
             } else {
               const semanticCategoryId = boundaryDecision.context.queryOptions?.categoryId;
-              if (!semanticCategoryId) {
+              const semanticSearchQuery = boundaryDecision.context.queryOptions?.searchQuery;
+              if (!semanticCategoryId && !semanticSearchQuery) {
                 // A deferred request contains an unresolved category concept. It
                 // must never degrade into an unfiltered history request merely
-                // because the semantic provider omitted a category selection.
+                // because the semantic provider omitted both category and search selection.
                 applicationLogger.warn(
-                  'Semantic category resolution omitted categoryId; history query was not executed.'
+                  'Semantic category resolution omitted categoryId and searchQuery; history query was not executed.'
                 );
               } else {
                 const mergedQueryOptions: TransactionHistoryQueryOptions = {
                   ...deferredHistoryFastPathOptions,
-                  categoryId: semanticCategoryId,
+                  ...(semanticCategoryId ? { categoryId: semanticCategoryId } : {}),
                   ...(boundaryDecision.context.queryOptions?.categoryGroup
                     ? { categoryGroup: boundaryDecision.context.queryOptions.categoryGroup }
                     : {}),
                   ...(boundaryDecision.context.queryOptions?.isGroupQuery !== undefined
                     ? { isGroupQuery: boundaryDecision.context.queryOptions.isGroupQuery }
                     : {}),
+                  ...(semanticSearchQuery ? { searchQuery: semanticSearchQuery } : {}),
                 };
                 delete mergedQueryOptions.categoryName;
                 await this.financialActionRegistry.execute({

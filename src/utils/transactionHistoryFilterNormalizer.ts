@@ -102,18 +102,17 @@ export function normalizeGroupMatchingText(text: string): string {
 
 export function matchesCategorySubstring(categoryName: string, normalizedHint: string): boolean {
   const normalizedCategoryName = categoryName.toLowerCase().trim();
-  if (!normalizedCategoryName || !normalizedHint) {
+  const cleanHint = normalizedHint.toLowerCase().trim();
+  if (!normalizedCategoryName || !cleanHint) {
     return false;
   }
-  if (normalizedCategoryName.includes(normalizedHint)) {
+  if (normalizedCategoryName.includes(cleanHint)) {
     return true;
   }
-  if (normalizedCategoryName.length >= 2) {
-    const escapedCategoryName = normalizedCategoryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const wordBoundaryRegex = new RegExp(`\\b${escapedCategoryName}\\b`, 'i');
-    if (wordBoundaryRegex.test(normalizedHint)) {
-      return true;
-    }
+  const standardizedCategory = normalizeGroupMatchingText(normalizedCategoryName);
+  const standardizedHint = normalizeGroupMatchingText(cleanHint);
+  if (standardizedCategory.includes(standardizedHint)) {
+    return true;
   }
   return false;
 }
@@ -250,11 +249,6 @@ export function matchDynamicCategoryGroup(
       (groupNameLower.includes(normalizedHint) || groupIdLower.includes(normalizedHint))
     ) {
       matched = true;
-    } else if (groupNameLower.length >= 3) {
-      const escapedGroupName = groupNameLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      if (new RegExp(`\\b${escapedGroupName}\\b`, 'i').test(normalizedHint)) {
-        matched = true;
-      }
     }
 
     if (matched) {

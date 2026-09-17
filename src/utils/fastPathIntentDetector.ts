@@ -247,10 +247,15 @@ function extractHistoryQueryOptionsFromTokens(
     resolvedAccountName = (explicitAccountMatch[1] || explicitAccountMatch[2] || explicitAccountMatch[3]).toLowerCase();
     remainingTokens = remainingTokens.replace(explicitAccountMatch[0], ' ').trim();
   } else {
-    const connectorAccountMatch = remainingTokens.match(/\b(?:dari|di|for|in|pada)\s+([a-zA-Z0-9_-]+)\b/i);
-    if (connectorAccountMatch && KNOWN_ACCOUNT_KEYWORDS.has(connectorAccountMatch[1].toLowerCase())) {
-      resolvedAccountName = connectorAccountMatch[1].toLowerCase();
-      remainingTokens = remainingTokens.replace(connectorAccountMatch[0], ' ').trim();
+    const connectorAccountMatch = remainingTokens.match(
+      /\b(?:dari|di|for|in|pada)\s+([a-zA-Z0-9_-]+(?:\s+(?:debit\s+card|credit\s+card|kartu\s+debit|kartu\s+kredit|debit|card))?)\b/i
+    );
+    if (connectorAccountMatch) {
+      const leadingAccountWord = connectorAccountMatch[1].split(/\s+/)[0].toLowerCase();
+      if (KNOWN_ACCOUNT_KEYWORDS.has(leadingAccountWord)) {
+        resolvedAccountName = connectorAccountMatch[1].toLowerCase();
+        remainingTokens = remainingTokens.replace(connectorAccountMatch[0], ' ').trim();
+      }
     }
   }
 
