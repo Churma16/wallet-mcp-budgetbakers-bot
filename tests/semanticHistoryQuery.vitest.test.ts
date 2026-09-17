@@ -370,6 +370,11 @@ describe('single-call semantic transaction-history routing', () => {
     expect(harness.gateway.sendMessage).toHaveBeenCalledWith(
       'whatsapp',
       'chat',
+      expect.stringContaining('tidak ditemukan dalam daftar kategori')
+    );
+    expect(harness.gateway.sendMessage).not.toHaveBeenCalledWith(
+      'whatsapp',
+      'chat',
       'Kategori yang dimaksud belum jelas.'
     );
   });

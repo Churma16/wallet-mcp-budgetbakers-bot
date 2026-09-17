@@ -7,7 +7,10 @@ import {
   extractDynamicCategoryGroups,
 } from '../src/utils/transactionHistoryFilterNormalizer.js';
 import { validateSemanticHistoryQueryOptions } from '../src/services/ai/semanticToolBoundary.js';
-import { WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
+import { WalletAccountItem, WalletCategoryItem, WalletRecordItem } from '../src/types/walletTypes.js';
+import { WalletMcpClientService } from '../src/services/walletMcpService.js';
+import { TransactionHistoryService } from '../src/services/transactionHistoryService.js';
+import { getDictionary } from '../src/i18n/index.js';
 
 const MOCK_ACCOUNTS: WalletAccountItem[] = [
   { id: 'acc-bca', name: 'BCA' },
@@ -43,6 +46,17 @@ const COMPREHENSIVE_CATEGORIES: WalletCategoryItem[] = [
   // Housing & Health
   { id: 'cat-housing', name: 'Kebutuhan Rumah', group: 'housing' },
   { id: 'cat-health', name: 'Kesehatan & Obat', group: 'life_entertainment' },
+];
+
+const ISSUE_173_CATEGORIES: WalletCategoryItem[] = [
+  { id: 'c-1', name: 'Makan Nafsu', group: 'food_and_drinks' },
+  { id: 'c-2', name: 'Food & Drinks', group: 'food_and_drinks' },
+  { id: 'c-3', name: 'Other' },
+  { id: 'c-4', name: 'Makan Hangout', group: 'food_and_drinks' },
+  { id: 'c-5', name: 'Software, apps, games', group: 'communication_pc' },
+  { id: 'c-6', name: 'Transport', group: 'transportation' },
+  { id: 'c-7', name: 'Internet', group: 'communication_pc' },
+  { id: 'c-8', name: 'Pengeluaran Digital', group: 'communication_pc' },
 ];
 
 function createRegressionHandler(aiProvider: any, fastPathHandled = false, categories: WalletCategoryItem[] = COMPREHENSIVE_CATEGORIES, accounts: WalletAccountItem[] = MOCK_ACCOUNTS) {
@@ -111,16 +125,16 @@ describe('Issue #160 comment checklist regression corpus', () => {
     });
 
     it.each([
-      ['History makan hangry', 'food_and_drinks', 'hangry'],
-      ['Riwayat makan ayam hangry', 'food_and_drinks', 'ayam hangry'],
-      ['Riwayat makan di hangry', 'food_and_drinks', 'hangry'],
-      ['Riwayat pesen makan di grab', 'food_and_drinks', 'grab'],
-      ['Riwayat grab food', 'food_and_drinks', 'grab'],
-      ['Riwayat makanan dari grab', 'food_and_drinks', 'grab'],
-    ])('does not blindly widen multi-signal phrase "%s" into all food records and preserves both filters', async (input, expectedGroup, expectedSearch) => {
+      ['History makan hangry', 'hangry'],
+      ['Riwayat makan ayam hangry', 'ayam hangry'],
+      ['Riwayat makan di hangry', 'hangry'],
+      ['Riwayat pesen makan di grab', 'grab'],
+      ['Riwayat grab food', 'grab'],
+      ['Riwayat makanan dari grab', 'grab'],
+    ])('routes merchant/item phrase "%s" to cross-category description search without categoryGroup', async (input, expectedSearch) => {
       const processTextMessage = vi.fn().mockResolvedValue({
         action: 'TRANSACTION_HISTORY',
-        queryOptions: { categoryGroup: expectedGroup, searchQuery: expectedSearch },
+        queryOptions: { searchQuery: expectedSearch },
       });
       const harness = createRegressionHandler(
         { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
@@ -132,10 +146,12 @@ describe('Issue #160 comment checklist regression corpus', () => {
       expect(harness.registry.execute).toHaveBeenCalledWith(expect.objectContaining({
         action: 'TRANSACTION_HISTORY',
         queryOptions: expect.objectContaining({
-          categoryGroup: expectedGroup,
           searchQuery: expectedSearch,
         }),
       }));
+      const executeCall = harness.registry.execute.mock.calls[0][0];
+      expect(executeCall.queryOptions.categoryId).toBeUndefined();
+      expect(executeCall.queryOptions.categoryGroup).toBeUndefined();
     });
 
     it('correctly extracts account, recordType, datePeriod, and category for "Riwayat makan jago expense bulan ini"', () => {
@@ -514,4 +530,204 @@ describe('Issue #160 comment checklist regression corpus', () => {
       expect(normalized.unresolvedFilters).toHaveLength(0);
     });
   });
+
+  describe('Issue #173 synthetic fixture & description search acceptance', () => {
+    const ISSUE_173_FIXTURE_RECORDS: any[] = [
+      { id: 'rec-A', recordType: 'expense', amount: -50000, note: 'Hangry dinner', category: { id: 'c-1', name: 'Makan Nafsu' }, recordDate: '2026-09-16T12:00:00Z' },
+      { id: 'rec-B', recordType: 'expense', amount: -40000, note: 'Hangry lunch', category: { id: 'c-2', name: 'Food & Drinks' }, recordDate: '2026-09-16T11:00:00Z' },
+      { id: 'rec-C', recordType: 'expense', amount: -45000, note: 'Hangry reimbursement', category: { id: 'c-3', name: 'Other' }, recordDate: '2026-09-16T10:00:00Z' },
+      { id: 'rec-D', recordType: 'expense', amount: -60000, note: 'Hokben dinner', category: { id: 'c-4', name: 'Makan Hangout' }, recordDate: '2026-09-16T09:00:00Z' },
+      { id: 'rec-E', recordType: 'expense', amount: -150000, note: 'AI provider API', category: { id: 'c-5', name: 'Software, apps, games' }, recordDate: '2026-09-16T08:00:00Z' },
+      { id: 'rec-F', recordType: 'expense', amount: -25000, note: 'Trip to Sarana Jaya', category: { id: 'c-6', name: 'Transport' }, recordDate: '2026-09-16T07:00:00Z' },
+      { id: 'rec-G', recordType: 'expense', amount: -100000, note: '10 GB data package', category: { id: 'c-7', name: 'Internet' }, recordDate: '2026-09-16T06:00:00Z' },
+      { id: 'rec-H', recordType: 'expense', amount: -120000, note: 'VPS hosting', category: { id: 'c-8', name: 'Pengeluaran Digital' }, recordDate: '2026-09-16T05:00:00Z' },
+      { id: 'rec-I', recordType: 'income', amount: 50000, note: 'AI provider refund', category: { id: 'c-5', name: 'Software, apps, games' }, recordDate: '2026-09-16T04:00:00Z' },
+      { id: 'rec-J', recordType: 'income', amount: 35000, note: 'Hangry refund', category: { id: 'c-3', name: 'Other' }, recordDate: '2026-09-16T03:00:00Z' },
+    ];
+
+    function createFixtureHistoryService() {
+      const client = new WalletMcpClientService('https://mcp.wallet.budgetbakers.com', 'mock-token');
+      client.callMcpTool = vi.fn().mockImplementation(async <T>(_toolName: string, args: Record<string, unknown> = {}): Promise<T> => {
+        let filtered = [...ISSUE_173_FIXTURE_RECORDS];
+        if (args.recordType) {
+          filtered = filtered.filter(r => r.recordType === args.recordType);
+        }
+        if (args.categoryId && Array.isArray(args.categoryId)) {
+          filtered = filtered.filter(r => (args.categoryId as string[]).includes(r.category.id));
+        }
+        return { records: filtered, total: filtered.length } as T;
+      });
+      const cacheService = {
+        getAccounts: () => MOCK_ACCOUNTS,
+        getCategories: () => ISSUE_173_CATEGORIES,
+      } as any;
+      return { client, historyService: new TransactionHistoryService(client, cacheService) };
+    }
+
+    it('riwayat makan hangry: returns A, B, C, J and never D across categories and types', async () => {
+      const { historyService, client } = createFixtureHistoryService();
+      const result = await historyService.getTransactionHistory({
+        searchQuery: 'hangry',
+        sort: 'newest',
+      });
+
+      const returnedIds = result.records.map(r => r.id);
+      expect(returnedIds).toEqual(['rec-A', 'rec-B', 'rec-C', 'rec-J']);
+      expect(returnedIds).not.toContain('rec-D');
+
+      const lastCall = (client.callMcpTool as any).mock.calls[0][1];
+      expect(lastCall.categoryId).toBeUndefined();
+      expect(lastCall.categoryGroup).toBeUndefined();
+    });
+
+    it('riwayat beli ai: returns E and never F (incidental Jaya) or I (income refund)', async () => {
+      const { historyService } = createFixtureHistoryService();
+      const result = await historyService.getTransactionHistory({
+        searchQuery: 'ai',
+        recordType: 'expense',
+        sort: 'newest',
+      });
+
+      const returnedIds = result.records.map(r => r.id);
+      expect(returnedIds).toEqual(['rec-E']);
+      expect(returnedIds).not.toContain('rec-F');
+      expect(returnedIds).not.toContain('rec-I');
+    });
+
+    it('riwayat beli wifi / riwayat langganan wifi: returns no matches and never G (Internet package)', async () => {
+      const { historyService } = createFixtureHistoryService();
+      const result = await historyService.getTransactionHistory({
+        searchQuery: 'wifi',
+        recordType: 'expense',
+        sort: 'newest',
+      });
+
+      expect(result.records).toHaveLength(0);
+      expect(result.records.map(r => r.id)).not.toContain('rec-G');
+    });
+
+    it('riwayat beli vps: returns H and never G or income refund', async () => {
+      const { historyService } = createFixtureHistoryService();
+      const result = await historyService.getTransactionHistory({
+        searchQuery: 'vps',
+        recordType: 'expense',
+        sort: 'newest',
+      });
+
+      const returnedIds = result.records.map(r => r.id);
+      expect(returnedIds).toEqual(['rec-H']);
+      expect(returnedIds).not.toContain('rec-G');
+    });
+
+    it('preserves multi-page pagination for cross-category note search without losing filter', async () => {
+      const multiPageRecords = Array.from({ length: 15 }, (_, index) => ({
+        id: `rec-hangry-${index + 1}`,
+        recordType: 'expense',
+        amount: -25000,
+        note: `Hangry meal #${index + 1}`,
+        category: { id: index % 2 === 0 ? 'c-1' : 'c-3', name: index % 2 === 0 ? 'Makan Nafsu' : 'Other' },
+        recordDate: new Date(Date.now() - index * 60000).toISOString(),
+      }));
+
+      const client = new WalletMcpClientService('https://mcp.wallet.budgetbakers.com', 'mock-token');
+      client.callMcpTool = vi.fn().mockImplementation(async <T>(_toolName: string, args: Record<string, unknown> = {}): Promise<T> => {
+        const offset = (args.offset as number) || 0;
+        const limit = (args.limit as number) || 10;
+        const pageItems = multiPageRecords.slice(offset, offset + limit);
+        return { records: pageItems, total: multiPageRecords.length } as T;
+      });
+      const historyService = new TransactionHistoryService(client, {
+        getAccounts: () => MOCK_ACCOUNTS,
+        getCategories: () => ISSUE_173_CATEGORIES,
+      } as any);
+
+      const page1 = await historyService.getTransactionHistory({
+        searchQuery: 'hangry',
+        page: 1,
+        limit: 10,
+      });
+      expect(page1.records).toHaveLength(10);
+      expect(page1.hasMore).toBe(true);
+
+      const page2 = await historyService.getTransactionHistory({
+        searchQuery: 'hangry',
+        page: 2,
+        limit: 10,
+      });
+      expect(page2.records).toHaveLength(5);
+      expect(page2.records[0].id).toBe('rec-hangry-11');
+      expect(page2.hasMore).toBe(false);
+    });
+  });
+
+  describe('Unexecuted deferred history fail-closed guards', () => {
+    it('fails closed and sends clarification/error text without leaking result-like AI explanation', async () => {
+      const processTextMessage = vi.fn().mockResolvedValue({
+        action: 'TRANSACTION_HISTORY',
+        explanation: 'Menampilkan riwayat transaksi pengeluaran untuk pembelian wifi.',
+        queryOptions: {},
+      });
+      const harness = createRegressionHandler(
+        { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+        false,
+        ISSUE_173_CATEGORIES
+      );
+
+      await harness.handler.handleIncomingUserMessage(textEvent('riwayat beli wifi'));
+
+      expect(harness.registry.execute).not.toHaveBeenCalled();
+      expect(harness.gateway.sendMessage).toHaveBeenCalledWith(
+        'whatsapp',
+        'chat-reg',
+        expect.stringContaining('tidak ditemukan dalam daftar kategori')
+      );
+      expect(harness.gateway.sendMessage).not.toHaveBeenCalledWith(
+        'whatsapp',
+        'chat-reg',
+        expect.stringContaining('Menampilkan riwayat transaksi pengeluaran')
+      );
+    });
+
+    it('fails closed when semantic fallback proposes non-TRANSACTION_HISTORY action for deferred history', async () => {
+      const processTextMessage = vi.fn().mockResolvedValue({
+        action: 'CHECK_BALANCE',
+        explanation: 'Berikut adalah saldo Anda.',
+      });
+      const harness = createRegressionHandler(
+        { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+        false
+      );
+
+      await harness.handler.handleIncomingUserMessage(textEvent('riwayat ayam'));
+
+      expect(harness.registry.execute).not.toHaveBeenCalled();
+      expect(harness.gateway.sendMessage).toHaveBeenCalledWith(
+        'whatsapp',
+        'chat-reg',
+        expect.stringContaining('tidak ditemukan dalam daftar kategori')
+      );
+    });
+
+    it('preserves expense intent from purchase-description queries (riwayat beli vps)', async () => {
+      const processTextMessage = vi.fn().mockResolvedValue({
+        action: 'TRANSACTION_HISTORY',
+        queryOptions: { searchQuery: 'vps' },
+      });
+      const harness = createRegressionHandler(
+        { providerName: 'mock', processTextMessage, processImageMessage: vi.fn() },
+        false
+      );
+
+      await harness.handler.handleIncomingUserMessage(textEvent('riwayat beli vps'));
+
+      expect(harness.registry.execute).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'TRANSACTION_HISTORY',
+        queryOptions: expect.objectContaining({
+          searchQuery: 'vps',
+          recordType: 'expense',
+        }),
+      }));
+    });
+  });
 });
+

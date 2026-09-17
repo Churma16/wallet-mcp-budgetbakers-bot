@@ -405,6 +405,21 @@ export class UserMessageHandler {
               applicationLogger.warn(
                 `Semantic history resolution proposed ${boundaryDecision.context.action}; action was not executed.`
               );
+              const rawCategory = deferredHistoryFastPathOptions.categoryName || event.textPayload || '';
+              const unresolvedMessage = getDictionary().history.unresolvedFilters([
+                {
+                  filterKey: 'category',
+                  rawValue: rawCategory,
+                  reason: 'NOT_FOUND',
+                  message: `Category "${rawCategory}" not found in Wallet cache.`,
+                },
+              ]);
+              await this.messagingGateway.sendMessage(
+                event.channel,
+                event.chatIdentifier,
+                unresolvedMessage
+              );
+              return;
             } else {
               const semanticCategoryId = boundaryDecision.context.queryOptions?.categoryId;
               const semanticSearchQuery = boundaryDecision.context.queryOptions?.searchQuery;
@@ -415,9 +430,27 @@ export class UserMessageHandler {
                 applicationLogger.warn(
                   'Semantic category resolution omitted categoryId and searchQuery; history query was not executed.'
                 );
+                const rawCategory = deferredHistoryFastPathOptions.categoryName || event.textPayload || '';
+                const unresolvedMessage = getDictionary().history.unresolvedFilters([
+                  {
+                    filterKey: 'category',
+                    rawValue: rawCategory,
+                    reason: 'NOT_FOUND',
+                    message: `Category "${rawCategory}" not found in Wallet cache.`,
+                  },
+                ]);
+                await this.messagingGateway.sendMessage(
+                  event.channel,
+                  event.chatIdentifier,
+                  unresolvedMessage
+                );
+                return;
               } else {
+                const semanticRecordType = boundaryDecision.context.queryOptions?.recordType;
+                const mergedRecordType = deferredHistoryFastPathOptions.recordType || semanticRecordType;
                 const mergedQueryOptions: TransactionHistoryQueryOptions = {
                   ...deferredHistoryFastPathOptions,
+                  ...(mergedRecordType ? { recordType: mergedRecordType } : {}),
                   ...(semanticCategoryId ? { categoryId: semanticCategoryId } : {}),
                   ...(boundaryDecision.context.queryOptions?.categoryGroup
                     ? { categoryGroup: boundaryDecision.context.queryOptions.categoryGroup }
@@ -451,6 +484,24 @@ export class UserMessageHandler {
             senderIdentifier: event.senderIdentifier,
           });
 
+          if (deferredHistoryFastPathOptions) {
+            const rawCategory = deferredHistoryFastPathOptions.categoryName || event.textPayload || '';
+            const unresolvedMessage = getDictionary().history.unresolvedFilters([
+              {
+                filterKey: 'category',
+                rawValue: rawCategory,
+                reason: 'NOT_FOUND',
+                message: `Category "${rawCategory}" not found in Wallet cache.`,
+              },
+            ]);
+            await this.messagingGateway.sendMessage(
+              event.channel,
+              event.chatIdentifier,
+              unresolvedMessage
+            );
+            return;
+          }
+
           if (semanticToolProposal.tool === 'propose_transaction') {
             await this.messagingGateway.sendMessage(
               event.channel,
@@ -462,6 +513,25 @@ export class UserMessageHandler {
             return;
           }
         }
+      } else if (deferredHistoryFastPathOptions && extractedIntent.action !== 'GENERAL_REPLY') {
+        applicationLogger.warn(
+          'Semantic fallback for deferred history failed to provide an actionable tool proposal; history query was not executed.'
+        );
+        const rawCategory = deferredHistoryFastPathOptions.categoryName || event.textPayload || '';
+        const unresolvedMessage = getDictionary().history.unresolvedFilters([
+          {
+            filterKey: 'category',
+            rawValue: rawCategory,
+            reason: 'NOT_FOUND',
+            message: `Category "${rawCategory}" not found in Wallet cache.`,
+          },
+        ]);
+        await this.messagingGateway.sendMessage(
+          event.channel,
+          event.chatIdentifier,
+          unresolvedMessage
+        );
+        return;
       }
 
       if (event.messageType === 'image') {
