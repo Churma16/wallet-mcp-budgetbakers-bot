@@ -3,7 +3,7 @@ import { WalletCategoryItem } from '../types/walletTypes.js';
 import { getDictionary } from '../i18n/index.js';
 import { formatCurrencyAmount } from './humanResponseFormatter.js';
 
-function resolveCategoryName(
+export function resolveCategoryName(
   rawCategoryId: string | undefined,
   categories: WalletCategoryItem[]
 ): string {
@@ -50,7 +50,7 @@ function resolveDraftCurrency(draft: PendingAccountSelectionDraft): string | und
     : undefined;
 }
 
-function formatDraftAmount(draft: PendingAccountSelectionDraft): string {
+export function formatDraftAmount(draft: PendingAccountSelectionDraft): string {
   const dictionary = getDictionary();
   const record = draft.records[draft.pendingRecordIndex];
   const resolvedCurrency = record.currency || resolveDraftCurrency(draft);

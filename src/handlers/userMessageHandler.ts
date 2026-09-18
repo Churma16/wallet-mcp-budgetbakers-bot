@@ -6,6 +6,7 @@ import {
   SemanticToolBoundary,
   SemanticToolAuthorizationContext,
   createSemanticToolProposalFromFinancialIntent,
+  AccountClarificationConversationService,
 } from '../services/ai/index.js';
 import { validateReceiptFinancialIntentEnvelope } from '../services/ai/jsonExtractionHelper.js';
 import { WalletMcpClientService } from '../services/walletMcpService.js';
@@ -145,7 +146,9 @@ export class UserMessageHandler {
         walletMcpClient,
         walletCacheService,
         messagingGateway,
-        this.recordPreparationService
+        this.recordPreparationService,
+        undefined,
+        new AccountClarificationConversationService(financialAiProvider)
       );
     this.semanticToolBoundary = semanticToolBoundary || new SemanticToolBoundary();
     this.semanticToolAuthorizationResolver =

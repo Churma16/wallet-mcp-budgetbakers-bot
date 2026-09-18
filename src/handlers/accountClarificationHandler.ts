@@ -27,9 +27,11 @@ import { getDictionary } from '../i18n/index.js';
 import { applicationLogger, formatConciseErrorMessage } from '../utils/logger.js';
 import { WalletRecordPreparationService } from '../services/walletRecordPreparationService.js';
 import { CategoryContextService } from '../services/categoryContextService.js';
+import { AccountClarificationConversationService } from '../services/ai/index.js';
 
 export class AccountClarificationHandler {
   private readonly recordPreparationService: WalletRecordPreparationService;
+  private readonly conversationService: AccountClarificationConversationService;
 
   constructor(
     private readonly pendingTransactionManager: PendingTransactionService,
@@ -37,11 +39,15 @@ export class AccountClarificationHandler {
     private readonly walletCacheService: WalletCacheService,
     private readonly messagingGateway: MessagingGatewayService,
     recordPreparationService?: WalletRecordPreparationService,
-    private readonly categoryContextService?: CategoryContextService
+    private readonly categoryContextService?: CategoryContextService,
+    conversationService?: AccountClarificationConversationService
   ) {
     this.recordPreparationService =
       recordPreparationService ||
       new WalletRecordPreparationService(walletCacheService, walletMcpClient);
+    this.conversationService =
+      conversationService ||
+      new AccountClarificationConversationService();
   }
 
   public async createPendingAccountSelectionDraft(
@@ -81,10 +87,14 @@ export class AccountClarificationHandler {
     );
 
     try {
+      const promptContent = await this.conversationService.generateClarificationQuestion(
+        pendingDraft,
+        availableCategories
+      );
       await this.messagingGateway.sendMessage(
         event.channel,
         event.chatIdentifier,
-        formatAccountSelectionPrompt(pendingDraft, availableCategories)
+        promptContent
       );
     } catch (messagingError) {
       this.pendingTransactionManager.rejectPendingAccountSelectionDraft(pendingDraft.ticketId);
@@ -209,17 +219,22 @@ export class AccountClarificationHandler {
       return true;
     }
 
-    const selectedAccount = this.resolveAccountSelection(normalizedReply, claimedDraft.candidateAccounts);
+    const selectedAccount = await this.conversationService.interpretClarificationReply(
+      normalizedReply,
+      claimedDraft,
+      this.walletCacheService.getCategories()
+    );
     if (!selectedAccount) {
       this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(claimedDraft.ticketId);
+      const retryPrompt = await this.conversationService.generateClarificationQuestion(
+        claimedDraft,
+        this.walletCacheService.getCategories(),
+        normalizedReply
+      );
       await this.messagingGateway.sendMessage(
         event.channel,
         event.chatIdentifier,
-        formatAccountSelectionPrompt(
-          claimedDraft,
-          this.walletCacheService.getCategories(),
-          normalizedReply
-        )
+        retryPrompt
       );
       return true;
     }
@@ -296,10 +311,14 @@ export class AccountClarificationHandler {
       }
 
       try {
+        const followUpPrompt = await this.conversationService.generateClarificationQuestion(
+          updatedDraft,
+          availableCategories
+        );
         await this.messagingGateway.sendMessage(
           event.channel,
           event.chatIdentifier,
-          formatAccountSelectionPrompt(updatedDraft, availableCategories)
+          followUpPrompt
         );
         this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(claimedDraft.ticketId);
       } catch (messagingError) {
@@ -467,35 +486,5 @@ export class AccountClarificationHandler {
       uniqueAccounts.set(account.id, account);
     }
     return Array.from(uniqueAccounts.values());
-  }
-
-  private resolveAccountSelection(
-    userReply: string,
-    candidateAccounts: PendingAccountSelectionCandidate[]
-  ): PendingAccountSelectionCandidate | undefined {
-    if (/^\d+$/.test(userReply)) {
-      const selectedIndex = Number.parseInt(userReply, 10) - 1;
-      if (selectedIndex >= 0 && selectedIndex < candidateAccounts.length) {
-        return candidateAccounts[selectedIndex];
-      }
-      return undefined;
-    }
-
-    const normalizedReply = userReply.toLowerCase();
-    const exactMatches = candidateAccounts.filter(
-      candidate => candidate.name.toLowerCase() === normalizedReply
-    );
-    if (exactMatches.length === 1) {
-      return exactMatches[0];
-    }
-    if (exactMatches.length > 1 || normalizedReply.length < 2) {
-      return undefined;
-    }
-
-    const partialMatches = candidateAccounts.filter(candidate => {
-      const normalizedName = candidate.name.toLowerCase();
-      return normalizedName.includes(normalizedReply) || normalizedReply.includes(normalizedName);
-    });
-    return partialMatches.length === 1 ? partialMatches[0] : undefined;
   }
 }
