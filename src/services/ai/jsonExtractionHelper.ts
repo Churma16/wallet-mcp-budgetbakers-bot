@@ -1,6 +1,11 @@
 import { applicationLogger } from '../../utils/logger.js';
 import { parseFinancialAmount } from '../../utils/financialAmountParser.js';
-import type { ExtractedFinancialIntent, ExtractedFinancialRecordItem } from './financialAiProvider.js';
+import type {
+  ExtractedFinancialIntent,
+  ExtractedFinancialRecordItem,
+  AccountClarificationProposal,
+  TokenUsageStatistics,
+} from './financialAiProvider.js';
 
 /**
  * Extracts the content of the first triple-backtick code fence using linear index scanning
@@ -248,4 +253,54 @@ export function validateReceiptFinancialIntentEnvelope(
     action: validatedAction,
     explanation: typeof rawRecord.explanation === 'string' ? rawRecord.explanation : undefined,
   };
+}
+
+/**
+ * Parses and normalizes LLM response for account clarification question generation
+ */
+export function parseClarificationQuestionResponse(
+  rawResponseText: string,
+  tokenUsage?: TokenUsageStatistics
+): { question: string; tokenUsage?: TokenUsageStatistics } {
+  try {
+    const parsed = extractAndParseJsonObject<{ question?: string }>(rawResponseText);
+    return {
+      question: parsed.question || rawResponseText,
+      tokenUsage,
+    };
+  } catch {
+    return {
+      question: rawResponseText,
+      tokenUsage,
+    };
+  }
+}
+
+/**
+ * Parses and normalizes LLM response for account clarification reply interpretation
+ */
+export function parseClarificationProposalResponse(
+  rawResponseText: string,
+  tokenUsage?: TokenUsageStatistics
+): AccountClarificationProposal {
+  try {
+    const parsed = extractAndParseJsonObject<AccountClarificationProposal>(rawResponseText);
+    return {
+      selectedAccountId:
+        typeof parsed.selectedAccountId === 'string' ? parsed.selectedAccountId : null,
+      selectedCandidateIndex:
+        typeof parsed.selectedCandidateIndex === 'number'
+          ? parsed.selectedCandidateIndex
+          : null,
+      reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : '',
+      tokenUsage,
+    };
+  } catch {
+    return {
+      selectedAccountId: null,
+      selectedCandidateIndex: null,
+      reasoning: 'Failed to parse JSON response',
+      tokenUsage,
+    };
+  }
 }

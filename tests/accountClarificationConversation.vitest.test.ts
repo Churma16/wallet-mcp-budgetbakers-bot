@@ -17,6 +17,13 @@ import {
 import { setActiveLanguage } from '../src/i18n/index.js';
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { applicationLogger } from '../src/utils/logger.js';
+import { GeminiAiProvider } from '../src/services/ai/geminiAiProvider.js';
+import { OpenAiCompatibleAiProvider } from '../src/services/ai/openAiCompatibleAiProvider.js';
+import { FallbackAiProvider } from '../src/services/ai/fallbackAiProvider.js';
+import {
+  parseClarificationQuestionResponse,
+  parseClarificationProposalResponse,
+} from '../src/services/ai/jsonExtractionHelper.js';
 
 class MockMessagingGateway {
   public readonly messages: Array<{ channel: string; chatId: string; content: string }> = [];
@@ -392,24 +399,26 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
       expect(harness.walletMcpClient.calls[0][0].accountId).toBe('acc-bca-tahapan');
     });
 
-    it('interprets colloquial English reply "the one I normally use"', async () => {
+    it('fails closed on ungrounded preference expression "the one I normally use" without trusted preference context', async () => {
       const harness = createHarness([createPendingRecord('BCA')]);
       await harness.userMessageHandler.handleIncomingUserMessage(
         createIncomingEvent('Makan siang 75rb pakai BCA')
       );
 
+      // Model returns null because no trusted preference context is available
       harness.financialAiProvider.mockProposalResponse = {
-        selectedAccountId: 'acc-bca-tahapan',
-        selectedCandidateIndex: 1,
-        reasoning: 'Interpreted as primary savings account',
+        selectedAccountId: null,
+        selectedCandidateIndex: null,
+        reasoning: 'Ungrounded preference expression without trusted context',
       };
 
       await harness.userMessageHandler.handleIncomingUserMessage(
         createIncomingEvent('the one I normally use')
       );
 
-      expect(harness.walletMcpClient.calls.length).toBe(1);
-      expect(harness.walletMcpClient.calls[0][0].accountId).toBe('acc-bca-tahapan');
+      // Kept draft pending and did NOT call Wallet MCP
+      expect(harness.walletMcpClient.calls.length).toBe(0);
+      expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(1);
     });
   });
 
@@ -510,6 +519,74 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
       );
     });
 
+    it('rejects proposal with invalid ID + valid index (fails closed)', async () => {
+      const harness = createHarness([createPendingRecord('BCA')]);
+      await harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('Makan siang 75rb pakai BCA')
+      );
+
+      const loggerWarnSpy = vi.spyOn(applicationLogger, 'warn');
+
+      // Invalid non-candidate ID combined with in-bounds index
+      harness.financialAiProvider.mockProposalResponse = {
+        selectedAccountId: 'acc-evil',
+        selectedCandidateIndex: 1,
+        reasoning: 'Invalid ID with valid index',
+      };
+
+      await harness.userMessageHandler.handleIncomingUserMessage(createIncomingEvent('pilihan 1'));
+
+      expect(harness.walletMcpClient.calls.length).toBe(0);
+      expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(1);
+      expect(loggerWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[Account Clarification] LLM proposed non-candidate account ID "acc-evil"')
+      );
+    });
+
+    it('rejects proposal with valid ID + conflicting valid index (fails closed)', async () => {
+      const harness = createHarness([createPendingRecord('BCA')]);
+      await harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('Makan siang 75rb pakai BCA')
+      );
+
+      const loggerWarnSpy = vi.spyOn(applicationLogger, 'warn');
+
+      // Valid ID (acc-bca-tahapan = index 1) conflicting with index 2 (acc-bca-bisnis)
+      harness.financialAiProvider.mockProposalResponse = {
+        selectedAccountId: 'acc-bca-tahapan',
+        selectedCandidateIndex: 2,
+        reasoning: 'Conflicting candidate fields',
+      };
+
+      await harness.userMessageHandler.handleIncomingUserMessage(createIncomingEvent('pilihan'));
+
+      expect(harness.walletMcpClient.calls.length).toBe(0);
+      expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(1);
+      expect(loggerWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('LLM proposed contradictory candidate ID "acc-bca-tahapan" and index 2')
+      );
+    });
+
+    it('accepts proposal with valid matching ID + index', async () => {
+      const harness = createHarness([createPendingRecord('BCA')]);
+      await harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('Makan siang 75rb pakai BCA')
+      );
+
+      // Both ID and index agree on candidate 1 (acc-bca-tahapan)
+      harness.financialAiProvider.mockProposalResponse = {
+        selectedAccountId: 'acc-bca-tahapan',
+        selectedCandidateIndex: 1,
+        reasoning: 'Consistent selection fields',
+      };
+
+      await harness.userMessageHandler.handleIncomingUserMessage(createIncomingEvent('tahapan'));
+
+      expect(harness.walletMcpClient.calls.length).toBe(1);
+      expect(harness.walletMcpClient.calls[0][0].accountId).toBe('acc-bca-tahapan');
+      expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(0);
+    });
+
     it('prompt injection in user reply cannot override transaction amount or note', async () => {
       const harness = createHarness([createPendingRecord('BCA')]);
       await harness.userMessageHandler.handleIncomingUserMessage(
@@ -608,6 +685,145 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
       expect(harness.walletMcpClient.calls[0][0].accountId).toBe('acc-bca-tahapan');
       expect(harness.walletMcpClient.calls[0][1].accountId).toBe('acc-bca-bisnis');
       expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(0);
+    });
+  });
+
+  describe('Direct AI Provider Clarification Unit Tests', () => {
+    const mockContext: AccountClarificationQuestionContext = {
+      ticketId: 10,
+      records: [createPendingRecord('BCA')],
+      pendingRecordIndex: 0,
+      accountHint: 'BCA',
+      candidateAccounts: standardAccounts.slice(0, 2),
+      formattedAmount: 'Rp75.000',
+      categoryName: 'Makanan & Minuman',
+      description: 'Makan siang',
+      languageCode: 'id',
+    };
+
+    it('parseClarificationQuestionResponse parses json question and raw fallback', () => {
+      const parsedJson = parseClarificationQuestionResponse('{"question": "Pilih akun BCA 1 atau 2?"}');
+      expect(parsedJson.question).toBe('Pilih akun BCA 1 atau 2?');
+
+      const rawFallback = parseClarificationQuestionResponse('Non-json raw response text');
+      expect(rawFallback.question).toBe('Non-json raw response text');
+    });
+
+    it('parseClarificationProposalResponse parses json proposal and invalid fallback', () => {
+      const parsed = parseClarificationProposalResponse(
+        '{"selectedAccountId": "acc-1", "selectedCandidateIndex": 1, "reasoning": "matched"}'
+      );
+      expect(parsed.selectedAccountId).toBe('acc-1');
+      expect(parsed.selectedCandidateIndex).toBe(1);
+      expect(parsed.reasoning).toBe('matched');
+
+      const invalidFallback = parseClarificationProposalResponse('not json');
+      expect(invalidFallback.selectedAccountId).toBeNull();
+      expect(invalidFallback.selectedCandidateIndex).toBeNull();
+      expect(invalidFallback.reasoning).toBe('Failed to parse JSON response');
+    });
+
+    it('FallbackAiProvider delegates and falls over for question generation and reply interpretation', async () => {
+      const failingProvider: FinancialAiProvider = {
+        providerName: 'failing',
+        processTextMessage: async () => ({ action: 'CREATE_RECORD' }),
+        processImageMessage: async () => ({ action: 'GENERAL_REPLY' }),
+        processEmailTransactionMessage: async () => {
+          throw new Error('unused');
+        },
+        generateAccountClarificationQuestion: async () => {
+          const err: any = new Error('Rate limit exceeded');
+          err.response = { status: 429 };
+          throw err;
+        },
+        interpretAccountClarificationReply: async () => {
+          const err: any = new Error('Gateway timeout');
+          err.response = { status: 504 };
+          throw err;
+        },
+      };
+
+      const workingProvider: FinancialAiProvider = {
+        providerName: 'working',
+        processTextMessage: async () => ({ action: 'CREATE_RECORD' }),
+        processImageMessage: async () => ({ action: 'GENERAL_REPLY' }),
+        processEmailTransactionMessage: async () => {
+          throw new Error('unused');
+        },
+        generateAccountClarificationQuestion: async () => ({
+          question: 'Working question',
+        }),
+        interpretAccountClarificationReply: async () => ({
+          selectedAccountId: 'acc-bca-tahapan',
+          selectedCandidateIndex: 1,
+          reasoning: 'Working interpretation',
+        }),
+      };
+
+      const fallbackProvider = new FallbackAiProvider([failingProvider, workingProvider]);
+
+      const questionResult = await fallbackProvider.generateAccountClarificationQuestion(mockContext);
+      expect(questionResult.question).toBe('Working question');
+
+      const replyResult = await fallbackProvider.interpretAccountClarificationReply(
+        'tahapan',
+        mockContext.candidateAccounts
+      );
+      expect(replyResult.selectedAccountId).toBe('acc-bca-tahapan');
+      expect(replyResult.selectedCandidateIndex).toBe(1);
+    });
+
+    it('GeminiAiProvider executes clarification methods with generation fallback', async () => {
+      const geminiProvider = new GeminiAiProvider('mock-key', 'gemini-3.5-flash', []);
+      (geminiProvider as any).googleGenAiClient = {
+        models: {
+          generateContent: async () => ({
+            text: '{"question": "Pertanyaan Gemini", "selectedAccountId": "acc-bca-tahapan", "selectedCandidateIndex": 1, "reasoning": "Gemini match"}',
+          }),
+        },
+      };
+
+      const questionResult = await geminiProvider.generateAccountClarificationQuestion(mockContext);
+      expect(questionResult.question).toBe('Pertanyaan Gemini');
+
+      const replyResult = await geminiProvider.interpretAccountClarificationReply(
+        'yang tahapan',
+        mockContext.candidateAccounts
+      );
+      expect(replyResult.selectedAccountId).toBe('acc-bca-tahapan');
+      expect(replyResult.selectedCandidateIndex).toBe(1);
+    });
+
+    it('OpenAiCompatibleAiProvider executes clarification methods via chat completions', async () => {
+      const openAiProvider = new OpenAiCompatibleAiProvider({
+        baseUrl: 'http://localhost:11434/v1',
+        apiKey: 'test-key',
+        primaryModelName: 'test-model',
+      });
+      (openAiProvider as any).httpClient = {
+        post: async () => ({
+          data: {
+            choices: [
+              {
+                message: {
+                  content:
+                    '{"question": "Pertanyaan OpenAI", "selectedAccountId": "acc-bca-bisnis", "selectedCandidateIndex": 2, "reasoning": "OpenAI match"}',
+                },
+              },
+            ],
+          },
+        }),
+      };
+
+      const questionResult = await openAiProvider.generateAccountClarificationQuestion(mockContext);
+      expect(questionResult.question).toBe('Pertanyaan OpenAI');
+
+      const replyResult = await openAiProvider.interpretAccountClarificationReply(
+        'yang bisnis',
+        mockContext.candidateAccounts
+      );
+      expect(replyResult.selectedAccountId).toBe('acc-bca-bisnis');
+      expect(replyResult.selectedCandidateIndex).toBe(2);
     });
   });
 });

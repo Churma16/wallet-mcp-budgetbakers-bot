@@ -151,38 +151,62 @@ export class AccountClarificationConversationService {
           interpretationContext
         );
 
-        // Step 3: Strict candidate boundary check
+        // Step 3: Strict candidate boundary check with contradiction rejection
         if (proposal) {
-          let verifiedCandidate: PendingAccountSelectionCandidate | undefined;
+          const hasSelectedId =
+            typeof proposal.selectedAccountId === 'string' &&
+            proposal.selectedAccountId.trim().length > 0;
+          const hasSelectedIndex = typeof proposal.selectedCandidateIndex === 'number';
 
-          if (proposal.selectedAccountId) {
-            verifiedCandidate = candidateAccounts.find(
-              candidate => candidate.id === proposal.selectedAccountId
-            );
-          }
+          const candidateById = hasSelectedId
+            ? candidateAccounts.find(candidate => candidate.id === proposal.selectedAccountId)
+            : undefined;
 
-          if (!verifiedCandidate && typeof proposal.selectedCandidateIndex === 'number') {
-            const candidateIndex = proposal.selectedCandidateIndex - 1;
+          let candidateByIndex: PendingAccountSelectionCandidate | undefined;
+          if (hasSelectedIndex) {
+            const candidateIndex = (proposal.selectedCandidateIndex as number) - 1;
             if (candidateIndex >= 0 && candidateIndex < candidateAccounts.length) {
-              verifiedCandidate = candidateAccounts[candidateIndex];
+              candidateByIndex = candidateAccounts[candidateIndex];
             }
           }
 
-          if (verifiedCandidate) {
-            applicationLogger.info(
-              `[Account Clarification] LLM resolved reply "${normalizedReply.slice(0, 40)}" to candidate ${verifiedCandidate.name} (#${claimedDraft.ticketId}).`
-            );
-            return verifiedCandidate;
-          }
-
-          if (proposal.selectedAccountId) {
+          // If ID was supplied but is not in candidates -> fail closed
+          if (hasSelectedId && !candidateById) {
             applicationLogger.warn(
               `[Account Clarification] LLM proposed non-candidate account ID "${proposal.selectedAccountId}" for draft #${claimedDraft.ticketId}; rejected (fail closed).`
             );
-          } else if (typeof proposal.selectedCandidateIndex === 'number') {
+            return undefined;
+          }
+
+          // If Index was supplied but is out of bounds -> fail closed
+          if (hasSelectedIndex && !candidateByIndex) {
             applicationLogger.warn(
               `[Account Clarification] LLM proposed out-of-bounds candidate index ${proposal.selectedCandidateIndex} for draft #${claimedDraft.ticketId}; rejected (fail closed).`
             );
+            return undefined;
+          }
+
+          // If both were supplied, they MUST agree and point to the same candidate
+          if (candidateById && candidateByIndex) {
+            if (candidateById.id !== candidateByIndex.id) {
+              applicationLogger.warn(
+                `[Account Clarification] LLM proposed contradictory candidate ID "${candidateById.id}" and index ${proposal.selectedCandidateIndex} ("${candidateByIndex.id}") for draft #${claimedDraft.ticketId}; rejected (fail closed).`
+              );
+              return undefined;
+            }
+            applicationLogger.info(
+              `[Account Clarification] LLM resolved reply "${normalizedReply.slice(0, 40)}" to candidate ${candidateById.name} (#${claimedDraft.ticketId}).`
+            );
+            return candidateById;
+          }
+
+          // Exactly one was supplied and verified
+          const singleCandidate = candidateById || candidateByIndex;
+          if (singleCandidate) {
+            applicationLogger.info(
+              `[Account Clarification] LLM resolved reply "${normalizedReply.slice(0, 40)}" to candidate ${singleCandidate.name} (#${claimedDraft.ticketId}).`
+            );
+            return singleCandidate;
           }
         }
         return undefined;

@@ -23,7 +23,10 @@ import {
   buildAccountClarificationQuestionPrompt,
   buildAccountClarificationReplyPrompt,
 } from './aiPromptBuilder.js';
-import { extractAndParseJsonObject } from './jsonExtractionHelper.js';
+import {
+  parseClarificationQuestionResponse,
+  parseClarificationProposalResponse,
+} from './jsonExtractionHelper.js';
 
 interface GenerationExecutionResult {
   responseText: string;
@@ -350,18 +353,7 @@ export class GeminiAiProvider implements FinancialAiProvider {
       requestContextDescription: `Account clarification question for draft #${context.ticketId}`,
     });
 
-    try {
-      const parsed = extractAndParseJsonObject<{ question?: string }>(result.responseText);
-      return {
-        question: parsed.question || result.responseText,
-        tokenUsage: result.tokenUsage,
-      };
-    } catch {
-      return {
-        question: result.responseText,
-        tokenUsage: result.tokenUsage,
-      };
-    }
+    return parseClarificationQuestionResponse(result.responseText, result.tokenUsage);
   }
 
   /**
@@ -383,24 +375,6 @@ export class GeminiAiProvider implements FinancialAiProvider {
       requestContextDescription: `Account clarification interpretation for draft #${context?.ticketId ?? 'unknown'}`,
     });
 
-    try {
-      const parsed = extractAndParseJsonObject<AccountClarificationProposal>(result.responseText);
-      return {
-        selectedAccountId: parsed.selectedAccountId ?? null,
-        selectedCandidateIndex:
-          typeof parsed.selectedCandidateIndex === 'number'
-            ? parsed.selectedCandidateIndex
-            : null,
-        reasoning: parsed.reasoning || '',
-        tokenUsage: result.tokenUsage,
-      };
-    } catch {
-      return {
-        selectedAccountId: null,
-        selectedCandidateIndex: null,
-        reasoning: 'Failed to parse JSON response',
-        tokenUsage: result.tokenUsage,
-      };
-    }
+    return parseClarificationProposalResponse(result.responseText, result.tokenUsage);
   }
 }

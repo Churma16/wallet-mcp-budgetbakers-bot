@@ -558,16 +558,15 @@ SECURITY RULES:
 INTERPRETATION RULES:
 1. Identify if the user is selecting one of the candidates:
    - By number or ordinal ("1", "2", "yang pertama", "yang kedua", "first one", "second", "option 2")
-   - By name or keyword ("BCA", "Tabungan", "Personal", "Business", "Cash", "yang tabungan", "bukan Flazz tapi Tahapan")
-   - By preference expression ("the one I normally use", "rekening utama", "yang pribadi")
-2. If the user's intent clearly and unambiguously matches one candidate:
+   - By name or keyword distinguishing characteristics ("BCA", "Tabungan", "Personal", "Business", "Cash", "yang tabungan", "bukan Flazz tapi Tahapan")
+2. If the user's intent clearly and unambiguously matches one candidate from the allowed list:
    - Set "selectedAccountId" to that candidate's exact ID.
    - Set "selectedCandidateIndex" to the candidate's 1-based index (1 to ${candidates.length}).
    - Set "reasoning" to a brief explanation.
-3. If the user's reply does not match any candidate, is ambiguous between multiple candidates, indicates cancellation, or refers to an account not in the candidate list:
+3. If the user's reply does not match any candidate, is ambiguous between multiple candidates, indicates cancellation, refers to an account not in the candidate list, or relies on ungrounded preference or habitual expressions without explicit candidate identification (e.g. "the one I normally use", "rekening utama", "yang biasa" when no candidate has that distinguishing name):
    - Set "selectedAccountId" to null.
    - Set "selectedCandidateIndex" to null.
-   - Set "reasoning" to a brief explanation of why no candidate was selected.
+   - Set "reasoning" to an explanation noting that the selection is ungrounded or ambiguous.
 
 OUTPUT FORMAT:
 Output MUST be valid JSON:

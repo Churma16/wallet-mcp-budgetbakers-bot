@@ -11,7 +11,11 @@ import {
   AccountClarificationProposal,
 } from './financialAiProvider.js';
 import { PendingAccountSelectionCandidate } from '../pendingTransactionService.js';
-import { isAiResponseParseError, extractAndParseJsonObject } from './jsonExtractionHelper.js';
+import {
+  isAiResponseParseError,
+  parseClarificationQuestionResponse,
+  parseClarificationProposalResponse,
+} from './jsonExtractionHelper.js';
 import { CategoryContextService } from '../categoryContextService.js';
 import {
   buildAccountClarificationQuestionPrompt,
@@ -380,18 +384,7 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
       `Account clarification question for draft #${context.ticketId}`
     );
 
-    try {
-      const parsed = extractAndParseJsonObject<{ question?: string }>(result.responseText);
-      return {
-        question: parsed.question || result.responseText,
-        tokenUsage: result.tokenUsage,
-      };
-    } catch {
-      return {
-        question: result.responseText,
-        tokenUsage: result.tokenUsage,
-      };
-    }
+    return parseClarificationQuestionResponse(result.responseText, result.tokenUsage);
   }
 
   /**
@@ -416,24 +409,6 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
       `Account clarification interpretation for draft #${context?.ticketId ?? 'unknown'}`
     );
 
-    try {
-      const parsed = extractAndParseJsonObject<AccountClarificationProposal>(result.responseText);
-      return {
-        selectedAccountId: parsed.selectedAccountId ?? null,
-        selectedCandidateIndex:
-          typeof parsed.selectedCandidateIndex === 'number'
-            ? parsed.selectedCandidateIndex
-            : null,
-        reasoning: parsed.reasoning || '',
-        tokenUsage: result.tokenUsage,
-      };
-    } catch {
-      return {
-        selectedAccountId: null,
-        selectedCandidateIndex: null,
-        reasoning: 'Failed to parse JSON response',
-        tokenUsage: result.tokenUsage,
-      };
-    }
+    return parseClarificationProposalResponse(result.responseText, result.tokenUsage);
   }
 }
