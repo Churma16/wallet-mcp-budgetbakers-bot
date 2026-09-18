@@ -46,35 +46,32 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
         accounts: MOCK_ACCOUNTS,
         categories: MOCK_CATEGORIES,
       });
-      queryContext.setNextResponse({
-        records: [
-          { id: 'rec-1', accountId: 'acc-bca-001', amount: -25000, recordDate: '2026-09-01T10:00:00Z', recordType: 'expense' },
-        ],
-        total: 1,
-      });
     });
 
     it('resolves IDs, names, digits, and enforces fail-closed safety', async () => {
       // 1.1 Account filter by exact ID
-      const byIdPage = await queryContext.service.getTransactionHistory({ accountId: 'acc-bca-001' });
-      assert.strictEqual(byIdPage.records.length, 1);
-      assert.deepStrictEqual(byIdPage.records.map(record => record.id), ['rec-1']);
+      const byIdPage = await queryContext.service.getTransactionHistory({ accountId: 'acc-bca' });
+      assert.strictEqual(byIdPage.records.length, 4);
+      assert.deepStrictEqual(byIdPage.records.map(record => record.id), ['rec-1', 'rec-3', 'rec-4', 'rec-5']);
       assert.strictEqual(byIdPage.records[0].accountName, 'BCA Tabungan');
-      assert.strictEqual(queryContext.capturedCalls[0].args.accountId, 'acc-bca-001');
+      assert.strictEqual(queryContext.capturedCalls[0].args.accountId, 'acc-bca');
 
       // 1.2 Account filter by name (exact match, case-insensitive)
       const byNamePage = await queryContext.service.getTransactionHistory({ accountName: 'bca tabungan' });
-      assert.strictEqual(queryContext.capturedCalls[1].args.accountId, 'acc-bca-001');
-      assert.strictEqual(byNamePage.appliedFilters?.account?.id, 'acc-bca-001');
+      assert.strictEqual(queryContext.capturedCalls[1].args.accountId, 'acc-bca');
+      assert.strictEqual(byNamePage.appliedFilters?.account?.id, 'acc-bca');
+      assert.deepStrictEqual(byNamePage.records.map(record => record.id), ['rec-1', 'rec-3', 'rec-4', 'rec-5']);
 
       // 1.3 Account filter by name (substring match)
       const bySubPage = await queryContext.service.getTransactionHistory({ accountName: 'Mandiri' });
-      assert.strictEqual(queryContext.capturedCalls[2].args.accountId, 'acc-mandiri-002');
-      assert.strictEqual(bySubPage.appliedFilters?.account?.id, 'acc-mandiri-002');
+      assert.strictEqual(queryContext.capturedCalls[2].args.accountId, 'acc-mandiri');
+      assert.strictEqual(bySubPage.appliedFilters?.account?.id, 'acc-mandiri');
+      assert.strictEqual(bySubPage.records.length, 0);
 
       // 1.4 Account filter by bank account number digits
-      await queryContext.service.getTransactionHistory({ accountName: '7890' });
-      assert.strictEqual(queryContext.capturedCalls[3].args.accountId, 'acc-bca-001');
+      const byDigitsPage = await queryContext.service.getTransactionHistory({ accountName: '7890' });
+      assert.strictEqual(queryContext.capturedCalls[3].args.accountId, 'acc-bca');
+      assert.deepStrictEqual(byDigitsPage.records.map(record => record.id), ['rec-1', 'rec-3', 'rec-4', 'rec-5']);
 
       // 1.5 Fail-closed: unresolvable account produces explicit error and skips MCP call
       const callCountBefore = queryContext.capturedCalls.length;
@@ -95,27 +92,30 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
         accounts: MOCK_ACCOUNTS,
         categories: MOCK_CATEGORIES,
       });
-      queryContext.setNextResponse({ records: [], total: 0 });
     });
 
     it('resolves IDs, names, groups, and enforces fail-closed safety', async () => {
       // 2.1 Category filter by ID
-      await queryContext.service.getTransactionHistory({ categoryId: 'cat-food-001' });
-      assert.deepStrictEqual(queryContext.capturedCalls[0].args.categoryId, ['cat-food-001']);
+      const byIdResult = await queryContext.service.getTransactionHistory({ categoryId: 'cat-food' });
+      assert.deepStrictEqual(queryContext.capturedCalls[0].args.categoryId, ['cat-food']);
+      assert.deepStrictEqual(byIdResult.records.map(record => record.id), ['rec-1', 'rec-2', 'rec-3']);
 
       // 2.2 Category filter by name (exact name match)
       const byNameResult = await queryContext.service.getTransactionHistory({ categoryName: 'Makanan & Minuman' });
-      assert.deepStrictEqual(queryContext.capturedCalls[1].args.categoryId, ['cat-food-001']);
-      assert.strictEqual(byNameResult.appliedFilters?.category?.id, 'cat-food-001');
+      assert.deepStrictEqual(queryContext.capturedCalls[1].args.categoryId, ['cat-food']);
+      assert.strictEqual(byNameResult.appliedFilters?.category?.id, 'cat-food');
+      assert.deepStrictEqual(byNameResult.records.map(record => record.id), ['rec-1', 'rec-2', 'rec-3']);
 
       // 2.3 Category filter by name (substring match)
-      await queryContext.service.getTransactionHistory({ categoryName: 'listrik' });
-      assert.deepStrictEqual(queryContext.capturedCalls[2].args.categoryId, ['cat-bills-004']);
+      const bySubResult = await queryContext.service.getTransactionHistory({ categoryName: 'listrik' });
+      assert.deepStrictEqual(queryContext.capturedCalls[2].args.categoryId, ['cat-bills']);
+      assert.strictEqual(bySubResult.records.length, 0);
 
       // 2.4 Category filter by group slug enum
       const byGroupResult = await queryContext.service.getTransactionHistory({ categoryGroup: 'food_and_drinks' });
       assert.strictEqual(queryContext.capturedCalls[3].args.categoryGroup, 'food_and_drinks');
       assert.strictEqual(byGroupResult.appliedFilters?.categoryGroup, 'food_and_drinks');
+      assert.deepStrictEqual(byGroupResult.records.map(record => record.id), ['rec-1', 'rec-2', 'rec-3']);
 
       // 2.5 Fail-closed: unresolvable category skips MCP call
       const callCountBefore = queryContext.capturedCalls.length;
@@ -202,25 +202,28 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
         accounts: MOCK_ACCOUNTS,
         categories: MOCK_CATEGORIES,
       });
-      queryContext.setNextResponse({ records: [], total: 0 });
     });
 
     it('correctly filters expense/income and accepts synonyms', async () => {
       // 3.1 Standard expense
-      await queryContext.service.getTransactionHistory({ recordType: 'expense' });
+      const expenseResult = await queryContext.service.getTransactionHistory({ recordType: 'expense' });
       assert.strictEqual(queryContext.capturedCalls[0].args.recordType, 'expense');
+      assert.deepStrictEqual(expenseResult.records.map(record => record.id), ['rec-1', 'rec-2', 'rec-3', 'rec-5']);
 
       // 3.2 Standard income
-      await queryContext.service.getTransactionHistory({ recordType: 'income' });
+      const incomeResult = await queryContext.service.getTransactionHistory({ recordType: 'income' });
       assert.strictEqual(queryContext.capturedCalls[1].args.recordType, 'income');
+      assert.deepStrictEqual(incomeResult.records.map(record => record.id), ['rec-4']);
 
       // 3.3 Indonesian synonym: pengeluaran -> expense
-      await queryContext.service.getTransactionHistory({ recordType: 'pengeluaran' as any });
+      const pengeluaranResult = await queryContext.service.getTransactionHistory({ recordType: 'pengeluaran' as any });
       assert.strictEqual(queryContext.capturedCalls[2].args.recordType, 'expense');
+      assert.deepStrictEqual(pengeluaranResult.records.map(record => record.id), ['rec-1', 'rec-2', 'rec-3', 'rec-5']);
 
       // 3.4 Indonesian synonym: pemasukan -> income
-      await queryContext.service.getTransactionHistory({ recordType: 'pemasukan' as any });
+      const pemasukanResult = await queryContext.service.getTransactionHistory({ recordType: 'pemasukan' as any });
       assert.strictEqual(queryContext.capturedCalls[3].args.recordType, 'income');
+      assert.deepStrictEqual(pemasukanResult.records.map(record => record.id), ['rec-4']);
 
       // 3.5 Fail-closed: invalid record type rejects before MCP call
       const callCountBefore = queryContext.capturedCalls.length;
@@ -239,7 +242,6 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
         accounts: MOCK_ACCOUNTS,
         categories: MOCK_CATEGORIES,
       });
-      queryContext.setNextResponse({ records: [], total: 0 });
     });
 
     it('verifies timezone UTC boundaries, calendar validation, and boundary handling', async () => {
@@ -250,12 +252,19 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
         'lt.2024-06-30T17:00:00.000Z',
       ]);
 
-      // 4.2 Start date and end date normalization (resolved to local timezone half-open UTC boundaries)
-      await queryContext.service.getTransactionHistory({ startDate: '2024-03-01', endDate: '2024-03-31' });
+      // 4.2 Start date and end date normalization and execution against canonical records
+      const deterministicDatePage = await queryContext.service.getTransactionHistory({
+        startDate: '2026-09-01',
+        endDate: '2026-09-10',
+      });
       assert.deepStrictEqual(queryContext.capturedCalls[1].args.recordDate, [
-        'gte.2024-02-29T17:00:00.000Z',
-        'lt.2024-03-31T17:00:00.000Z',
+        'gte.2026-08-31T17:00:00.000Z',
+        'lt.2026-09-10T17:00:00.000Z',
       ]);
+      assert.deepStrictEqual(
+        deterministicDatePage.records.map(record => record.id),
+        ['rec-2', 'rec-3', 'rec-4']
+      );
 
       // 4.3 Relative date periods: this_month with timezone-aware half-open UTC ISO boundaries
       // Sep 11, 2026 12:00:00 UTC = Sep 11, 2026 19:00:00 WIB
@@ -877,21 +886,6 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
         accounts: MOCK_ACCOUNTS,
         categories: MOCK_CATEGORIES,
       });
-      queryContext.setNextResponse({
-        records: [
-          {
-            id: 'rec-combo-1',
-            accountId: 'acc-bca-001',
-            amount: -45000,
-            currency: 'IDR',
-            recordDate: '2026-09-05T12:00:00Z',
-            recordType: 'expense',
-            category: { id: 'cat-food-001', name: 'Makanan & Minuman' },
-            note: 'Makan Siang Soto',
-          },
-        ],
-        total: 1,
-      });
     });
 
     it('accurately combines all dimensions simultaneously', async () => {
@@ -908,8 +902,8 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
 
       assert.strictEqual(queryContext.capturedCalls.length, 1);
       const mcpArgs = queryContext.capturedCalls[0].args;
-      assert.strictEqual(mcpArgs.accountId, 'acc-bca-001');
-      assert.deepStrictEqual(mcpArgs.categoryId, ['cat-food-001']);
+      assert.strictEqual(mcpArgs.accountId, 'acc-bca');
+      assert.deepStrictEqual(mcpArgs.categoryId, ['cat-food']);
       assert.strictEqual(mcpArgs.recordType, 'expense');
       assert.deepStrictEqual(mcpArgs.recordDate, [
         'gte.2026-08-31T17:00:00.000Z',
@@ -918,8 +912,8 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
       assert.strictEqual(mcpArgs.limit, 5);
       assert.deepStrictEqual(mcpArgs.sortBy, ['+recordDate', '+createdAt']);
 
-      assert.strictEqual(comboResult.records.length, 1);
-      assert.deepStrictEqual(comboResult.records.map(r => r.id), ['rec-combo-1']);
+      assert.strictEqual(comboResult.records.length, 2);
+      assert.deepStrictEqual(comboResult.records.map(r => r.id), ['rec-3', 'rec-1']);
       assert.strictEqual(comboResult.records[0].accountName, 'BCA Tabungan');
       assert.strictEqual(comboResult.appliedFilters?.account?.name, 'BCA Tabungan');
       assert.strictEqual(comboResult.appliedFilters?.account?.selector, 'bca');
@@ -939,12 +933,11 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
         accounts: MOCK_ACCOUNTS,
         categories: MOCK_CATEGORIES,
       });
-      queryContext.setNextResponse({ records: [], total: 0 });
     });
 
     it('renders non-misleading filtered empty state', async () => {
       const emptyFilteredPage = await queryContext.service.getTransactionHistory({
-        accountName: 'BCA',
+        accountName: 'Mandiri',
         categoryName: 'Makanan',
       });
 
@@ -953,7 +946,7 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
 
       const formattedEmpty = formatTransactionHistoryMessage(emptyFilteredPage, 'id');
       assert.match(formattedEmpty, /Belum ada transaksi yang cocok dengan filter/);
-      assert.match(formattedEmpty, /BCA Tabungan/);
+      assert.match(formattedEmpty, /Mandiri Utama/);
 
       console.log('  [PASS] Empty results with active filters render non-misleading filtered empty state.');
     });
@@ -1248,7 +1241,7 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
   // 7.8 Quoted multiword navigation round-trip for accountId, categoryId, and categoryGroup (Item 3)
   // Account ID -> BCA Tabungan -> akun "BCA Tabungan"
   const accountIdNormalized = normalizeTransactionHistoryFilters(
-    { accountId: 'acc-bca-001' },
+    { accountId: 'acc-bca' },
     MOCK_ACCOUNTS,
     MOCK_CATEGORIES
   );
@@ -1278,11 +1271,11 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
     MOCK_ACCOUNTS,
     MOCK_CATEGORIES
   );
-  assert.strictEqual(reNormalizedAccount.upstreamAccountId, 'acc-bca-001');
+  assert.strictEqual(reNormalizedAccount.upstreamAccountId, 'acc-bca');
 
   // Category ID -> Makanan & Minuman -> kategori "Makanan & Minuman"
   const categoryIdNormalized = normalizeTransactionHistoryFilters(
-    { categoryId: 'cat-food-001' },
+    { categoryId: 'cat-food' },
     MOCK_ACCOUNTS,
     MOCK_CATEGORIES
   );
@@ -1311,7 +1304,7 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
     MOCK_ACCOUNTS,
     MOCK_CATEGORIES
   );
-  assert.deepStrictEqual(reNormalizedCategory.upstreamCategoryId, ['cat-food-001']);
+  assert.deepStrictEqual(reNormalizedCategory.upstreamCategoryId, ['cat-food']);
 
   // Category Group -> food_and_drinks -> kategori "food_and_drinks"
   const groupNormalized = normalizeTransactionHistoryFilters(
@@ -1655,21 +1648,6 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
 
       const handler = new FastPathHandler(queryContext.client, queryContext.cache, mockGateway);
 
-      queryContext.setNextResponse({
-        records: [
-          {
-            id: 'rec-101',
-            accountId: 'acc-bca-001',
-            amount: -50000,
-            currency: 'IDR',
-            recordDate: '2026-09-10T15:00:00Z',
-            recordType: 'expense',
-            note: 'Pizza Hut',
-          },
-        ],
-        total: 1,
-      });
-
       const fastPathAction = detectFastPathAction('riwayat bca');
       assert.ok(fastPathAction);
 
@@ -1688,7 +1666,7 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
       assert.strictEqual(sentMessages.length, 1);
       assert.match(sentMessages[0].text, /Riwayat Transaksi/);
       assert.match(sentMessages[0].text, /BCA Tabungan/);
-      assert.match(sentMessages[0].text, /Pizza Hut/);
+      assert.match(sentMessages[0].text, /Caramel Macchiato/);
 
       console.log('  [PASS] FastPathHandler integration with filters verified end-to-end.');
     });
@@ -1702,11 +1680,11 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
   }
 
   const prompt = buildCompactSystemInstruction(MOCK_ACCOUNTS, MOCK_CATEGORIES, '2026-09-14');
-  assert.match(prompt, /cat-food-001: Makanan & Minuman/);
+  assert.match(prompt, /cat-food: Makanan & Minuman/);
 
   const boundary = new SemanticToolBoundary();
   const evaluation = boundary.evaluate({
-    proposal: { tool: 'get_transaction_history', arguments: { categoryId: 'cat-food-001' } },
+    proposal: { tool: 'get_transaction_history', arguments: { categoryId: 'cat-food' } },
     authorization: { isAuthorized: true, source: 'test-policy' },
     event: {
       channel: 'whatsapp',

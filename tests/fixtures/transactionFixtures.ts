@@ -18,12 +18,7 @@ export const CANONICAL_ACCOUNTS: WalletAccountItem[] = [
   { id: 'acc-jago', name: 'Bank Jago', currency: 'IDR', bankAccountNumber: '55551234' },
 ];
 
-export const CANONICAL_FILTER_ACCOUNTS: WalletAccountItem[] = [
-  { id: 'acc-bca-001', name: 'BCA Tabungan', currency: 'IDR', bankAccountNumber: '1234567890' },
-  { id: 'acc-mandiri-002', name: 'Mandiri Utama', currency: 'IDR', bankAccountNumber: '9876543210' },
-  { id: 'acc-cash-003', name: 'Cash Dompet', currency: 'IDR' },
-  { id: 'acc-jago-004', name: 'Bank Jago', currency: 'IDR', bankAccountNumber: '55551234' },
-];
+export const CANONICAL_FILTER_ACCOUNTS: WalletAccountItem[] = CANONICAL_ACCOUNTS;
 
 export const CANONICAL_SUMMARY_ACCOUNTS: WalletAccountItem[] = [
   { id: 'acc-bca', name: 'BCA', currency: 'IDR' },
@@ -39,10 +34,10 @@ export const CANONICAL_CATEGORIES: WalletCategoryItem[] = [
 ];
 
 export const CANONICAL_FILTER_CATEGORIES: WalletCategoryItem[] = [
-  { id: 'cat-food-001', name: 'Makanan & Minuman' },
-  { id: 'cat-transport-002', name: 'Transportasi' },
-  { id: 'cat-salary-003', name: 'Gaji' },
-  { id: 'cat-bills-004', name: 'Tagihan Listrik' },
+  { id: 'cat-food', name: 'Makanan & Minuman' },
+  { id: 'cat-transport', name: 'Transportasi' },
+  { id: 'cat-salary', name: 'Gaji' },
+  { id: 'cat-bills', name: 'Tagihan Listrik' },
 ];
 
 export const CANONICAL_SUMMARY_CATEGORIES: WalletCategoryItem[] = [
