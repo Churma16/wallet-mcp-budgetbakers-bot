@@ -1,50 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { TransactionSummaryService } from '../src/services/transactionSummaryService.js';
-import { TransactionHistoryService } from '../src/services/transactionHistoryService.js';
-import { WalletMcpClientService } from '../src/services/walletMcpService.js';
-import { WalletCacheService } from '../src/services/walletCacheService.js';
 import { detectFastPathAction } from '../src/utils/fastPathIntentDetector.js';
 import { formatTransactionSummaryMessage } from '../src/utils/transactionSummaryFormatter.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import type {
   TransactionHistoryPage,
   TransactionHistoryQueryOptions,
-  WalletAccountItem,
-  WalletCategoryItem,
-  WalletRecordAggregationQueryPayload,
-  WalletRecordAggregationResponse,
 } from '../src/types/walletTypes.js';
-
-const cachedAccounts: WalletAccountItem[] = [
-  { id: 'acc-bca', name: 'BCA', currency: 'IDR' },
-  { id: 'acc-cash', name: 'Cash', currency: 'IDR' },
-  { id: 'acc-usd', name: 'USD Wallet', currency: 'USD' },
-];
-
-const cachedCategories: WalletCategoryItem[] = [
-  { id: 'cat-food', name: 'Food', group: { id: 'food', name: 'Food' } },
-  { id: 'cat-transport', name: 'Transport', group: { id: 'transport', name: 'Transport' } },
-  { id: 'cat-salary', name: 'Salary', group: { id: 'income', name: 'Income' } },
-];
-
-function createMockWalletCacheService(): WalletCacheService {
-  return {
-    getAccounts: () => cachedAccounts,
-    getCategories: () => cachedCategories,
-    getLabels: () => [],
-    getBudgets: () => [],
-    refreshCache: async () => {},
-    isCacheValid: () => true,
-  } as unknown as WalletCacheService;
-}
-
-function createMockWalletMcpClient(
-  aggregationHandler: (payload: WalletRecordAggregationQueryPayload) => Promise<WalletRecordAggregationResponse>
-): WalletMcpClientService {
-  const client = new WalletMcpClientService('https://wallet.example.com', 'test-token');
-  vi.spyOn(client, 'fetchRecordsAggregation').mockImplementation(aggregationHandler);
-  return client;
-}
+import {
+  createSummaryExecutionContext,
+  type SummaryExecutionContext,
+} from './fixtures/transactionFixtures.js';
 
 describe('Transaction Summary & Breakdown Tests (Issue #103 & #140)', () => {
   beforeEach(() => {
@@ -57,77 +22,74 @@ describe('Transaction Summary & Breakdown Tests (Issue #103 & #140)', () => {
   });
 
   describe('Suite 1: Aggregates totals via native aggregation and excludes transfers', () => {
-    it('verifies native aggregation, totals, transfer exclusion, category breakdown, and does not invoke transaction history', async () => {
-      const capturedPayloads: WalletRecordAggregationQueryPayload[] = [];
-      const referenceDate = new Date('2026-09-12T09:30:00.000Z');
+    let summaryContext: SummaryExecutionContext;
 
-      const mockMcpClient = createMockWalletMcpClient(async (payload) => {
-        capturedPayloads.push(payload);
-        if (payload.isTransfer === true) {
+    beforeEach(() => {
+      summaryContext = createSummaryExecutionContext({
+        aggregationHandler: async (payload) => {
+          if (payload.isTransfer === true) {
+            return {
+              results: [{ count: 1 }],
+              limit: 1000,
+              offset: 0,
+            };
+          }
           return {
-            results: [{ count: 1 }],
+            results: [
+              {
+                currency: 'IDR',
+                recordType: 'expense',
+                count: 1,
+                'amount:sum': -100000,
+                'category:id': 'cat-food',
+                'category:name': 'Food',
+              },
+              {
+                currency: 'IDR',
+                recordType: 'expense',
+                count: 1,
+                'amount:sum': -50000,
+                'category:id': 'cat-transport',
+                'category:name': 'Transport',
+              },
+              {
+                currency: 'IDR',
+                recordType: 'income',
+                count: 1,
+                'amount:sum': 500000,
+                'category:id': 'cat-salary',
+                'category:name': 'Salary',
+              },
+            ],
             limit: 1000,
             offset: 0,
           };
-        }
-        return {
-          results: [
-            {
-              currency: 'IDR',
-              recordType: 'expense',
-              count: 1,
-              'amount:sum': -100000,
-              'category:id': 'cat-food',
-              'category:name': 'Food',
-            },
-            {
-              currency: 'IDR',
-              recordType: 'expense',
-              count: 1,
-              'amount:sum': -50000,
-              'category:id': 'cat-transport',
-              'category:name': 'Transport',
-            },
-            {
-              currency: 'IDR',
-              recordType: 'income',
-              count: 1,
-              'amount:sum': 500000,
-              'category:id': 'cat-salary',
-              'category:name': 'Salary',
-            },
-          ],
-          limit: 1000,
-          offset: 0,
-        };
+        },
       });
+    });
 
-      const mockCache = createMockWalletCacheService();
-      const mockHistoryService = {
-        getTransactionHistory: vi.fn(),
-      } as unknown as TransactionHistoryService;
-
-      const service = new TransactionSummaryService(mockMcpClient, mockCache, mockHistoryService);
-      const result = await service.getTransactionSummary(
+    it('verifies native aggregation, totals, transfer exclusion, category breakdown, and does not invoke transaction history', async () => {
+      const referenceDate = new Date('2026-09-12T09:30:00.000Z');
+      const result = await summaryContext.service.getTransactionSummary(
         { categoryName: 'food', datePeriod: 'this_month', groupBy: 'category' },
         referenceDate
       );
 
       // Verify native aggregation payload was constructed
-      expect(capturedPayloads.length).toBe(2);
-      expect(capturedPayloads[0]).toMatchObject({
+      expect(summaryContext.capturedPayloads.length).toBe(2);
+      expect(summaryContext.capturedPayloads[0]).toMatchObject({
         groupBy: ['currency', 'recordType', 'category:id', 'category:name'],
         compute: ['amount:sum'],
         isTransfer: false,
         categoryId: ['cat-food'],
       });
-      expect(capturedPayloads[1]).toMatchObject({
+      expect(summaryContext.capturedPayloads[1]).toMatchObject({
         isTransfer: true,
         categoryId: ['cat-food'],
       });
 
       // REQUIRED REGRESSION TEST: native aggregation path must NOT call getTransactionHistory
-      expect(mockHistoryService.getTransactionHistory).not.toHaveBeenCalled();
+      expect(summaryContext.mockGetTransactionHistory).not.toHaveBeenCalled();
 
       expect(result.transactionCount).toBe(3);
       expect(result.excludedTransferCount).toBe(1);
@@ -153,53 +115,52 @@ describe('Transaction Summary & Breakdown Tests (Issue #103 & #140)', () => {
   });
 
   describe('Suite 2: Filtered totals preserve history filter semantics without pseudo-net output', () => {
-    it('renders only the requested metric and omits pseudo-net values for type-filtered summaries', async () => {
-      const mockMcpClient = createMockWalletMcpClient(async (payload) => {
-        if (payload.isTransfer === true) {
-          return { results: [{ count: 0 }], limit: 1000, offset: 0 };
-        }
-        if (payload.recordType === 'income') {
+    let summaryContext: SummaryExecutionContext;
+
+    beforeEach(() => {
+      summaryContext = createSummaryExecutionContext({
+        aggregationHandler: async (payload) => {
+          if (payload.isTransfer === true) {
+            return { results: [{ count: 0 }], limit: 1000, offset: 0 };
+          }
+          if (payload.recordType === 'income') {
+            return {
+              results: [
+                {
+                  currency: 'IDR',
+                  recordType: 'income',
+                  count: 1,
+                  'amount:sum': 750000,
+                },
+              ],
+              limit: 1000,
+              offset: 0,
+            };
+          }
           return {
             results: [
               {
                 currency: 'IDR',
-                recordType: 'income',
+                recordType: 'expense',
                 count: 1,
-                'amount:sum': 750000,
+                'amount:sum': -250000,
               },
             ],
             limit: 1000,
             offset: 0,
           };
-        }
-        return {
-          results: [
-            {
-              currency: 'IDR',
-              recordType: 'expense',
-              count: 1,
-              'amount:sum': -250000,
-            },
-          ],
-          limit: 1000,
-          offset: 0,
-        };
+        },
       });
+    });
 
-      const mockCache = createMockWalletCacheService();
-      const mockHistoryService = {
-        getTransactionHistory: vi.fn(),
-      } as unknown as TransactionHistoryService;
-
-      const service = new TransactionSummaryService(mockMcpClient, mockCache, mockHistoryService);
-
-      const incomeResult = await service.getTransactionSummary({
+    it('renders only the requested metric and omits pseudo-net values for type-filtered summaries', async () => {
+      const incomeResult = await summaryContext.service.getTransactionSummary({
         accountName: 'bca',
         recordType: 'income',
         datePeriod: 'today',
       });
 
-      expect(mockHistoryService.getTransactionHistory).not.toHaveBeenCalled();
+      expect(summaryContext.mockGetTransactionHistory).not.toHaveBeenCalled();
       expect(incomeResult.totals[0].income).toBe(750000);
       expect(incomeResult.totals[0].expense).toBe(0);
       expect(incomeResult.totals[0].net).toBe(750000);
@@ -210,13 +171,13 @@ describe('Transaction Summary & Breakdown Tests (Issue #103 & #140)', () => {
       expect(incomeFormatted).not.toMatch(/Expenses:/);
       expect(incomeFormatted).not.toMatch(/Net:/);
 
-      const expenseResult = await service.getTransactionSummary({
+      const expenseResult = await summaryContext.service.getTransactionSummary({
         accountName: 'bca',
         recordType: 'expense',
         datePeriod: 'today',
       });
 
-      expect(mockHistoryService.getTransactionHistory).not.toHaveBeenCalled();
+      expect(summaryContext.mockGetTransactionHistory).not.toHaveBeenCalled();
       expect(expenseResult.totals[0].income).toBe(0);
       expect(expenseResult.totals[0].expense).toBe(250000);
       expect(expenseResult.totals[0].net).toBe(-250000);
@@ -229,43 +190,47 @@ describe('Transaction Summary & Breakdown Tests (Issue #103 & #140)', () => {
   });
 
   describe('Suite 3: Multi-currency totals remain isolated', () => {
-    it('ensures cross-currency values are never silently combined', async () => {
-      const mockMcpClient = createMockWalletMcpClient(async (payload) => {
-        if (payload.isTransfer === true) {
-          return { results: [{ count: 0 }], limit: 1000, offset: 0 };
-        }
-        return {
-          results: [
-            {
-              currency: 'IDR',
-              recordType: 'expense',
-              count: 1,
-              'amount:sum': -100000,
-              accountId: 'acc-bca',
-            },
-            {
-              currency: 'USD',
-              recordType: 'expense',
-              count: 1,
-              'amount:sum': -10,
-              accountId: 'acc-usd',
-            },
-            {
-              currency: 'USD',
-              recordType: 'income',
-              count: 1,
-              'amount:sum': 20,
-              accountId: 'acc-usd',
-            },
-          ],
-          limit: 1000,
-          offset: 0,
-        };
-      });
+    let summaryContext: SummaryExecutionContext;
 
-      const mockCache = createMockWalletCacheService();
-      const service = new TransactionSummaryService(mockMcpClient, mockCache);
-      const result = await service.getTransactionSummary({ groupBy: 'account' });
+    beforeEach(() => {
+      summaryContext = createSummaryExecutionContext({
+        aggregationHandler: async (payload) => {
+          if (payload.isTransfer === true) {
+            return { results: [{ count: 0 }], limit: 1000, offset: 0 };
+          }
+          return {
+            results: [
+              {
+                currency: 'IDR',
+                recordType: 'expense',
+                count: 1,
+                'amount:sum': -100000,
+                accountId: 'acc-bca',
+              },
+              {
+                currency: 'USD',
+                recordType: 'expense',
+                count: 1,
+                'amount:sum': -10,
+                accountId: 'acc-usd',
+              },
+              {
+                currency: 'USD',
+                recordType: 'income',
+                count: 1,
+                'amount:sum': 20,
+                accountId: 'acc-usd',
+              },
+            ],
+            limit: 1000,
+            offset: 0,
+          };
+        },
+      });
+    });
+
+    it('ensures cross-currency values are never silently combined', async () => {
+      const result = await summaryContext.service.getTransactionSummary({ groupBy: 'account' });
 
       expect(result.isMultiCurrency).toBe(true);
       expect(result.totals.length).toBe(2);
@@ -284,17 +249,21 @@ describe('Transaction Summary & Breakdown Tests (Issue #103 & #140)', () => {
   });
 
   describe('Suite 4: Empty and unresolved results fail clearly', () => {
-    it('produces deterministic no-data results for empty data and unresolved filters', async () => {
-      const emptyMcpClient = createMockWalletMcpClient(async (payload) => {
-        if (payload.isTransfer === true) {
-          return { results: [{ count: 0 }], limit: 1000, offset: 0 };
-        }
-        return { results: [], limit: 1000, offset: 0 };
-      });
+    let summaryContext: SummaryExecutionContext;
 
-      const mockCache = createMockWalletCacheService();
-      const emptyService = new TransactionSummaryService(emptyMcpClient, mockCache);
-      const emptyResult = await emptyService.getTransactionSummary();
+    beforeEach(() => {
+      summaryContext = createSummaryExecutionContext({
+        aggregationHandler: async (payload) => {
+          if (payload.isTransfer === true) {
+            return { results: [{ count: 0 }], limit: 1000, offset: 0 };
+          }
+          return { results: [], limit: 1000, offset: 0 };
+        },
+      });
+    });
+
+    it('produces deterministic no-data results for empty data and unresolved filters', async () => {
+      const emptyResult = await summaryContext.service.getTransactionSummary();
       expect(emptyResult.transactionCount).toBe(0);
       expect(emptyResult.totals).toEqual([]);
       expect(emptyResult.isComplete).toBe(true);
@@ -302,7 +271,7 @@ describe('Transaction Summary & Breakdown Tests (Issue #103 & #140)', () => {
       setActiveLanguage('id');
       expect(formatTransactionSummaryMessage(emptyResult)).toMatch(/Tidak ada transaksi/);
 
-      const unresolvedResult = await emptyService.getTransactionSummary({ accountName: 'does-not-exist' });
+      const unresolvedResult = await summaryContext.service.getTransactionSummary({ accountName: 'does-not-exist' });
       expect(unresolvedResult.isComplete).toBe(false);
       expect(unresolvedResult.transactionCount).toBe(0);
       expect(unresolvedResult.unresolvedFilters?.length).toBe(1);
@@ -359,14 +328,16 @@ describe('Transaction Summary & Breakdown Tests (Issue #103 & #140)', () => {
   });
 
   describe('Suite 6: Compatibility fallback for free-text search gap', () => {
-    it('falls back to TransactionHistoryService when free-text search is requested', async () => {
-      const mockMcpClient = createMockWalletMcpClient(async () => {
-        throw new Error('fetchRecordsAggregation should not be called when search gap is active');
-      });
+    let summaryContext: SummaryExecutionContext;
+    const capturedSearchOptions: TransactionHistoryQueryOptions[] = [];
 
-      const capturedSearchOptions: TransactionHistoryQueryOptions[] = [];
-      const mockHistoryService = {
-        getTransactionHistory: vi.fn().mockImplementation(async (options: TransactionHistoryQueryOptions): Promise<TransactionHistoryPage> => {
+    beforeEach(() => {
+      capturedSearchOptions.length = 0;
+      summaryContext = createSummaryExecutionContext({
+        aggregationHandler: async () => {
+          throw new Error('fetchRecordsAggregation should not be called when search gap is active');
+        },
+        mockGetTransactionHistory: async (options: TransactionHistoryQueryOptions): Promise<TransactionHistoryPage> => {
           capturedSearchOptions.push(options);
           return {
             records: [
@@ -390,17 +361,16 @@ describe('Transaction Summary & Breakdown Tests (Issue #103 & #140)', () => {
             hasMore: false,
             sort: 'newest',
           };
-        }),
-      } as unknown as TransactionHistoryService;
+        },
+      });
+    });
 
-      const mockCache = createMockWalletCacheService();
-      const service = new TransactionSummaryService(mockMcpClient, mockCache, mockHistoryService);
-
-      const searchSummaryResult = await service.getTransactionSummary({
+    it('falls back to TransactionHistoryService when free-text search is requested', async () => {
+      const searchSummaryResult = await summaryContext.service.getTransactionSummary({
         searchQuery: 'Lunch',
       });
 
-      expect(mockHistoryService.getTransactionHistory).toHaveBeenCalled();
+      expect(summaryContext.mockGetTransactionHistory).toHaveBeenCalled();
       expect(capturedSearchOptions.length).toBe(1);
       expect(capturedSearchOptions[0].searchQuery).toBe('Lunch');
       expect(searchSummaryResult.transactionCount).toBe(1);
