@@ -734,6 +734,102 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
       const advancedDraft = harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts()[0];
       expect(advancedDraft?.pendingRecordIndex).toBe(1);
     });
+
+    it('keeps clarification draft claimed while generating initial clarification prompt preventing concurrent message corruption', async () => {
+      const record1 = createPendingRecord('BCA', { note: 'Record 1' });
+      const record2 = createPendingRecord('BCA', { note: 'Record 2' });
+      const harness = createHarness([record1, record2]);
+
+      let resolveInitialPromptGeneration!: (value: { question: string }) => void;
+      const deferredInitialPromptPromise = new Promise<{ question: string }>((resolve) => {
+        resolveInitialPromptGeneration = resolve;
+      });
+
+      let promptGenerationStarted!: () => void;
+      const promptGenerationStartedPromise = new Promise<void>((resolve) => {
+        promptGenerationStarted = resolve;
+      });
+
+      const originalGenerateQuestion = harness.financialAiProvider.generateAccountClarificationQuestion.bind(
+        harness.financialAiProvider
+      );
+      vi.spyOn(harness.financialAiProvider, 'generateAccountClarificationQuestion').mockImplementation(
+        async (context) => {
+          if (!context.invalidSelection) {
+            promptGenerationStarted();
+            return deferredInitialPromptPromise;
+          }
+          return originalGenerateQuestion(context);
+        }
+      );
+
+      // Start transaction creation and block while the initial prompt is being generated
+      const initialCreationPromise = harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('Catat 2 pengeluaran BCA')
+      );
+
+      // Wait until initial prompt generation has actually started (and draft is claimed in PROCESSING)
+      await promptGenerationStartedPromise;
+
+      // Send a clarification-looking reply concurrently before initial prompt finishes
+      const concurrentReplyPromise = harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('BCA Tahapan')
+      );
+      await concurrentReplyPromise;
+
+      // Assertions during in-flight state:
+      // 1. Concurrent reply could NOT advance the draft or call Wallet MCP
+      expect(harness.walletMcpClient.calls.length).toBe(0);
+      // 2. Concurrent reply received the processing indicator message
+      const inFlightReplyMessage = harness.messagingGateway.messages.at(-1)?.content || '';
+      expect(inFlightReplyMessage.toLowerCase()).toContain('sedang diproses');
+      // 3. Draft remains at record 0 and in PROCESSING state
+      const inFlightDraft = harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts()[0];
+      expect(inFlightDraft?.pendingRecordIndex).toBe(0);
+      expect(
+        harness.pendingTransactionManager.getPendingAccountSelectionDraftState(inFlightDraft.ticketId)
+      ).toBe('PROCESSING');
+
+      // Resolve the initial prompt generation
+      resolveInitialPromptGeneration({
+        question: 'Ada beberapa akun BCA (#1). Mau pakai BCA Tahapan atau BCA Bisnis?',
+      });
+      await initialCreationPromise;
+
+      // Assertions after initial question delivery completes:
+      // 1. Draft only now returns to PENDING
+      const postDeliveryDraft = harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts()[0];
+      expect(
+        harness.pendingTransactionManager.getPendingAccountSelectionDraftState(postDeliveryDraft.ticketId)
+      ).toBe('PENDING');
+      expect(postDeliveryDraft?.pendingRecordIndex).toBe(0);
+      // 2. The initial prompt was sent
+      expect(harness.messagingGateway.messages.at(-1)?.content).toContain(
+        'Ada beberapa akun BCA (#1)'
+      );
+
+      // 3. Subsequent user choice can now be processed normally
+      await harness.userMessageHandler.handleIncomingUserMessage(createIncomingEvent('1'));
+      // Draft has now advanced to record 1 (second record)!
+      const advancedDraft = harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts()[0];
+      expect(advancedDraft?.pendingRecordIndex).toBe(1);
+    });
+
+    it('releases and rejects draft when initial prompt delivery fails without leaving hung processing state', async () => {
+      const record = createPendingRecord('BCA', { note: 'Record 1' });
+      const harness = createHarness([record]);
+
+      vi.spyOn(harness.messagingGateway, 'sendMessage').mockRejectedValueOnce(
+        new Error('Network offline')
+      );
+
+      await harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('Catat pengeluaran BCA')
+      );
+
+      // Assert draft was cleaned up and not left hung in PROCESSING or PENDING
+      expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(0);
+    });
   });
 
   describe('Multi-Record Batches', () => {

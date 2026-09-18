@@ -82,6 +82,11 @@ export class AccountClarificationHandler {
       sourceReferenceInstant: requestReferenceInstant,
     });
 
+    // Synchronously claim the draft before any await to keep it in PROCESSING
+    // throughout question generation and delivery, preventing concurrent replies
+    // from claiming or advancing the draft before prompt delivery completes.
+    this.pendingTransactionManager.claimPendingAccountSelectionDraft(pendingDraft.ticketId);
+
     applicationLogger.info(
       `[Account Clarification] Draft #${pendingDraft.ticketId} created for record ${firstIssue.recordIndex + 1}/${originalRecords.length}.`
     );
@@ -96,7 +101,9 @@ export class AccountClarificationHandler {
         event.chatIdentifier,
         promptContent
       );
+      this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(pendingDraft.ticketId);
     } catch (messagingError) {
+      this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(pendingDraft.ticketId);
       this.pendingTransactionManager.rejectPendingAccountSelectionDraft(pendingDraft.ticketId);
       applicationLogger.error(
         `[Account Clarification] Draft #${pendingDraft.ticketId} discarded because the initial prompt could not be delivered: ${formatConciseErrorMessage(messagingError)}`
