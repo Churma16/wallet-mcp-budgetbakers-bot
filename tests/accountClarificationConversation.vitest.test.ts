@@ -890,6 +890,200 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
       // Assert draft was cleaned up and not left hung in PROCESSING or PENDING
       expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(0);
     });
+
+    it('allows cancellation while initial clarification prompt generation is in flight, suppressing prompt delivery and preventing restoration to PENDING', async () => {
+      const record = createPendingRecord('BCA', { note: 'Record 1' });
+      const harness = createHarness([record]);
+
+      let resolveInitialPromptGeneration!: (value: { question: string }) => void;
+      const deferredInitialPromptPromise = new Promise<{ question: string }>((resolve) => {
+        resolveInitialPromptGeneration = resolve;
+      });
+
+      let promptGenerationStarted!: () => void;
+      const promptGenerationStartedPromise = new Promise<void>((resolve) => {
+        promptGenerationStarted = resolve;
+      });
+
+      vi.spyOn(harness.financialAiProvider, 'generateAccountClarificationQuestion').mockImplementation(
+        async () => {
+          promptGenerationStarted();
+          return deferredInitialPromptPromise;
+        }
+      );
+
+      // 1. Trigger transaction creation, which starts in-flight initial prompt generation
+      const initialCreationPromise = harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('Catat pengeluaran BCA')
+      );
+
+      // Wait until initial prompt generation has started (draft exists and is in PROCESSING)
+      await promptGenerationStartedPromise;
+
+      const activeDrafts = harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts();
+      expect(activeDrafts.length).toBe(1);
+      const ticketId = activeDrafts[0].ticketId;
+      expect(harness.pendingTransactionManager.getPendingAccountSelectionDraftState(ticketId)).toBe('PROCESSING');
+
+      // 2. User sends cancellation command "batal #<ticketId>" while generation is in flight
+      const cancelPromise = harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent(`batal #${ticketId}`)
+      );
+      await cancelPromise;
+
+      // Assert draft is cancelled immediately
+      expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(0);
+      expect(harness.walletMcpClient.calls.length).toBe(0);
+      const cancellationMessage = harness.messagingGateway.messages.at(-1)?.content || '';
+      expect(cancellationMessage).toContain('dibatalkan');
+
+      const messageCountAtCancellation = harness.messagingGateway.messages.length;
+
+      // 3. Resolve the deferred prompt promise
+      resolveInitialPromptGeneration({
+        question: 'Ada beberapa akun BCA (#1). Mau BCA Tahapan atau BCA Bisnis?',
+      });
+      await initialCreationPromise;
+
+      // Assert resolving prompt did NOT deliver a stale message
+      expect(harness.messagingGateway.messages.length).toBe(messageCountAtCancellation);
+      // Assert draft was NOT restored to PENDING or resurrected
+      expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(0);
+      expect(harness.pendingTransactionManager.getPendingAccountSelectionDraft(ticketId)).toBeUndefined();
+      expect(harness.walletMcpClient.calls.length).toBe(0);
+    });
+
+    it('allows cancellation while retry prompt generation is in flight, suppressing retry delivery and preventing restoration to PENDING', async () => {
+      const record = createPendingRecord('BCA', { note: 'Record 1' });
+      const harness = createHarness([record]);
+
+      // 1. Initial draft creation succeeds normally
+      await harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('Catat pengeluaran BCA')
+      );
+      expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(1);
+      const ticketId = harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts()[0].ticketId;
+      expect(harness.pendingTransactionManager.getPendingAccountSelectionDraftState(ticketId)).toBe('PENDING');
+
+      // Setup deferred promise for retry prompt generation
+      let resolveRetryPromptGeneration!: (value: { question: string }) => void;
+      const deferredRetryPromptPromise = new Promise<{ question: string }>((resolve) => {
+        resolveRetryPromptGeneration = resolve;
+      });
+
+      let retryGenerationStarted!: () => void;
+      const retryGenerationStartedPromise = new Promise<void>((resolve) => {
+        retryGenerationStarted = resolve;
+      });
+
+      harness.financialAiProvider.mockProposalResponse = {
+        selectedAccountId: null,
+        selectedCandidateIndex: null,
+        reasoning: 'Ambiguous reply',
+      };
+
+      const originalGenerateQuestion = harness.financialAiProvider.generateAccountClarificationQuestion.bind(
+        harness.financialAiProvider
+      );
+      vi.spyOn(harness.financialAiProvider, 'generateAccountClarificationQuestion').mockImplementation(
+        async (context) => {
+          if (context.invalidSelection) {
+            retryGenerationStarted();
+            return deferredRetryPromptPromise;
+          }
+          return originalGenerateQuestion(context);
+        }
+      );
+
+      // 2. User sends ambiguous reply, which triggers retry prompt generation in flight
+      const replyPromise = harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('akun apa ya')
+      );
+
+      await retryGenerationStartedPromise;
+      expect(harness.pendingTransactionManager.getPendingAccountSelectionDraftState(ticketId)).toBe('PROCESSING');
+
+      // 3. User sends cancellation command "batal" while retry prompt generation is in flight
+      const cancelPromise = harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('batal')
+      );
+      await cancelPromise;
+
+      // Assert draft is cancelled immediately
+      expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(0);
+      expect(harness.walletMcpClient.calls.length).toBe(0);
+      const cancellationMessage = harness.messagingGateway.messages.at(-1)?.content || '';
+      expect(cancellationMessage).toContain('dibatalkan');
+
+      const messageCountAtCancellation = harness.messagingGateway.messages.length;
+
+      // 4. Resolve the deferred retry prompt promise
+      resolveRetryPromptGeneration({
+        question: 'Pilihan "akun apa ya" belum jelas (#1). Mau BCA Tahapan atau BCA Bisnis?',
+      });
+      await replyPromise;
+
+      // Assert resolving retry prompt did NOT deliver a stale message
+      expect(harness.messagingGateway.messages.length).toBe(messageCountAtCancellation);
+      // Assert draft was NOT restored to PENDING or resurrected
+      expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(0);
+      expect(harness.pendingTransactionManager.getPendingAccountSelectionDraft(ticketId)).toBeUndefined();
+      expect(harness.walletMcpClient.calls.length).toBe(0);
+    });
+
+    it('blocks cancellation once Wallet MCP dispatch has started, returning processing indicator', async () => {
+      const record = createPendingRecord('BCA', { note: 'Record 1' });
+      const harness = createHarness([record]);
+
+      // Initial draft creation
+      await harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('Catat pengeluaran BCA')
+      );
+      const ticketId = harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts()[0].ticketId;
+
+      let resolveWalletDispatch!: () => void;
+      const deferredWalletPromise = new Promise<Record<string, unknown>>((resolve) => {
+        resolveWalletDispatch = () => resolve({});
+      });
+
+      let walletDispatchStarted!: () => void;
+      const walletDispatchStartedPromise = new Promise<void>((resolve) => {
+        walletDispatchStarted = resolve;
+      });
+
+      vi.spyOn(harness.walletMcpClient, 'createRecords').mockImplementation(async (records) => {
+        walletDispatchStarted();
+        harness.walletMcpClient.calls.push(records.map(record => ({ ...record })));
+        return deferredWalletPromise;
+      });
+
+      // User selects valid account "1"
+      const selectionPromise = harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('1')
+      );
+
+      await walletDispatchStartedPromise;
+      // Wallet dispatch is in progress: draft is in PROCESSING, but prompt is NOT in flight
+      expect(harness.pendingTransactionManager.getPendingAccountSelectionDraftState(ticketId)).toBe('PROCESSING');
+
+      // User attempts to cancel while Wallet dispatch is in progress
+      await harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent(`batal #${ticketId}`)
+      );
+
+      // Assert cancellation was rejected with processing indicator
+      const latestMessage = harness.messagingGateway.messages.at(-1)?.content || '';
+      expect(latestMessage.toLowerCase()).toContain('sedang diproses');
+      // Draft is still present (not cancelled)
+      expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(1);
+
+      // Now complete the Wallet dispatch
+      resolveWalletDispatch();
+      await selectionPromise;
+
+      // Dispatch succeeded
+      expect(harness.walletMcpClient.calls.length).toBe(1);
+    });
   });
 
   describe('Multi-Record Batches', () => {
