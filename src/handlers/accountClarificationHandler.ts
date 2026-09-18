@@ -225,17 +225,25 @@ export class AccountClarificationHandler {
       this.walletCacheService.getCategories()
     );
     if (!selectedAccount) {
-      this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(claimedDraft.ticketId);
-      const retryPrompt = await this.conversationService.generateClarificationQuestion(
-        claimedDraft,
-        this.walletCacheService.getCategories(),
-        normalizedReply
-      );
-      await this.messagingGateway.sendMessage(
-        event.channel,
-        event.chatIdentifier,
-        retryPrompt
-      );
+      try {
+        const retryPrompt = await this.conversationService.generateClarificationQuestion(
+          claimedDraft,
+          this.walletCacheService.getCategories(),
+          normalizedReply
+        );
+        await this.messagingGateway.sendMessage(
+          event.channel,
+          event.chatIdentifier,
+          retryPrompt
+        );
+      } catch (messagingError) {
+        applicationLogger.error(
+          `[Account Clarification] Draft #${claimedDraft.ticketId} retry prompt delivery failed: ${formatConciseErrorMessage(messagingError)}`
+        );
+        throw messagingError;
+      } finally {
+        this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(claimedDraft.ticketId);
+      }
       return true;
     }
 

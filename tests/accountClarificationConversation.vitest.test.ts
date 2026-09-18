@@ -648,6 +648,92 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
       expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(0);
       expect(harness.messagingGateway.messages.at(-1)?.content).toContain('dibatalkan');
     });
+
+    it('keeps clarification draft claimed while generating retry prompt preventing concurrent message corruption', async () => {
+      const record1 = createPendingRecord('BCA', { note: 'Record 1' });
+      const record2 = createPendingRecord('BCA', { note: 'Record 2' });
+      const harness = createHarness([record1, record2]);
+
+      // Initial draft creation
+      await harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('Catat 2 pengeluaran BCA')
+      );
+
+      expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(1);
+
+      // Setup deferred promise for question generation during ambiguous reply
+      let resolveRetryPromptGeneration!: (value: { question: string }) => void;
+      const deferredRetryPromptPromise = new Promise<{ question: string }>((resolve) => {
+        resolveRetryPromptGeneration = resolve;
+      });
+
+      // First ambiguous reply: model returns null selection and blocks during question generation
+      harness.financialAiProvider.mockProposalResponse = {
+        selectedAccountId: null,
+        selectedCandidateIndex: null,
+        reasoning: 'Ambiguous reply',
+      };
+
+      const originalGenerateQuestion = harness.financialAiProvider.generateAccountClarificationQuestion.bind(
+        harness.financialAiProvider
+      );
+      vi.spyOn(harness.financialAiProvider, 'generateAccountClarificationQuestion').mockImplementation(
+        async (context) => {
+          if (context.invalidSelection) {
+            return deferredRetryPromptPromise;
+          }
+          return originalGenerateQuestion(context);
+        }
+      );
+
+      // In-flight first ambiguous reply
+      const firstReplyPromise = harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('yang itu tuh')
+      );
+
+      // Second reply arrives concurrently before first retry prompt finishes generating
+      const secondReplyPromise = harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('1')
+      );
+      await secondReplyPromise;
+
+      // Assertions during in-flight state:
+      // 1. Second reply could NOT advance the draft or call Wallet MCP
+      expect(harness.walletMcpClient.calls.length).toBe(0);
+      // 2. Second reply received the processing indicator message
+      const latestMessage = harness.messagingGateway.messages.at(-1)?.content || '';
+      expect(latestMessage.toLowerCase()).toContain('sedang diproses');
+      // 3. Draft remains at active record 0 and in PROCESSING state
+      const inFlightDraft = harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts()[0];
+      expect(inFlightDraft?.pendingRecordIndex).toBe(0);
+      expect(
+        harness.pendingTransactionManager.getPendingAccountSelectionDraftState(inFlightDraft.ticketId)
+      ).toBe('PROCESSING');
+
+      // Now resolve the in-flight question generation
+      resolveRetryPromptGeneration({
+        question: 'Pilihan "yang itu tuh" belum jelas (#1). Mau BCA Tahapan atau BCA Bisnis?',
+      });
+      await firstReplyPromise;
+
+      // Assertions after question generation finishes:
+      // 1. Draft only now returns to PENDING
+      const postRetryDraft = harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts()[0];
+      expect(
+        harness.pendingTransactionManager.getPendingAccountSelectionDraftState(postRetryDraft.ticketId)
+      ).toBe('PENDING');
+      expect(postRetryDraft?.pendingRecordIndex).toBe(0);
+      // 2. The retry prompt sent still corresponds to record 0 (#1)
+      expect(harness.messagingGateway.messages.at(-1)?.content).toContain(
+        'Pilihan "yang itu tuh" belum jelas (#1)'
+      );
+
+      // 3. Subsequent valid reply now resolves record 0 cleanly without corruption
+      await harness.userMessageHandler.handleIncomingUserMessage(createIncomingEvent('1'));
+      // Draft has now advanced to record 1 (second record)!
+      const advancedDraft = harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts()[0];
+      expect(advancedDraft?.pendingRecordIndex).toBe(1);
+    });
   });
 
   describe('Multi-Record Batches', () => {
