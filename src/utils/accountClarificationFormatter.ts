@@ -92,6 +92,49 @@ export function formatDeterministicCandidateSection(
   return [header, ...candidateLines, '', footer].join('\n');
 }
 
+function isCandidateHeaderLine(line: string): boolean {
+  const normalized = line.trim().toLowerCase().replace(/^\*|\*$/g, '');
+  return (
+    normalized === 'pilih akun yang digunakan:' ||
+    normalized === 'pilih akun yang digunakan' ||
+    normalized === 'pilih salah satu akun:' ||
+    normalized === 'pilih salah satu akun' ||
+    normalized === 'pilih akun:' ||
+    normalized === 'pilih akun' ||
+    normalized === 'choose the account to use:' ||
+    normalized === 'choose the account to use' ||
+    normalized === 'choose the account:' ||
+    normalized === 'choose the account' ||
+    normalized === 'choose an account:' ||
+    normalized === 'choose an account'
+  );
+}
+
+function isReplyOrCancelLine(line: string): boolean {
+  const lower = line.trim().toLowerCase();
+  return (
+    lower.startsWith('balas dengan nomor') ||
+    lower.startsWith('reply with the account') ||
+    lower.startsWith('reply with account') ||
+    lower.startsWith('ketik *batal') ||
+    lower.startsWith('ketik batal') ||
+    lower.startsWith('type *cancel') ||
+    lower.startsWith('type cancel')
+  );
+}
+
+function parseCandidateListLine(line: string): { index: number; text: string } | null {
+  const trimmed = line.trim();
+  const match = trimmed.match(/^(\d+)[\.\)]\s+(.*)$/);
+  if (!match) {
+    return null;
+  }
+  return {
+    index: Number.parseInt(match[1], 10),
+    text: match[2].trim(),
+  };
+}
+
 export function composeClarificationMessage(
   rawGeneratedQuestion: string,
   draft: PendingAccountSelectionDraft,
@@ -106,20 +149,12 @@ export function composeClarificationMessage(
   }
 
   const lines = rawGeneratedQuestion.split('\n');
-  const candidateListLineRegex = /^\s*(\d+)[\.\)]\s+(.+)$/;
-  const candidateHeaderRegex = /^\s*(\*?pilih\s+(salah\s+satu\s+)?akun(\s+yang\s+digunakan)?\*?|\*?choose\s+(the\s+)?account(\s+to\s+use)?\*?):?\s*$/i;
-  const replyOrCancelRegex = /^\s*(balas\s+dengan\s+nomor|reply\s+with\s+(the\s+)?account|ketik\s+\*?batal|type\s+\*?cancel)/i;
-
   const foundListItems: Array<{ index: number; text: string }> = [];
 
   for (const line of lines) {
-    const listMatch = line.match(candidateListLineRegex);
-    if (listMatch) {
-      const num = Number.parseInt(listMatch[1], 10);
-      foundListItems.push({
-        index: num,
-        text: listMatch[2].trim(),
-      });
+    const parsedLine = parseCandidateListLine(line);
+    if (parsedLine) {
+      foundListItems.push(parsedLine);
     }
   }
 
@@ -152,33 +187,26 @@ export function composeClarificationMessage(
   }
 
   // 2. Detect swapped inline candidate numbering in raw text (e.g. "1. BCA Bisnis" when #1 is BCA Tahapan)
-  const inlineNumberedRegex = /\b(\d+)[\.\)]\s+([A-Za-z0-9\s]+?)(?:,|$|\n|\.|\bor\b|\batau\b)/gi;
-  let inlineMatch: RegExpExecArray | null;
-  while ((inlineMatch = inlineNumberedRegex.exec(rawGeneratedQuestion)) !== null) {
-    const num = Number.parseInt(inlineMatch[1], 10);
-    const matchedSnippet = inlineMatch[2].trim().toLowerCase();
-    const candidateIdx = num - 1;
-    if (candidateIdx >= 0 && candidateIdx < draft.candidateAccounts.length) {
-      const expectedName = draft.candidateAccounts[candidateIdx].name.toLowerCase();
-      for (let otherIdx = 0; otherIdx < draft.candidateAccounts.length; otherIdx++) {
-        if (otherIdx !== candidateIdx) {
-          const otherName = draft.candidateAccounts[otherIdx].name.toLowerCase();
-          if (matchedSnippet.includes(otherName) && !matchedSnippet.includes(expectedName)) {
-            applicationLogger.warn(
-              `[Account Clarification] LLM question output for draft #${draft.ticketId} contained swapped inline candidate numbering; falling back to deterministic template.`
-            );
-            return fallbackTemplate;
-          }
-        }
+  for (let candidateIdx = 0; candidateIdx < draft.candidateAccounts.length; candidateIdx++) {
+    const candidate = draft.candidateAccounts[candidateIdx];
+    const escapedName = candidate.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = rawGeneratedQuestion.match(new RegExp(`\\b(\\d+)[\\.\\)]\\s*${escapedName}\\b`, 'i'));
+    if (match) {
+      const explicitNumber = Number.parseInt(match[1], 10);
+      if (explicitNumber !== candidateIdx + 1) {
+        applicationLogger.warn(
+          `[Account Clarification] LLM question output for draft #${draft.ticketId} contained swapped inline candidate numbering (${explicitNumber} vs ${candidateIdx + 1}); falling back to deterministic template.`
+        );
+        return fallbackTemplate;
       }
     }
   }
 
   // 3. Filter out any candidate list lines, candidate headers, or boilerplate reply/cancel lines to isolate clean preamble
   const cleanPreambleLines = lines.filter(line => {
-    if (candidateListLineRegex.test(line)) return false;
-    if (candidateHeaderRegex.test(line)) return false;
-    if (replyOrCancelRegex.test(line)) return false;
+    if (parseCandidateListLine(line)) return false;
+    if (isCandidateHeaderLine(line)) return false;
+    if (isReplyOrCancelLine(line)) return false;
     return true;
   });
 
@@ -186,8 +214,8 @@ export function composeClarificationMessage(
 
   // Strip trailing reply/cancel instructions if present in prose (e.g. "Balas 1/2 atau batal #1.")
   cleanPreamble = cleanPreamble
-    .replace(/(?:balas\s+\d+(?:\/\d+)*\s+atau\s+)?batal\s+#\d+\.?\s*$/i, '')
-    .replace(/(?:reply\s+\d+(?:\/\d+)*\s+or\s+)?cancel\s+#\d+\.?\s*$/i, '')
+    .replace(/\b(?:balas\s+[\d/]+\s+atau\s+)?batal\s+#\d+\.?\s*$/i, '')
+    .replace(/\b(?:reply\s+[\d/]+\s+or\s+)?cancel\s+#\d+\.?\s*$/i, '')
     .trim();
 
   // If the clean preamble is empty after stripping, fall back to the deterministic template

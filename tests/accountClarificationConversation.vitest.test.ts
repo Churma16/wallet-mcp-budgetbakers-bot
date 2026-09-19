@@ -25,6 +25,11 @@ import {
   parseClarificationProposalResponse,
 } from '../src/services/ai/jsonExtractionHelper.js';
 import { buildAccountClarificationQuestionPrompt } from '../src/services/ai/aiPromptBuilder.js';
+import {
+  composeClarificationMessage,
+  formatDeterministicCandidateSection,
+  formatAccountSelectionPrompt,
+} from '../src/utils/accountClarificationFormatter.js';
 
 class MockMessagingGateway {
   public readonly messages: Array<{ channel: string; chatId: string; content: string }> = [];
@@ -1509,6 +1514,116 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
       );
       expect(replyResult.selectedAccountId).toBe('acc-bca-bisnis');
       expect(replyResult.selectedCandidateIndex).toBe(2);
+    });
+  });
+
+  describe('Clarification Message Composition & Safe Helpers', () => {
+    const mockDraft = {
+      ticketId: 1,
+      records: [
+        {
+          amount: 50000,
+          currency: 'IDR',
+          categoryId: 'cat-makanan',
+          note: 'Makan siang',
+        },
+      ],
+      pendingRecordIndex: 0,
+      candidateAccounts: [
+        { id: 'acc-bca-tahapan', name: 'BCA Tahapan', currency: 'IDR' },
+        { id: 'acc-bca-bisnis', name: 'BCA Bisnis', currency: 'IDR' },
+      ],
+      createdAt: Date.now(),
+      status: 'PENDING' as const,
+    };
+
+    it('returns fallback template when raw generated question is empty or whitespace', () => {
+      const fallback = formatAccountSelectionPrompt(mockDraft as any, standardCategories);
+      expect(composeClarificationMessage('', mockDraft as any, standardCategories)).toBe(fallback);
+      expect(composeClarificationMessage('   \n\t  ', mockDraft as any, standardCategories)).toBe(fallback);
+    });
+
+    it('composes English message and strips list headers and boilerplate', () => {
+      setActiveLanguage('en');
+      try {
+        const rawQuestion = [
+          'Choose the account to use:',
+          '1. BCA Tahapan',
+          '2. BCA Bisnis',
+          'Please select an account for your lunch expense.',
+          'Reply with the account number or cancel #1.',
+        ].join('\n');
+
+        const composed = composeClarificationMessage(
+          rawQuestion,
+          mockDraft as any,
+          standardCategories,
+          'credit card'
+        );
+
+        expect(composed).toContain('Please select an account for your lunch expense.');
+        expect(composed).toContain('*Choose the account to use:*');
+        expect(composed).toContain('1. BCA Tahapan');
+        expect(composed).toContain('2. BCA Bisnis');
+        expect(composed).toContain('Reply with the account number or name, or type *cancel #1* to cancel.');
+        expect(composed).toContain('Account choice "credit card" is invalid or still ambiguous.');
+      } finally {
+        setActiveLanguage('id');
+      }
+    });
+
+    it('does not duplicate invalidSelection alert when already mentioned in clean preamble', () => {
+      const rawQuestion = 'Pilihan kartu kredit belum jelas. Akun mana yang ingin digunakan?';
+      const composed = composeClarificationMessage(
+        rawQuestion,
+        mockDraft as any,
+        standardCategories,
+        'kartu kredit'
+      );
+
+      // Warning alert line not prepended because already in preamble
+      expect(composed).not.toContain('⚠️ Pilihan akun "kartu kredit" belum valid');
+      expect(composed).toContain('Pilihan kartu kredit belum jelas.');
+      expect(composed).toContain('1. BCA Tahapan');
+    });
+
+    it('falls back to template when swapped inline numbering is detected', () => {
+      // Swapped inline numbering: "2. BCA Tahapan" instead of 1. BCA Tahapan
+      const rawQuestion = 'Kamu bisa memilih 2. BCA Tahapan untuk transaksi ini.';
+      const composed = composeClarificationMessage(
+        rawQuestion,
+        mockDraft as any,
+        standardCategories
+      );
+
+      const fallback = formatAccountSelectionPrompt(mockDraft as any, standardCategories);
+      expect(composed).toBe(fallback);
+    });
+
+    it('strips trailing reply or cancellation boilerplate from single-line prose', () => {
+      const rawQuestion = 'Transaksi makan siang disiapkan. Balas 1/2 atau batal #1.';
+      const composed = composeClarificationMessage(
+        rawQuestion,
+        mockDraft as any,
+        standardCategories
+      );
+
+      expect(composed).toContain('Transaksi makan siang disiapkan.');
+      expect(composed).not.toContain('disiapkan. Balas 1/2 atau batal #1.');
+      expect(composed).toContain('*Pilih akun yang digunakan:*');
+      expect(composed).toContain('1. BCA Tahapan');
+    });
+
+    it('formatDeterministicCandidateSection formats correctly for candidate without currency', () => {
+      const draftWithoutCurrency = {
+        ...mockDraft,
+        candidateAccounts: [
+          { id: 'acc-cash', name: 'Cash Dompet' },
+        ],
+      };
+      const section = formatDeterministicCandidateSection(draftWithoutCurrency as any);
+      expect(section).toContain('1. Cash Dompet');
+      expect(section).not.toContain('()');
     });
   });
 });
