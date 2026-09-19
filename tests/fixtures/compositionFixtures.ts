@@ -4,6 +4,7 @@ import { FastPathHandler } from '../../src/handlers/fastPathHandler.js';
 import {
   UserMessageHandler,
   UserMessageHandlerDependencies,
+  SemanticToolAuthorizationResolver,
 } from '../../src/handlers/userMessageHandler.js';
 import {
   FinancialActionRegistry,
@@ -21,11 +22,12 @@ import { TransactionSummaryService } from '../../src/services/transactionSummary
 import { MessagingGatewayService } from '../../src/services/messaging/index.js';
 import { PendingTransactionService } from '../../src/services/pendingTransactionService.js';
 import { PendingActionHandler } from '../../src/handlers/pendingActionHandler.js';
-import { FinancialAiProvider } from '../../src/services/ai/index.js';
+import { FinancialAiProvider, SemanticToolBoundary } from '../../src/services/ai/index.js';
 import { AccountClarificationHandler } from '../../src/handlers/accountClarificationHandler.js';
 import { WalletRecordPreparationService } from '../../src/services/walletRecordPreparationService.js';
 import { CategoryContextService } from '../../src/services/categoryContextService.js';
 import { AccountClarificationConversationService } from '../../src/services/ai/index.js';
+import { ApplicationEnvironmentConfiguration } from '../../src/config/index.js';
 
 export interface TestFinancialActionExecutorOptions {
   readonly walletMcpClient?: WalletMcpClientService;
@@ -128,6 +130,8 @@ export interface TestUserMessageHandlerOptions {
   readonly financialActionExecutor?: FinancialActionExecutor;
   readonly recordPreparationService?: WalletRecordPreparationService;
   readonly categoryContextService?: CategoryContextService;
+  readonly semanticToolBoundary?: SemanticToolBoundary;
+  readonly semanticToolAuthorizationResolver?: SemanticToolAuthorizationResolver;
 }
 
 export function createTestUserMessageHandler(
@@ -231,7 +235,55 @@ export function createTestUserMessageHandler(
     walletCacheService,
     financialActionRegistry,
     accountClarificationHandler,
+    semanticToolBoundary: options.semanticToolBoundary,
+    semanticToolAuthorizationResolver: options.semanticToolAuthorizationResolver,
   };
 
   return new UserMessageHandler(dependencies);
 }
+
+export function createTestApplicationConfiguration(
+  overrides?: Partial<ApplicationEnvironmentConfiguration>
+): ApplicationEnvironmentConfiguration {
+  return {
+    aiProvider: 'gemini',
+    aiProviders: ['gemini'],
+    aiApiKey: '',
+    aiBaseUrl: '',
+    aiModel: 'gemini-3.6-flash',
+    aiFallbackModels: [],
+    aiRequestTimeoutMilliseconds: 20000,
+    geminiApiKey: 'test-gemini-key',
+    geminiModel: 'gemini-3.6-flash',
+    geminiFallbackModels: [],
+    geminiRequestTimeoutMilliseconds: 20000,
+    walletMcpBaseUrl: 'https://mcp.wallet.budgetbakers.com',
+    walletMcpAccessToken: 'test-wallet-token',
+    allowedPhoneNumber: '6281234567890',
+    whatsappSessionPath: './test_session',
+    telegramBotToken: '123456:TEST_TELEGRAM_TOKEN',
+    telegramAllowedUserId: '987654321',
+    enabledMessengerChannels: ['whatsapp'],
+    logRetentionDays: 7,
+    emailSyncEnabled: false,
+    emailImapHost: 'imap.gmail.com',
+    emailImapPort: 993,
+    emailImapUser: 'test@example.com',
+    emailImapPassword: 'password',
+    emailPollIntervalSeconds: 60,
+    emailAllowedSenders: ['bank@example.com'],
+    emailTransactionLookbackDays: 7,
+    defaultCurrency: 'IDR',
+    whatsappMaxReconnectAttempts: 5,
+    whatsappReconnectMaxBackoffSeconds: 60,
+    whatsappMessageQueueIntervalMs: 50,
+    whatsappTypingPresenceCooldownMs: 1000,
+    maxMediaDownloadMb: 15,
+    telegramMaxStartupAttempts: 5,
+    telegramStartupRetryDelayMs: 2000,
+    categoryContextFilePath: './test-category-context.json',
+    appLanguage: 'id',
+    ...overrides,
+  };
+}
+

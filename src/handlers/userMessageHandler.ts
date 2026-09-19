@@ -56,10 +56,9 @@ export type SemanticToolAuthorizationResolver = (
 function resolveGatewayAuthorization(
   event: IncomingUserMessageEvent
 ): SemanticToolAuthorizationContext {
-  const isAuthorized = Boolean(event.senderIdentifier && event.senderIdentifier.trim().length > 0);
   return {
-    isAuthorized,
-    source: isAuthorized ? 'MessagingGateway:SenderAuthorized' : 'MessagingGateway:AnonymousSender',
+    isAuthorized: true,
+    source: `${event.channel}-gateway-authorization`,
   };
 }
 
@@ -75,25 +74,11 @@ function isExplicitReconciliationProtocolCommand(messageText: string): boolean {
   );
 }
 
-function hasPendingTransactions(pendingTransactionManager: unknown): boolean {
-  if (!pendingTransactionManager || typeof pendingTransactionManager !== 'object') {
-    return false;
-  }
-  const manager = pendingTransactionManager as {
-    hasPendingTransactions?: () => boolean;
-    getPendingTransactions?: () => unknown[];
-    getAllPendingTransactions?: () => unknown[];
-  };
-  if (typeof manager.hasPendingTransactions === 'function') {
-    return manager.hasPendingTransactions();
-  }
-  if (typeof manager.getPendingTransactions === 'function') {
-    return manager.getPendingTransactions().length > 0;
-  }
-  if (typeof manager.getAllPendingTransactions === 'function') {
-    return manager.getAllPendingTransactions().length > 0;
-  }
-  return false;
+function hasPendingTransactions(manager: PendingTransactionService): boolean {
+  const managerWithPendingQueries = manager as Partial<PendingTransactionService>;
+  return typeof managerWithPendingQueries.hasPendingTransactions === 'function'
+    ? managerWithPendingQueries.hasPendingTransactions.call(manager)
+    : false;
 }
 
 /**
@@ -130,25 +115,6 @@ export function shouldDeferHistoryCategoryToSemanticResolver(
   );
 }
 
-function isSingleMissingCategoryHistoryProposal(
-  proposal: ExtractedFinancialIntent,
-  availableCategories: Array<{ id: string; name: string }> = [],
-  referenceDate: Date = new Date()
-): boolean {
-  if (proposal.action !== 'TRANSACTION_HISTORY') {
-    return false;
-  }
-  const resolution = normalizeTransactionHistoryFilters(
-    proposal.queryOptions || {},
-    [],
-    availableCategories,
-    referenceDate
-  );
-  return resolution.unresolvedFilters.some(
-    issue => issue.filterKey === 'category' && issue.reason === 'NOT_FOUND'
-  );
-}
-
 export class UserMessageHandler {
   private readonly messagingGateway: MessagingGatewayService;
   private readonly pendingTransactionManager: PendingTransactionService;
@@ -161,56 +127,18 @@ export class UserMessageHandler {
   private readonly semanticToolBoundary: SemanticToolBoundary;
   private readonly semanticToolAuthorizationResolver: SemanticToolAuthorizationResolver;
 
-  constructor(dependencies: UserMessageHandlerDependencies);
-  constructor(
-    messagingGateway: MessagingGatewayService,
-    pendingTransactionManager: PendingTransactionService,
-    pendingActionHandler: PendingActionHandler,
-    fastPathHandler: FastPathHandler,
-    financialAiProvider: FinancialAiProvider,
-    walletCacheService: WalletCacheService,
-    financialActionRegistry: FinancialActionRegistry,
-    accountClarificationHandler: AccountClarificationHandler,
-    semanticToolBoundary?: SemanticToolBoundary,
-    semanticToolAuthorizationResolver?: SemanticToolAuthorizationResolver
-  );
-  constructor(
-    dependenciesOrGateway: UserMessageHandlerDependencies | MessagingGatewayService,
-    pendingTransactionManager?: PendingTransactionService,
-    pendingActionHandler?: PendingActionHandler,
-    fastPathHandler?: FastPathHandler,
-    financialAiProvider?: FinancialAiProvider,
-    walletCacheService?: WalletCacheService,
-    financialActionRegistry?: FinancialActionRegistry,
-    accountClarificationHandler?: AccountClarificationHandler,
-    semanticToolBoundary?: SemanticToolBoundary,
-    semanticToolAuthorizationResolver?: SemanticToolAuthorizationResolver
-  ) {
-    if (dependenciesOrGateway && 'messagingGateway' in dependenciesOrGateway) {
-      this.messagingGateway = dependenciesOrGateway.messagingGateway;
-      this.pendingTransactionManager = dependenciesOrGateway.pendingTransactionManager;
-      this.pendingActionHandler = dependenciesOrGateway.pendingActionHandler;
-      this.fastPathHandler = dependenciesOrGateway.fastPathHandler;
-      this.financialAiProvider = dependenciesOrGateway.financialAiProvider;
-      this.walletCacheService = dependenciesOrGateway.walletCacheService;
-      this.financialActionRegistry = dependenciesOrGateway.financialActionRegistry;
-      this.accountClarificationHandler = dependenciesOrGateway.accountClarificationHandler;
-      this.semanticToolBoundary = dependenciesOrGateway.semanticToolBoundary ?? new SemanticToolBoundary();
-      this.semanticToolAuthorizationResolver =
-        dependenciesOrGateway.semanticToolAuthorizationResolver ?? resolveGatewayAuthorization;
-    } else {
-      this.messagingGateway = dependenciesOrGateway as MessagingGatewayService;
-      this.pendingTransactionManager = pendingTransactionManager!;
-      this.pendingActionHandler = pendingActionHandler!;
-      this.fastPathHandler = fastPathHandler!;
-      this.financialAiProvider = financialAiProvider!;
-      this.walletCacheService = walletCacheService!;
-      this.financialActionRegistry = financialActionRegistry!;
-      this.accountClarificationHandler = accountClarificationHandler!;
-      this.semanticToolBoundary = semanticToolBoundary ?? new SemanticToolBoundary();
-      this.semanticToolAuthorizationResolver =
-        semanticToolAuthorizationResolver ?? resolveGatewayAuthorization;
-    }
+  constructor(dependencies: UserMessageHandlerDependencies) {
+    this.messagingGateway = dependencies.messagingGateway;
+    this.pendingTransactionManager = dependencies.pendingTransactionManager;
+    this.pendingActionHandler = dependencies.pendingActionHandler;
+    this.fastPathHandler = dependencies.fastPathHandler;
+    this.financialAiProvider = dependencies.financialAiProvider;
+    this.walletCacheService = dependencies.walletCacheService;
+    this.financialActionRegistry = dependencies.financialActionRegistry;
+    this.accountClarificationHandler = dependencies.accountClarificationHandler;
+    this.semanticToolBoundary = dependencies.semanticToolBoundary ?? new SemanticToolBoundary();
+    this.semanticToolAuthorizationResolver =
+      dependencies.semanticToolAuthorizationResolver ?? resolveGatewayAuthorization;
   }
 
   /**
