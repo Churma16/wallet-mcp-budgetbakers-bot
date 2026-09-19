@@ -8,7 +8,11 @@ import {
   isWalletMcpDefinitiveFailure,
 } from '../services/walletMcpService.js';
 import { WalletCacheService } from '../services/walletCacheService.js';
-import { IncomingUserMessageEvent, MessagingGatewayService } from '../services/messaging/index.js';
+import {
+  IncomingUserMessageEvent,
+  MessagingGatewayService,
+  SupportedMessengerChannel,
+} from '../services/messaging/index.js';
 import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../types/walletTypes.js';
 import {
   AccountResolutionIssue,
@@ -33,6 +37,7 @@ export class AccountClarificationHandler {
   private readonly recordPreparationService: WalletRecordPreparationService;
   private readonly conversationService: AccountClarificationConversationService;
   private readonly promptInFlightTicketIds = new Set<number>();
+  private readonly promptDeliveryPromises = new Map<number, Promise<void>>();
 
   constructor(
     private readonly pendingTransactionManager: PendingTransactionService,
@@ -99,19 +104,17 @@ export class AccountClarificationHandler {
         availableCategories
       );
 
-      const activeDraft = this.pendingTransactionManager.getPendingAccountSelectionDraft(pendingDraft.ticketId);
-      if (!activeDraft) {
-        applicationLogger.info(
-          `[Account Clarification] Draft #${pendingDraft.ticketId} was cancelled while initial prompt was generating; suppressing prompt delivery.`
-        );
+      const delivered = await this.deliverClarificationPrompt(
+        pendingDraft.ticketId,
+        event.channel,
+        event.chatIdentifier,
+        promptContent,
+        'initial prompt'
+      );
+      if (!delivered) {
         return true;
       }
 
-      await this.messagingGateway.sendMessage(
-        event.channel,
-        event.chatIdentifier,
-        promptContent
-      );
       if (this.pendingTransactionManager.getPendingAccountSelectionDraft(pendingDraft.ticketId)) {
         this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(pendingDraft.ticketId);
       }
@@ -123,11 +126,46 @@ export class AccountClarificationHandler {
         applicationLogger.error(
           `[Account Clarification] Draft #${pendingDraft.ticketId} discarded because the initial prompt could not be delivered: ${formatConciseErrorMessage(messagingError)}`
         );
+        throw messagingError;
       }
-      throw messagingError;
     } finally {
       this.promptInFlightTicketIds.delete(pendingDraft.ticketId);
     }
+    return true;
+  }
+
+  private async deliverClarificationPrompt(
+    ticketId: number,
+    channel: SupportedMessengerChannel,
+    chatIdentifier: string,
+    promptContent: string,
+    contextLabel: string
+  ): Promise<boolean> {
+    const activeDraft = this.pendingTransactionManager.getPendingAccountSelectionDraft(ticketId);
+    if (!activeDraft) {
+      applicationLogger.info(
+        `[Account Clarification] Draft #${ticketId} was cancelled while ${contextLabel} was generating; suppressing prompt delivery.`
+      );
+      return false;
+    }
+
+    const sendPromise = this.messagingGateway.sendMessage(
+      channel,
+      chatIdentifier,
+      promptContent
+    );
+    const settledPromise = sendPromise.then(
+      () => {},
+      () => {}
+    );
+    this.promptDeliveryPromises.set(ticketId, settledPromise);
+
+    try {
+      await sendPromise;
+    } finally {
+      this.promptDeliveryPromises.delete(ticketId);
+    }
+
     return true;
   }
 
@@ -220,6 +258,15 @@ export class AccountClarificationHandler {
         const cancelledDraft = this.pendingTransactionManager.rejectPendingAccountSelectionDraft(
           pendingDraft.ticketId
         );
+
+        // Serialize prompt delivery and cancellation: if prompt delivery is currently in flight,
+        // await it to settle before emitting the cancellation acknowledgement so the cancellation
+        // is guaranteed to be the final user-visible message.
+        const inFlightDelivery = this.promptDeliveryPromises.get(pendingDraft.ticketId);
+        if (inFlightDelivery) {
+          await inFlightDelivery;
+        }
+
         if (cancelledDraft) {
           await this.messagingGateway.sendMessage(
             event.channel,
@@ -245,6 +292,10 @@ export class AccountClarificationHandler {
       const cancelledDraft = this.pendingTransactionManager.rejectPendingAccountSelectionDraft(
         pendingDraft.ticketId
       );
+      const inFlightDelivery = this.promptDeliveryPromises.get(pendingDraft.ticketId);
+      if (inFlightDelivery) {
+        await inFlightDelivery;
+      }
       if (cancelledDraft) {
         await this.messagingGateway.sendMessage(
           event.channel,
@@ -284,19 +335,17 @@ export class AccountClarificationHandler {
           normalizedReply
         );
 
-        const activeDraft = this.pendingTransactionManager.getPendingAccountSelectionDraft(claimedDraft.ticketId);
-        if (!activeDraft) {
-          applicationLogger.info(
-            `[Account Clarification] Draft #${claimedDraft.ticketId} was cancelled while retry prompt was generating; suppressing prompt delivery.`
-          );
+        const delivered = await this.deliverClarificationPrompt(
+          claimedDraft.ticketId,
+          event.channel,
+          event.chatIdentifier,
+          retryPrompt,
+          'retry prompt'
+        );
+        if (!delivered) {
           return true;
         }
 
-        await this.messagingGateway.sendMessage(
-          event.channel,
-          event.chatIdentifier,
-          retryPrompt
-        );
         if (this.pendingTransactionManager.getPendingAccountSelectionDraft(claimedDraft.ticketId)) {
           this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(claimedDraft.ticketId);
         }
@@ -304,11 +353,11 @@ export class AccountClarificationHandler {
         const activeDraft = this.pendingTransactionManager.getPendingAccountSelectionDraft(claimedDraft.ticketId);
         if (activeDraft) {
           this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(claimedDraft.ticketId);
+          applicationLogger.error(
+            `[Account Clarification] Draft #${claimedDraft.ticketId} retry prompt delivery failed: ${formatConciseErrorMessage(messagingError)}`
+          );
+          throw messagingError;
         }
-        applicationLogger.error(
-          `[Account Clarification] Draft #${claimedDraft.ticketId} retry prompt delivery failed: ${formatConciseErrorMessage(messagingError)}`
-        );
-        throw messagingError;
       } finally {
         this.promptInFlightTicketIds.delete(claimedDraft.ticketId);
       }
@@ -393,19 +442,17 @@ export class AccountClarificationHandler {
           availableCategories
         );
 
-        const activeDraft = this.pendingTransactionManager.getPendingAccountSelectionDraft(claimedDraft.ticketId);
-        if (!activeDraft) {
-          applicationLogger.info(
-            `[Account Clarification] Draft #${claimedDraft.ticketId} was cancelled while follow-up prompt was generating; suppressing prompt delivery.`
-          );
+        const delivered = await this.deliverClarificationPrompt(
+          claimedDraft.ticketId,
+          event.channel,
+          event.chatIdentifier,
+          followUpPrompt,
+          'follow-up prompt'
+        );
+        if (!delivered) {
           return true;
         }
 
-        await this.messagingGateway.sendMessage(
-          event.channel,
-          event.chatIdentifier,
-          followUpPrompt
-        );
         if (this.pendingTransactionManager.getPendingAccountSelectionDraft(claimedDraft.ticketId)) {
           this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(claimedDraft.ticketId);
         }
@@ -417,8 +464,8 @@ export class AccountClarificationHandler {
           applicationLogger.error(
             `[Account Clarification] Draft #${claimedDraft.ticketId} discarded because the follow-up prompt could not be delivered: ${formatConciseErrorMessage(messagingError)}`
           );
+          throw messagingError;
         }
-        throw messagingError;
       } finally {
         this.promptInFlightTicketIds.delete(claimedDraft.ticketId);
       }

@@ -1084,6 +1084,188 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
       // Dispatch succeeded
       expect(harness.walletMcpClient.calls.length).toBe(1);
     });
+
+    it('serializes prompt delivery and cancellation when cancellation arrives during initial prompt sendMessage', async () => {
+      const record = createPendingRecord('BCA', { note: 'Record 1' });
+      const harness = createHarness([record]);
+
+      let resolveInitialPromptSend!: () => void;
+      const deferredInitialPromptSendPromise = new Promise<void>((resolve) => {
+        resolveInitialPromptSend = resolve;
+      });
+
+      let initialPromptSendStarted!: () => void;
+      const initialPromptSendStartedPromise = new Promise<void>((resolve) => {
+        initialPromptSendStarted = resolve;
+      });
+
+      const originalSendMessage = harness.messagingGateway.sendMessage.bind(harness.messagingGateway);
+      vi.spyOn(harness.messagingGateway, 'sendMessage').mockImplementation(async (channel, chatId, content) => {
+        // Intercept initial clarification prompt delivery
+        if (content.includes('Which account?') && !content.includes('dibatalkan')) {
+          initialPromptSendStarted();
+          await deferredInitialPromptSendPromise;
+        }
+        return originalSendMessage(channel, chatId, content);
+      });
+
+      // 1. Start transaction creation: question generation completes, but sendMessage is deferred/held in flight
+      const creationPromise = harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('Catat pengeluaran BCA')
+      );
+
+      await initialPromptSendStartedPromise;
+
+      const activeDrafts = harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts();
+      expect(activeDrafts.length).toBe(1);
+      const ticketId = activeDrafts[0].ticketId;
+
+      // 2. User sends "batal #<ticketId>" while sendMessage is still in flight
+      const cancelPromise = harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent(`batal #${ticketId}`)
+      );
+
+      // 3. Complete the deferred prompt delivery
+      resolveInitialPromptSend();
+
+      // Await both promises to complete
+      await creationPromise;
+      await cancelPromise;
+
+      // Assert draft remains cancelled
+      expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(0);
+      expect(harness.pendingTransactionManager.getPendingAccountSelectionDraft(ticketId)).toBeUndefined();
+      // Assert Wallet MCP is never called
+      expect(harness.walletMcpClient.calls.length).toBe(0);
+
+      // Assert cancellation acknowledgement is delivered AFTER the clarification prompt (final message)
+      expect(harness.messagingGateway.messages.length).toBe(2);
+      expect(harness.messagingGateway.messages[0].content).toContain('Which account?');
+      expect(harness.messagingGateway.messages[1].content).toContain('dibatalkan');
+      expect(harness.messagingGateway.messages.at(-1)?.content).toContain('dibatalkan');
+    });
+
+    it('serializes prompt delivery and cancellation when cancellation arrives during retry prompt sendMessage', async () => {
+      const record = createPendingRecord('BCA', { note: 'Record 1' });
+      const harness = createHarness([record]);
+
+      // 1. Initial draft creation succeeds normally
+      await harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('Catat pengeluaran BCA')
+      );
+      const ticketId = harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts()[0].ticketId;
+
+      harness.financialAiProvider.mockProposalResponse = {
+        selectedAccountId: null,
+        selectedCandidateIndex: null,
+        reasoning: 'Ambiguous reply',
+      };
+
+      let resolveRetrySend!: () => void;
+      const deferredRetrySendPromise = new Promise<void>((resolve) => {
+        resolveRetrySend = resolve;
+      });
+
+      let retrySendStarted!: () => void;
+      const retrySendStartedPromise = new Promise<void>((resolve) => {
+        retrySendStarted = resolve;
+      });
+
+      const originalSendMessage = harness.messagingGateway.sendMessage.bind(harness.messagingGateway);
+      vi.spyOn(harness.messagingGateway, 'sendMessage').mockImplementation(async (channel, chatId, content) => {
+        // Intercept retry prompt delivery
+        if (content.includes('belum') || content.includes('pilihan')) {
+          retrySendStarted();
+          await deferredRetrySendPromise;
+        }
+        return originalSendMessage(channel, chatId, content);
+      });
+
+      // 2. User sends ambiguous reply: retry question generates and starts sendMessage, held in flight
+      const replyPromise = harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('bukan itu')
+      );
+
+      await retrySendStartedPromise;
+
+      // 3. User sends "batal" while retry sendMessage is in flight
+      const cancelPromise = harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('batal')
+      );
+
+      // 4. Complete the deferred retry prompt delivery
+      resolveRetrySend();
+
+      await replyPromise;
+      await cancelPromise;
+
+      // Assert draft remains cancelled
+      expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(0);
+      expect(harness.pendingTransactionManager.getPendingAccountSelectionDraft(ticketId)).toBeUndefined();
+      // Assert Wallet MCP is never called
+      expect(harness.walletMcpClient.calls.length).toBe(0);
+
+      // Assert cancellation acknowledgement is delivered AFTER the retry prompt (final message)
+      expect(harness.messagingGateway.messages.at(-1)?.content).toContain('dibatalkan');
+    });
+
+    it('serializes prompt delivery and cancellation when cancellation arrives during follow-up prompt sendMessage', async () => {
+      const record1 = createPendingRecord('BCA', { note: 'Record 1' });
+      const record2 = createPendingRecord('BCA', { note: 'Record 2' });
+      const harness = createHarness([record1, record2]);
+
+      // Initial draft creation
+      await harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('Catat 2 pengeluaran BCA')
+      );
+      const ticketId = harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts()[0].ticketId;
+
+      let resolveFollowUpSend!: () => void;
+      const deferredFollowUpSendPromise = new Promise<void>((resolve) => {
+        resolveFollowUpSend = resolve;
+      });
+
+      let followUpSendStarted!: () => void;
+      const followUpSendStartedPromise = new Promise<void>((resolve) => {
+        followUpSendStarted = resolve;
+      });
+
+      const originalSendMessage = harness.messagingGateway.sendMessage.bind(harness.messagingGateway);
+      vi.spyOn(harness.messagingGateway, 'sendMessage').mockImplementation(async (channel, chatId, content) => {
+        // Intercept follow-up prompt delivery for record 2
+        if (content.includes('Record 2') && !content.includes('dibatalkan')) {
+          followUpSendStarted();
+          await deferredFollowUpSendPromise;
+        }
+        return originalSendMessage(channel, chatId, content);
+      });
+
+      // Resolve record 1 with option "1"
+      const resolutionPromise = harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('1')
+      );
+
+      await followUpSendStartedPromise;
+
+      // Send "batal #<ticketId>" while follow-up prompt sendMessage is in flight
+      const cancelPromise = harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent(`batal #${ticketId}`)
+      );
+
+      // Complete deferred follow-up prompt delivery
+      resolveFollowUpSend();
+
+      await resolutionPromise;
+      await cancelPromise;
+
+      // Assert draft remains cancelled
+      expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(0);
+      expect(harness.pendingTransactionManager.getPendingAccountSelectionDraft(ticketId)).toBeUndefined();
+      expect(harness.walletMcpClient.calls.length).toBe(0);
+
+      // Assert cancellation acknowledgement is delivered AFTER the follow-up prompt (final message)
+      expect(harness.messagingGateway.messages.at(-1)?.content).toContain('dibatalkan');
+    });
   });
 
   describe('Multi-Record Batches', () => {
