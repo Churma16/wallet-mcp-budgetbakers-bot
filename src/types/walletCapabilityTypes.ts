@@ -69,6 +69,8 @@ export interface WalletMcpCapabilitySnapshot {
   readonly profile?: WalletClientProfile;
   readonly runtimeRejections: ReadonlyMap<string, string>;
   readonly fetchedAt: number;
+  readonly toolsFetchedAt?: number;
+  readonly profileFetchedAt?: number;
 }
 
 export interface WalletMcpCapabilityQuery {
@@ -84,5 +86,6 @@ export interface WalletMcpCapabilityQuery {
 
 export interface WalletMcpCapabilityOptions {
   readonly cacheDurationMilliseconds?: number;
+  readonly rejectionTtlMilliseconds?: number;
   readonly clock?: () => number;
 }

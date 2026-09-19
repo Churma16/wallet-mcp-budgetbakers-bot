@@ -409,4 +409,112 @@ describe('WalletMcpCapabilityService', () => {
         .callMcpTool(unallowlistedAdvertisedToolName)
     ).rejects.toThrow(WalletMcpRequestError);
   });
+
+  it('bounds runtime tool rejection lifetime and allows recovery via force-refresh or TTL expiration', async () => {
+    const capabilityService = new WalletMcpCapabilityService(mockWalletClient, {
+      cacheDurationMilliseconds: 5000,
+      clock: () => simulatedCurrentTime,
+    });
+
+    await capabilityService.refreshCapabilities();
+    expect(capabilityService.supportsTool('create_records')).toBe(true);
+
+    // 1. Mark tool rejected at runtime (e.g. 403 Forbidden or scope revoked)
+    capabilityService.markToolRejection('create_records', 'Method not allowed');
+    expect(capabilityService.supportsTool('create_records')).toBe(false);
+
+    // 2. While rejection is still fresh (< 5000ms), runtime rejection still overrides optimistic cached advertisement
+    simulatedCurrentTime += 1000;
+    expect(capabilityService.supportsTool('create_records')).toBe(false);
+
+    // 3. Authoritative recovery branch A: force-refresh re-advertises the tool and clears stale runtime rejection
+    await capabilityService.refreshCapabilities(true);
+    expect(capabilityService.supportsTool('create_records')).toBe(true);
+
+    // 4. Re-mark rejection to test authoritative recovery branch B: TTL expiration
+    capabilityService.markToolRejection('create_records', 'Temporary network failure');
+    expect(capabilityService.supportsTool('create_records')).toBe(false);
+
+    // Advance beyond the configured freshness window (rejection TTL)
+    simulatedCurrentTime += 6000;
+    // Calling refreshCapabilities after TTL expiration re-evaluates advertised tools
+    await capabilityService.refreshCapabilities();
+    expect(capabilityService.supportsTool('create_records')).toBe(true);
+  });
+
+  it('tracks freshness independently per discovery source and degrades to unknown when profile refresh fails', async () => {
+    const capabilityService = new WalletMcpCapabilityService(mockWalletClient, {
+      cacheDurationMilliseconds: 5000,
+      clock: () => simulatedCurrentTime,
+    });
+
+    // 1. Initial discovery: both tools and profile succeed
+    await capabilityService.refreshCapabilities();
+    expect(capabilityService.hasScope('records.create')).toBe(true);
+    expect(capabilityService.isSyncReady()).toBe(true);
+    expect(capabilityService.getBaseCurrency()).toBe('IDR');
+    expect(capabilityService.getClientProfile()).toBeDefined();
+    expect(capabilityService.supportsTool('get_records')).toBe(true);
+
+    // 2. Advance beyond cache TTL
+    simulatedCurrentTime += 6000;
+
+    // 3. Subsequent refresh: listTools succeeds but getClientProfile fails
+    mockWalletClient.getClientProfile = vi.fn().mockRejectedValue(new Error('Profile endpoint unavailable'));
+    await capabilityService.refreshCapabilities();
+
+    // 4. Verification: success from listTools cannot renew freshness of failed getClientProfile
+    // Queries depending on profile must degrade conservatively to 'unknown' / undefined
+    expect(capabilityService.hasScope('records.create')).toBe('unknown');
+    expect(capabilityService.isSyncReady()).toBe('unknown');
+    expect(capabilityService.getBaseCurrency()).toBeUndefined();
+    expect(capabilityService.getClientProfile()).toBeUndefined();
+
+    // While queries depending on tools remain fresh and definitive
+    expect(capabilityService.supportsTool('get_records')).toBe(true);
+    expect(capabilityService.getToolCapability('get_records')).toBeDefined();
+    expect(capabilityService.getAdvertisedToolNames()).toContain('get_records');
+
+    // 5. Repeating refresh cycles while profile continues to fail still never revives stale profile data
+    simulatedCurrentTime += 6000;
+    await capabilityService.refreshCapabilities();
+    expect(capabilityService.hasScope('records.create')).toBe('unknown');
+    expect(capabilityService.isSyncReady()).toBe('unknown');
+
+    // 6. When getClientProfile recovers on the next refresh cycle, profile queries recover to fresh definitive values
+    simulatedCurrentTime += 6000;
+    mockWalletClient.getClientProfile = vi.fn().mockResolvedValue(simulatedProfile);
+    await capabilityService.refreshCapabilities();
+    expect(capabilityService.hasScope('records.create')).toBe(true);
+    expect(capabilityService.isSyncReady()).toBe(true);
+    expect(capabilityService.getBaseCurrency()).toBe('IDR');
+  });
+
+  it('degrades tool queries to unknown when listTools fails after TTL while profile succeeds', async () => {
+    const capabilityService = new WalletMcpCapabilityService(mockWalletClient, {
+      cacheDurationMilliseconds: 5000,
+      clock: () => simulatedCurrentTime,
+    });
+
+    // Initial discovery
+    await capabilityService.refreshCapabilities();
+    expect(capabilityService.supportsTool('get_records')).toBe(true);
+    expect(capabilityService.hasScope('records.create')).toBe(true);
+
+    // Advance beyond cache TTL
+    simulatedCurrentTime += 6000;
+
+    // Subsequent refresh: listTools fails but getClientProfile succeeds
+    mockWalletClient.listTools = vi.fn().mockRejectedValue(new Error('MCP server connection reset'));
+    await capabilityService.refreshCapabilities();
+
+    // Success from profile cannot renew freshness of failed listTools
+    expect(capabilityService.supportsTool('get_records')).toBe('unknown');
+    expect(capabilityService.getToolCapability('get_records')).toBeUndefined();
+    expect(capabilityService.getAdvertisedToolNames()).toEqual([]);
+
+    // Profile queries remain fresh
+    expect(capabilityService.hasScope('records.create')).toBe(true);
+    expect(capabilityService.isSyncReady()).toBe(true);
+  });
 });
