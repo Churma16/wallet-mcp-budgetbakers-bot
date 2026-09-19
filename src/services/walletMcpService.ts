@@ -29,6 +29,17 @@ import {
   WalletMcpTransport,
   type WalletMcpTransportDependencies,
 } from './walletMcpTransport.js';
+import {
+  type CapabilityTriState,
+  type WalletClientProfile,
+  type WalletMcpBoundedJsonValue,
+  type WalletMcpBoundedJsonObject,
+  type WalletMcpToolInputFieldCapability,
+  type WalletMcpToolCapability,
+  type WalletMcpRateLimitMetadata,
+  type WalletMcpResponseMetadata,
+} from '../types/walletCapabilityTypes.js';
+import { normalizeWalletClientProfile } from './walletProfileNormalizer.js';
 
 export const DEFAULT_TRANSACTION_HISTORY_LIMIT = 10;
 export const MAX_TRANSACTION_HISTORY_LIMIT = 50;
@@ -51,46 +62,17 @@ export const WALLET_MCP_ALLOWED_TOOL_NAMES = [
 
 export type WalletMcpToolName = typeof WALLET_MCP_ALLOWED_TOOL_NAMES[number];
 export type WalletMcpOperationName = WalletMcpToolName | 'tools/list';
-export type WalletMcpBoundedJsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | WalletMcpBoundedJsonValue[]
-  | WalletMcpBoundedJsonObject;
-export interface WalletMcpBoundedJsonObject {
-  readonly [key: string]: WalletMcpBoundedJsonValue;
-}
 
-export interface WalletMcpToolInputFieldCapability {
-  readonly name: string;
-  readonly required: boolean;
-  readonly types: string[];
-  readonly description?: string;
-  readonly enumValues?: Array<string | number | boolean | null>;
-}
-
-export interface WalletMcpToolCapability {
-  readonly name: string;
-  readonly description?: string;
-  readonly inputSchema?: WalletMcpBoundedJsonObject;
-  readonly outputSchema?: WalletMcpBoundedJsonObject;
-  readonly inputFields: WalletMcpToolInputFieldCapability[];
-  readonly isApplicationSupported: boolean;
-  readonly hasOutputSchema: boolean;
-}
-
-export interface WalletMcpRateLimitMetadata {
-  readonly limit?: number;
-  readonly remaining?: number;
-  readonly resetAt?: string;
-  readonly retryAfterMilliseconds?: number;
-}
-
-export interface WalletMcpResponseMetadata {
-  readonly rateLimit?: WalletMcpRateLimitMetadata;
-  readonly agentHints?: WalletAgentHint[];
-}
+export type {
+  CapabilityTriState,
+  WalletClientProfile,
+  WalletMcpBoundedJsonValue,
+  WalletMcpBoundedJsonObject,
+  WalletMcpToolInputFieldCapability,
+  WalletMcpToolCapability,
+  WalletMcpRateLimitMetadata,
+  WalletMcpResponseMetadata,
+};
 
 interface TransactionSearchScanCacheEntry {
   matchedRecords: WalletRecordItem[];
@@ -324,6 +306,9 @@ export class WalletMcpClientService {
   private cachedLabelList: WalletLabelItem[] = [];
   private cacheLastUpdatedTimestamp: number = 0;
   private readonly cacheDurationMilliseconds: number = 1000 * 60 * 30; // 30 minutes
+  private cachedClientProfile?: WalletClientProfile;
+  private profileCacheTimestamp: number = 0;
+  private readonly profileCacheDurationMilliseconds: number = 1000 * 60 * 5; // 5 minutes
   private readonly transactionSearchScanCache = new Map<string, TransactionSearchScanCacheEntry>();
   private readonly transactionSearchScanCacheTtlMilliseconds = 1000 * 60 * 2; // 2 minutes
   private readonly maxTransactionSearchScanCacheEntries = 20;
@@ -482,10 +467,30 @@ export class WalletMcpClientService {
   }
 
   /**
+   * Retrieves and normalizes the client profile from Wallet MCP.
+   * Caches the normalized profile for a bounded duration unless forceRefresh is true.
+   */
+  public async getClientProfile(forceRefresh: boolean = false): Promise<WalletClientProfile> {
+    const isCacheExpired = Date.now() - this.profileCacheTimestamp > this.profileCacheDurationMilliseconds;
+
+    if (!forceRefresh && this.cachedClientProfile !== undefined && !isCacheExpired) {
+      return this.cachedClientProfile;
+    }
+
+    const rawProfile = await this.verifyClientProfile();
+    return this.cachedClientProfile ?? normalizeWalletClientProfile(rawProfile);
+  }
+
+  /**
    * Verify client profile and connection to Wallet MCP.
+   * Dispatches get_client_profile and returns the raw tool result directly for backward compatibility.
    */
   public async verifyClientProfile(): Promise<unknown> {
-    return await this.callMcpTool('get_client_profile');
+    const rawProfile = await this.callMcpTool<unknown>('get_client_profile');
+    const normalizedProfile = normalizeWalletClientProfile(rawProfile);
+    this.cachedClientProfile = normalizedProfile;
+    this.profileCacheTimestamp = normalizedProfile.fetchedAt;
+    return rawProfile;
   }
 
   /**

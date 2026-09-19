@@ -10,6 +10,9 @@ import {
   validateApplicationConfiguration,
 } from '../config/environmentConfig.js';
 import { WalletMcpClientService } from '../services/walletMcpService.js';
+import { WalletClientProfile, WalletMcpToolCapability } from '../types/walletCapabilityTypes.js';
+import { WalletMcpCapabilityService } from '../services/walletMcpCapabilityService.js';
+import { normalizeWalletClientProfile } from '../services/walletProfileNormalizer.js';
 
 export type DoctorStatus = 'SUCCESS' | 'WARN' | 'ERROR';
 
@@ -22,9 +25,15 @@ export interface DoctorCheckResult {
   readonly message: string;
 }
 
+export interface WalletMcpDoctorProbeResult {
+  readonly clientProfile?: WalletClientProfile;
+  readonly tools?: WalletMcpToolCapability[];
+  readonly capabilityService?: WalletMcpCapabilityService;
+}
+
 export interface DoctorDependencies {
   readonly nodeVersion: string;
-  readonly probeWalletMcp: (config: ApplicationEnvironmentConfiguration) => Promise<void>;
+  readonly probeWalletMcp: (config: ApplicationEnvironmentConfiguration) => Promise<WalletMcpDoctorProbeResult | void>;
   readonly probeAiProvider: (
     provider: SupportedAiProviderType,
     config: ApplicationEnvironmentConfiguration
@@ -70,13 +79,28 @@ function resolveProviderConnectionConfiguration(
   };
 }
 
-async function probeWalletMcp(config: ApplicationEnvironmentConfiguration): Promise<void> {
+async function probeWalletMcp(config: ApplicationEnvironmentConfiguration): Promise<WalletMcpDoctorProbeResult> {
   const walletClient = new WalletMcpClientService(
     config.walletMcpBaseUrl,
     config.walletMcpAccessToken
   );
   try {
-    await walletClient.verifyClientProfile();
+    const rawProfile = await walletClient.verifyClientProfile();
+    let tools: WalletMcpToolCapability[] | undefined;
+    try {
+      tools = await walletClient.listTools();
+    } catch {
+      tools = undefined;
+    }
+
+    const clientProfile = rawProfile && typeof rawProfile === 'object'
+      ? normalizeWalletClientProfile(rawProfile)
+      : undefined;
+
+    return {
+      clientProfile,
+      tools,
+    };
   } finally {
     await walletClient.close();
   }
@@ -244,12 +268,112 @@ export async function runDoctorDiagnostics(
 
   if (config.walletMcpAccessToken) {
     try {
-      await dependencies.probeWalletMcp(config);
+      const probeResult = await dependencies.probeWalletMcp(config);
       results.push({
         status: 'SUCCESS',
         check: 'Wallet MCP',
         message: 'Connection and access token were accepted.',
       });
+
+      if (probeResult && typeof probeResult === 'object') {
+        const profile = probeResult.clientProfile;
+        const tools = probeResult.tools;
+
+        // 1. Permissions / Scopes
+        if (profile?.grantedScopes !== undefined) {
+          const recommendedScopes = [
+            'records.create',
+            'records.read',
+            'accounts.read',
+            'categories.read',
+            'budgets.read',
+          ];
+          const missingScopes = recommendedScopes.filter(scope => !profile.grantedScopes!.has(scope));
+          if (missingScopes.length === 0) {
+            results.push({
+              status: 'SUCCESS',
+              check: 'Wallet MCP/Permissions',
+              message: 'All recommended scopes are granted.',
+            });
+          } else {
+            results.push({
+              status: 'WARN',
+              check: 'Wallet MCP/Permissions',
+              message: `Missing recommended scopes: ${missingScopes.join(', ')}.`,
+            });
+          }
+        }
+
+        // 2. Sync Readiness
+        if (profile?.syncState !== undefined) {
+          const normalizedSync = profile.syncState.trim().toLowerCase();
+          if (normalizedSync === 'complete' || normalizedSync === 'ready') {
+            results.push({
+              status: 'SUCCESS',
+              check: 'Wallet MCP/Sync',
+              message: `Wallet synchronization is ready (state: ${profile.syncState}).`,
+            });
+          } else if (normalizedSync === 'in_progress' || normalizedSync === 'syncing') {
+            results.push({
+              status: 'WARN',
+              check: 'Wallet MCP/Sync',
+              message: `Wallet synchronization is currently in progress (state: ${profile.syncState}).`,
+            });
+          } else {
+            const syncErrorMessage = profile.syncError ? `: ${profile.syncError}` : '';
+            results.push({
+              status: 'ERROR',
+              check: 'Wallet MCP/Sync',
+              message: `Wallet synchronization is not ready (state: ${profile.syncState}${syncErrorMessage}).`,
+            });
+          }
+        }
+
+        // 3. Advertised Tools
+        if (tools && tools.length > 0) {
+          const expectedCoreTools = [
+            'get_records',
+            'create_records',
+            'get_accounts',
+            'get_categories',
+            'get_budgets',
+          ];
+          const toolNamesSet = new Set(tools.map(tool => tool.name));
+          const missingCoreTools = expectedCoreTools.filter(toolName => !toolNamesSet.has(toolName));
+          if (missingCoreTools.length === 0) {
+            results.push({
+              status: 'SUCCESS',
+              check: 'Wallet MCP/Tools',
+              message: `Advertised tools verified (${tools.length} tool(s) discovered).`,
+            });
+          } else {
+            results.push({
+              status: 'WARN',
+              check: 'Wallet MCP/Tools',
+              message: `Some expected core tools are not advertised: ${missingCoreTools.join(', ')}.`,
+            });
+          }
+        }
+
+        // 4. Currency Alignment
+        if (profile?.baseCurrency) {
+          const configuredDefault = (config.defaultCurrency || '').trim().toUpperCase();
+          const walletBase = profile.baseCurrency.trim().toUpperCase();
+          if (configuredDefault && walletBase && configuredDefault !== walletBase) {
+            results.push({
+              status: 'WARN',
+              check: 'Wallet MCP/Currency',
+              message: `Configured DEFAULT_CURRENCY ('${configuredDefault}') differs from Wallet base currency ('${walletBase}').`,
+            });
+          } else if (configuredDefault && walletBase) {
+            results.push({
+              status: 'SUCCESS',
+              check: 'Wallet MCP/Currency',
+              message: `Configured currency matches Wallet base currency ('${walletBase}').`,
+            });
+          }
+        }
+      }
     } catch {
       results.push({
         status: 'ERROR',

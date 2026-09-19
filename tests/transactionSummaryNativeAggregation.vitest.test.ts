@@ -1124,4 +1124,86 @@ describe('native Wallet MCP summary aggregation (Issue #161)', () => {
       expect(formattedId).toContain('Ringkasan ini bersifat parsial');
     });
   });
+
+  describe('WalletMcpCapabilityService consultation (Issue #163)', () => {
+    it('bypasses native aggregation immediately when capabilityService reports unsupported tool', async () => {
+      const mockClient = {
+        fetchRecordsAggregation: vi.fn(),
+      } as unknown as WalletMcpClientService;
+
+      const mockHistoryService = {
+        getTransactionHistory: vi.fn().mockResolvedValue({
+          records: [],
+          limit: 50,
+          offset: 0,
+          page: 1,
+          nextOffset: null,
+          hasMore: false,
+          sort: 'newest',
+        }),
+      } as unknown as TransactionHistoryService;
+
+      const mockCapability = {
+        supportsTool: vi.fn().mockReturnValue(false),
+        markToolRejection: vi.fn(),
+      };
+
+      const service = new TransactionSummaryService(
+        mockClient,
+        undefined,
+        mockHistoryService,
+        mockCapability as never
+      );
+
+      const result = await service.getTransactionSummary({});
+
+      expect(mockCapability.supportsTool).toHaveBeenCalledWith('get_records_aggregation');
+      expect(mockClient.fetchRecordsAggregation).not.toHaveBeenCalled();
+      expect(mockHistoryService.getTransactionHistory).toHaveBeenCalled();
+      expect(result.transactionCount).toBe(0);
+    });
+
+    it('marks tool rejection when native aggregation fails with definitive failure and falls back to history', async () => {
+      const mockClient = {
+        fetchRecordsAggregation: vi.fn().mockRejectedValue(
+          new WalletMcpRequestError('Method not found', 'DEFINITIVE_FAILURE')
+        ),
+      } as unknown as WalletMcpClientService;
+
+      const mockHistoryService = {
+        getTransactionHistory: vi.fn().mockResolvedValue({
+          records: [],
+          limit: 50,
+          offset: 0,
+          page: 1,
+          nextOffset: null,
+          hasMore: false,
+          sort: 'newest',
+        }),
+      } as unknown as TransactionHistoryService;
+
+      const mockCapability = {
+        supportsTool: vi.fn().mockReturnValue(true),
+        markToolRejection: vi.fn(),
+      };
+
+      const service = new TransactionSummaryService(
+        mockClient,
+        undefined,
+        mockHistoryService,
+        mockCapability as never
+      );
+
+      const result = await service.getTransactionSummary({});
+
+      expect(mockCapability.supportsTool).toHaveBeenCalledWith('get_records_aggregation');
+      expect(mockClient.fetchRecordsAggregation).toHaveBeenCalled();
+      expect(mockCapability.markToolRejection).toHaveBeenCalledWith(
+        'get_records_aggregation',
+        expect.stringContaining('Method not found')
+      );
+      expect(mockHistoryService.getTransactionHistory).toHaveBeenCalled();
+      expect(result.transactionCount).toBe(0);
+    });
+  });
 });

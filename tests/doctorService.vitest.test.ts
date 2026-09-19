@@ -332,4 +332,130 @@ describe('doctor diagnostics', () => {
     expect(connectSpy).toHaveBeenCalledTimes(1);
     expect(closeSpy).toHaveBeenCalled();
   });
+
+  it('reports successful granular Wallet MCP diagnostics when all permissions, sync, tools, and currency align', async () => {
+    const config = createConfiguration();
+    const mockProbeResult = {
+      clientProfile: {
+        grantedScopes: new Set([
+          'records.create',
+          'records.read',
+          'accounts.read',
+          'categories.read',
+          'budgets.read',
+        ]),
+        syncState: 'complete',
+        baseCurrency: 'IDR',
+        usedCurrencies: ['IDR'],
+        mcpTools: ['get_records'],
+        fetchedAt: Date.now(),
+        raw: {},
+      },
+      tools: [
+        { name: 'get_records', inputFields: [], isApplicationSupported: true, hasOutputSchema: true },
+        { name: 'create_records', inputFields: [], isApplicationSupported: true, hasOutputSchema: true },
+        { name: 'get_accounts', inputFields: [], isApplicationSupported: true, hasOutputSchema: true },
+        { name: 'get_categories', inputFields: [], isApplicationSupported: true, hasOutputSchema: true },
+        { name: 'get_budgets', inputFields: [], isApplicationSupported: true, hasOutputSchema: true },
+      ],
+    };
+
+    const dependencies = createDependencies({
+      probeWalletMcp: vi.fn().mockResolvedValue(mockProbeResult),
+    });
+
+    const results = await runDoctorDiagnostics(config, dependencies);
+
+    expect(results).toContainEqual({
+      status: 'SUCCESS',
+      check: 'Wallet MCP/Permissions',
+      message: 'All recommended scopes are granted.',
+    });
+    expect(results).toContainEqual({
+      status: 'SUCCESS',
+      check: 'Wallet MCP/Sync',
+      message: 'Wallet synchronization is ready (state: complete).',
+    });
+    expect(results).toContainEqual({
+      status: 'SUCCESS',
+      check: 'Wallet MCP/Tools',
+      message: 'Advertised tools verified (5 tool(s) discovered).',
+    });
+    expect(results).toContainEqual({
+      status: 'SUCCESS',
+      check: 'Wallet MCP/Currency',
+      message: "Configured currency matches Wallet base currency ('IDR').",
+    });
+  });
+
+  it('warns on missing scopes, in-progress sync, missing core tools, and currency mismatch', async () => {
+    const config = createConfiguration(); // defaultCurrency is IDR
+    const mockProbeResult = {
+      clientProfile: {
+        grantedScopes: new Set(['records.read']),
+        syncState: 'in_progress',
+        baseCurrency: 'USD',
+        usedCurrencies: ['USD'],
+        mcpTools: ['get_records'],
+        fetchedAt: Date.now(),
+        raw: {},
+      },
+      tools: [
+        { name: 'get_records', inputFields: [], isApplicationSupported: true, hasOutputSchema: true },
+      ],
+    };
+
+    const dependencies = createDependencies({
+      probeWalletMcp: vi.fn().mockResolvedValue(mockProbeResult),
+    });
+
+    const results = await runDoctorDiagnostics(config, dependencies);
+
+    expect(results).toContainEqual({
+      status: 'WARN',
+      check: 'Wallet MCP/Permissions',
+      message: 'Missing recommended scopes: records.create, accounts.read, categories.read, budgets.read.',
+    });
+    expect(results).toContainEqual({
+      status: 'WARN',
+      check: 'Wallet MCP/Sync',
+      message: 'Wallet synchronization is currently in progress (state: in_progress).',
+    });
+    expect(results).toContainEqual({
+      status: 'WARN',
+      check: 'Wallet MCP/Tools',
+      message: 'Some expected core tools are not advertised: create_records, get_accounts, get_categories, get_budgets.',
+    });
+    expect(results).toContainEqual({
+      status: 'WARN',
+      check: 'Wallet MCP/Currency',
+      message: "Configured DEFAULT_CURRENCY ('IDR') differs from Wallet base currency ('USD').",
+    });
+  });
+
+  it('reports error when Wallet synchronization state indicates error', async () => {
+    const config = createConfiguration();
+    const mockProbeResult = {
+      clientProfile: {
+        syncState: 'error',
+        syncError: 'Bank sync credential expired',
+        usedCurrencies: [],
+        mcpTools: [],
+        fetchedAt: Date.now(),
+        raw: {},
+      },
+    };
+
+    const dependencies = createDependencies({
+      probeWalletMcp: vi.fn().mockResolvedValue(mockProbeResult),
+    });
+
+    const results = await runDoctorDiagnostics(config, dependencies);
+
+    expect(results).toContainEqual({
+      status: 'ERROR',
+      check: 'Wallet MCP/Sync',
+      message: 'Wallet synchronization is not ready (state: error: Bank sync credential expired).',
+    });
+  });
 });
