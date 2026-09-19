@@ -1,4 +1,5 @@
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
+import { createTestUserMessageHandler } from './fixtures/compositionFixtures.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
 import { WalletMcpRequestError } from '../src/services/walletMcpService.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
@@ -154,15 +155,15 @@ function createHarness(
     records,
   });
   const fastPath = new MockFastPathHandler();
-  const handler = new UserMessageHandler(
-    messaging as any,
-    pendingService,
-    new MockPendingActionHandler() as any,
-    fastPath as any,
-    ai as any,
-    cache as any,
-    walletMcp as any
-  );
+  const handler = createTestUserMessageHandler({
+    messagingGateway: messaging as any,
+    pendingTransactionManager: pendingService,
+    pendingActionHandler: new MockPendingActionHandler() as any,
+    fastPathHandler: fastPath as any,
+    financialAiProvider: ai as any,
+    walletCacheService: cache as any,
+    walletMcpClient: walletMcp as any,
+  });
 
   return { pendingService, messaging, walletMcp, ai, fastPath, handler };
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { shouldDeferHistoryCategoryToSemanticResolver, UserMessageHandler } from '../src/handlers/userMessageHandler.js';
+import { createTestUserMessageHandler } from './fixtures/compositionFixtures.js';
 import { buildCompactSystemInstruction, buildTextMessagePrompt } from '../src/services/ai/aiPromptBuilder.js';
 import { postProcessFinancialIntentResponse } from '../src/services/ai/aiProviderWorkflow.js';
 import {
@@ -12,13 +13,15 @@ function createHandler(ai: any, fastPathHandled = false, categories: any[] = [])
   const gateway = { sendTypingPresence: vi.fn(), clearTypingPresence: vi.fn(), sendMessage: vi.fn() };
   const registry = { hasHandler: vi.fn().mockReturnValue(true), execute: vi.fn() };
   const fastPath = { handleFastPath: vi.fn().mockResolvedValue(fastPathHandled) };
-  const handler = new UserMessageHandler(
-    gateway as any, { hasPendingTransactions: vi.fn().mockReturnValue(false) } as any,
-    {} as any, fastPath as any, ai,
-    { getAccounts: vi.fn().mockReturnValue([]), getCategories: vi.fn().mockReturnValue(categories) } as any,
-    {} as any, {} as any, {} as any, registry as any,
-    { handlePendingAccountSelectionReply: vi.fn().mockResolvedValue(false) } as any
-  );
+  const handler = createTestUserMessageHandler({
+    messagingGateway: gateway as any,
+    pendingTransactionManager: { hasPendingTransactions: vi.fn().mockReturnValue(false) } as any,
+    fastPathHandler: fastPath as any,
+    financialAiProvider: ai,
+    walletCacheService: { getAccounts: vi.fn().mockReturnValue([]), getCategories: vi.fn().mockReturnValue(categories) } as any,
+    financialActionRegistry: registry as any,
+    accountClarificationHandler: { handlePendingAccountSelectionReply: vi.fn().mockResolvedValue(false) } as any,
+  });
   return { handler, gateway, registry, fastPath };
 }
 

@@ -7,6 +7,7 @@ import {
 import { TransactionHistoryService } from '../src/services/transactionHistoryService.js';
 import { WalletCacheService } from '../src/services/walletCacheService.js';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
+import { createTestFastPathHandler } from './fixtures/compositionFixtures.js';
 import { detectFastPathAction } from '../src/utils/fastPathIntentDetector.js';
 import { formatTransactionHistoryMessage } from '../src/utils/humanResponseFormatter.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
@@ -567,7 +568,12 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
         },
       } as any;
 
-      const handler = new FastPathHandler(queryContext.client, queryContext.cache, mockGateway);
+      const handler = createTestFastPathHandler({
+        walletMcpClient: queryContext.client,
+        walletCacheService: queryContext.cache,
+        messagingGateway: mockGateway,
+        transactionHistoryService: queryContext.service,
+      });
 
       const mockEvent = {
         channel: 'whatsapp' as const,

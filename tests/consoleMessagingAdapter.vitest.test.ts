@@ -370,7 +370,9 @@ test('CMA-8: Message Serialization & Draining on Exit/Shutdown', async () => {
   inputStream.write('line_2_beli_minum\n');
 
   // Allow both tasks to completely drain
-  await delay(180);
+  for (let pollIndex = 0; pollIndex < 20 && executionOrder.length < 2; pollIndex++) {
+    await delay(50);
+  }
 
   assert.strictEqual(maxConcurrentCallbacks, 1, 'Callbacks must never overlap concurrently');
   assert.deepStrictEqual(executionOrder, ['line_1_beli_makan', 'line_2_beli_minum']);

@@ -1,20 +1,6 @@
 import { FastPathAction } from '../utils/fastPathIntentDetector.js';
-import { WalletMcpClientService } from '../services/walletMcpService.js';
-import { WalletCacheService } from '../services/walletCacheService.js';
-import { TransactionHistoryService } from '../services/transactionHistoryService.js';
-import { TransactionSummaryService } from '../services/transactionSummaryService.js';
-import { MessagingGatewayService, IncomingUserMessageEvent } from '../services/messaging/index.js';
-import { FinancialActionExecutor } from '../services/financialActionExecutor.js';
-import { PendingTransactionService } from '../services/pendingTransactionService.js';
-import {
-  FinancialActionRegistry,
-  CheckBalanceActionHandler,
-  CheckBudgetActionHandler,
-  CheckQueueActionHandler,
-  HelpMenuActionHandler,
-  TransactionHistoryActionHandler,
-  TransactionSummaryActionHandler,
-} from '../actions/index.js';
+import { IncomingUserMessageEvent } from '../services/messaging/index.js';
+import { FinancialActionRegistry } from '../actions/index.js';
 import {
   TransactionHistoryQueryOptions,
   TransactionSummaryQueryOptions,
@@ -22,57 +8,9 @@ import {
 import { applicationLogger } from '../utils/logger.js';
 
 export class FastPathHandler {
-  private readonly transactionHistoryService: TransactionHistoryService;
-  private readonly transactionSummaryService: TransactionSummaryService;
-  private readonly financialActionExecutor: FinancialActionExecutor;
-  private readonly financialActionRegistry: FinancialActionRegistry;
-
   constructor(
-    private readonly walletMcpClient: WalletMcpClientService,
-    private readonly walletCacheService: WalletCacheService,
-    private readonly messagingGateway: MessagingGatewayService,
-    transactionHistoryService?: TransactionHistoryService,
-    transactionSummaryService?: TransactionSummaryService,
-    financialActionExecutor?: FinancialActionExecutor,
-    financialActionRegistry?: FinancialActionRegistry,
-    pendingTransactionService?: PendingTransactionService
-  ) {
-    this.transactionHistoryService =
-      transactionHistoryService ||
-      new TransactionHistoryService(walletMcpClient, walletCacheService);
-    this.transactionSummaryService =
-      transactionSummaryService ||
-      new TransactionSummaryService(
-        walletMcpClient,
-        walletCacheService,
-        this.transactionHistoryService
-      );
-    this.financialActionExecutor =
-      financialActionExecutor ||
-      new FinancialActionExecutor(
-        walletMcpClient,
-        walletCacheService,
-        messagingGateway,
-        this.transactionHistoryService,
-        this.transactionSummaryService
-      );
-
-    if (financialActionRegistry) {
-      this.financialActionRegistry = financialActionRegistry;
-    } else {
-      this.financialActionRegistry = new FinancialActionRegistry();
-      this.financialActionRegistry.register(new CheckBalanceActionHandler(this.financialActionExecutor));
-      this.financialActionRegistry.register(new CheckBudgetActionHandler(this.financialActionExecutor));
-      this.financialActionRegistry.register(new HelpMenuActionHandler(this.financialActionExecutor));
-      this.financialActionRegistry.register(new TransactionHistoryActionHandler(this.financialActionExecutor));
-      this.financialActionRegistry.register(new TransactionSummaryActionHandler(this.financialActionExecutor));
-      if (pendingTransactionService) {
-        this.financialActionRegistry.register(
-          new CheckQueueActionHandler(pendingTransactionService, messagingGateway)
-        );
-      }
-    }
-  }
+    private readonly financialActionRegistry: FinancialActionRegistry
+  ) {}
 
   /**
    * Handles zero-token instant actions like balance checks, budget status,

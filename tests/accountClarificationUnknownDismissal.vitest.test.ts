@@ -1,5 +1,6 @@
 import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
+import { createTestUserMessageHandler } from './fixtures/compositionFixtures.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
 import { WalletMcpRequestError } from '../src/services/walletMcpService.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
@@ -225,15 +226,15 @@ it('routes ticket-specific standard pending commands around an active clarificat
   const routingWalletMcp = new MockWalletMcpClient();
   const routingCache = new MockWalletCacheService(accounts, categories);
   const routingPendingAction = new RecordingPendingActionHandler();
-  const routingHandler = new UserMessageHandler(
-    routingMessaging as any,
-    routingPendingService,
-    routingPendingAction as any,
-    new NoopFastPathHandler() as any,
-    new FailIfCalledAiProvider() as any,
-    routingCache as any,
-    routingWalletMcp as any
-  );
+  const routingHandler = createTestUserMessageHandler({
+    messagingGateway: routingMessaging as any,
+    pendingTransactionManager: routingPendingService,
+    pendingActionHandler: routingPendingAction as any,
+    fastPathHandler: new NoopFastPathHandler() as any,
+    financialAiProvider: new FailIfCalledAiProvider() as any,
+    walletCacheService: routingCache as any,
+    walletMcpClient: routingWalletMcp as any,
+  });
 
   const routingDraft = routingPendingService.addPendingAccountSelectionDraft({
     sourceType: 'USER',
