@@ -92,15 +92,11 @@ export class WalletMcpCapabilityService implements WalletMcpCapabilityQuery {
       this.toolsDiscovered = true;
       this.toolsFetchedAtTimestamp = currentTime;
 
-      if (forceRefresh) {
-        // Force refresh is an authoritative rediscovery demand: clear prior runtime rejections
-        this.runtimeRejections.clear();
-      } else {
-        // Normal refresh: prune any expired runtime rejections
-        for (const [toolName, rejection] of this.runtimeRejections.entries()) {
-          if (currentTime - rejection.rejectedAt > this.rejectionTtlMilliseconds) {
-            this.runtimeRejections.delete(toolName);
-          }
+      // Prune expired runtime rejections; preserve active rejections across refreshes
+      // so optimistic advertised discovery does not override authoritative fresh rejections.
+      for (const [toolName, rejection] of this.runtimeRejections.entries()) {
+        if (currentTime - rejection.rejectedAt > this.rejectionTtlMilliseconds) {
+          this.runtimeRejections.delete(toolName);
         }
       }
     } else {

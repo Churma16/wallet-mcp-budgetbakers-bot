@@ -410,34 +410,34 @@ describe('WalletMcpCapabilityService', () => {
     ).rejects.toThrow(WalletMcpRequestError);
   });
 
-  it('bounds runtime tool rejection lifetime and allows recovery via force-refresh or TTL expiration', async () => {
+  it('preserves fresh runtime rejections across forced tool discovery until TTL expiration', async () => {
     const capabilityService = new WalletMcpCapabilityService(mockWalletClient, {
       cacheDurationMilliseconds: 5000,
+      rejectionTtlMilliseconds: 5000,
       clock: () => simulatedCurrentTime,
     });
 
+    // 1. Initial discovery advertises the tool
     await capabilityService.refreshCapabilities();
     expect(capabilityService.supportsTool('create_records')).toBe(true);
 
-    // 1. Mark tool rejected at runtime (e.g. 403 Forbidden or scope revoked)
-    capabilityService.markToolRejection('create_records', 'Method not allowed');
+    // 2. Mark runtime authorization/capability rejection (e.g. 403 Forbidden or scope revoked)
+    capabilityService.markToolRejection('create_records', 'Scope records.create revoked at runtime');
     expect(capabilityService.supportsTool('create_records')).toBe(false);
 
-    // 2. While rejection is still fresh (< 5000ms), runtime rejection still overrides optimistic cached advertisement
+    // 3. Advance time slightly while rejection TTL is still active (1000ms < 5000ms TTL)
     simulatedCurrentTime += 1000;
     expect(capabilityService.supportsTool('create_records')).toBe(false);
 
-    // 3. Authoritative recovery branch A: force-refresh re-advertises the tool and clears stale runtime rejection
+    // 4. Force-refresh while rejection TTL is still active:
+    // listTools() advertises the tool again, but runtime rejection must NOT be cleared by forced discovery
     await capabilityService.refreshCapabilities(true);
-    expect(capabilityService.supportsTool('create_records')).toBe(true);
-
-    // 4. Re-mark rejection to test authoritative recovery branch B: TTL expiration
-    capabilityService.markToolRejection('create_records', 'Temporary network failure');
     expect(capabilityService.supportsTool('create_records')).toBe(false);
 
-    // Advance beyond the configured freshness window (rejection TTL)
-    simulatedCurrentTime += 6000;
-    // Calling refreshCapabilities after TTL expiration re-evaluates advertised tools
+    // 5. Advance beyond the rejection TTL (5000ms more, total 6000ms elapsed > 5000ms TTL)
+    simulatedCurrentTime += 5000;
+
+    // 6. Capability recovers on refresh/retry once the rejection has expired
     await capabilityService.refreshCapabilities();
     expect(capabilityService.supportsTool('create_records')).toBe(true);
   });
