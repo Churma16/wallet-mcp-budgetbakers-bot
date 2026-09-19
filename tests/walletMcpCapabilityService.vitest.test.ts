@@ -79,7 +79,7 @@ describe('walletProfileNormalizer', () => {
       retryAfterMilliseconds: undefined,
     });
     expect(profile.agentHints).toHaveLength(1);
-    expect(profile.raw).toBe(rawFixture);
+    expect('raw' in profile).toBe(false);
   });
 
   it('normalizes array-based usedCurrencies and alternative sync property structure', () => {
@@ -123,11 +123,28 @@ describe('walletProfileNormalizer', () => {
     const nonObjectProfile = normalizeWalletClientProfile(null);
     expect(nonObjectProfile.grantedScopes).toBeUndefined();
     expect(nonObjectProfile.usedCurrencies).toEqual([]);
-    expect(nonObjectProfile.raw).toEqual({});
+    expect('raw' in nonObjectProfile).toBe(false);
 
     const stringInputProfile = normalizeWalletClientProfile('invalid string payload');
     expect(stringInputProfile.grantedScopes).toBeUndefined();
     expect(stringInputProfile.usedCurrencies).toEqual([]);
+  });
+
+  it('exposes only typed normalized fields and excludes raw upstream profile payload', () => {
+    const rawFixture = {
+      baseCurrency: 'EUR',
+      arbitraryInternalVendorMetadata: { internalId: 12345, tokenHash: 'xyz' },
+      grantedScopes: ['records.read'],
+      unknownProperty: 'should-not-leak',
+    };
+
+    const profile = normalizeWalletClientProfile(rawFixture);
+
+    expect(profile.baseCurrency).toBe('EUR');
+    expect(profile.grantedScopes?.has('records.read')).toBe(true);
+    expect('raw' in profile).toBe(false);
+    expect((profile as unknown as Record<string, unknown>).arbitraryInternalVendorMetadata).toBeUndefined();
+    expect((profile as unknown as Record<string, unknown>).unknownProperty).toBeUndefined();
   });
 });
 
@@ -173,7 +190,6 @@ describe('WalletMcpCapabilityService', () => {
       system: 'Wallet',
       toolCount: 3,
       fetchedAt: simulatedCurrentTime,
-      raw: {},
     };
 
     mockWalletClient = {
@@ -249,7 +265,6 @@ describe('WalletMcpCapabilityService', () => {
         usedCurrencies: [],
         mcpTools: [],
         fetchedAt: simulatedCurrentTime,
-        raw: {},
       };
 
       const customClient = {
@@ -273,7 +288,6 @@ describe('WalletMcpCapabilityService', () => {
       usedCurrencies: [],
       mcpTools: [],
       fetchedAt: simulatedCurrentTime,
-      raw: {},
     };
 
     const clientWithoutScopes = {

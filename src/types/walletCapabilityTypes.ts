@@ -2,6 +2,13 @@ import { WalletAgentHint } from './walletTypes.js';
 
 export type CapabilityTriState = boolean | 'unknown';
 
+export type WalletMcpFailureClassification =
+  | 'AUTHORIZATION'
+  | 'TOOL_UNAVAILABLE'
+  | 'REQUEST_INVALID'
+  | 'TRANSIENT'
+  | 'UNKNOWN';
+
 export type WalletMcpBoundedJsonValue =
   | string
   | number
@@ -61,7 +68,6 @@ export interface WalletClientProfile {
   readonly agentHints?: readonly WalletAgentHint[];
   readonly rateLimit?: WalletMcpRateLimitMetadata;
   readonly fetchedAt: number;
-  readonly raw: Readonly<Record<string, unknown>>;
 }
 
 export interface WalletMcpCapabilitySnapshot {

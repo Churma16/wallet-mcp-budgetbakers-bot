@@ -10,7 +10,11 @@ import {
   validateApplicationConfiguration,
 } from '../config/environmentConfig.js';
 import { WalletMcpClientService } from '../services/walletMcpService.js';
-import { WalletClientProfile, WalletMcpToolCapability } from '../types/walletCapabilityTypes.js';
+import {
+  WalletClientProfile,
+  WalletMcpCapabilityQuery,
+  WalletMcpToolCapability,
+} from '../types/walletCapabilityTypes.js';
 import { WalletMcpCapabilityService } from '../services/walletMcpCapabilityService.js';
 import { normalizeWalletClientProfile } from '../services/walletProfileNormalizer.js';
 
@@ -28,7 +32,7 @@ export interface DoctorCheckResult {
 export interface WalletMcpDoctorProbeResult {
   readonly clientProfile?: WalletClientProfile;
   readonly tools?: WalletMcpToolCapability[];
-  readonly capabilityService?: WalletMcpCapabilityService;
+  readonly capabilityService?: WalletMcpCapabilityQuery;
 }
 
 export interface DoctorDependencies {
@@ -85,21 +89,21 @@ async function probeWalletMcp(config: ApplicationEnvironmentConfiguration): Prom
     config.walletMcpAccessToken
   );
   try {
-    const rawProfile = await walletClient.verifyClientProfile();
-    let tools: WalletMcpToolCapability[] | undefined;
-    try {
-      tools = await walletClient.listTools();
-    } catch {
-      tools = undefined;
-    }
+    const capabilityService = new WalletMcpCapabilityService(walletClient);
+    await capabilityService.refreshCapabilities(true);
 
-    const clientProfile = rawProfile && typeof rawProfile === 'object'
-      ? normalizeWalletClientProfile(rawProfile)
-      : undefined;
+    const clientProfile = capabilityService.getClientProfile();
+    const advertisedToolNames = capabilityService.getAdvertisedToolNames();
+    const tools = advertisedToolNames
+      .map(toolName => capabilityService.getToolCapability(toolName))
+      .filter((tool): tool is WalletMcpToolCapability => tool !== undefined);
+
+    const toolsDiscovered = capabilityService.supportsTool('get_records') !== 'unknown';
 
     return {
       clientProfile,
-      tools,
+      tools: toolsDiscovered ? tools : undefined,
+      capabilityService,
     };
   } finally {
     await walletClient.close();
@@ -228,6 +232,32 @@ function parseNodeMajorVersion(version: string): number {
   return Number.parseInt(normalizedVersion.split('.')[0] || '', 10);
 }
 
+async function resolveDoctorCapabilityService(
+  probeResult: WalletMcpDoctorProbeResult
+): Promise<WalletMcpCapabilityQuery> {
+  if (probeResult.capabilityService) {
+    return probeResult.capabilityService;
+  }
+
+  const syntheticClient = {
+    listTools: probeResult.tools !== undefined
+      ? async () => probeResult.tools!
+      : async () => { throw new Error('Tools unavailable'); },
+    getClientProfile: probeResult.clientProfile !== undefined
+      ? async () => probeResult.clientProfile!
+      : async () => { throw new Error('Profile unavailable'); },
+    callMcpTool: async () => { throw new Error('Not implemented'); },
+  } as unknown as WalletMcpClientService;
+
+  const syntheticCapabilityService = new WalletMcpCapabilityService(syntheticClient);
+  try {
+    await syntheticCapabilityService.refreshCapabilities(true);
+  } catch {
+    // Partial or total failure handled by query tri-state
+  }
+  return syntheticCapabilityService;
+}
+
 export async function runDoctorDiagnostics(
   config: ApplicationEnvironmentConfiguration,
   dependencies: DoctorDependencies = createDefaultDoctorDependencies()
@@ -276,19 +306,28 @@ export async function runDoctorDiagnostics(
       });
 
       if (probeResult && typeof probeResult === 'object') {
-        const profile = probeResult.clientProfile;
-        const tools = probeResult.tools;
+        const capabilityService = await resolveDoctorCapabilityService(probeResult);
+        const profile = probeResult.clientProfile ?? capabilityService.getClientProfile();
 
         // 1. Permissions / Scopes
-        if (profile?.grantedScopes !== undefined) {
-          const recommendedScopes = [
-            'records.create',
-            'records.read',
-            'accounts.read',
-            'categories.read',
-            'budgets.read',
-          ];
-          const missingScopes = recommendedScopes.filter(scope => !profile.grantedScopes!.has(scope));
+        const recommendedScopes = [
+          'records.create',
+          'records.read',
+          'accounts.read',
+          'categories.read',
+          'budgets.read',
+        ];
+        const primaryScopeStatus = capabilityService.hasScope(recommendedScopes[0]);
+        if (primaryScopeStatus === 'unknown') {
+          results.push({
+            status: 'WARN',
+            check: 'Wallet MCP/Permissions',
+            message: 'Granted scopes were omitted or unavailable in the Wallet profile.',
+          });
+        } else {
+          const missingScopes = recommendedScopes.filter(
+            scope => capabilityService.hasScope(scope) !== true
+          );
           if (missingScopes.length === 0) {
             results.push({
               status: 'SUCCESS',
@@ -305,46 +344,77 @@ export async function runDoctorDiagnostics(
         }
 
         // 2. Sync Readiness
-        if (profile?.syncState !== undefined) {
-          const normalizedSync = profile.syncState.trim().toLowerCase();
-          if (normalizedSync === 'complete' || normalizedSync === 'ready') {
-            results.push({
-              status: 'SUCCESS',
-              check: 'Wallet MCP/Sync',
-              message: `Wallet synchronization is ready (state: ${profile.syncState}).`,
-            });
-          } else if (normalizedSync === 'in_progress' || normalizedSync === 'syncing') {
+        const syncReadyState = capabilityService.isSyncReady();
+        if (syncReadyState === true) {
+          results.push({
+            status: 'SUCCESS',
+            check: 'Wallet MCP/Sync',
+            message: `Wallet synchronization is ready (state: ${profile?.syncState || 'ready'}).`,
+          });
+        } else if (syncReadyState === false) {
+          const normalizedSyncState = (profile?.syncState || '').trim().toLowerCase();
+          if (
+            normalizedSyncState === 'in_progress' ||
+            normalizedSyncState === 'syncing' ||
+            normalizedSyncState === 'pending'
+          ) {
             results.push({
               status: 'WARN',
               check: 'Wallet MCP/Sync',
-              message: `Wallet synchronization is currently in progress (state: ${profile.syncState}).`,
+              message: `Wallet synchronization is currently in progress (state: ${profile?.syncState}).`,
             });
           } else {
-            const syncErrorMessage = profile.syncError ? `: ${profile.syncError}` : '';
+            const syncErrorMessage = profile?.syncError ? `: ${profile.syncError}` : '';
             results.push({
               status: 'ERROR',
               check: 'Wallet MCP/Sync',
-              message: `Wallet synchronization is not ready (state: ${profile.syncState}${syncErrorMessage}).`,
+              message: `Wallet synchronization is not ready (state: ${profile?.syncState}${syncErrorMessage}).`,
+            });
+          }
+        } else {
+          if (profile?.syncState) {
+            results.push({
+              status: 'WARN',
+              check: 'Wallet MCP/Sync',
+              message: `Wallet synchronization state is unrecognized: ${profile.syncState}.`,
+            });
+          } else {
+            results.push({
+              status: 'WARN',
+              check: 'Wallet MCP/Sync',
+              message: 'Wallet synchronization state was omitted or unavailable in the profile.',
             });
           }
         }
 
         // 3. Advertised Tools
-        if (tools !== undefined) {
-          const expectedCoreTools = [
-            'get_records',
-            'create_records',
-            'get_accounts',
-            'get_categories',
-            'get_budgets',
-          ];
-          const toolNamesSet = new Set(tools.map(tool => tool.name));
-          const missingCoreTools = expectedCoreTools.filter(toolName => !toolNamesSet.has(toolName));
+        const expectedCoreTools = [
+          'get_records',
+          'create_records',
+          'get_accounts',
+          'get_categories',
+          'get_budgets',
+        ];
+        const sampleToolSupport = capabilityService.supportsTool(expectedCoreTools[0]);
+        if (sampleToolSupport === 'unknown') {
+          results.push({
+            status: 'WARN',
+            check: 'Wallet MCP/Tools',
+            message: 'Advertised tools could not be discovered or are unavailable.',
+          });
+        } else {
+          const missingCoreTools = expectedCoreTools.filter(
+            toolName => capabilityService.supportsTool(toolName) !== true
+          );
           if (missingCoreTools.length === 0) {
+            const discoveredTools = probeResult.tools ?? capabilityService.getAdvertisedToolNames()
+              .map(name => capabilityService.getToolCapability(name))
+              .filter((tool): tool is WalletMcpToolCapability => tool !== undefined);
+            const toolCount = discoveredTools.length > 0 ? discoveredTools.length : expectedCoreTools.length;
             results.push({
               status: 'SUCCESS',
               check: 'Wallet MCP/Tools',
-              message: `Advertised tools verified (${tools.length} tool(s) discovered).`,
+              message: `Advertised tools verified (${toolCount} tool(s) discovered).`,
             });
           } else {
             results.push({
@@ -356,9 +426,10 @@ export async function runDoctorDiagnostics(
         }
 
         // 4. Currency Alignment
-        if (profile?.baseCurrency) {
+        const walletBaseCurrency = capabilityService.getBaseCurrency();
+        if (walletBaseCurrency) {
           const configuredDefault = (config.defaultCurrency || '').trim().toUpperCase();
-          const walletBase = profile.baseCurrency.trim().toUpperCase();
+          const walletBase = walletBaseCurrency.trim().toUpperCase();
           if (configuredDefault && walletBase && configuredDefault !== walletBase) {
             results.push({
               status: 'WARN',

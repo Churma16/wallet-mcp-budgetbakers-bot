@@ -89,7 +89,6 @@ export function normalizeWalletClientProfile(
       agentHints: undefined,
       rateLimit: undefined,
       fetchedAt,
-      raw: {},
     };
   }
 
@@ -188,6 +187,5 @@ export function normalizeWalletClientProfile(
     agentHints,
     rateLimit,
     fetchedAt,
-    raw: rawResponse,
   };
 }
