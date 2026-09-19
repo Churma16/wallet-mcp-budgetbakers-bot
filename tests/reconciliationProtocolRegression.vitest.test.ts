@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
+import { createTestUserMessageHandler } from './fixtures/compositionFixtures.js';
 import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
 import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
@@ -87,26 +88,23 @@ describe('PR #155 reconciliation protocol regressions', () => {
       accountClarificationHandler = vi.fn().mockResolvedValue(true)
     ): UserMessageHandler {
       const gateway = new MockMessagingGateway();
-      return new UserMessageHandler(
-        gateway as any,
-        pendingService,
-        {
+      return createTestUserMessageHandler({
+        messagingGateway: gateway as any,
+        pendingTransactionManager: pendingService,
+        pendingActionHandler: {
           handlePendingAction: vi.fn().mockResolvedValue(false),
           handleReconciliationAction: reconciliationHandler,
         } as any,
-        { handleFastPath: vi.fn().mockResolvedValue(false) } as any,
-        {
+        fastPathHandler: { handleFastPath: vi.fn().mockResolvedValue(false) } as any,
+        financialAiProvider: {
           providerName: 'mock',
           processTextMessage: vi.fn(),
           processImageMessage: vi.fn(),
         } as any,
-        { getAccounts: () => [], getCategories: () => [] } as any,
-        {} as any,
-        {} as any,
-        {} as any,
-        { execute: vi.fn(), hasHandler: vi.fn().mockReturnValue(false) } as any,
-        { handlePendingAccountSelectionReply: accountClarificationHandler } as any
-      );
+        walletCacheService: { getAccounts: () => [], getCategories: () => [] } as any,
+        financialActionRegistry: { execute: vi.fn(), hasHandler: vi.fn().mockReturnValue(false) } as any,
+        accountClarificationHandler: { handlePendingAccountSelectionReply: accountClarificationHandler } as any,
+      });
     }
 
     it.each(['ada', 'sudah', 'belum', 'missing', 'not yet'])(

@@ -22,27 +22,13 @@ export interface FinancialActionExecutionContext {
 }
 
 export class FinancialActionExecutor {
-  private readonly transactionHistoryService: TransactionHistoryService;
-  private readonly transactionSummaryService: TransactionSummaryService;
-
   constructor(
     private readonly walletMcpClient: WalletMcpClientService,
     private readonly walletCacheService: WalletCacheService,
     private readonly messagingGateway: MessagingGatewayService,
-    transactionHistoryService?: TransactionHistoryService,
-    transactionSummaryService?: TransactionSummaryService
-  ) {
-    this.transactionHistoryService =
-      transactionHistoryService ||
-      new TransactionHistoryService(walletMcpClient, walletCacheService);
-    this.transactionSummaryService =
-      transactionSummaryService ||
-      new TransactionSummaryService(
-        walletMcpClient,
-        walletCacheService,
-        this.transactionHistoryService
-      );
-  }
+    private readonly transactionHistoryService: TransactionHistoryService,
+    private readonly transactionSummaryService: TransactionSummaryService
+  ) {}
 
   /**
    * Executes a balance check by refreshing cached accounts, formatting the balance

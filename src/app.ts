@@ -145,29 +145,18 @@ export class Application {
       categoryContextService: this.categoryContextService,
     });
 
-    this.fastPathHandler = new FastPathHandler(
-      this.walletMcpClient,
-      this.walletCacheService,
-      this.messagingGateway,
-      this.transactionHistoryService,
-      this.transactionSummaryService,
-      this.financialActionExecutor,
-      this.financialActionRegistry
-    );
+    this.fastPathHandler = new FastPathHandler(this.financialActionRegistry);
 
-    this.userMessageHandler = new UserMessageHandler(
-      this.messagingGateway,
-      this.pendingTransactionManager,
-      this.pendingActionHandler,
-      this.fastPathHandler,
-      this.financialAiProvider,
-      this.walletCacheService,
-      this.walletMcpClient,
-      this.financialActionExecutor,
-      recordPreparationService,
-      this.financialActionRegistry,
-      accountClarificationHandler
-    );
+    this.userMessageHandler = new UserMessageHandler({
+      messagingGateway: this.messagingGateway,
+      pendingTransactionManager: this.pendingTransactionManager,
+      pendingActionHandler: this.pendingActionHandler,
+      fastPathHandler: this.fastPathHandler,
+      financialAiProvider: this.financialAiProvider,
+      walletCacheService: this.walletCacheService,
+      financialActionRegistry: this.financialActionRegistry,
+      accountClarificationHandler,
+    });
   }
 
   /**

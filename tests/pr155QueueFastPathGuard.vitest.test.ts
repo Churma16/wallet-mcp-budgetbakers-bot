@@ -5,15 +5,7 @@ import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
 describe('PR #155 queue fast-path guard', () => {
   it('falls through safely when CHECK_QUEUE has no registered handler', async () => {
     const registry = new FinancialActionRegistry();
-    const handler = new FastPathHandler(
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      registry
-    );
+    const handler = new FastPathHandler(registry);
 
     const handled = await handler.handleFastPath(
       {

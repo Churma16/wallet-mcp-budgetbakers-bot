@@ -6,19 +6,13 @@ import {
   SemanticToolBoundary,
   SemanticToolAuthorizationContext,
   createSemanticToolProposalFromFinancialIntent,
-  AccountClarificationConversationService,
 } from '../services/ai/index.js';
 import { validateReceiptFinancialIntentEnvelope } from '../services/ai/jsonExtractionHelper.js';
-import { WalletMcpClientService } from '../services/walletMcpService.js';
 import { WalletCacheService } from '../services/walletCacheService.js';
 import { AccountClarificationHandler } from './accountClarificationHandler.js';
 import { PendingActionHandler } from './pendingActionHandler.js';
 import { FastPathHandler } from './fastPathHandler.js';
-import { FinancialActionExecutor } from '../services/financialActionExecutor.js';
-import {
-  FinancialActionRegistry,
-  createDefaultFinancialActionRegistry,
-} from '../actions/index.js';
+import { FinancialActionRegistry } from '../actions/index.js';
 import {
   detectFastPathAction,
   FastPathTransactionHistoryAction,
@@ -32,8 +26,23 @@ import {
 } from '../utils/humanResponseFormatter.js';
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../utils/logger.js';
-import { WalletRecordPreparationService } from '../services/walletRecordPreparationService.js';
-import { TransactionHistoryQueryOptions } from '../types/walletTypes.js';
+
+import {
+  TransactionHistoryQueryOptions,
+} from '../types/walletTypes.js';
+
+export interface UserMessageHandlerDependencies {
+  readonly messagingGateway: MessagingGatewayService;
+  readonly pendingTransactionManager: PendingTransactionService;
+  readonly pendingActionHandler: PendingActionHandler;
+  readonly fastPathHandler: FastPathHandler;
+  readonly financialAiProvider: FinancialAiProvider;
+  readonly walletCacheService: WalletCacheService;
+  readonly financialActionRegistry: FinancialActionRegistry;
+  readonly accountClarificationHandler: AccountClarificationHandler;
+  readonly semanticToolBoundary?: SemanticToolBoundary;
+  readonly semanticToolAuthorizationResolver?: SemanticToolAuthorizationResolver;
+}
 
 export type SemanticToolAuthorizationResolver = (
   event: IncomingUserMessageEvent
@@ -47,9 +56,10 @@ export type SemanticToolAuthorizationResolver = (
 function resolveGatewayAuthorization(
   event: IncomingUserMessageEvent
 ): SemanticToolAuthorizationContext {
+  const isAuthorized = Boolean(event.senderIdentifier && event.senderIdentifier.trim().length > 0);
   return {
-    isAuthorized: true,
-    source: `${event.channel}-gateway-authorization`,
+    isAuthorized,
+    source: isAuthorized ? 'MessagingGateway:SenderAuthorized' : 'MessagingGateway:AnonymousSender',
   };
 }
 
@@ -65,11 +75,25 @@ function isExplicitReconciliationProtocolCommand(messageText: string): boolean {
   );
 }
 
-function hasPendingTransactions(manager: PendingTransactionService): boolean {
-  const managerWithPendingQueries = manager as Partial<PendingTransactionService>;
-  return typeof managerWithPendingQueries.hasPendingTransactions === 'function'
-    ? managerWithPendingQueries.hasPendingTransactions.call(manager)
-    : false;
+function hasPendingTransactions(pendingTransactionManager: unknown): boolean {
+  if (!pendingTransactionManager || typeof pendingTransactionManager !== 'object') {
+    return false;
+  }
+  const manager = pendingTransactionManager as {
+    hasPendingTransactions?: () => boolean;
+    getPendingTransactions?: () => unknown[];
+    getAllPendingTransactions?: () => unknown[];
+  };
+  if (typeof manager.hasPendingTransactions === 'function') {
+    return manager.hasPendingTransactions();
+  }
+  if (typeof manager.getPendingTransactions === 'function') {
+    return manager.getPendingTransactions().length > 0;
+  }
+  if (typeof manager.getAllPendingTransactions === 'function') {
+    return manager.getAllPendingTransactions().length > 0;
+  }
+  return false;
 }
 
 /**
@@ -106,65 +130,86 @@ export function shouldDeferHistoryCategoryToSemanticResolver(
   );
 }
 
+function isSingleMissingCategoryHistoryProposal(
+  proposal: ExtractedFinancialIntent,
+  availableCategories: Array<{ id: string; name: string }> = [],
+  referenceDate: Date = new Date()
+): boolean {
+  if (proposal.action !== 'TRANSACTION_HISTORY') {
+    return false;
+  }
+  const resolution = normalizeTransactionHistoryFilters(
+    proposal.queryOptions || {},
+    [],
+    availableCategories,
+    referenceDate
+  );
+  return resolution.unresolvedFilters.some(
+    issue => issue.filterKey === 'category' && issue.reason === 'NOT_FOUND'
+  );
+}
+
 export class UserMessageHandler {
-  private readonly accountClarificationHandler: AccountClarificationHandler;
-  private readonly financialActionExecutor: FinancialActionExecutor;
-  private readonly recordPreparationService: WalletRecordPreparationService;
+  private readonly messagingGateway: MessagingGatewayService;
+  private readonly pendingTransactionManager: PendingTransactionService;
+  private readonly pendingActionHandler: PendingActionHandler;
+  private readonly fastPathHandler: FastPathHandler;
+  private readonly financialAiProvider: FinancialAiProvider;
+  private readonly walletCacheService: WalletCacheService;
   private readonly financialActionRegistry: FinancialActionRegistry;
+  private readonly accountClarificationHandler: AccountClarificationHandler;
   private readonly semanticToolBoundary: SemanticToolBoundary;
   private readonly semanticToolAuthorizationResolver: SemanticToolAuthorizationResolver;
 
+  constructor(dependencies: UserMessageHandlerDependencies);
   constructor(
-    private readonly messagingGateway: MessagingGatewayService,
-    private readonly pendingTransactionManager: PendingTransactionService,
-    private readonly pendingActionHandler: PendingActionHandler,
-    private readonly fastPathHandler: FastPathHandler,
-    private readonly financialAiProvider: FinancialAiProvider,
-    private readonly walletCacheService: WalletCacheService,
-    private readonly walletMcpClient: WalletMcpClientService,
-    financialActionExecutor?: FinancialActionExecutor,
-    recordPreparationService?: WalletRecordPreparationService,
+    messagingGateway: MessagingGatewayService,
+    pendingTransactionManager: PendingTransactionService,
+    pendingActionHandler: PendingActionHandler,
+    fastPathHandler: FastPathHandler,
+    financialAiProvider: FinancialAiProvider,
+    walletCacheService: WalletCacheService,
+    financialActionRegistry: FinancialActionRegistry,
+    accountClarificationHandler: AccountClarificationHandler,
+    semanticToolBoundary?: SemanticToolBoundary,
+    semanticToolAuthorizationResolver?: SemanticToolAuthorizationResolver
+  );
+  constructor(
+    dependenciesOrGateway: UserMessageHandlerDependencies | MessagingGatewayService,
+    pendingTransactionManager?: PendingTransactionService,
+    pendingActionHandler?: PendingActionHandler,
+    fastPathHandler?: FastPathHandler,
+    financialAiProvider?: FinancialAiProvider,
+    walletCacheService?: WalletCacheService,
     financialActionRegistry?: FinancialActionRegistry,
     accountClarificationHandler?: AccountClarificationHandler,
     semanticToolBoundary?: SemanticToolBoundary,
     semanticToolAuthorizationResolver?: SemanticToolAuthorizationResolver
   ) {
-    this.financialActionExecutor =
-      financialActionExecutor ||
-      new FinancialActionExecutor(
-        walletMcpClient,
-        walletCacheService,
-        messagingGateway
-      );
-    this.recordPreparationService =
-      recordPreparationService ||
-      new WalletRecordPreparationService(walletCacheService, walletMcpClient);
-    this.accountClarificationHandler =
-      accountClarificationHandler ||
-      new AccountClarificationHandler(
-        pendingTransactionManager,
-        walletMcpClient,
-        walletCacheService,
-        messagingGateway,
-        this.recordPreparationService,
-        undefined,
-        new AccountClarificationConversationService(financialAiProvider)
-      );
-    this.semanticToolBoundary = semanticToolBoundary || new SemanticToolBoundary();
-    this.semanticToolAuthorizationResolver =
-      semanticToolAuthorizationResolver || resolveGatewayAuthorization;
-
-    if (financialActionRegistry) {
-      this.financialActionRegistry = financialActionRegistry;
+    if (dependenciesOrGateway && 'messagingGateway' in dependenciesOrGateway) {
+      this.messagingGateway = dependenciesOrGateway.messagingGateway;
+      this.pendingTransactionManager = dependenciesOrGateway.pendingTransactionManager;
+      this.pendingActionHandler = dependenciesOrGateway.pendingActionHandler;
+      this.fastPathHandler = dependenciesOrGateway.fastPathHandler;
+      this.financialAiProvider = dependenciesOrGateway.financialAiProvider;
+      this.walletCacheService = dependenciesOrGateway.walletCacheService;
+      this.financialActionRegistry = dependenciesOrGateway.financialActionRegistry;
+      this.accountClarificationHandler = dependenciesOrGateway.accountClarificationHandler;
+      this.semanticToolBoundary = dependenciesOrGateway.semanticToolBoundary ?? new SemanticToolBoundary();
+      this.semanticToolAuthorizationResolver =
+        dependenciesOrGateway.semanticToolAuthorizationResolver ?? resolveGatewayAuthorization;
     } else {
-      this.financialActionRegistry = createDefaultFinancialActionRegistry({
-        financialActionExecutor: this.financialActionExecutor,
-        walletMcpClient: this.walletMcpClient,
-        walletCacheService: this.walletCacheService,
-        messagingGateway: this.messagingGateway,
-        recordPreparationService: this.recordPreparationService,
-        accountClarificationHandler: this.accountClarificationHandler,
-      });
+      this.messagingGateway = dependenciesOrGateway as MessagingGatewayService;
+      this.pendingTransactionManager = pendingTransactionManager!;
+      this.pendingActionHandler = pendingActionHandler!;
+      this.fastPathHandler = fastPathHandler!;
+      this.financialAiProvider = financialAiProvider!;
+      this.walletCacheService = walletCacheService!;
+      this.financialActionRegistry = financialActionRegistry!;
+      this.accountClarificationHandler = accountClarificationHandler!;
+      this.semanticToolBoundary = semanticToolBoundary ?? new SemanticToolBoundary();
+      this.semanticToolAuthorizationResolver =
+        semanticToolAuthorizationResolver ?? resolveGatewayAuthorization;
     }
   }
 
