@@ -336,6 +336,73 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
       expect(messagingGateway.messages.length).toBe(1);
       expect(messagingGateway.messages[0].content).toContain('Pilih Akun Transaksi (#1)');
     });
+
+    it('enforces deterministic candidate list and ordering when LLM generates swapped or invented candidates', async () => {
+      const harness = createHarness([createPendingRecord('BCA')]);
+      // Mock LLM attempting to swap candidates and invent a third account
+      harness.financialAiProvider.mockQuestionResponse = [
+        'Mohon pilih akun pembayaran Anda:',
+        '1. BCA Bisnis',
+        '2. BCA Tahapan',
+        '3. Admin Account',
+      ].join('\n');
+
+      await harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('Makan siang 75rb pakai BCA')
+      );
+
+      expect(harness.messagingGateway.messages.length).toBe(1);
+      const deliveredMessage = harness.messagingGateway.messages[0].content;
+
+      // Assert that the final message delivered to the user shows ONLY the application-owned
+      // candidates in the deterministic order:
+      // 1. BCA Tahapan
+      // 2. BCA Bisnis
+      expect(deliveredMessage).toContain('1. BCA Tahapan');
+      expect(deliveredMessage).toContain('2. BCA Bisnis');
+      expect(deliveredMessage.indexOf('1. BCA Tahapan')).toBeLessThan(
+        deliveredMessage.indexOf('2. BCA Bisnis')
+      );
+
+      // Invented candidate must never appear
+      expect(deliveredMessage).not.toContain('Admin Account');
+      // Swapped candidate numbering must never appear
+      expect(deliveredMessage).not.toContain('1. BCA Bisnis');
+      expect(deliveredMessage).not.toContain('2. BCA Tahapan');
+
+      // Then assert that replying "1" resolves to the same account that was visibly presented as option 1
+      await harness.userMessageHandler.handleIncomingUserMessage(createIncomingEvent('1'));
+
+      // Transaction was recorded with option 1 (BCA Tahapan)
+      expect(harness.walletMcpClient.calls.length).toBe(1);
+      expect(harness.walletMcpClient.calls[0][0].accountId).toBe('acc-bca-tahapan');
+    });
+
+    it('falls back to deterministic template when LLM returns only hallucinated candidate list', async () => {
+      const harness = createHarness([createPendingRecord('BCA')]);
+      harness.financialAiProvider.mockQuestionResponse = [
+        '1. BCA Bisnis',
+        '2. BCA Tahapan',
+        '3. Admin Account',
+      ].join('\n');
+
+      await harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('Makan siang 75rb pakai BCA')
+      );
+
+      expect(harness.messagingGateway.messages.length).toBe(1);
+      const deliveredMessage = harness.messagingGateway.messages[0].content;
+
+      expect(deliveredMessage).toContain('1. BCA Tahapan');
+      expect(deliveredMessage).toContain('2. BCA Bisnis');
+      expect(deliveredMessage).not.toContain('Admin Account');
+      expect(deliveredMessage).not.toContain('1. BCA Bisnis');
+
+      await harness.userMessageHandler.handleIncomingUserMessage(createIncomingEvent('1'));
+
+      expect(harness.walletMcpClient.calls.length).toBe(1);
+      expect(harness.walletMcpClient.calls[0][0].accountId).toBe('acc-bca-tahapan');
+    });
   });
 
   describe('Semantic Free-Form Reply Interpretation', () => {

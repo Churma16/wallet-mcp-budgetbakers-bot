@@ -8,6 +8,7 @@ import {
   FinancialAiProvider,
 } from './financialAiProvider.js';
 import {
+  composeClarificationMessage,
   formatAccountSelectionPrompt,
   formatDraftAmount,
   resolveCategoryName,
@@ -58,7 +59,12 @@ export class AccountClarificationConversationService {
         await this.financialAiProvider.generateAccountClarificationQuestion(questionContext);
 
       if (generatedResult?.question && generatedResult.question.trim().length > 0) {
-        return generatedResult.question.trim();
+        return composeClarificationMessage(
+          generatedResult.question.trim(),
+          draft,
+          categories,
+          invalidSelection
+        );
       }
 
       applicationLogger.warn(
