@@ -1,4 +1,7 @@
-import { PendingAccountSelectionDraft } from '../services/pendingTransactionService.js';
+import {
+  PendingAccountSelectionCandidate,
+  PendingAccountSelectionDraft,
+} from '../services/pendingTransactionService.js';
 import { WalletCategoryItem } from '../types/walletTypes.js';
 import { getDictionary } from '../i18n/index.js';
 import { formatCurrencyAmount } from './humanResponseFormatter.js';
@@ -110,29 +113,59 @@ function isCandidateHeaderLine(line: string): boolean {
   );
 }
 
-function isReplyOrCancelLine(line: string): boolean {
-  const lower = line.trim().toLowerCase();
-  return (
-    lower.startsWith('balas dengan nomor') ||
-    lower.startsWith('reply with the account') ||
-    lower.startsWith('reply with account') ||
-    lower.startsWith('ketik *batal') ||
-    lower.startsWith('ketik batal') ||
-    lower.startsWith('type *cancel') ||
-    lower.startsWith('type cancel')
-  );
-}
+function hasProhibitedCandidateContentOrMapping(
+  text: string,
+  candidateAccounts: PendingAccountSelectionCandidate[]
+): boolean {
+  const lowerText = text.toLowerCase();
 
-function parseCandidateListLine(line: string): { index: number; text: string } | null {
-  const trimmed = line.trim();
-  const match = trimmed.match(/^(\d+)[\.\)]\s+(.*)$/);
-  if (!match) {
-    return null;
+  // 1. Any candidate name mentioned from candidateAccounts
+  for (const candidate of candidateAccounts) {
+    const candidateName = candidate.name.trim().toLowerCase();
+    if (candidateName.length > 0 && lowerText.includes(candidateName)) {
+      return true;
+    }
   }
-  return {
-    index: Number.parseInt(match[1], 10),
-    text: match[2].trim(),
-  };
+
+  // 2. Numbered list items (e.g. "1. ..." or "2) ...") or candidate headers
+  const lines = text.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^\d+[\.\)]\s+\S+/.test(trimmed)) {
+      return true;
+    }
+    if (isCandidateHeaderLine(trimmed)) {
+      return true;
+    }
+  }
+
+  // 3. Ordinal, number mapping, or reply instructions
+  const mappingPatterns = [
+    /\b(?:balas|reply)\s+(?:dengan\s+)?(?:\d+|opsi|option|nomor|number)\b/i,
+    /\b(?:opsi|option|pilihan)\s+(?:pertama|kedua|ketiga|ke-\d+|\d+|first|second|third|one|two)\b/i,
+    /\b(?:first|second|third)\s+(?:option|choice|account|opsi)\b/i,
+    /\b(?:balas\s+\d+|reply\s+\d+)\b/i,
+    /\b(?:balas|reply)\s+[\d/]+/i,
+  ];
+  for (const pattern of mappingPatterns) {
+    if (pattern.test(text)) {
+      return true;
+    }
+  }
+
+  // 4. Cancellation instructions
+  const cancellationPatterns = [
+    /\b(?:batal|cancel)\s*#?\d*\b/i,
+    /\bketik\s+\*?batal/i,
+    /\btype\s+\*?cancel/i,
+  ];
+  for (const pattern of cancellationPatterns) {
+    if (pattern.test(text)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 export function composeClarificationMessage(
@@ -148,82 +181,20 @@ export function composeClarificationMessage(
     return fallbackTemplate;
   }
 
-  const lines = rawGeneratedQuestion.split('\n');
-  const foundListItems: Array<{ index: number; text: string }> = [];
-
-  for (const line of lines) {
-    const parsedLine = parseCandidateListLine(line);
-    if (parsedLine) {
-      foundListItems.push(parsedLine);
-    }
+  // If the model output contains candidate names, numbered lists, ordinal/numeric mappings,
+  // or cancellation/reply instructions, reject the preamble and fall back to deterministic template.
+  if (hasProhibitedCandidateContentOrMapping(rawGeneratedQuestion, draft.candidateAccounts)) {
+    applicationLogger.warn(
+      `[Account Clarification] LLM question output for draft #${draft.ticketId} contained candidate names, mappings, or commands; falling back to deterministic template.`
+    );
+    return fallbackTemplate;
   }
 
-  // 1. Detect conflicting, swapped, or hallucinated candidate list rendered by the LLM
-  if (foundListItems.length > 0) {
-    let hasContradictionOrHallucination = false;
-    if (foundListItems.length !== draft.candidateAccounts.length) {
-      hasContradictionOrHallucination = true;
-    } else {
-      for (let i = 0; i < foundListItems.length; i++) {
-        const item = foundListItems[i];
-        const expectedCandidate = draft.candidateAccounts[i];
-        if (item.index !== i + 1) {
-          hasContradictionOrHallucination = true;
-          break;
-        }
-        if (!item.text.toLowerCase().includes(expectedCandidate.name.toLowerCase())) {
-          hasContradictionOrHallucination = true;
-          break;
-        }
-      }
-    }
-
-    if (hasContradictionOrHallucination) {
-      applicationLogger.warn(
-        `[Account Clarification] LLM question output for draft #${draft.ticketId} contained conflicting or hallucinated candidate list; falling back to deterministic template.`
-      );
-      return fallbackTemplate;
-    }
-  }
-
-  // 2. Detect swapped inline candidate numbering in raw text (e.g. "1. BCA Bisnis" when #1 is BCA Tahapan)
-  for (let candidateIdx = 0; candidateIdx < draft.candidateAccounts.length; candidateIdx++) {
-    const candidate = draft.candidateAccounts[candidateIdx];
-    const escapedName = candidate.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const match = rawGeneratedQuestion.match(new RegExp(`\\b(\\d+)[\\.\\)]\\s*${escapedName}\\b`, 'i'));
-    if (match) {
-      const explicitNumber = Number.parseInt(match[1], 10);
-      if (explicitNumber !== candidateIdx + 1) {
-        applicationLogger.warn(
-          `[Account Clarification] LLM question output for draft #${draft.ticketId} contained swapped inline candidate numbering (${explicitNumber} vs ${candidateIdx + 1}); falling back to deterministic template.`
-        );
-        return fallbackTemplate;
-      }
-    }
-  }
-
-  // 3. Filter out any candidate list lines, candidate headers, or boilerplate reply/cancel lines to isolate clean preamble
-  const cleanPreambleLines = lines.filter(line => {
-    if (parseCandidateListLine(line)) return false;
-    if (isCandidateHeaderLine(line)) return false;
-    if (isReplyOrCancelLine(line)) return false;
-    return true;
-  });
-
-  let cleanPreamble = cleanPreambleLines.join('\n').trim();
-
-  // Strip trailing reply/cancel instructions if present in prose (e.g. "Balas 1/2 atau batal #1.")
-  cleanPreamble = cleanPreamble
-    .replace(/\b(?:balas\s+[\d/]+\s+atau\s+)?batal\s+#\d+\.?\s*$/i, '')
-    .replace(/\b(?:reply\s+[\d/]+\s+or\s+)?cancel\s+#\d+\.?\s*$/i, '')
-    .trim();
-
-  // If the clean preamble is empty after stripping, fall back to the deterministic template
+  const cleanPreamble = rawGeneratedQuestion.trim();
   if (cleanPreamble.length === 0) {
     return fallbackTemplate;
   }
 
-  // 4. Compose the final prompt using application-owned candidate list and cancellation instructions
   const candidateSection = formatDeterministicCandidateSection(draft);
   const invalidNotice = invalidSelection && !cleanPreamble.toLowerCase().includes(invalidSelection.toLowerCase())
     ? (dictionary.languageCode === 'id'

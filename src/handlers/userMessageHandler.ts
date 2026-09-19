@@ -225,8 +225,9 @@ export class UserMessageHandler {
               const standardPendingItem = pendingStandardItems[pendingStandardItems.length - 1];
               const clarificationIsPending = Boolean(
                 clarificationDraft &&
-                (manager.getPendingAccountSelectionDraftState(clarificationDraft.ticketId) === 'PENDING' ||
-                  Boolean(this.accountClarificationHandler?.isPromptInFlight?.(clarificationDraft.ticketId)))
+                (this.accountClarificationHandler?.isCancellablePreDispatch
+                  ? this.accountClarificationHandler.isCancellablePreDispatch(clarificationDraft.ticketId)
+                  : manager.getPendingAccountSelectionDraftState(clarificationDraft.ticketId) === 'PENDING')
               );
 
               if (clarificationDraft && clarificationIsPending && standardPendingItem) {

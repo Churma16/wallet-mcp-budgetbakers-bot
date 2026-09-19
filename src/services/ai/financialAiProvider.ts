@@ -12,7 +12,7 @@ export interface AccountClarificationQuestionContext {
   records: CreateRecordInputPayload[];
   pendingRecordIndex: number;
   accountHint?: string;
-  candidateAccounts: PendingAccountSelectionCandidate[];
+  candidateAccounts?: PendingAccountSelectionCandidate[];
   formattedAmount: string;
   categoryName: string;
   description: string;
@@ -21,7 +21,6 @@ export interface AccountClarificationQuestionContext {
 }
 
 export interface AccountClarificationProposal {
-  selectedAccountId: string | null;
   selectedCandidateIndex: number | null;
   reasoning: string;
   tokenUsage?: TokenUsageStatistics;

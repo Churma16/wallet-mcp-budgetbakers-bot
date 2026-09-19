@@ -157,63 +157,25 @@ export class AccountClarificationConversationService {
           interpretationContext
         );
 
-        // Step 3: Strict candidate boundary check with contradiction rejection
-        if (proposal) {
-          const hasSelectedId =
-            typeof proposal.selectedAccountId === 'string' &&
-            proposal.selectedAccountId.trim().length > 0;
-          const hasSelectedIndex = typeof proposal.selectedCandidateIndex === 'number';
-
-          const candidateById = hasSelectedId
-            ? candidateAccounts.find(candidate => candidate.id === proposal.selectedAccountId)
-            : undefined;
-
-          let candidateByIndex: PendingAccountSelectionCandidate | undefined;
-          if (hasSelectedIndex) {
-            const candidateIndex = (proposal.selectedCandidateIndex as number) - 1;
-            if (candidateIndex >= 0 && candidateIndex < candidateAccounts.length) {
-              candidateByIndex = candidateAccounts[candidateIndex];
-            }
-          }
-
-          // If ID was supplied but is not in candidates -> fail closed
-          if (hasSelectedId && !candidateById) {
-            applicationLogger.warn(
-              `[Account Clarification] LLM proposed non-candidate account ID "${proposal.selectedAccountId}" for draft #${claimedDraft.ticketId}; rejected (fail closed).`
-            );
-            return undefined;
-          }
-
-          // If Index was supplied but is out of bounds -> fail closed
-          if (hasSelectedIndex && !candidateByIndex) {
-            applicationLogger.warn(
-              `[Account Clarification] LLM proposed out-of-bounds candidate index ${proposal.selectedCandidateIndex} for draft #${claimedDraft.ticketId}; rejected (fail closed).`
-            );
-            return undefined;
-          }
-
-          // If both were supplied, they MUST agree and point to the same candidate
-          if (candidateById && candidateByIndex) {
-            if (candidateById.id !== candidateByIndex.id) {
-              applicationLogger.warn(
-                `[Account Clarification] LLM proposed contradictory candidate ID "${candidateById.id}" and index ${proposal.selectedCandidateIndex} ("${candidateByIndex.id}") for draft #${claimedDraft.ticketId}; rejected (fail closed).`
-              );
-              return undefined;
-            }
+        // Step 3: Strict candidate boundary check by candidate index
+        if (
+          proposal &&
+          typeof proposal.selectedCandidateIndex === 'number' &&
+          Number.isInteger(proposal.selectedCandidateIndex)
+        ) {
+          const candidateIndex = proposal.selectedCandidateIndex - 1;
+          if (candidateIndex >= 0 && candidateIndex < candidateAccounts.length) {
+            const selectedCandidate = candidateAccounts[candidateIndex];
             applicationLogger.info(
-              `[Account Clarification] LLM resolved reply "${normalizedReply.slice(0, 40)}" to candidate ${candidateById.name} (#${claimedDraft.ticketId}).`
+              `[Account Clarification] LLM resolved reply "${normalizedReply.slice(0, 40)}" to candidate ${selectedCandidate.name} (#${claimedDraft.ticketId}).`
             );
-            return candidateById;
+            return selectedCandidate;
           }
 
-          // Exactly one was supplied and verified
-          const singleCandidate = candidateById || candidateByIndex;
-          if (singleCandidate) {
-            applicationLogger.info(
-              `[Account Clarification] LLM resolved reply "${normalizedReply.slice(0, 40)}" to candidate ${singleCandidate.name} (#${claimedDraft.ticketId}).`
-            );
-            return singleCandidate;
-          }
+          applicationLogger.warn(
+            `[Account Clarification] LLM proposed out-of-bounds candidate index ${proposal.selectedCandidateIndex} for draft #${claimedDraft.ticketId}; rejected (fail closed).`
+          );
+          return undefined;
         }
         return undefined;
       } catch (error) {

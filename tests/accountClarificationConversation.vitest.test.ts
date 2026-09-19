@@ -24,7 +24,10 @@ import {
   parseClarificationQuestionResponse,
   parseClarificationProposalResponse,
 } from '../src/services/ai/jsonExtractionHelper.js';
-import { buildAccountClarificationQuestionPrompt } from '../src/services/ai/aiPromptBuilder.js';
+import {
+  buildAccountClarificationQuestionPrompt,
+  buildAccountClarificationReplyPrompt,
+} from '../src/services/ai/aiPromptBuilder.js';
 import {
   composeClarificationMessage,
   formatDeterministicCandidateSection,
@@ -133,7 +136,8 @@ class ConfigurableClarificationAiProvider implements FinancialAiProvider {
   }
 
   async interpretAccountClarificationReply(
-    userReplyText: string
+    userReplyText: string,
+    candidates: PendingAccountSelectionCandidate[] = []
   ): Promise<AccountClarificationProposal> {
     this.replyInterpretationCalls++;
     this.lastInterpretedReply = userReplyText;
@@ -143,47 +147,90 @@ class ConfigurableClarificationAiProvider implements FinancialAiProvider {
     if (this.mockProposalResponse) {
       return this.mockProposalResponse;
     }
+
+    // Default semantic behavior for test mock
+    const lower = userReplyText.toLowerCase();
+    if (lower.includes('bisnis')) {
+      const idx = candidates.findIndex(c => c.name.toLowerCase().includes('bisnis'));
+      return {
+        selectedCandidateIndex: idx >= 0 ? idx + 1 : null,
+        reasoning: 'Matched bisnis by keyword',
+      };
+    }
+    if (lower.includes('tahapan') || lower.includes('tabungan')) {
+      const idx = candidates.findIndex(c => c.name.toLowerCase().includes('tahapan'));
+      return {
+        selectedCandidateIndex: idx >= 0 ? idx + 1 : null,
+        reasoning: 'Matched tahapan by keyword',
+      };
+    }
+    if (lower.includes('kedua') || lower.includes('second')) {
+      return {
+        selectedCandidateIndex: 2,
+        reasoning: 'Selected second candidate',
+      };
+    }
+
     return {
-      selectedAccountId: null,
       selectedCandidateIndex: null,
-      reasoning: 'Default mock no match',
+      reasoning: 'Could not resolve candidate',
     };
   }
 }
 
+interface TestHarness {
+  userMessageHandler: UserMessageHandler;
+  financialAiProvider: ConfigurableClarificationAiProvider;
+  accountClarificationHandler: AccountClarificationHandler;
+  pendingTransactionManager: PendingTransactionService;
+  walletMcpClient: MockWalletMcpClient;
+  messagingGateway: MockMessagingGateway;
+  walletCacheService: MockWalletCacheService;
+}
+
 const standardAccounts: WalletAccountItem[] = [
   { id: 'acc-bca-tahapan', name: 'BCA Tahapan', currency: 'IDR', bankAccountNumber: '1234567890' },
-  { id: 'acc-bca-bisnis', name: 'BCA Bisnis', currency: 'IDR', bankAccountNumber: '9876543210' },
+  { id: 'acc-bca-bisnis', name: 'BCA Bisnis', currency: 'IDR', bankAccountNumber: '0987654321' },
+  { id: 'acc-mandiri', name: 'Mandiri Tabungan', currency: 'IDR' },
   { id: 'acc-cash', name: 'Cash Dompet', currency: 'IDR' },
 ];
 
 const standardCategories: WalletCategoryItem[] = [
   { id: 'cat-makanan', name: 'Makanan & Minuman' },
   { id: 'cat-transport', name: 'Transportasi' },
+  { id: 'cat-belanja', name: 'Belanja' },
 ];
 
-function createIncomingEvent(textPayload: string): IncomingUserMessageEvent {
+function createPendingRecord(
+  accountHint?: string,
+  amountOrOverrides?: number | Partial<CreateRecordInputPayload>
+): CreateRecordInputPayload {
+  const overrides =
+    typeof amountOrOverrides === 'object' && amountOrOverrides !== null
+      ? amountOrOverrides
+      : typeof amountOrOverrides === 'number'
+      ? { amount: -amountOrOverrides }
+      : {};
+
   return {
-    channel: 'whatsapp',
-    senderIdentifier: '+628123456789',
-    chatIdentifier: '+628123456789',
-    messageType: 'text',
-    textPayload,
+    accountId: '',
+    accountHint,
+    categoryId: 'cat-makanan',
+    amount: -75000,
+    currency: 'IDR',
+    note: 'Makan siang bersama tim',
+    recordDate: '2026-09-15T12:00:00Z',
+    ...overrides,
   };
 }
 
-function createPendingRecord(
-  accountId: string,
-  overrides: Partial<CreateRecordInputPayload> = {}
-): CreateRecordInputPayload {
+function createIncomingEvent(text: string, sender = 'user-1'): IncomingUserMessageEvent {
   return {
-    accountId,
-    amount: -75000,
-    recordDate: '2026-09-15T12:00:00+07:00',
-    categoryId: 'cat-makanan',
-    note: 'Makan siang bersama tim',
-    counterParty: 'Restoran Sedap',
-    ...overrides,
+    channel: 'whatsapp',
+    senderIdentifier: sender,
+    chatIdentifier: 'chat-1',
+    messageType: 'text',
+    textPayload: text,
   };
 }
 
@@ -191,15 +238,18 @@ function createHarness(
   records: CreateRecordInputPayload[],
   accounts: WalletAccountItem[] = standardAccounts,
   categories: WalletCategoryItem[] = standardCategories
-) {
+): TestHarness {
   const pendingTransactionManager = new PendingTransactionService();
-  const messagingGateway = new MockMessagingGateway();
   const walletMcpClient = new MockWalletMcpClient();
   const walletCacheService = new MockWalletCacheService(accounts, categories);
+  const messagingGateway = new MockMessagingGateway();
+  const pendingActionHandler = new MockPendingActionHandler() as any;
+  const fastPathHandler = new MockFastPathHandler() as any;
+
   const financialAiProvider = new ConfigurableClarificationAiProvider({
     action: 'CREATE_RECORD',
-    explanation: 'Create transaction',
     records,
+    explanation: 'Prepared draft for account clarification',
   });
 
   const conversationService = new AccountClarificationConversationService(financialAiProvider);
@@ -216,9 +266,9 @@ function createHarness(
   const userMessageHandler = new UserMessageHandler(
     messagingGateway as any,
     pendingTransactionManager,
-    new MockPendingActionHandler() as any,
-    new MockFastPathHandler() as any,
-    financialAiProvider as any,
+    pendingActionHandler,
+    fastPathHandler,
+    financialAiProvider,
     walletCacheService as any,
     walletMcpClient as any,
     undefined,
@@ -228,14 +278,13 @@ function createHarness(
   );
 
   return {
-    pendingTransactionManager,
-    messagingGateway,
-    walletMcpClient,
-    walletCacheService,
-    financialAiProvider,
-    conversationService,
-    accountClarificationHandler,
     userMessageHandler,
+    financialAiProvider,
+    accountClarificationHandler,
+    pendingTransactionManager,
+    walletMcpClient,
+    messagingGateway,
+    walletCacheService,
   };
 }
 
@@ -253,7 +302,7 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
     it('generates natural question using AI provider when available', async () => {
       const harness = createHarness([createPendingRecord('BCA')]);
       harness.financialAiProvider.mockQuestionResponse =
-        'Halo! Transaksi Makan siang bersama tim sebesar Rp75.000 sudah disiapkan (#1). Kamu mau pakai BCA Tahapan atau BCA Bisnis? Balas 1/2 atau batal #1.';
+        'Halo! Transaksi Makan siang bersama tim sebesar Rp75.000 sudah disiapkan (#1). Akun mana yang ingin kamu gunakan?';
 
       await harness.userMessageHandler.handleIncomingUserMessage(
         createIncomingEvent('Makan siang 75rb pakai BCA')
@@ -262,9 +311,10 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
       expect(harness.financialAiProvider.questionGenerationCalls).toBe(1);
       expect(harness.messagingGateway.messages.length).toBe(1);
       expect(harness.messagingGateway.messages[0].content).toContain('Halo! Transaksi Makan siang bersama tim');
-      expect(harness.messagingGateway.messages[0].content).toContain('BCA Tahapan atau BCA Bisnis');
+      expect(harness.messagingGateway.messages[0].content).toContain('1. BCA Tahapan');
+      expect(harness.messagingGateway.messages[0].content).toContain('2. BCA Bisnis');
       expect(harness.financialAiProvider.lastQuestionContext?.ticketId).toBe(1);
-      expect(harness.financialAiProvider.lastQuestionContext?.candidateAccounts.length).toBe(2);
+      expect(harness.financialAiProvider.lastQuestionContext?.candidateAccounts?.length).toBe(2);
     });
 
     it('falls back to deterministic template and logs [WARN] when question generation fails', async () => {
@@ -540,33 +590,99 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
   });
 
   describe('Adversarial & Security Boundaries (Strict Fail-Closed)', () => {
-    it('rejects model proposal returning non-candidate account ID (fails closed)', async () => {
+    it('allows cancellation while interpretAccountClarificationReply is in flight, suppressing dispatch and preventing draft resurrection', async () => {
       const harness = createHarness([createPendingRecord('BCA')]);
+      let resolveReplyInterpretation!: (proposal: AccountClarificationProposal) => void;
+      let replyInterpretationStarted!: () => void;
+      const replyInterpretationStartedPromise = new Promise<void>(resolve => {
+        replyInterpretationStarted = resolve;
+      });
+      const replyInterpretationPromise = new Promise<AccountClarificationProposal>(resolve => {
+        resolveReplyInterpretation = resolve;
+      });
+
+      harness.financialAiProvider.interpretAccountClarificationReply = vi
+        .fn()
+        .mockImplementation(() => {
+          replyInterpretationStarted();
+          return replyInterpretationPromise;
+        });
+
+      // Create draft #1
       await harness.userMessageHandler.handleIncomingUserMessage(
-        createIncomingEvent('Makan siang 75rb pakai BCA')
+        createIncomingEvent('Makan siang 75rb')
       );
-
-      const loggerWarnSpy = vi.spyOn(applicationLogger, 'warn');
-
-      // Model hallucinating or attempting to select unrelated 'acc-cash' or unknown 'acc-evil'
-      harness.financialAiProvider.mockProposalResponse = {
-        selectedAccountId: 'acc-evil-injected',
-        selectedCandidateIndex: null,
-        reasoning: 'Model injected external account',
-      };
-
-      await harness.userMessageHandler.handleIncomingUserMessage(
-        createIncomingEvent('use acc-evil-injected instead')
-      );
-
-      // Boundary check strictly rejects: NO Wallet dispatch
-      expect(harness.walletMcpClient.calls.length).toBe(0);
-      // Draft remains pending
       expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(1);
-      // Logged [WARN]
-      expect(loggerWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[Account Clarification] LLM proposed non-candidate account ID "acc-evil-injected"')
+
+      // Send conversational reply that enters interpretAccountClarificationReply
+      const replyPromise = harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('yang bisnis')
       );
+      await replyInterpretationStartedPromise;
+
+      // Draft is claimed into PROCESSING and is in cancellablePreDispatch
+      const draftInFlight = harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts()[0];
+      expect(
+        harness.pendingTransactionManager.getPendingAccountSelectionDraftState(draftInFlight.ticketId)
+      ).toBe('PROCESSING');
+      expect(harness.accountClarificationHandler.isCancellablePreDispatch(draftInFlight.ticketId)).toBe(true);
+
+      // User sends cancellation command while interpretation is in flight
+      await harness.userMessageHandler.handleIncomingUserMessage(
+        createIncomingEvent('batal #1')
+      );
+
+      // Draft is cancelled immediately
+      expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(0);
+      expect(harness.messagingGateway.messages.at(-1)?.content).toContain('dibatalkan');
+
+      const prepSpy = vi.spyOn(
+        (harness.accountClarificationHandler as any).recordPreparationService,
+        'prepareRecordsForDispatch'
+      );
+
+      // Now resolve the in-flight reply interpretation
+      resolveReplyInterpretation({
+        selectedCandidateIndex: 2,
+        reasoning: 'Resolved to BCA Bisnis',
+      });
+      await replyPromise;
+
+      // Assertions:
+      // 1. Draft remains cancelled; no draft resurrected
+      expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(0);
+      // 2. record preparation was never called (no labels created)
+      expect(prepSpy).not.toHaveBeenCalled();
+      // 3. createRecords was never called
+      expect(harness.walletMcpClient.calls.length).toBe(0);
+    });
+
+    it('clarification LLM reply prompt payload contains candidate index and name but NO full bank account numbers or internal IDs', () => {
+      const candidates = [
+        { id: 'acc-internal-1', name: 'BCA Tahapan', currency: 'IDR', bankAccountNumber: '1234567890' },
+        { id: 'acc-internal-2', name: 'BCA Bisnis', currency: 'IDR', bankAccountNumber: '0987654321' },
+      ];
+
+      const { systemInstruction, promptText } = buildAccountClarificationReplyPrompt(
+        'yang tabungan',
+        candidates
+      );
+
+      // Candidate index and names are present
+      expect(systemInstruction).toContain('1. BCA Tahapan [IDR]');
+      expect(systemInstruction).toContain('2. BCA Bisnis [IDR]');
+
+      // Internal IDs MUST NOT be present in prompt or systemInstruction
+      expect(systemInstruction).not.toContain('acc-internal-1');
+      expect(systemInstruction).not.toContain('acc-internal-2');
+      expect(promptText).not.toContain('acc-internal-1');
+      expect(promptText).not.toContain('acc-internal-2');
+
+      // Full bank account numbers MUST NOT be present in prompt or systemInstruction
+      expect(systemInstruction).not.toContain('1234567890');
+      expect(systemInstruction).not.toContain('0987654321');
+      expect(promptText).not.toContain('1234567890');
+      expect(promptText).not.toContain('0987654321');
     });
 
     it('rejects model proposal returning out-of-bounds candidate index (fails closed)', async () => {
@@ -578,7 +694,6 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
       const loggerWarnSpy = vi.spyOn(applicationLogger, 'warn');
 
       harness.financialAiProvider.mockProposalResponse = {
-        selectedAccountId: null,
         selectedCandidateIndex: 99,
         reasoning: 'Out of bounds candidate index',
       };
@@ -592,65 +707,34 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
       );
     });
 
-    it('rejects proposal with invalid ID + valid index (fails closed)', async () => {
+    it('rejects model proposal returning non-numeric / null candidate index (fails closed)', async () => {
       const harness = createHarness([createPendingRecord('BCA')]);
       await harness.userMessageHandler.handleIncomingUserMessage(
         createIncomingEvent('Makan siang 75rb pakai BCA')
       );
 
-      const loggerWarnSpy = vi.spyOn(applicationLogger, 'warn');
-
-      // Invalid non-candidate ID combined with in-bounds index
+      // Model returns null selection or invalid structure
       harness.financialAiProvider.mockProposalResponse = {
-        selectedAccountId: 'acc-evil',
-        selectedCandidateIndex: 1,
-        reasoning: 'Invalid ID with valid index',
-      };
-
-      await harness.userMessageHandler.handleIncomingUserMessage(createIncomingEvent('pilihan 1'));
-
-      expect(harness.walletMcpClient.calls.length).toBe(0);
-      expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(1);
-      expect(loggerWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[Account Clarification] LLM proposed non-candidate account ID "acc-evil"')
-      );
-    });
-
-    it('rejects proposal with valid ID + conflicting valid index (fails closed)', async () => {
-      const harness = createHarness([createPendingRecord('BCA')]);
-      await harness.userMessageHandler.handleIncomingUserMessage(
-        createIncomingEvent('Makan siang 75rb pakai BCA')
-      );
-
-      const loggerWarnSpy = vi.spyOn(applicationLogger, 'warn');
-
-      // Valid ID (acc-bca-tahapan = index 1) conflicting with index 2 (acc-bca-bisnis)
-      harness.financialAiProvider.mockProposalResponse = {
-        selectedAccountId: 'acc-bca-tahapan',
-        selectedCandidateIndex: 2,
-        reasoning: 'Conflicting candidate fields',
+        selectedCandidateIndex: null,
+        reasoning: 'Ambiguous selection',
       };
 
       await harness.userMessageHandler.handleIncomingUserMessage(createIncomingEvent('pilihan'));
 
       expect(harness.walletMcpClient.calls.length).toBe(0);
       expect(harness.pendingTransactionManager.getAllPendingAccountSelectionDrafts().length).toBe(1);
-      expect(loggerWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('LLM proposed contradictory candidate ID "acc-bca-tahapan" and index 2')
-      );
     });
 
-    it('accepts proposal with valid matching ID + index', async () => {
+    it('accepts proposal with valid candidate index mapping through stored candidates', async () => {
       const harness = createHarness([createPendingRecord('BCA')]);
       await harness.userMessageHandler.handleIncomingUserMessage(
         createIncomingEvent('Makan siang 75rb pakai BCA')
       );
 
-      // Both ID and index agree on candidate 1 (acc-bca-tahapan)
+      // Model selects candidate index 1 (BCA Tahapan)
       harness.financialAiProvider.mockProposalResponse = {
-        selectedAccountId: 'acc-bca-tahapan',
         selectedCandidateIndex: 1,
-        reasoning: 'Consistent selection fields',
+        reasoning: 'Matched BCA Tahapan',
       };
 
       await harness.userMessageHandler.handleIncomingUserMessage(createIncomingEvent('tahapan'));
@@ -735,15 +819,11 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
         const outsideUntrusted = promptText.replace(untrustedContent, '');
         expect(outsideUntrusted).not.toContain('Ignore previous rules');
 
-        // 3. Trusted candidate ordering remains outside the untrusted region
-        const candidateTahapanIndex = promptText.indexOf('1. BCA Tahapan');
-        const candidateBisnisIndex = promptText.indexOf('2. BCA Bisnis');
-        const untrustedRegionIndex = promptText.indexOf('<untrusted_user_text');
-
-        expect(candidateTahapanIndex).toBeGreaterThan(-1);
-        expect(candidateBisnisIndex).toBeGreaterThan(candidateTahapanIndex);
-        expect(candidateTahapanIndex).toBeLessThan(untrustedRegionIndex);
-        expect(candidateBisnisIndex).toBeLessThan(untrustedRegionIndex);
+        // 3. Question generation is preamble-only: candidate names and numbering do NOT appear in promptText
+        expect(promptText).not.toContain('1. BCA Tahapan');
+        expect(promptText).not.toContain('2. BCA Bisnis');
+        expect(promptText).not.toContain('BCA Tahapan');
+        expect(promptText).not.toContain('BCA Bisnis');
       }
     });
 
@@ -844,7 +924,7 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
 
       // Now resolve the in-flight question generation
       resolveRetryPromptGeneration({
-        question: 'Pilihan "yang itu tuh" belum jelas (#1). Mau BCA Tahapan atau BCA Bisnis?',
+        question: 'Pilihan "yang itu tuh" belum jelas (#1). Akun mana yang ingin kamu gunakan?',
       });
       await firstReplyPromise;
 
@@ -924,7 +1004,7 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
 
       // Resolve the initial prompt generation
       resolveInitialPromptGeneration({
-        question: 'Ada beberapa akun BCA (#1). Mau pakai BCA Tahapan atau BCA Bisnis?',
+        question: 'Ada beberapa akun yang sesuai (#1). Akun mana yang ingin digunakan?',
       });
       await initialCreationPromise;
 
@@ -937,7 +1017,7 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
       expect(postDeliveryDraft?.pendingRecordIndex).toBe(0);
       // 2. The initial prompt was sent
       expect(harness.messagingGateway.messages.at(-1)?.content).toContain(
-        'Ada beberapa akun BCA (#1)'
+        'Ada beberapa akun yang sesuai (#1)'
       );
 
       // 3. Subsequent user choice can now be processed normally
@@ -1401,14 +1481,13 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
 
     it('parseClarificationProposalResponse parses json proposal and invalid fallback', () => {
       const parsed = parseClarificationProposalResponse(
-        '{"selectedAccountId": "acc-1", "selectedCandidateIndex": 1, "reasoning": "matched"}'
+        '{"selectedCandidateIndex": 1, "reasoning": "matched"}'
       );
-      expect(parsed.selectedAccountId).toBe('acc-1');
       expect(parsed.selectedCandidateIndex).toBe(1);
       expect(parsed.reasoning).toBe('matched');
+      expect((parsed as any).selectedAccountId).toBeUndefined();
 
       const invalidFallback = parseClarificationProposalResponse('not json');
-      expect(invalidFallback.selectedAccountId).toBeNull();
       expect(invalidFallback.selectedCandidateIndex).toBeNull();
       expect(invalidFallback.reasoning).toBe('Failed to parse JSON response');
     });
@@ -1444,7 +1523,6 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
           question: 'Working question',
         }),
         interpretAccountClarificationReply: async () => ({
-          selectedAccountId: 'acc-bca-tahapan',
           selectedCandidateIndex: 1,
           reasoning: 'Working interpretation',
         }),
@@ -1459,7 +1537,6 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
         'tahapan',
         mockContext.candidateAccounts
       );
-      expect(replyResult.selectedAccountId).toBe('acc-bca-tahapan');
       expect(replyResult.selectedCandidateIndex).toBe(1);
     });
 
@@ -1468,7 +1545,7 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
       (geminiProvider as any).googleGenAiClient = {
         models: {
           generateContent: async () => ({
-            text: '{"question": "Pertanyaan Gemini", "selectedAccountId": "acc-bca-tahapan", "selectedCandidateIndex": 1, "reasoning": "Gemini match"}',
+            text: '{"question": "Pertanyaan Gemini", "selectedCandidateIndex": 1, "reasoning": "Gemini match"}',
           }),
         },
       };
@@ -1480,7 +1557,6 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
         'yang tahapan',
         mockContext.candidateAccounts
       );
-      expect(replyResult.selectedAccountId).toBe('acc-bca-tahapan');
       expect(replyResult.selectedCandidateIndex).toBe(1);
     });
 
@@ -1497,7 +1573,7 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
               {
                 message: {
                   content:
-                    '{"question": "Pertanyaan OpenAI", "selectedAccountId": "acc-bca-bisnis", "selectedCandidateIndex": 2, "reasoning": "OpenAI match"}',
+                    '{"question": "Pertanyaan OpenAI", "selectedCandidateIndex": 2, "reasoning": "OpenAI match"}',
                 },
               },
             ],
@@ -1512,7 +1588,6 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
         'yang bisnis',
         mockContext.candidateAccounts
       );
-      expect(replyResult.selectedAccountId).toBe('acc-bca-bisnis');
       expect(replyResult.selectedCandidateIndex).toBe(2);
     });
   });
@@ -1543,16 +1618,10 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
       expect(composeClarificationMessage('   \n\t  ', mockDraft as any, standardCategories)).toBe(fallback);
     });
 
-    it('composes English message and strips list headers and boilerplate', () => {
+    it('composes English message with clean preamble and appends deterministic candidate section', () => {
       setActiveLanguage('en');
       try {
-        const rawQuestion = [
-          'Choose the account to use:',
-          '1. BCA Tahapan',
-          '2. BCA Bisnis',
-          'Please select an account for your lunch expense.',
-          'Reply with the account number or cancel #1.',
-        ].join('\n');
+        const rawQuestion = 'Please select an account for your lunch expense.';
 
         const composed = composeClarificationMessage(
           rawQuestion,
@@ -1587,9 +1656,8 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
       expect(composed).toContain('1. BCA Tahapan');
     });
 
-    it('falls back to template when swapped inline numbering is detected', () => {
-      // Swapped inline numbering: "2. BCA Tahapan" instead of 1. BCA Tahapan
-      const rawQuestion = 'Kamu bisa memilih 2. BCA Tahapan untuk transaksi ini.';
+    it('falls back to deterministic template when model output contains "Untuk BCA Bisnis, balas 1."', () => {
+      const rawQuestion = 'Untuk BCA Bisnis, balas 1.';
       const composed = composeClarificationMessage(
         rawQuestion,
         mockDraft as any,
@@ -1598,9 +1666,47 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
 
       const fallback = formatAccountSelectionPrompt(mockDraft as any, standardCategories);
       expect(composed).toBe(fallback);
+      // Final message still visibly presents BCA Tahapan as option 1
+      expect(composed).toContain('1. BCA Tahapan');
+      expect(composed).toContain('2. BCA Bisnis');
     });
 
-    it('strips trailing reply or cancellation boilerplate from single-line prose', () => {
+    it('falls back to deterministic template when model output contains "BCA Bisnis adalah opsi pertama."', () => {
+      const rawQuestion = 'BCA Bisnis adalah opsi pertama.';
+      const composed = composeClarificationMessage(
+        rawQuestion,
+        mockDraft as any,
+        standardCategories
+      );
+
+      const fallback = formatAccountSelectionPrompt(mockDraft as any, standardCategories);
+      expect(composed).toBe(fallback);
+      expect(composed).toContain('1. BCA Tahapan');
+      expect(composed).toContain('2. BCA Bisnis');
+    });
+
+    it('falls back to deterministic template when model output contains numbered, swapped, or invented candidate list', () => {
+      const rawQuestion = [
+        '1. BCA Bisnis',
+        '2. BCA Tahapan',
+        '3. Admin Account',
+      ].join('\n');
+
+      const composed = composeClarificationMessage(
+        rawQuestion,
+        mockDraft as any,
+        standardCategories
+      );
+
+      const fallback = formatAccountSelectionPrompt(mockDraft as any, standardCategories);
+      expect(composed).toBe(fallback);
+      // Visibly presented candidates come solely from application code
+      expect(composed).toContain('1. BCA Tahapan');
+      expect(composed).toContain('2. BCA Bisnis');
+      expect(composed).not.toContain('3. Admin Account');
+    });
+
+    it('falls back to deterministic template when model output contains cancellation or reply boilerplate', () => {
       const rawQuestion = 'Transaksi makan siang disiapkan. Balas 1/2 atau batal #1.';
       const composed = composeClarificationMessage(
         rawQuestion,
@@ -1608,8 +1714,8 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
         standardCategories
       );
 
-      expect(composed).toContain('Transaksi makan siang disiapkan.');
-      expect(composed).not.toContain('disiapkan. Balas 1/2 atau batal #1.');
+      const fallback = formatAccountSelectionPrompt(mockDraft as any, standardCategories);
+      expect(composed).toBe(fallback);
       expect(composed).toContain('*Pilih akun yang digunakan:*');
       expect(composed).toContain('1. BCA Tahapan');
     });

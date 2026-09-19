@@ -284,12 +284,14 @@ export function parseClarificationProposalResponse(
   tokenUsage?: TokenUsageStatistics
 ): AccountClarificationProposal {
   try {
-    const parsed = extractAndParseJsonObject<AccountClarificationProposal>(rawResponseText);
+    const parsed = extractAndParseJsonObject<{
+      selectedCandidateIndex?: unknown;
+      reasoning?: unknown;
+    }>(rawResponseText);
     return {
-      selectedAccountId:
-        typeof parsed.selectedAccountId === 'string' ? parsed.selectedAccountId : null,
       selectedCandidateIndex:
-        typeof parsed.selectedCandidateIndex === 'number'
+        typeof parsed.selectedCandidateIndex === 'number' &&
+        Number.isInteger(parsed.selectedCandidateIndex)
           ? parsed.selectedCandidateIndex
           : null,
       reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : '',
@@ -297,7 +299,6 @@ export function parseClarificationProposalResponse(
     };
   } catch {
     return {
-      selectedAccountId: null,
       selectedCandidateIndex: null,
       reasoning: 'Failed to parse JSON response',
       tokenUsage,
