@@ -330,7 +330,7 @@ export async function runDoctorDiagnostics(
         }
 
         // 3. Advertised Tools
-        if (tools && tools.length > 0) {
+        if (tools !== undefined) {
           const expectedCoreTools = [
             'get_records',
             'create_records',

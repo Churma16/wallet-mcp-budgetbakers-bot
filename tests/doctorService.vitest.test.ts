@@ -458,4 +458,23 @@ describe('doctor diagnostics', () => {
       message: 'Wallet synchronization is not ready (state: error: Bank sync credential expired).',
     });
   });
+
+  it('warns when advertised tools array is empty and lists all missing expected core tools', async () => {
+    const config = createConfiguration();
+    const mockProbeResult = {
+      tools: [], // Successful empty tools array from MCP listTools()
+    };
+
+    const dependencies = createDependencies({
+      probeWalletMcp: vi.fn().mockResolvedValue(mockProbeResult),
+    });
+
+    const results = await runDoctorDiagnostics(config, dependencies);
+
+    expect(results).toContainEqual({
+      status: 'WARN',
+      check: 'Wallet MCP/Tools',
+      message: 'Some expected core tools are not advertised: get_records, create_records, get_accounts, get_categories, get_budgets.',
+    });
+  });
 });

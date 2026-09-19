@@ -29,6 +29,7 @@ import {
 } from './handlers/index.js';
 import { TransactionHistoryService } from './services/transactionHistoryService.js';
 import { TransactionSummaryService } from './services/transactionSummaryService.js';
+import { WalletMcpCapabilityService } from './services/walletMcpCapabilityService.js';
 import { FinancialActionExecutor } from './services/financialActionExecutor.js';
 import { FinancialActionRegistry, createDefaultFinancialActionRegistry } from './actions/index.js';
 import { WalletRecordPreparationService } from './services/walletRecordPreparationService.js';
@@ -40,6 +41,7 @@ export class Application {
   private readonly environmentConfig: ApplicationEnvironmentConfiguration;
   private readonly walletMcpClient: WalletMcpClientService;
   private readonly walletCacheService: WalletCacheService;
+  private readonly walletCapabilityService: WalletMcpCapabilityService;
   private readonly transactionHistoryService: TransactionHistoryService;
   private readonly transactionSummaryService: TransactionSummaryService;
   private readonly financialActionExecutor: FinancialActionExecutor;
@@ -64,6 +66,8 @@ export class Application {
       this.environmentConfig.walletMcpBaseUrl,
       this.environmentConfig.walletMcpAccessToken
     );
+
+    this.walletCapabilityService = new WalletMcpCapabilityService(this.walletMcpClient);
 
     this.walletCacheService = new WalletCacheService(this.walletMcpClient);
     this.categoryContextService = new CategoryContextService(
@@ -99,7 +103,8 @@ export class Application {
     this.transactionSummaryService = new TransactionSummaryService(
       this.walletMcpClient,
       this.walletCacheService,
-      this.transactionHistoryService
+      this.transactionHistoryService,
+      this.walletCapabilityService
     );
 
     this.financialActionExecutor = new FinancialActionExecutor(
@@ -206,6 +211,14 @@ export class Application {
     // 1. Initialize Wallet MCP Client & Pre-cache accounts & categories
     applicationLogger.info('Connecting to BudgetBakers Wallet MCP Server...');
     await this.walletCacheService.initialize();
+    try {
+      await this.walletCapabilityService.refreshCapabilities();
+      applicationLogger.info('Discovered Wallet MCP capabilities and client profile.');
+    } catch (capabilityError) {
+      applicationLogger.warn('Best-effort capability discovery failed during startup; continuing with conservative fallback', {
+        error: capabilityError instanceof Error ? capabilityError.message : String(capabilityError),
+      });
+    }
 
     // 2. Register Messaging Adapters in Gateway
     if (this.environmentConfig.enabledMessengerChannels.includes('whatsapp')) {
@@ -327,5 +340,12 @@ export class Application {
    */
   public getCategoryContextService(): CategoryContextService {
     return this.categoryContextService;
+  }
+
+  /**
+   * Returns the active Wallet MCP capability service instance.
+   */
+  public getWalletCapabilityService(): WalletMcpCapabilityService {
+    return this.walletCapabilityService;
   }
 }

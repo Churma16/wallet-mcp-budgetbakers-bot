@@ -102,6 +102,49 @@ export function isWalletMcpDefinitiveFailure(error: unknown): boolean {
   return error instanceof WalletMcpRequestError && error.dispatchOutcome === 'DEFINITIVE_FAILURE';
 }
 
+/**
+ * Determines whether a failure indicates that the tool or capability itself is unavailable,
+ * unsupported, not found, or unauthorized (as opposed to a request-specific argument or schema validation failure).
+ * Only true capability-level rejections should invalidate or mark tool capability rejections.
+ */
+export function isWalletMcpCapabilityRejection(error: unknown): boolean {
+  if (!isWalletMcpDefinitiveFailure(error)) {
+    return false;
+  }
+
+  const errorMessage = (error instanceof Error ? error.message : String(error)).toLowerCase();
+
+  // Request-level schema or argument validation rejections must not disable the tool
+  const isRequestLevelValidationFailure =
+    errorMessage.includes('invalid params') ||
+    errorMessage.includes('invalid argument') ||
+    errorMessage.includes('validation error') ||
+    errorMessage.includes('schema validation') ||
+    errorMessage.includes('-32602');
+
+  if (isRequestLevelValidationFailure) {
+    return false;
+  }
+
+  // Capability-level unavailability, lack of authorization, or unsupported method indicators
+  const isCapabilityRejection =
+    errorMessage.includes('method not found') ||
+    errorMessage.includes('tool not found') ||
+    errorMessage.includes('unknown tool') ||
+    errorMessage.includes('not supported') ||
+    errorMessage.includes('not implemented') ||
+    errorMessage.includes('unavailable') ||
+    errorMessage.includes('capability') ||
+    errorMessage.includes('permission') ||
+    errorMessage.includes('scope') ||
+    errorMessage.includes('forbidden') ||
+    errorMessage.includes('http 403') ||
+    errorMessage.includes('http 404') ||
+    errorMessage.includes('-32601');
+
+  return isCapabilityRejection;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

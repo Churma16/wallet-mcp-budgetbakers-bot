@@ -1,4 +1,8 @@
-import { WalletMcpClientService, isWalletMcpDefinitiveFailure } from './walletMcpService.js';
+import {
+  WalletMcpClientService,
+  isWalletMcpDefinitiveFailure,
+  isWalletMcpCapabilityRejection,
+} from './walletMcpService.js';
 import { WalletCacheService } from './walletCacheService.js';
 import { TransactionHistoryService } from './transactionHistoryService.js';
 import { WalletMcpCapabilityQuery } from '../types/walletCapabilityTypes.js';
@@ -213,7 +217,7 @@ export class TransactionSummaryService {
       try {
         return await this.getNativeTransactionSummary(queryOptions, referenceDate);
       } catch (aggregationError) {
-        if (this.capabilityService && isWalletMcpDefinitiveFailure(aggregationError)) {
+        if (this.capabilityService && isWalletMcpCapabilityRejection(aggregationError)) {
           this.capabilityService.markToolRejection(
             'get_records_aggregation',
             aggregationError instanceof Error ? aggregationError.message : String(aggregationError)
