@@ -7,9 +7,20 @@ import {
   ExtractedFinancialIntent,
   ExtractedEmailTransactionData,
   TokenUsageStatistics,
+  AccountClarificationQuestionContext,
+  AccountClarificationProposal,
 } from './financialAiProvider.js';
-import { isAiResponseParseError } from './jsonExtractionHelper.js';
+import { PendingAccountSelectionCandidate } from '../pendingTransactionService.js';
+import {
+  isAiResponseParseError,
+  parseClarificationQuestionResponse,
+  parseClarificationProposalResponse,
+} from './jsonExtractionHelper.js';
 import { CategoryContextService } from '../categoryContextService.js';
+import {
+  buildAccountClarificationQuestionPrompt,
+  buildAccountClarificationReplyPrompt,
+} from './aiPromptBuilder.js';
 import {
   SystemInstructionCache,
   executeTextWorkflow,
@@ -355,5 +366,49 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
         return this.executeChatCompletionWithFallback(messages, prepared.requestContextDescription);
       }
     );
+  }
+
+  /**
+   * Generates natural language question wording for account clarification
+   */
+  public async generateAccountClarificationQuestion(
+    context: AccountClarificationQuestionContext
+  ): Promise<{ question: string; tokenUsage?: TokenUsageStatistics }> {
+    const { systemInstruction, promptText } = buildAccountClarificationQuestionPrompt(context);
+    const messages = [
+      { role: 'system', content: systemInstruction },
+      { role: 'user', content: promptText },
+    ];
+    const result = await this.executeChatCompletionWithFallback(
+      messages,
+      `Account clarification question for draft #${context.ticketId}`
+    );
+
+    return parseClarificationQuestionResponse(result.responseText, result.tokenUsage);
+  }
+
+  /**
+   * Interprets free-form clarification reply to propose candidate selection
+   */
+  public async interpretAccountClarificationReply(
+    userReplyText: string,
+    candidates: PendingAccountSelectionCandidate[],
+    context?: Partial<AccountClarificationQuestionContext>
+  ): Promise<AccountClarificationProposal> {
+    const { systemInstruction, promptText } = buildAccountClarificationReplyPrompt(
+      userReplyText,
+      candidates,
+      context
+    );
+    const messages = [
+      { role: 'system', content: systemInstruction },
+      { role: 'user', content: promptText },
+    ];
+    const result = await this.executeChatCompletionWithFallback(
+      messages,
+      `Account clarification interpretation for draft #${context?.ticketId ?? 'unknown'}`
+    );
+
+    return parseClarificationProposalResponse(result.responseText, result.tokenUsage);
   }
 }

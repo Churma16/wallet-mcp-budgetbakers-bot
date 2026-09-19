@@ -8,7 +8,11 @@ import {
   isWalletMcpDefinitiveFailure,
 } from '../services/walletMcpService.js';
 import { WalletCacheService } from '../services/walletCacheService.js';
-import { IncomingUserMessageEvent, MessagingGatewayService } from '../services/messaging/index.js';
+import {
+  IncomingUserMessageEvent,
+  MessagingGatewayService,
+  SupportedMessengerChannel,
+} from '../services/messaging/index.js';
 import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../types/walletTypes.js';
 import {
   AccountResolutionIssue,
@@ -27,9 +31,13 @@ import { getDictionary } from '../i18n/index.js';
 import { applicationLogger, formatConciseErrorMessage } from '../utils/logger.js';
 import { WalletRecordPreparationService } from '../services/walletRecordPreparationService.js';
 import { CategoryContextService } from '../services/categoryContextService.js';
+import { AccountClarificationConversationService } from '../services/ai/index.js';
 
 export class AccountClarificationHandler {
   private readonly recordPreparationService: WalletRecordPreparationService;
+  private readonly conversationService: AccountClarificationConversationService;
+  private readonly dispatchLockedTicketIds = new Set<number>();
+  private readonly promptDeliveryPromises = new Map<number, Promise<void>>();
 
   constructor(
     private readonly pendingTransactionManager: PendingTransactionService,
@@ -37,11 +45,15 @@ export class AccountClarificationHandler {
     private readonly walletCacheService: WalletCacheService,
     private readonly messagingGateway: MessagingGatewayService,
     recordPreparationService?: WalletRecordPreparationService,
-    private readonly categoryContextService?: CategoryContextService
+    private readonly categoryContextService?: CategoryContextService,
+    conversationService?: AccountClarificationConversationService
   ) {
     this.recordPreparationService =
       recordPreparationService ||
       new WalletRecordPreparationService(walletCacheService, walletMcpClient);
+    this.conversationService =
+      conversationService ||
+      new AccountClarificationConversationService();
   }
 
   public async createPendingAccountSelectionDraft(
@@ -76,24 +88,91 @@ export class AccountClarificationHandler {
       sourceReferenceInstant: requestReferenceInstant,
     });
 
+    // Synchronously claim the draft before any await to keep it in PROCESSING
+    // throughout question generation and delivery, preventing concurrent replies
+    // from claiming or advancing the draft before prompt delivery completes.
+    this.pendingTransactionManager.claimPendingAccountSelectionDraft(pendingDraft.ticketId);
+
     applicationLogger.info(
       `[Account Clarification] Draft #${pendingDraft.ticketId} created for record ${firstIssue.recordIndex + 1}/${originalRecords.length}.`
     );
 
     try {
-      await this.messagingGateway.sendMessage(
+      const promptContent = await this.conversationService.generateClarificationQuestion(
+        pendingDraft,
+        availableCategories
+      );
+
+      const delivered = await this.deliverClarificationPrompt(
+        pendingDraft.ticketId,
         event.channel,
         event.chatIdentifier,
-        formatAccountSelectionPrompt(pendingDraft, availableCategories)
+        promptContent,
+        'initial prompt'
       );
+      if (!delivered) {
+        return true;
+      }
+
+      if (this.pendingTransactionManager.getPendingAccountSelectionDraft(pendingDraft.ticketId)) {
+        this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(pendingDraft.ticketId);
+      }
     } catch (messagingError) {
-      this.pendingTransactionManager.rejectPendingAccountSelectionDraft(pendingDraft.ticketId);
-      applicationLogger.error(
-        `[Account Clarification] Draft #${pendingDraft.ticketId} discarded because the initial prompt could not be delivered: ${formatConciseErrorMessage(messagingError)}`
-      );
-      throw messagingError;
+      const activeDraft = this.pendingTransactionManager.getPendingAccountSelectionDraft(pendingDraft.ticketId);
+      if (activeDraft) {
+        this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(pendingDraft.ticketId);
+        this.pendingTransactionManager.rejectPendingAccountSelectionDraft(pendingDraft.ticketId);
+        applicationLogger.error(
+          `[Account Clarification] Draft #${pendingDraft.ticketId} discarded because the initial prompt could not be delivered: ${formatConciseErrorMessage(messagingError)}`
+        );
+        throw messagingError;
+      }
     }
     return true;
+  }
+
+  private async deliverClarificationPrompt(
+    ticketId: number,
+    channel: SupportedMessengerChannel,
+    chatIdentifier: string,
+    promptContent: string,
+    contextLabel: string
+  ): Promise<boolean> {
+    const activeDraft = this.pendingTransactionManager.getPendingAccountSelectionDraft(ticketId);
+    if (!activeDraft) {
+      applicationLogger.info(
+        `[Account Clarification] Draft #${ticketId} was cancelled while ${contextLabel} was generating; suppressing prompt delivery.`
+      );
+      return false;
+    }
+
+    const sendPromise = this.messagingGateway.sendMessage(
+      channel,
+      chatIdentifier,
+      promptContent
+    );
+    const settledPromise = sendPromise.then(
+      () => {},
+      () => {}
+    );
+    this.promptDeliveryPromises.set(ticketId, settledPromise);
+
+    try {
+      await sendPromise;
+    } finally {
+      this.promptDeliveryPromises.delete(ticketId);
+    }
+
+    return true;
+  }
+
+  public isCancellablePreDispatch(ticketId: number): boolean {
+    const draftState = this.pendingTransactionManager.getPendingAccountSelectionDraftState(ticketId);
+    return (draftState === 'PENDING' || draftState === 'PROCESSING') && !this.dispatchLockedTicketIds.has(ticketId);
+  }
+
+  public isPromptInFlight(ticketId: number): boolean {
+    return this.isCancellablePreDispatch(ticketId);
   }
 
   public async handlePendingAccountSelectionReply(
@@ -172,6 +251,36 @@ export class AccountClarificationHandler {
     }
 
     if (draftState === 'PROCESSING') {
+      if (
+        (isGenericCancellationRequest || isTargetedCancellationRequest) &&
+        !this.dispatchLockedTicketIds.has(pendingDraft.ticketId)
+      ) {
+        this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(pendingDraft.ticketId);
+        const cancelledDraft = this.pendingTransactionManager.rejectPendingAccountSelectionDraft(
+          pendingDraft.ticketId
+        );
+
+        // Serialize prompt delivery and cancellation: if prompt delivery is currently in flight,
+        // await it to settle before emitting the cancellation acknowledgement so the cancellation
+        // is guaranteed to be the final user-visible message.
+        const inFlightDelivery = this.promptDeliveryPromises.get(pendingDraft.ticketId);
+        if (inFlightDelivery) {
+          await inFlightDelivery;
+        }
+
+        if (cancelledDraft) {
+          await this.messagingGateway.sendMessage(
+            event.channel,
+            event.chatIdentifier,
+            formatAccountSelectionCancellation(cancelledDraft)
+          );
+          applicationLogger.info(
+            `[Account Clarification] Draft #${cancelledDraft.ticketId} cancelled before Wallet dispatch.`
+          );
+        }
+        return true;
+      }
+
       await this.messagingGateway.sendMessage(
         event.channel,
         event.chatIdentifier,
@@ -184,6 +293,10 @@ export class AccountClarificationHandler {
       const cancelledDraft = this.pendingTransactionManager.rejectPendingAccountSelectionDraft(
         pendingDraft.ticketId
       );
+      const inFlightDelivery = this.promptDeliveryPromises.get(pendingDraft.ticketId);
+      if (inFlightDelivery) {
+        await inFlightDelivery;
+      }
       if (cancelledDraft) {
         await this.messagingGateway.sendMessage(
           event.channel,
@@ -209,18 +322,59 @@ export class AccountClarificationHandler {
       return true;
     }
 
-    const selectedAccount = this.resolveAccountSelection(normalizedReply, claimedDraft.candidateAccounts);
+    const selectedAccount = await this.conversationService.interpretClarificationReply(
+      normalizedReply,
+      claimedDraft,
+      this.walletCacheService.getCategories()
+    );
+
+    // Pre-dispatch liveness check: Verify draft was not cancelled while reply interpretation was in flight
+    if (!this.pendingTransactionManager.getPendingAccountSelectionDraft(claimedDraft.ticketId)) {
+      applicationLogger.info(
+        `[Account Clarification] Draft #${claimedDraft.ticketId} was cancelled during reply interpretation; aborting dispatch.`
+      );
+      return true;
+    }
+
     if (!selectedAccount) {
-      this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(claimedDraft.ticketId);
-      await this.messagingGateway.sendMessage(
-        event.channel,
-        event.chatIdentifier,
-        formatAccountSelectionPrompt(
+      try {
+        const retryPrompt = await this.conversationService.generateClarificationQuestion(
           claimedDraft,
           this.walletCacheService.getCategories(),
           normalizedReply
-        )
-      );
+        );
+
+        if (!this.pendingTransactionManager.getPendingAccountSelectionDraft(claimedDraft.ticketId)) {
+          applicationLogger.info(
+            `[Account Clarification] Draft #${claimedDraft.ticketId} was cancelled during retry prompt generation; suppressing delivery.`
+          );
+          return true;
+        }
+
+        const delivered = await this.deliverClarificationPrompt(
+          claimedDraft.ticketId,
+          event.channel,
+          event.chatIdentifier,
+          retryPrompt,
+          'retry prompt'
+        );
+        if (!delivered) {
+          return true;
+        }
+
+        if (this.pendingTransactionManager.getPendingAccountSelectionDraft(claimedDraft.ticketId)) {
+          this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(claimedDraft.ticketId);
+        }
+      } catch (messagingError) {
+        const activeDraft = this.pendingTransactionManager.getPendingAccountSelectionDraft(claimedDraft.ticketId);
+        if (activeDraft) {
+          this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(claimedDraft.ticketId);
+          applicationLogger.error(
+            `[Account Clarification] Draft #${claimedDraft.ticketId} retry prompt delivery failed: ${formatConciseErrorMessage(messagingError)}`
+          );
+          throw messagingError;
+        }
+      }
       return true;
     }
 
@@ -296,19 +450,42 @@ export class AccountClarificationHandler {
       }
 
       try {
-        await this.messagingGateway.sendMessage(
+        const followUpPrompt = await this.conversationService.generateClarificationQuestion(
+          updatedDraft,
+          availableCategories
+        );
+
+        if (!this.pendingTransactionManager.getPendingAccountSelectionDraft(claimedDraft.ticketId)) {
+          applicationLogger.info(
+            `[Account Clarification] Draft #${claimedDraft.ticketId} was cancelled during follow-up prompt generation; suppressing delivery.`
+          );
+          return true;
+        }
+
+        const delivered = await this.deliverClarificationPrompt(
+          claimedDraft.ticketId,
           event.channel,
           event.chatIdentifier,
-          formatAccountSelectionPrompt(updatedDraft, availableCategories)
+          followUpPrompt,
+          'follow-up prompt'
         );
-        this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(claimedDraft.ticketId);
+        if (!delivered) {
+          return true;
+        }
+
+        if (this.pendingTransactionManager.getPendingAccountSelectionDraft(claimedDraft.ticketId)) {
+          this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(claimedDraft.ticketId);
+        }
       } catch (messagingError) {
-        this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(claimedDraft.ticketId);
-        this.pendingTransactionManager.rejectPendingAccountSelectionDraft(claimedDraft.ticketId);
-        applicationLogger.error(
-          `[Account Clarification] Draft #${claimedDraft.ticketId} discarded because the follow-up prompt could not be delivered: ${formatConciseErrorMessage(messagingError)}`
-        );
-        throw messagingError;
+        const activeDraft = this.pendingTransactionManager.getPendingAccountSelectionDraft(claimedDraft.ticketId);
+        if (activeDraft) {
+          this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(claimedDraft.ticketId);
+          this.pendingTransactionManager.rejectPendingAccountSelectionDraft(claimedDraft.ticketId);
+          applicationLogger.error(
+            `[Account Clarification] Draft #${claimedDraft.ticketId} discarded because the follow-up prompt could not be delivered: ${formatConciseErrorMessage(messagingError)}`
+          );
+          throw messagingError;
+        }
       }
       return true;
     }
@@ -324,9 +501,19 @@ export class AccountClarificationHandler {
       return true;
     }
 
-    await this.recordPreparationService.prepareRecordsForDispatch(validationResult.sanitizedRecords);
+    // Pre-dispatch liveness check before locking dispatch
+    if (!this.pendingTransactionManager.getPendingAccountSelectionDraft(claimedDraft.ticketId)) {
+      applicationLogger.info(
+        `[Account Clarification] Draft #${claimedDraft.ticketId} was cancelled before dispatch; aborting record preparation and dispatch.`
+      );
+      return true;
+    }
 
+    // Enter non-cancellable dispatch-locked phase immediately before the first operation that
+    // can mutate Wallet-side state (prepareRecordsForDispatch creates missing labels via Wallet MCP).
+    this.dispatchLockedTicketIds.add(claimedDraft.ticketId);
     try {
+      await this.recordPreparationService.prepareRecordsForDispatch(validationResult.sanitizedRecords);
       await this.walletMcpClient.createRecords(validationResult.sanitizedRecords);
     } catch (error) {
       if (isWalletMcpDefinitiveFailure(error)) {
@@ -357,6 +544,8 @@ export class AccountClarificationHandler {
         );
       }
       return true;
+    } finally {
+      this.dispatchLockedTicketIds.delete(claimedDraft.ticketId);
     }
 
     // The Wallet write is now known to have succeeded. Resolve the draft before attempting the
@@ -467,35 +656,5 @@ export class AccountClarificationHandler {
       uniqueAccounts.set(account.id, account);
     }
     return Array.from(uniqueAccounts.values());
-  }
-
-  private resolveAccountSelection(
-    userReply: string,
-    candidateAccounts: PendingAccountSelectionCandidate[]
-  ): PendingAccountSelectionCandidate | undefined {
-    if (/^\d+$/.test(userReply)) {
-      const selectedIndex = Number.parseInt(userReply, 10) - 1;
-      if (selectedIndex >= 0 && selectedIndex < candidateAccounts.length) {
-        return candidateAccounts[selectedIndex];
-      }
-      return undefined;
-    }
-
-    const normalizedReply = userReply.toLowerCase();
-    const exactMatches = candidateAccounts.filter(
-      candidate => candidate.name.toLowerCase() === normalizedReply
-    );
-    if (exactMatches.length === 1) {
-      return exactMatches[0];
-    }
-    if (exactMatches.length > 1 || normalizedReply.length < 2) {
-      return undefined;
-    }
-
-    const partialMatches = candidateAccounts.filter(candidate => {
-      const normalizedName = candidate.name.toLowerCase();
-      return normalizedName.includes(normalizedReply) || normalizedReply.includes(normalizedName);
-    });
-    return partialMatches.length === 1 ? partialMatches[0] : undefined;
   }
 }

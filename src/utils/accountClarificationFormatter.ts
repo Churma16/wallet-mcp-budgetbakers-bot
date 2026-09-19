@@ -1,9 +1,13 @@
-import { PendingAccountSelectionDraft } from '../services/pendingTransactionService.js';
+import {
+  PendingAccountSelectionCandidate,
+  PendingAccountSelectionDraft,
+} from '../services/pendingTransactionService.js';
 import { WalletCategoryItem } from '../types/walletTypes.js';
 import { getDictionary } from '../i18n/index.js';
 import { formatCurrencyAmount } from './humanResponseFormatter.js';
+import { applicationLogger } from './logger.js';
 
-function resolveCategoryName(
+export function resolveCategoryName(
   rawCategoryId: string | undefined,
   categories: WalletCategoryItem[]
 ): string {
@@ -50,7 +54,7 @@ function resolveDraftCurrency(draft: PendingAccountSelectionDraft): string | und
     : undefined;
 }
 
-function formatDraftAmount(draft: PendingAccountSelectionDraft): string {
+export function formatDraftAmount(draft: PendingAccountSelectionDraft): string {
   const dictionary = getDictionary();
   const record = draft.records[draft.pendingRecordIndex];
   const resolvedCurrency = record.currency || resolveDraftCurrency(draft);
@@ -69,6 +73,145 @@ function formatDraftAmount(draft: PendingAccountSelectionDraft): string {
     : `${formattedNumber} _(currency follows the selected account)_`;
 }
 
+export function formatDeterministicCandidateSection(
+  draft: PendingAccountSelectionDraft
+): string {
+  const dictionary = getDictionary();
+  const candidateLines = draft.candidateAccounts.map((candidate, index) => {
+    const currencySuffix = candidate.currency
+      ? ` (${candidate.currency.trim().toUpperCase()})`
+      : '';
+    return `${index + 1}. ${candidate.name}${currencySuffix}`;
+  });
+
+  const header = dictionary.languageCode === 'id'
+    ? '*Pilih akun yang digunakan:*'
+    : '*Choose the account to use:*';
+
+  const footer = dictionary.languageCode === 'id'
+    ? `Balas dengan nomor atau nama akun, atau ketik *batal #${draft.ticketId}* untuk membatalkan.`
+    : `Reply with the account number or name, or type *cancel #${draft.ticketId}* to cancel.`;
+
+  return [header, ...candidateLines, '', footer].join('\n');
+}
+
+function isCandidateHeaderLine(line: string): boolean {
+  const normalized = line.trim().toLowerCase().replace(/^\*|\*$/g, '');
+  return (
+    normalized === 'pilih akun yang digunakan:' ||
+    normalized === 'pilih akun yang digunakan' ||
+    normalized === 'pilih salah satu akun:' ||
+    normalized === 'pilih salah satu akun' ||
+    normalized === 'pilih akun:' ||
+    normalized === 'pilih akun' ||
+    normalized === 'choose the account to use:' ||
+    normalized === 'choose the account to use' ||
+    normalized === 'choose the account:' ||
+    normalized === 'choose the account' ||
+    normalized === 'choose an account:' ||
+    normalized === 'choose an account'
+  );
+}
+
+function hasProhibitedCandidateContentOrMapping(
+  text: string,
+  candidateAccounts: PendingAccountSelectionCandidate[]
+): boolean {
+  const lowerText = text.toLowerCase();
+
+  // 1. Any candidate name mentioned from candidateAccounts
+  for (const candidate of candidateAccounts) {
+    const candidateName = candidate.name.trim().toLowerCase();
+    if (candidateName.length > 0 && lowerText.includes(candidateName)) {
+      return true;
+    }
+  }
+
+  // 2. Numbered list items (e.g. "1. ..." or "2) ...") or candidate headers
+  const lines = text.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^\d+[\.\)]\s+\S+/.test(trimmed)) {
+      return true;
+    }
+    if (isCandidateHeaderLine(trimmed)) {
+      return true;
+    }
+  }
+
+  // 3. Ordinal, number mapping, or reply instructions
+  const mappingPatterns = [
+    /\b(?:balas|reply)\s+(?:dengan\s+)?(?:\d+|opsi|option|nomor|number)\b/i,
+    /\b(?:opsi|option|pilihan)\s+(?:pertama|kedua|ketiga|ke-\d+|\d+|first|second|third|one|two)\b/i,
+    /\b(?:first|second|third)\s+(?:option|choice|account|opsi)\b/i,
+    /\b(?:balas\s+\d+|reply\s+\d+)\b/i,
+    /\b(?:balas|reply)\s+[\d/]+/i,
+  ];
+  for (const pattern of mappingPatterns) {
+    if (pattern.test(text)) {
+      return true;
+    }
+  }
+
+  // 4. Cancellation instructions
+  const cancellationPatterns = [
+    /\b(?:batal|cancel)\s*#?\d*\b/i,
+    /\bketik\s+\*?batal/i,
+    /\btype\s+\*?cancel/i,
+  ];
+  for (const pattern of cancellationPatterns) {
+    if (pattern.test(text)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function composeClarificationMessage(
+  rawGeneratedQuestion: string,
+  draft: PendingAccountSelectionDraft,
+  categories: WalletCategoryItem[],
+  invalidSelection?: string
+): string {
+  const dictionary = getDictionary();
+  const fallbackTemplate = formatAccountSelectionPrompt(draft, categories, invalidSelection);
+
+  if (!rawGeneratedQuestion || rawGeneratedQuestion.trim().length === 0) {
+    return fallbackTemplate;
+  }
+
+  // If the model output contains candidate names, numbered lists, ordinal/numeric mappings,
+  // or cancellation/reply instructions, reject the preamble and fall back to deterministic template.
+  if (hasProhibitedCandidateContentOrMapping(rawGeneratedQuestion, draft.candidateAccounts)) {
+    applicationLogger.warn(
+      `[Account Clarification] LLM question output for draft #${draft.ticketId} contained candidate names, mappings, or commands; falling back to deterministic template.`
+    );
+    return fallbackTemplate;
+  }
+
+  const cleanPreamble = rawGeneratedQuestion.trim();
+  if (cleanPreamble.length === 0) {
+    return fallbackTemplate;
+  }
+
+  const candidateSection = formatDeterministicCandidateSection(draft);
+  const invalidNotice = invalidSelection && !cleanPreamble.toLowerCase().includes(invalidSelection.toLowerCase())
+    ? (dictionary.languageCode === 'id'
+        ? `⚠️ Pilihan akun "${invalidSelection.slice(0, 80)}" belum valid atau masih ambigu.`
+        : `⚠️ Account choice "${invalidSelection.slice(0, 80)}" is invalid or still ambiguous.`)
+    : undefined;
+
+  const parts = [
+    invalidNotice,
+    cleanPreamble,
+    '',
+    candidateSection,
+  ].filter(Boolean);
+
+  return parts.join('\n');
+}
+
 export function formatAccountSelectionPrompt(
   draft: PendingAccountSelectionDraft,
   categories: WalletCategoryItem[],
@@ -80,49 +223,35 @@ export function formatAccountSelectionPrompt(
   const categoryName = resolveCategoryName(record.categoryId, categories);
   const description = record.note || record.counterParty ||
     (dictionary.languageCode === 'id' ? 'Transaksi' : 'Transaction');
-  const candidateLines = draft.candidateAccounts.map((candidate, index) => {
-    const currencySuffix = candidate.currency
-      ? ` (${candidate.currency.trim().toUpperCase()})`
-      : '';
-    return `${index + 1}. ${candidate.name}${currencySuffix}`;
-  });
   const batchLine = draft.records.length > 1
     ? dictionary.languageCode === 'id'
       ? `Item ${draft.pendingRecordIndex + 1} dari ${draft.records.length}`
       : `Item ${draft.pendingRecordIndex + 1} of ${draft.records.length}`
     : undefined;
 
-  if (dictionary.languageCode === 'id') {
-    return [
-      invalidSelection ? `⚠️ Pilihan akun "${invalidSelection.slice(0, 80)}" belum valid atau masih ambigu.` : undefined,
-      `📝 *Pilih Akun Transaksi (#${draft.ticketId})*`,
-      `_(Transaksi disiapkan sebagai draft)_`,
-      batchLine,
-      `💰 *Nominal:* ${formattedAmount}`,
-      `🗒️ *Catatan:* ${description}`,
-      `📂 *Kategori:* ${categoryName}`,
-      '',
-      '*Pilih akun yang digunakan:*',
-      ...candidateLines,
-      '',
-      `Balas dengan nomor atau nama akun, atau ketik *batal #${draft.ticketId}* untuk membatalkan.`,
-    ].filter(line => line !== undefined).join('\n');
-  }
+  const headerLines = dictionary.languageCode === 'id'
+    ? [
+        invalidSelection ? `⚠️ Pilihan akun "${invalidSelection.slice(0, 80)}" belum valid atau masih ambigu.` : undefined,
+        `📝 *Pilih Akun Transaksi (#${draft.ticketId})*`,
+        `_(Transaksi disiapkan sebagai draft)_`,
+        batchLine,
+        `💰 *Nominal:* ${formattedAmount}`,
+        `🗒️ *Catatan:* ${description}`,
+        `📂 *Kategori:* ${categoryName}`,
+      ]
+    : [
+        invalidSelection ? `⚠️ Account choice "${invalidSelection.slice(0, 80)}" is invalid or still ambiguous.` : undefined,
+        `📝 *Choose Transaction Account (#${draft.ticketId})*`,
+        `_(Transaction prepared as draft)_`,
+        batchLine,
+        `💰 *Amount:* ${formattedAmount}`,
+        `🗒️ *Note:* ${description}`,
+        `📂 *Category:* ${categoryName}`,
+      ];
 
-  return [
-    invalidSelection ? `⚠️ Account choice "${invalidSelection.slice(0, 80)}" is invalid or still ambiguous.` : undefined,
-    `📝 *Choose Transaction Account (#${draft.ticketId})*`,
-    `_(Transaction prepared as draft)_`,
-    batchLine,
-    `💰 *Amount:* ${formattedAmount}`,
-    `🗒️ *Note:* ${description}`,
-    `📂 *Category:* ${categoryName}`,
-    '',
-    '*Choose the account to use:*',
-    ...candidateLines,
-    '',
-    `Reply with the account number or name, or type *cancel #${draft.ticketId}* to cancel.`,
-  ].filter(line => line !== undefined).join('\n');
+  const candidateSection = formatDeterministicCandidateSection(draft);
+
+  return [...headerLines.filter(line => line !== undefined), '', candidateSection].join('\n');
 }
 
 export function formatAccountSelectionCancellation(draft: PendingAccountSelectionDraft): string {

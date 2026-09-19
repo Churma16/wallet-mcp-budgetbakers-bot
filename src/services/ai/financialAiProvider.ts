@@ -1,9 +1,30 @@
 import {
+  CreateRecordInputPayload,
   TransactionHistoryQueryOptions,
   WalletAccountItem,
   WalletCategoryItem,
 } from '../../types/walletTypes.js';
 import { GateEvaluationResult } from '../../utils/emailGateEvaluator.js';
+import { PendingAccountSelectionCandidate } from '../pendingTransactionService.js';
+
+export interface AccountClarificationQuestionContext {
+  ticketId: number;
+  records: CreateRecordInputPayload[];
+  pendingRecordIndex: number;
+  accountHint?: string;
+  candidateAccounts?: PendingAccountSelectionCandidate[];
+  formattedAmount: string;
+  categoryName: string;
+  description: string;
+  invalidSelection?: string;
+  languageCode: string;
+}
+
+export interface AccountClarificationProposal {
+  selectedCandidateIndex: number | null;
+  reasoning: string;
+  tokenUsage?: TokenUsageStatistics;
+}
 
 export interface TokenUsageStatistics {
   promptTokens: number;
@@ -98,4 +119,20 @@ export interface FinancialAiProvider {
     availableAccountList: WalletAccountItem[],
     availableCategoryList: WalletCategoryItem[]
   ): Promise<ExtractedEmailTransactionData>;
+
+  /**
+   * Generates natural language question wording for account clarification
+   */
+  generateAccountClarificationQuestion?(
+    context: AccountClarificationQuestionContext
+  ): Promise<{ question: string; tokenUsage?: TokenUsageStatistics }>;
+
+  /**
+   * Interprets free-form clarification reply to propose candidate selection
+   */
+  interpretAccountClarificationReply?(
+    userReplyText: string,
+    candidates: PendingAccountSelectionCandidate[],
+    context?: Partial<AccountClarificationQuestionContext>
+  ): Promise<AccountClarificationProposal>;
 }

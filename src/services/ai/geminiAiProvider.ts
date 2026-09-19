@@ -7,7 +7,10 @@ import {
   ExtractedFinancialIntent,
   ExtractedEmailTransactionData,
   TokenUsageStatistics,
+  AccountClarificationQuestionContext,
+  AccountClarificationProposal,
 } from './financialAiProvider.js';
+import { PendingAccountSelectionCandidate } from '../pendingTransactionService.js';
 import { CategoryContextService } from '../categoryContextService.js';
 import {
   SystemInstructionCache,
@@ -16,6 +19,14 @@ import {
   executeEmailTransactionWorkflow,
   isRecoverableModelExecutionError,
 } from './aiProviderWorkflow.js';
+import {
+  buildAccountClarificationQuestionPrompt,
+  buildAccountClarificationReplyPrompt,
+} from './aiPromptBuilder.js';
+import {
+  parseClarificationQuestionResponse,
+  parseClarificationProposalResponse,
+} from './jsonExtractionHelper.js';
 
 interface GenerationExecutionResult {
   responseText: string;
@@ -327,5 +338,43 @@ export class GeminiAiProvider implements FinancialAiProvider {
           requestContextDescription: prepared.requestContextDescription,
         })
     );
+  }
+
+  /**
+   * Generates natural language question wording for account clarification
+   */
+  public async generateAccountClarificationQuestion(
+    context: AccountClarificationQuestionContext
+  ): Promise<{ question: string; tokenUsage?: TokenUsageStatistics }> {
+    const { systemInstruction, promptText } = buildAccountClarificationQuestionPrompt(context);
+    const result = await this.executeGenerationWithFallback({
+      contents: [{ role: 'user', parts: [{ text: promptText }] }],
+      systemInstruction,
+      requestContextDescription: `Account clarification question for draft #${context.ticketId}`,
+    });
+
+    return parseClarificationQuestionResponse(result.responseText, result.tokenUsage);
+  }
+
+  /**
+   * Interprets free-form clarification reply to propose candidate selection
+   */
+  public async interpretAccountClarificationReply(
+    userReplyText: string,
+    candidates: PendingAccountSelectionCandidate[],
+    context?: Partial<AccountClarificationQuestionContext>
+  ): Promise<AccountClarificationProposal> {
+    const { systemInstruction, promptText } = buildAccountClarificationReplyPrompt(
+      userReplyText,
+      candidates,
+      context
+    );
+    const result = await this.executeGenerationWithFallback({
+      contents: [{ role: 'user', parts: [{ text: promptText }] }],
+      systemInstruction,
+      requestContextDescription: `Account clarification interpretation for draft #${context?.ticketId ?? 'unknown'}`,
+    });
+
+    return parseClarificationProposalResponse(result.responseText, result.tokenUsage);
   }
 }

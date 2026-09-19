@@ -2,7 +2,11 @@ import {
   FinancialAiProvider,
   ExtractedFinancialIntent,
   ExtractedEmailTransactionData,
+  TokenUsageStatistics,
+  AccountClarificationQuestionContext,
+  AccountClarificationProposal,
 } from './financialAiProvider.js';
+import { PendingAccountSelectionCandidate } from '../pendingTransactionService.js';
 import { WalletAccountItem, WalletCategoryItem } from '../../types/walletTypes.js';
 import { GateEvaluationResult } from '../../utils/emailGateEvaluator.js';
 import { applicationLogger, formatConciseErrorMessage } from '../../utils/logger.js';
@@ -137,6 +141,46 @@ export class FallbackAiProvider implements FinancialAiProvider {
           availableAccountList,
           availableCategoryList
         )
+    );
+  }
+
+  /**
+   * Generates natural language question wording for account clarification using fallback chain
+   */
+  public async generateAccountClarificationQuestion(
+    context: AccountClarificationQuestionContext
+  ): Promise<{ question: string; tokenUsage?: TokenUsageStatistics }> {
+    return this.executeWithFallback(
+      'generateAccountClarificationQuestion',
+      async (currentProvider: FinancialAiProvider) => {
+        if (typeof currentProvider.generateAccountClarificationQuestion !== 'function') {
+          throw new Error(
+            `Provider '${currentProvider.providerName}' does not implement generateAccountClarificationQuestion.`
+          );
+        }
+        return currentProvider.generateAccountClarificationQuestion(context);
+      }
+    );
+  }
+
+  /**
+   * Interprets free-form clarification reply to propose candidate selection using fallback chain
+   */
+  public async interpretAccountClarificationReply(
+    userReplyText: string,
+    candidates: PendingAccountSelectionCandidate[],
+    context?: Partial<AccountClarificationQuestionContext>
+  ): Promise<AccountClarificationProposal> {
+    return this.executeWithFallback(
+      'interpretAccountClarificationReply',
+      async (currentProvider: FinancialAiProvider) => {
+        if (typeof currentProvider.interpretAccountClarificationReply !== 'function') {
+          throw new Error(
+            `Provider '${currentProvider.providerName}' does not implement interpretAccountClarificationReply.`
+          );
+        }
+        return currentProvider.interpretAccountClarificationReply(userReplyText, candidates, context);
+      }
     );
   }
 

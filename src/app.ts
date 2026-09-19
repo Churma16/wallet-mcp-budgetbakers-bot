@@ -8,7 +8,11 @@ import { WalletMcpClientService } from './services/walletMcpService.js';
 import { WalletCacheService } from './services/walletCacheService.js';
 import { CategoryContextService } from './services/categoryContextService.js';
 import { CategoryContextValidationResult } from './types/categoryContextTypes.js';
-import { createFinancialAiProvider, FinancialAiProvider } from './services/ai/index.js';
+import {
+  createFinancialAiProvider,
+  FinancialAiProvider,
+  AccountClarificationConversationService,
+} from './services/ai/index.js';
 import {
   MessagingGatewayService,
   WhatsappMessagingAdapter,
@@ -111,13 +115,18 @@ export class Application {
       this.walletMcpClient
     );
 
+    const accountClarificationConversationService = new AccountClarificationConversationService(
+      this.financialAiProvider
+    );
+
     const accountClarificationHandler = new AccountClarificationHandler(
       this.pendingTransactionManager,
       this.walletMcpClient,
       this.walletCacheService,
       this.messagingGateway,
       recordPreparationService,
-      this.categoryContextService
+      this.categoryContextService,
+      accountClarificationConversationService
     );
 
     this.financialActionRegistry = createDefaultFinancialActionRegistry({
