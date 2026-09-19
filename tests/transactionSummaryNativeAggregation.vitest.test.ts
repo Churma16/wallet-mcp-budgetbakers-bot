@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Application } from '../src/app.js';
+import { WalletMcpCapabilityService } from '../src/services/walletMcpCapabilityService.js';
 import { WalletMcpClientService, WalletMcpRequestError } from '../src/services/walletMcpService.js';
 import { WalletCacheService } from '../src/services/walletCacheService.js';
 import { TransactionSummaryService } from '../src/services/transactionSummaryService.js';
@@ -1122,6 +1124,183 @@ describe('native Wallet MCP summary aggregation (Issue #161)', () => {
       const formattedId = formatTransactionSummaryMessage(nonZeroResult, 'id');
       expect(formattedId).toContain('Jumlah transfer tidak dapat diverifikasi.');
       expect(formattedId).toContain('Ringkasan ini bersifat parsial');
+    });
+  });
+
+  describe('WalletMcpCapabilityService consultation (Issue #163)', () => {
+    it('bypasses native aggregation immediately when capabilityService reports unsupported tool', async () => {
+      const mockClient = {
+        fetchRecordsAggregation: vi.fn(),
+      } as unknown as WalletMcpClientService;
+
+      const mockHistoryService = {
+        getTransactionHistory: vi.fn().mockResolvedValue({
+          records: [],
+          limit: 50,
+          offset: 0,
+          page: 1,
+          nextOffset: null,
+          hasMore: false,
+          sort: 'newest',
+        }),
+      } as unknown as TransactionHistoryService;
+
+      const mockCapability = {
+        supportsTool: vi.fn().mockReturnValue(false),
+        markToolRejection: vi.fn(),
+      };
+
+      const service = new TransactionSummaryService(
+        mockClient,
+        undefined,
+        mockHistoryService,
+        mockCapability as never
+      );
+
+      const result = await service.getTransactionSummary({});
+
+      expect(mockCapability.supportsTool).toHaveBeenCalledWith('get_records_aggregation');
+      expect(mockClient.fetchRecordsAggregation).not.toHaveBeenCalled();
+      expect(mockHistoryService.getTransactionHistory).toHaveBeenCalled();
+      expect(result.transactionCount).toBe(0);
+    });
+
+    it('marks tool rejection when native aggregation fails with definitive failure and falls back to history', async () => {
+      const mockClient = {
+        fetchRecordsAggregation: vi.fn().mockRejectedValue(
+          new WalletMcpRequestError('Method not found', 'DEFINITIVE_FAILURE')
+        ),
+      } as unknown as WalletMcpClientService;
+
+      const mockHistoryService = {
+        getTransactionHistory: vi.fn().mockResolvedValue({
+          records: [],
+          limit: 50,
+          offset: 0,
+          page: 1,
+          nextOffset: null,
+          hasMore: false,
+          sort: 'newest',
+        }),
+      } as unknown as TransactionHistoryService;
+
+      const mockCapability = {
+        supportsTool: vi.fn().mockReturnValue(true),
+        markToolRejection: vi.fn(),
+      };
+
+      const service = new TransactionSummaryService(
+        mockClient,
+        undefined,
+        mockHistoryService,
+        mockCapability as never
+      );
+
+      const result = await service.getTransactionSummary({});
+
+      expect(mockCapability.supportsTool).toHaveBeenCalledWith('get_records_aggregation');
+      expect(mockClient.fetchRecordsAggregation).toHaveBeenCalled();
+      expect(mockCapability.markToolRejection).toHaveBeenCalledWith(
+        'get_records_aggregation',
+        expect.stringContaining('Method not found')
+      );
+      expect(mockHistoryService.getTransactionHistory).toHaveBeenCalled();
+      expect(result.transactionCount).toBe(0);
+    });
+
+    it('does not mark tool rejection when aggregation fails with request-level parameter or schema validation error', async () => {
+      const mockClient = {
+        fetchRecordsAggregation: vi.fn().mockRejectedValue(
+          new WalletMcpRequestError(
+            '[error] Wallet MCP protocol rejection: Invalid params: invalid date range (-32602)',
+            'DEFINITIVE_FAILURE'
+          )
+        ),
+      } as unknown as WalletMcpClientService;
+
+      const mockHistoryService = {
+        getTransactionHistory: vi.fn().mockResolvedValue({
+          records: [],
+          limit: 50,
+          offset: 0,
+          page: 1,
+          nextOffset: null,
+          hasMore: false,
+          sort: 'newest',
+        }),
+      } as unknown as TransactionHistoryService;
+
+      const mockCapability = {
+        supportsTool: vi.fn().mockReturnValue(true),
+        markToolRejection: vi.fn(),
+      };
+
+      const service = new TransactionSummaryService(
+        mockClient,
+        undefined,
+        mockHistoryService,
+        mockCapability as never
+      );
+
+      const result = await service.getTransactionSummary({});
+
+      expect(mockCapability.supportsTool).toHaveBeenCalledWith('get_records_aggregation');
+      expect(mockClient.fetchRecordsAggregation).toHaveBeenCalled();
+      // Crucial: markToolRejection must NOT be called for request-specific parameter/schema errors
+      expect(mockCapability.markToolRejection).not.toHaveBeenCalled();
+      expect(mockHistoryService.getTransactionHistory).toHaveBeenCalled();
+      expect(result.transactionCount).toBe(0);
+    });
+
+    it('wires capability facade into production runtime via Application and skips native aggregation when unsupported', async () => {
+      const validConfig = {
+        appLanguage: 'en' as const,
+        aiProvider: 'gemini' as const,
+        aiProviders: ['gemini' as const],
+        geminiApiKey: 'test-key',
+        geminiModel: 'gemini-2.5-flash',
+        walletMcpBaseUrl: 'https://wallet.example.com',
+        walletMcpAccessToken: 'test-token',
+        enabledMessengerChannels: ['console' as const],
+        logRetentionDays: 7,
+        defaultCurrency: 'IDR',
+      };
+
+      const app = new Application(validConfig as never);
+      const capabilityService = app.getWalletCapabilityService();
+      expect(capabilityService).toBeInstanceOf(WalletMcpCapabilityService);
+
+      // Explicitly mark tool rejection on the application capability service
+      capabilityService.markToolRejection('get_records_aggregation', 'Tool not available on server');
+      expect(capabilityService.supportsTool('get_records_aggregation')).toBe(false);
+
+      // Access the internal runtime services wired in the application
+      const summaryService = (app as unknown as { transactionSummaryService: TransactionSummaryService })
+        .transactionSummaryService;
+      const fetchAggregationSpy = vi.spyOn(
+        (app as unknown as { walletMcpClient: WalletMcpClientService }).walletMcpClient,
+        'fetchRecordsAggregation'
+      );
+
+      const historySpy = vi.spyOn(
+        (app as unknown as { transactionHistoryService: TransactionHistoryService }).transactionHistoryService,
+        'getTransactionHistory'
+      ).mockResolvedValue({
+        records: [],
+        limit: 50,
+        offset: 0,
+        page: 1,
+        nextOffset: null,
+        hasMore: false,
+        sort: 'newest',
+      });
+
+      const result = await summaryService.getTransactionSummary({});
+
+      // Must skip native aggregation and directly execute history fallback
+      expect(fetchAggregationSpy).not.toHaveBeenCalled();
+      expect(historySpy).toHaveBeenCalled();
+      expect(result.transactionCount).toBe(0);
     });
   });
 });

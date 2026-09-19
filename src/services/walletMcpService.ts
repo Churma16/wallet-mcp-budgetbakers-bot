@@ -29,6 +29,18 @@ import {
   WalletMcpTransport,
   type WalletMcpTransportDependencies,
 } from './walletMcpTransport.js';
+import {
+  type CapabilityTriState,
+  type WalletClientProfile,
+  type WalletMcpBoundedJsonValue,
+  type WalletMcpBoundedJsonObject,
+  type WalletMcpFailureClassification,
+  type WalletMcpToolInputFieldCapability,
+  type WalletMcpToolCapability,
+  type WalletMcpRateLimitMetadata,
+  type WalletMcpResponseMetadata,
+} from '../types/walletCapabilityTypes.js';
+import { normalizeWalletClientProfile } from './walletProfileNormalizer.js';
 
 export const DEFAULT_TRANSACTION_HISTORY_LIMIT = 10;
 export const MAX_TRANSACTION_HISTORY_LIMIT = 50;
@@ -51,46 +63,18 @@ export const WALLET_MCP_ALLOWED_TOOL_NAMES = [
 
 export type WalletMcpToolName = typeof WALLET_MCP_ALLOWED_TOOL_NAMES[number];
 export type WalletMcpOperationName = WalletMcpToolName | 'tools/list';
-export type WalletMcpBoundedJsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | WalletMcpBoundedJsonValue[]
-  | WalletMcpBoundedJsonObject;
-export interface WalletMcpBoundedJsonObject {
-  readonly [key: string]: WalletMcpBoundedJsonValue;
-}
 
-export interface WalletMcpToolInputFieldCapability {
-  readonly name: string;
-  readonly required: boolean;
-  readonly types: string[];
-  readonly description?: string;
-  readonly enumValues?: Array<string | number | boolean | null>;
-}
-
-export interface WalletMcpToolCapability {
-  readonly name: string;
-  readonly description?: string;
-  readonly inputSchema?: WalletMcpBoundedJsonObject;
-  readonly outputSchema?: WalletMcpBoundedJsonObject;
-  readonly inputFields: WalletMcpToolInputFieldCapability[];
-  readonly isApplicationSupported: boolean;
-  readonly hasOutputSchema: boolean;
-}
-
-export interface WalletMcpRateLimitMetadata {
-  readonly limit?: number;
-  readonly remaining?: number;
-  readonly resetAt?: string;
-  readonly retryAfterMilliseconds?: number;
-}
-
-export interface WalletMcpResponseMetadata {
-  readonly rateLimit?: WalletMcpRateLimitMetadata;
-  readonly agentHints?: WalletAgentHint[];
-}
+export type {
+  CapabilityTriState,
+  WalletClientProfile,
+  WalletMcpBoundedJsonValue,
+  WalletMcpBoundedJsonObject,
+  WalletMcpFailureClassification,
+  WalletMcpToolInputFieldCapability,
+  WalletMcpToolCapability,
+  WalletMcpRateLimitMetadata,
+  WalletMcpResponseMetadata,
+};
 
 interface TransactionSearchScanCacheEntry {
   matchedRecords: WalletRecordItem[];
@@ -103,12 +87,49 @@ interface TransactionSearchScanCacheEntry {
 export type WalletMcpDispatchOutcome = 'DEFINITIVE_FAILURE' | 'UNKNOWN';
 
 export class WalletMcpRequestError extends Error {
+  public readonly classification: WalletMcpFailureClassification;
+
   constructor(
     message: string,
-    public readonly dispatchOutcome: WalletMcpDispatchOutcome
+    public readonly dispatchOutcome: WalletMcpDispatchOutcome,
+    classification?: WalletMcpFailureClassification
   ) {
     super(message);
     this.name = 'WalletMcpRequestError';
+    if (classification !== undefined) {
+      this.classification = classification;
+    } else {
+      const lowerMessage = message.toLowerCase();
+      if (
+        lowerMessage.includes('permission') ||
+        lowerMessage.includes('unauthorized') ||
+        lowerMessage.includes('forbidden') ||
+        lowerMessage.includes('scope') ||
+        lowerMessage.includes('401') ||
+        lowerMessage.includes('403')
+      ) {
+        this.classification = 'AUTHORIZATION';
+      } else if (
+        lowerMessage.includes('method not found') ||
+        lowerMessage.includes('tool not found') ||
+        lowerMessage.includes('unknown tool') ||
+        lowerMessage.includes('not supported') ||
+        lowerMessage.includes('not implemented') ||
+        lowerMessage.includes('-32601') ||
+        lowerMessage.includes('405')
+      ) {
+        this.classification = 'TOOL_UNAVAILABLE';
+      } else if (
+        dispatchOutcome === 'UNKNOWN' ||
+        lowerMessage.includes('timeout') ||
+        lowerMessage.includes('network') ||
+        lowerMessage.includes('econnrefused')
+      ) {
+        this.classification = 'TRANSIENT';
+      } else {
+        this.classification = 'REQUEST_INVALID';
+      }
+    }
   }
 }
 
@@ -118,6 +139,18 @@ export function isWalletMcpDispatchOutcomeUnknown(error: unknown): boolean {
 
 export function isWalletMcpDefinitiveFailure(error: unknown): boolean {
   return error instanceof WalletMcpRequestError && error.dispatchOutcome === 'DEFINITIVE_FAILURE';
+}
+
+/**
+ * Determines whether a failure indicates that the tool or capability itself is unavailable,
+ * unsupported, not found, or unauthorized (as opposed to a request-specific argument or schema validation failure).
+ * Capability state is determined strictly from structured failure classification, not error message wording.
+ */
+export function isWalletMcpCapabilityRejection(error: unknown): boolean {
+  if (error instanceof WalletMcpRequestError) {
+    return error.classification === 'AUTHORIZATION' || error.classification === 'TOOL_UNAVAILABLE';
+  }
+  return false;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -324,6 +357,9 @@ export class WalletMcpClientService {
   private cachedLabelList: WalletLabelItem[] = [];
   private cacheLastUpdatedTimestamp: number = 0;
   private readonly cacheDurationMilliseconds: number = 1000 * 60 * 30; // 30 minutes
+  private cachedClientProfile?: WalletClientProfile;
+  private profileCacheTimestamp: number = 0;
+  private readonly profileCacheDurationMilliseconds: number = 1000 * 60 * 5; // 5 minutes
   private readonly transactionSearchScanCache = new Map<string, TransactionSearchScanCacheEntry>();
   private readonly transactionSearchScanCacheTtlMilliseconds = 1000 * 60 * 2; // 2 minutes
   private readonly maxTransactionSearchScanCacheEntries = 20;
@@ -374,7 +410,8 @@ export class WalletMcpClientService {
     if (!(WALLET_MCP_ALLOWED_TOOL_NAMES as readonly string[]).includes(toolName)) {
       throw new WalletMcpRequestError(
         '[error] Wallet MCP tool is not allowed by the application adapter',
-        'DEFINITIVE_FAILURE'
+        'DEFINITIVE_FAILURE',
+        'TOOL_UNAVAILABLE'
       );
     }
 
@@ -403,9 +440,23 @@ export class WalletMcpClientService {
         .filter(contentItem => contentItem.type === 'text')
         .map(contentItem => contentItem.text)
         .join('\n') || 'Unknown tool error';
+      const sanitized = sanitizeMcpErrorMessage(errorMessage, this.accessToken);
+      const lowerMessage = errorMessage.toLowerCase();
+      const isPermissionError =
+        lowerMessage.includes('permission') ||
+        lowerMessage.includes('unauthorized') ||
+        lowerMessage.includes('forbidden') ||
+        lowerMessage.includes('scope') ||
+        lowerMessage.includes('401') ||
+        lowerMessage.includes('403');
+      const classification: WalletMcpFailureClassification = isPermissionError
+        ? 'AUTHORIZATION'
+        : 'REQUEST_INVALID';
+
       throw new WalletMcpRequestError(
-        `[error] MCP Tool '${toolName}' failed: ${sanitizeMcpErrorMessage(errorMessage, this.accessToken)}`,
-        'DEFINITIVE_FAILURE'
+        `[error] MCP Tool '${toolName}' failed: ${sanitized}`,
+        'DEFINITIVE_FAILURE',
+        classification
       );
     }
 
@@ -434,24 +485,112 @@ export class WalletMcpClientService {
 
     const sanitizedMessage = sanitizeMcpErrorMessage(error, this.accessToken);
     let dispatchOutcome: WalletMcpDispatchOutcome = 'UNKNOWN';
+    let classification: WalletMcpFailureClassification = 'UNKNOWN';
     let failureKind = 'transport failure';
 
     if (ProtocolError.isInstance(error)) {
       dispatchOutcome = 'DEFINITIVE_FAILURE';
       failureKind = 'protocol rejection';
+      if (error.code === -32601) {
+        classification = 'TOOL_UNAVAILABLE';
+      } else if (error.code === -32602) {
+        classification = 'REQUEST_INVALID';
+      } else {
+        const lowerMessage = (error.message || '').toLowerCase();
+        if (
+          lowerMessage.includes('permission') ||
+          lowerMessage.includes('unauthorized') ||
+          lowerMessage.includes('forbidden') ||
+          lowerMessage.includes('scope')
+        ) {
+          classification = 'AUTHORIZATION';
+        } else if (
+          lowerMessage.includes('not found') ||
+          lowerMessage.includes('not supported') ||
+          lowerMessage.includes('not implemented') ||
+          lowerMessage.includes('unavailable')
+        ) {
+          classification = 'TOOL_UNAVAILABLE';
+        } else {
+          classification = 'REQUEST_INVALID';
+        }
+      }
     } else if (SdkHttpError.isInstance(error)) {
-      dispatchOutcome = error.status === 408 || error.status >= 500
-        ? 'UNKNOWN'
-        : 'DEFINITIVE_FAILURE';
       failureKind = `HTTP ${error.status}`;
+      if (error.status === 400) {
+        dispatchOutcome = 'DEFINITIVE_FAILURE';
+        classification = 'REQUEST_INVALID';
+      } else if (error.status === 401 || error.status === 403) {
+        dispatchOutcome = 'DEFINITIVE_FAILURE';
+        classification = 'AUTHORIZATION';
+      } else if (error.status === 404) {
+        dispatchOutcome = 'DEFINITIVE_FAILURE';
+        classification = 'UNKNOWN';
+      } else if (error.status === 405) {
+        dispatchOutcome = 'DEFINITIVE_FAILURE';
+        classification = 'TOOL_UNAVAILABLE';
+      } else if (error.status === 408) {
+        dispatchOutcome = 'UNKNOWN';
+        classification = 'TRANSIENT';
+      } else if (error.status === 429) {
+        dispatchOutcome = 'DEFINITIVE_FAILURE';
+        classification = 'TRANSIENT';
+      } else if (error.status >= 500) {
+        dispatchOutcome = 'UNKNOWN';
+        classification = 'TRANSIENT';
+      } else {
+        dispatchOutcome = 'DEFINITIVE_FAILURE';
+        classification = 'UNKNOWN';
+      }
     } else if (SdkError.isInstance(error)) {
       failureKind = `SDK ${error.code}`;
       if (
         error.code === SdkErrorCode.CapabilityNotSupported ||
-        error.code === SdkErrorCode.MethodNotSupportedByProtocolVersion ||
-        error.code === SdkErrorCode.NotInitialized
+        error.code === SdkErrorCode.MethodNotSupportedByProtocolVersion
       ) {
         dispatchOutcome = 'DEFINITIVE_FAILURE';
+        classification = 'TOOL_UNAVAILABLE';
+      } else if (error.code === SdkErrorCode.NotInitialized) {
+        dispatchOutcome = 'DEFINITIVE_FAILURE';
+        classification = 'UNKNOWN';
+      } else if (
+        error.code === SdkErrorCode.ConnectionClosed ||
+        error.code === SdkErrorCode.RequestTimeout ||
+        error.code === SdkErrorCode.SendFailed
+      ) {
+        dispatchOutcome = 'UNKNOWN';
+        classification = 'TRANSIENT';
+      } else {
+        dispatchOutcome = 'UNKNOWN';
+        classification = 'UNKNOWN';
+      }
+    } else if (error instanceof Error) {
+      const lowerMessage = error.message.toLowerCase();
+      if (
+        lowerMessage.includes('econnrefused') ||
+        lowerMessage.includes('etimedout') ||
+        lowerMessage.includes('fetch failed') ||
+        lowerMessage.includes('network') ||
+        lowerMessage.includes('timeout')
+      ) {
+        dispatchOutcome = 'UNKNOWN';
+        classification = 'TRANSIENT';
+      } else if (
+        lowerMessage.includes('permission') ||
+        lowerMessage.includes('unauthorized') ||
+        lowerMessage.includes('forbidden') ||
+        lowerMessage.includes('scope')
+      ) {
+        dispatchOutcome = 'DEFINITIVE_FAILURE';
+        classification = 'AUTHORIZATION';
+      } else if (
+        lowerMessage.includes('method not found') ||
+        lowerMessage.includes('tool not found') ||
+        lowerMessage.includes('unknown tool') ||
+        lowerMessage.includes('not supported')
+      ) {
+        dispatchOutcome = 'DEFINITIVE_FAILURE';
+        classification = 'TOOL_UNAVAILABLE';
       }
     }
 
@@ -460,11 +599,13 @@ export class WalletMcpClientService {
       failureKind,
       message: sanitizedMessage,
       dispatchOutcome,
+      classification,
     });
 
     return new WalletMcpRequestError(
       `[error] Wallet MCP ${failureKind}: ${sanitizedMessage}`,
-      dispatchOutcome
+      dispatchOutcome,
+      classification
     );
   }
 
@@ -482,10 +623,30 @@ export class WalletMcpClientService {
   }
 
   /**
+   * Retrieves and normalizes the client profile from Wallet MCP.
+   * Caches the normalized profile for a bounded duration unless forceRefresh is true.
+   */
+  public async getClientProfile(forceRefresh: boolean = false): Promise<WalletClientProfile> {
+    const isCacheExpired = Date.now() - this.profileCacheTimestamp > this.profileCacheDurationMilliseconds;
+
+    if (!forceRefresh && this.cachedClientProfile !== undefined && !isCacheExpired) {
+      return this.cachedClientProfile;
+    }
+
+    const rawProfile = await this.verifyClientProfile();
+    return this.cachedClientProfile ?? normalizeWalletClientProfile(rawProfile);
+  }
+
+  /**
    * Verify client profile and connection to Wallet MCP.
+   * Dispatches get_client_profile and returns the raw tool result directly for backward compatibility.
    */
   public async verifyClientProfile(): Promise<unknown> {
-    return await this.callMcpTool('get_client_profile');
+    const rawProfile = await this.callMcpTool<unknown>('get_client_profile');
+    const normalizedProfile = normalizeWalletClientProfile(rawProfile);
+    this.cachedClientProfile = normalizedProfile;
+    this.profileCacheTimestamp = normalizedProfile.fetchedAt;
+    return rawProfile;
   }
 
   /**

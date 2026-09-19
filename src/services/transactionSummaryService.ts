@@ -1,6 +1,11 @@
-import { WalletMcpClientService } from './walletMcpService.js';
+import {
+  WalletMcpClientService,
+  isWalletMcpDefinitiveFailure,
+  isWalletMcpCapabilityRejection,
+} from './walletMcpService.js';
 import { WalletCacheService } from './walletCacheService.js';
 import { TransactionHistoryService } from './transactionHistoryService.js';
+import { WalletMcpCapabilityQuery } from '../types/walletCapabilityTypes.js';
 import {
   TransactionCurrencyTotals,
   TransactionSummaryBreakdownItem,
@@ -169,12 +174,15 @@ export class TransactionSummaryService {
   private readonly walletMcpClient?: WalletMcpClientService;
   private readonly walletCacheService?: WalletCacheService;
   private readonly transactionHistoryService?: TransactionHistoryService;
+  private readonly capabilityService?: WalletMcpCapabilityQuery;
 
   constructor(
     walletMcpClientOrHistoryService?: WalletMcpClientService | TransactionHistoryService,
     walletCacheService?: WalletCacheService,
-    transactionHistoryService?: TransactionHistoryService
+    transactionHistoryService?: TransactionHistoryService,
+    capabilityService?: WalletMcpCapabilityQuery
   ) {
+    this.capabilityService = capabilityService;
     if (
       walletMcpClientOrHistoryService &&
       ('fetchRecordsAggregation' in walletMcpClientOrHistoryService ||
@@ -201,8 +209,28 @@ export class TransactionSummaryService {
     referenceDate: Date = new Date()
   ): Promise<TransactionSummaryResult> {
     const hasProvenSearchGap = Boolean(queryOptions.searchQuery);
-    if (this.walletMcpClient && !hasProvenSearchGap) {
-      return await this.getNativeTransactionSummary(queryOptions, referenceDate);
+    const isAggregationSupported = this.capabilityService
+      ? this.capabilityService.supportsTool('get_records_aggregation') !== false
+      : true;
+
+    if (this.walletMcpClient && !hasProvenSearchGap && isAggregationSupported) {
+      try {
+        return await this.getNativeTransactionSummary(queryOptions, referenceDate);
+      } catch (aggregationError) {
+        if (this.capabilityService && isWalletMcpCapabilityRejection(aggregationError)) {
+          this.capabilityService.markToolRejection(
+            'get_records_aggregation',
+            aggregationError instanceof Error ? aggregationError.message : String(aggregationError)
+          );
+        }
+        if (this.transactionHistoryService) {
+          applicationLogger.fileDetail('warn', 'Native aggregation failed definitively, falling back to history summary', {
+            error: aggregationError instanceof Error ? aggregationError.message : String(aggregationError),
+          });
+          return await this.getCompatibilityFallbackSummary(queryOptions, referenceDate);
+        }
+        throw aggregationError;
+      }
     }
 
     if (this.transactionHistoryService) {

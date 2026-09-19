@@ -15,6 +15,7 @@ import {
   MAX_WALLET_MCP_AGENT_HINTS,
   WalletMcpClientService,
   WalletMcpRequestError,
+  isWalletMcpCapabilityRejection,
 } from '../src/services/walletMcpService.js';
 import type {
   WalletMcpSdkClient,
@@ -494,5 +495,150 @@ describe('official MCP client boundary (issue #165)', () => {
       expectedOutcome
     );
     expect(harness.callTool).toHaveBeenCalledTimes(1);
+  });
+
+  describe('structured runtime failure taxonomy matrix', () => {
+    interface FailureTaxonomyTestCase {
+      readonly description: string;
+      readonly error?: unknown;
+      readonly result?: unknown;
+      readonly expectedOutcome: 'DEFINITIVE_FAILURE' | 'UNKNOWN';
+      readonly expectedClassification:
+        | 'AUTHORIZATION'
+        | 'TOOL_UNAVAILABLE'
+        | 'REQUEST_INVALID'
+        | 'TRANSIENT'
+        | 'UNKNOWN';
+      readonly expectedCapabilityRejection: boolean;
+    }
+
+    const failureTaxonomyMatrix: readonly FailureTaxonomyTestCase[] = [
+      {
+        description: 'HTTP 400 invalid params (request-specific validation)',
+        error: new SdkHttpError(SdkErrorCode.ClientHttpUnexpectedContent, 'HTTP 400 Bad Request', { status: 400 }),
+        expectedOutcome: 'DEFINITIVE_FAILURE',
+        expectedClassification: 'REQUEST_INVALID',
+        expectedCapabilityRejection: false,
+      },
+      {
+        description: 'HTTP 401 unauthorized (authoritative authorization rejection)',
+        error: new SdkHttpError(SdkErrorCode.ClientHttpUnexpectedContent, 'HTTP 401 Unauthorized', { status: 401 }),
+        expectedOutcome: 'DEFINITIVE_FAILURE',
+        expectedClassification: 'AUTHORIZATION',
+        expectedCapabilityRejection: true,
+      },
+      {
+        description: 'HTTP 403 forbidden (authoritative authorization rejection)',
+        error: new SdkHttpError(SdkErrorCode.ClientHttpUnexpectedContent, 'HTTP 403 Forbidden', { status: 403 }),
+        expectedOutcome: 'DEFINITIVE_FAILURE',
+        expectedClassification: 'AUTHORIZATION',
+        expectedCapabilityRejection: true,
+      },
+      {
+        description: 'HTTP 404 endpoint/path level (not necessarily tool unsupported)',
+        error: new SdkHttpError(SdkErrorCode.ClientHttpUnexpectedContent, 'HTTP 404 Not Found', { status: 404 }),
+        expectedOutcome: 'DEFINITIVE_FAILURE',
+        expectedClassification: 'UNKNOWN',
+        expectedCapabilityRejection: false,
+      },
+      {
+        description: 'HTTP 405 method not allowed (capability/tool-level rejection)',
+        error: new SdkHttpError(SdkErrorCode.ClientHttpUnexpectedContent, 'HTTP 405 Method Not Allowed', { status: 405 }),
+        expectedOutcome: 'DEFINITIVE_FAILURE',
+        expectedClassification: 'TOOL_UNAVAILABLE',
+        expectedCapabilityRejection: true,
+      },
+      {
+        description: 'HTTP 408 timeout (transient network failure)',
+        error: new SdkHttpError(SdkErrorCode.ClientHttpUnexpectedContent, 'HTTP 408 Request Timeout', { status: 408 }),
+        expectedOutcome: 'UNKNOWN',
+        expectedClassification: 'TRANSIENT',
+        expectedCapabilityRejection: false,
+      },
+      {
+        description: 'HTTP 429 rate limit (transient backoff, not capability rejection)',
+        error: new SdkHttpError(SdkErrorCode.ClientHttpUnexpectedContent, 'HTTP 429 Too Many Requests', { status: 429 }),
+        expectedOutcome: 'DEFINITIVE_FAILURE',
+        expectedClassification: 'TRANSIENT',
+        expectedCapabilityRejection: false,
+      },
+      {
+        description: 'HTTP 502 bad gateway (transient server error)',
+        error: new SdkHttpError(SdkErrorCode.ClientHttpUnexpectedContent, 'HTTP 502 Bad Gateway', { status: 502 }),
+        expectedOutcome: 'UNKNOWN',
+        expectedClassification: 'TRANSIENT',
+        expectedCapabilityRejection: false,
+      },
+      {
+        description: 'JSON-RPC -32601 method not found (tool unavailable)',
+        error: new ProtocolError(-32601, 'Method not found'),
+        expectedOutcome: 'DEFINITIVE_FAILURE',
+        expectedClassification: 'TOOL_UNAVAILABLE',
+        expectedCapabilityRejection: true,
+      },
+      {
+        description: 'JSON-RPC -32602 invalid params (request-specific schema validation)',
+        error: new ProtocolError(-32602, 'Invalid params'),
+        expectedOutcome: 'DEFINITIVE_FAILURE',
+        expectedClassification: 'REQUEST_INVALID',
+        expectedCapabilityRejection: false,
+      },
+      {
+        description: 'SDK CapabilityNotSupported (capability unavailable)',
+        error: new SdkError(SdkErrorCode.CapabilityNotSupported, 'Capability not supported'),
+        expectedOutcome: 'DEFINITIVE_FAILURE',
+        expectedClassification: 'TOOL_UNAVAILABLE',
+        expectedCapabilityRejection: true,
+      },
+      {
+        description: 'SDK connection failure (ConnectionClosed)',
+        error: new SdkError(SdkErrorCode.ConnectionClosed, 'Connection lost'),
+        expectedOutcome: 'UNKNOWN',
+        expectedClassification: 'TRANSIENT',
+        expectedCapabilityRejection: false,
+      },
+      {
+        description: 'CallToolResult.isError validation failure (request-specific)',
+        result: {
+          isError: true,
+          content: [{ type: 'text', text: 'Validation rejected: parameter "amount" must not be zero' }],
+        },
+        expectedOutcome: 'DEFINITIVE_FAILURE',
+        expectedClassification: 'REQUEST_INVALID',
+        expectedCapabilityRejection: false,
+      },
+      {
+        description: 'CallToolResult.isError permission failure (authorization rejection)',
+        result: {
+          isError: true,
+          content: [{ type: 'text', text: 'Permission denied: unauthorized operation requires scope records.create' }],
+        },
+        expectedOutcome: 'DEFINITIVE_FAILURE',
+        expectedClassification: 'AUTHORIZATION',
+        expectedCapabilityRejection: true,
+      },
+    ];
+
+    for (const testCase of failureTaxonomyMatrix) {
+      it(`classifies ${testCase.description}`, async () => {
+        const harness = createHarness({
+          callToolError: testCase.error,
+          callToolResult: testCase.result,
+        });
+
+        let capturedError: unknown;
+        try {
+          await harness.service.callMcpTool('create_records', {});
+        } catch (error) {
+          capturedError = error;
+        }
+
+        expect(capturedError).toBeInstanceOf(WalletMcpRequestError);
+        const requestError = capturedError as WalletMcpRequestError;
+        expect(requestError.dispatchOutcome).toBe(testCase.expectedOutcome);
+        expect(requestError.classification).toBe(testCase.expectedClassification);
+        expect(isWalletMcpCapabilityRejection(requestError)).toBe(testCase.expectedCapabilityRejection);
+      });
+    }
   });
 });

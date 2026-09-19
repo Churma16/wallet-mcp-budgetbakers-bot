@@ -319,3 +319,4 @@ export interface WalletRecordAggregationResponse {
   };
 }
 
+export * from './walletCapabilityTypes.js';
