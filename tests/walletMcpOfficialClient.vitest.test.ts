@@ -177,6 +177,138 @@ describe('official MCP client boundary (issue #165)', () => {
     expect(harness.close).toHaveBeenCalledTimes(1);
   });
 
+  it('bypasses strict upstream outputSchema validation to tolerate extra properties (issue #188)', async () => {
+    const harness = createHarness();
+
+    await harness.service.verifyClientProfile();
+
+    expect(harness.callTool).toHaveBeenCalledWith(
+      { name: 'get_client_profile', arguments: {} },
+      expect.objectContaining({
+        toolDefinition: {
+          name: 'get_client_profile',
+          inputSchema: { type: 'object' },
+        },
+        timeout: 15_000,
+        maxTotalTimeout: 15_000,
+        allowInputRequired: false,
+      })
+    );
+
+    await harness.service.close();
+  });
+
+  it('tolerates upstream category extra properties during live client execution (issue #188)', async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const request = new Request(input, init);
+      const body = await request.clone().json() as { id?: string | number; method?: string };
+
+      if (body.method === 'server/discover') {
+        return new Response(null, { status: 404 });
+      }
+      if (body.method === 'initialize') {
+        return Response.json({
+          jsonrpc: '2.0',
+          id: body.id,
+          result: {
+            protocolVersion: '2025-11-25',
+            capabilities: { tools: {} },
+            serverInfo: { name: 'wallet-fixture', version: '1.0.0' },
+          },
+        });
+      }
+      if (body.method === 'notifications/initialized') {
+        return new Response(null, { status: 202 });
+      }
+      if (body.method === 'tools/list') {
+        return Response.json({
+          jsonrpc: '2.0',
+          id: body.id,
+          result: {
+            tools: [
+              {
+                name: 'create_records',
+                description: 'Creates records',
+                inputSchema: { type: 'object' },
+                outputSchema: {
+                  type: 'object',
+                  properties: {
+                    results: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          record: {
+                            type: 'object',
+                            properties: {
+                              category: {
+                                type: 'object',
+                                properties: { id: { type: 'string' } },
+                                additionalProperties: false,
+                              },
+                            },
+                            additionalProperties: false,
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        });
+      }
+      if (body.method === 'tools/call') {
+        return Response.json({
+          jsonrpc: '2.0',
+          id: body.id,
+          result: {
+            structuredContent: {
+              summary: { total: 1, succeeded: 1 },
+              results: [
+                {
+                  success: true,
+                  record: {
+                    id: 'rec-1',
+                    category: {
+                      id: 'cat-1',
+                      systemId: 'extra_system_id',
+                      cardinality: 'want',
+                    },
+                  },
+                },
+              ],
+            },
+            content: [],
+          },
+        });
+      }
+      throw new Error(`Unexpected MCP method: ${body.method}`);
+    }) as FetchLike;
+
+    const transport = new WalletMcpTransport(
+      'https://wallet.example/mcp',
+      'test-token',
+      {
+        createTransport: (endpoint, options) => new StreamableHTTPClientTransport(
+          endpoint,
+          { ...options, fetch: fetchMock }
+        ),
+      }
+    );
+
+    // Populate tools/list cache with strict outputSchema
+    await transport.listTools();
+
+    // Executing callTool must succeed without throwing outputSchema validation rejection
+    const result = await transport.callTool('create_records', { records: [] });
+    expect(result.structuredContent).toBeDefined();
+    expect(result.isError).toBeUndefined();
+
+    await transport.close();
+  });
+
   it('normalizes bounded tool capabilities without granting advertised tools execution authority', async () => {
     const advertisedTools = Array.from({ length: MAX_DISCOVERED_WALLET_MCP_TOOLS + 2 }, (_, index) => ({
       name: index === 0 ? 'get_accounts' : `advertised_tool_${index}`,
