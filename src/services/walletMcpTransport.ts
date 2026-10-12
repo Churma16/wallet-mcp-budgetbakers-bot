@@ -68,6 +68,10 @@ export class WalletMcpTransport {
       return await client.callTool(
         { name, arguments: toolArguments },
         {
+          toolDefinition: {
+            name,
+            inputSchema: { type: 'object' },
+          },
           timeout: WALLET_MCP_REQUEST_TIMEOUT_MILLISECONDS,
           maxTotalTimeout: WALLET_MCP_REQUEST_TIMEOUT_MILLISECONDS,
           allowInputRequired: false,
