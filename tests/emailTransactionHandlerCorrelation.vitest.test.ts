@@ -322,4 +322,134 @@ describe('EmailTransactionHandler Multi-Source Correlation Integration (Issue #1
     );
     expect(emailListener.recordProcessedTransaction).toHaveBeenCalledWith(undefined, 'MANDIRI-REF-100');
   });
+
+  it('exits early when AI Gate 2 classifies email as non-transaction', async () => {
+    const pendingManager = new PendingTransactionService();
+    const messaging = createMockMessaging();
+    const mockAi = {
+      processEmailTransactionMessage: vi.fn().mockResolvedValue({
+        isTransaction: false,
+        explanation: 'Promotional newsletter without real transaction',
+      }),
+    };
+
+    const handler = new EmailTransactionHandler(
+      mockAi as any,
+      createMockWalletCache() as any,
+      pendingManager,
+      messaging as any
+    );
+
+    await handler.handleEmailTransactionDetected({
+      emailSubject: 'Promo Akhir Pekan',
+      emailSender: 'noreply@bankmandiri.co.id',
+      emailDate: new Date(),
+      cleanedBodyText: 'Dapatkan promo cashback',
+      gateResult: { passed: true, matchedBankRule: mandiriRule },
+    });
+
+    expect(pendingManager.getAllPendingTransactions()).toHaveLength(0);
+    expect(messaging.broadcastNotification).not.toHaveBeenCalled();
+  });
+
+  it('resolves destination account for TRANSFER transactions and handles MCP fetchRecords error gracefully', async () => {
+    const pendingManager = new PendingTransactionService();
+    const messaging = createMockMessaging();
+    const mockAi = {
+      processEmailTransactionMessage: vi.fn().mockResolvedValue({
+        isTransaction: true,
+        transactionType: 'TRANSFER',
+        amount: 500000,
+        counterParty: 'Self',
+        accountNameHint: 'Mandiri Utama',
+        matchedAccountId: 'acc-mandiri',
+        destinationAccountNameHint: 'Cash',
+        matchedDestinationAccountId: undefined,
+        note: 'Transfer ke Cash',
+        recordDate: '2026-10-14T10:18:00.000Z',
+      }),
+    };
+
+    const failingWalletMcpClient = {
+      fetchRecords: vi.fn().mockRejectedValue(new Error('MCP server connection timeout')),
+    };
+
+    const handler = new EmailTransactionHandler(
+      mockAi as any,
+      createMockWalletCache() as any,
+      pendingManager,
+      messaging as any,
+      'IDR',
+      new TransactionCorrelationService(),
+      () => null,
+      failingWalletMcpClient as any
+    );
+
+    await handler.handleEmailTransactionDetected({
+      emailSubject: 'Transfer Berhasil',
+      emailSender: 'noreply.livin@bankmandiri.co.id',
+      emailDate: new Date('2026-10-14T10:18:00.000Z'),
+      cleanedBodyText: 'Transfer dana ke rekening Cash',
+      gateResult: { passed: true, matchedBankRule: mandiriRule },
+    });
+
+    expect(pendingManager.getAllPendingTransactions()).toHaveLength(1);
+    const item = pendingManager.getAllPendingTransactions()[0];
+    expect(item.transactionType).toBe('TRANSFER');
+    expect(item.matchedDestinationAccountId).toBe('acc-cash');
+    expect(item.destinationAccountNameHint).toBe('Cash');
+    expect(messaging.broadcastNotification).toHaveBeenCalled();
+  });
+
+  it('marks pending note with clarification when correlation result is CLARIFY', async () => {
+    const pendingManager = new PendingTransactionService();
+    const messaging = createMockMessaging();
+
+    // Existing ambiguous pending item
+    pendingManager.addPendingTransaction({
+      sourceType: 'EMAIL',
+      bankDisplayName: 'Bank',
+      accountNameHint: 'Cash',
+      matchedAccountId: 'acc-cash',
+      counterParty: '',
+      amount: -100000,
+      currency: 'IDR',
+      transactionType: 'EXPENSE',
+      note: 'Transfer',
+      recordDate: '2026-10-14T10:18:00.000Z',
+    });
+
+    const mockAi = {
+      processEmailTransactionMessage: vi.fn().mockResolvedValue({
+        isTransaction: true,
+        transactionType: 'EXPENSE',
+        amount: -100000,
+        counterParty: '',
+        accountNameHint: 'Cash',
+        matchedAccountId: 'acc-cash',
+        note: 'Transfer',
+        recordDate: '2026-10-14T10:18:30.000Z',
+      }),
+    };
+
+    const handler = new EmailTransactionHandler(
+      mockAi as any,
+      createMockWalletCache() as any,
+      pendingManager,
+      messaging as any
+    );
+
+    await handler.handleEmailTransactionDetected({
+      emailSubject: 'Notifikasi',
+      emailSender: 'noreply.livin@bankmandiri.co.id',
+      emailDate: new Date('2026-10-14T10:18:30.000Z'),
+      cleanedBodyText: 'Nominal Rp 100.000',
+      gateResult: { passed: true, matchedBankRule: mandiriRule, candidateAmount: 100000 },
+    });
+
+    expect(pendingManager.getAllPendingTransactions()).toHaveLength(2);
+    const secondItem = pendingManager.getAllPendingTransactions()[1];
+    expect(secondItem.note).toContain('[Klarifikasi: #1]');
+  });
 });
+

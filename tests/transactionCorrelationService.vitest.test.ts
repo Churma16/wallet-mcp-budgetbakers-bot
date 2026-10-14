@@ -3,6 +3,10 @@ import { TransactionCorrelationService } from '../src/services/transactionCorrel
 import { PendingTransactionItem } from '../src/services/pendingTransactionService.js';
 import { TransactionEvidence } from '../src/types/transactionCorrelationTypes.js';
 import { WalletRecordItem } from '../src/types/walletTypes.js';
+import {
+  formatEnrichedPendingEmailTransactionNotification,
+  formatCorrelatedWalletRecordNotification,
+} from '../src/utils/humanResponseFormatter.js';
 
 describe('TransactionCorrelationService (Issue #153)', () => {
   const service = new TransactionCorrelationService({
@@ -345,4 +349,115 @@ describe('TransactionCorrelationService (Issue #153)', () => {
       expect(result.clarificationPrompt).toBeDefined();
     });
   });
+
+  describe('Wallet record correlation edge branches', () => {
+    it('ignores Wallet records with mismatched currency, direction, amount, or expired time window', () => {
+      const baseRecord: WalletRecordItem = {
+        id: 'rec-test-1',
+        accountId: 'acc-mandiri-123',
+        amount: -16700,
+        currency: 'IDR',
+        recordDate: '2026-10-14T10:18:00.000Z',
+        recordType: 'expense',
+      };
+
+      const evidence = createEvidence({ occurredAt: '2026-10-14T10:18:00.000Z' });
+
+      // Currency mismatch
+      expect(
+        service.correlateEvidence(evidence, [], [{ ...baseRecord, currency: 'USD' }]).suggestedAction
+      ).toBe('CREATE_INDEPENDENT');
+
+      // Direction mismatch
+      expect(
+        service.correlateEvidence(evidence, [], [{ ...baseRecord, recordType: 'income' }]).suggestedAction
+      ).toBe('CREATE_INDEPENDENT');
+
+      // Amount mismatch
+      expect(
+        service.correlateEvidence(evidence, [], [{ ...baseRecord, amount: -20000 }]).suggestedAction
+      ).toBe('CREATE_INDEPENDENT');
+
+      // Time difference > 2 hours
+      expect(
+        service.correlateEvidence(evidence, [], [
+          { ...baseRecord, recordDate: '2026-10-14T05:00:00.000Z' },
+        ]).suggestedAction
+      ).toBe('CREATE_INDEPENDENT');
+
+      // Account matches but neither merchant nor bank_sync matches
+      expect(
+        service.correlateEvidence(
+          createEvidence({ merchant: 'Completely Different Payee', referenceNumbers: [] }),
+          [],
+          [{ ...baseRecord, counterParty: 'Some Other Store', source: 'manual' }]
+        ).suggestedAction
+      ).toBe('CREATE_INDEPENDENT');
+    });
+  });
+
+  describe('note and category fusion permutations', () => {
+    it('preserves existing rich note when incoming bank debit has generic note', () => {
+      const candidate = createPendingItem({
+        note: '2x Bakwan Sayur, 1x Nasi Uduk',
+        evidenceSources: ['EMAIL_PAYMENT'],
+      });
+      const evidence = createEvidence({
+        sourceType: 'EMAIL_BANK',
+        note: 'Pembayaran QRIS',
+      });
+
+      const fused = service.fuseCandidateWithEvidence(candidate, evidence);
+      expect(fused.note).toBe('2x Bakwan Sayur, 1x Nasi Uduk');
+    });
+
+    it('concatenates two descriptive notes if both contain unique details', () => {
+      const candidate = createPendingItem({
+        note: 'Catatan Kasir #1',
+        evidenceSources: ['EMAIL_BANK'],
+      });
+      const evidence = createEvidence({
+        sourceType: 'EMAIL_PAYMENT',
+        note: 'Voucher Diskon Rp 5.000 Digunakan',
+      });
+
+      const fused = service.fuseCandidateWithEvidence(candidate, evidence);
+      expect(fused.note).toBe('Catatan Kasir #1 • Voucher Diskon Rp 5.000 Digunakan');
+    });
+  });
+
+  describe('humanResponseFormatter localization for correlated transactions', () => {
+    it('formats enriched pending notification in English and Indonesian with single and multiple ticket prompts', () => {
+      const item = createPendingItem({
+        counterParty: 'Blibli Offline Store',
+        note: '2x Bakwan Sayur',
+        matchedCategoryName: 'Makanan & Minuman',
+      });
+
+      const singleId = formatEnrichedPendingEmailTransactionNotification(item, 1, 'Blibli', 'id');
+      expect(singleId).toContain('Transaksi Diperkaya');
+      expect(singleId).toContain('Balas *Ya* (atau *Batal*)');
+
+      const bulkId = formatEnrichedPendingEmailTransactionNotification(item, 3, 'Blibli', 'id');
+      expect(bulkId).toContain('Balas *Ya 1* (atau *Ya semua*)');
+
+      const singleEn = formatEnrichedPendingEmailTransactionNotification(item, 1, 'Blibli', 'en');
+      expect(singleEn).toContain('Transaction Enriched');
+      expect(singleEn).toContain('Reply *Yes* (or *Cancel*)');
+
+      const bulkEn = formatEnrichedPendingEmailTransactionNotification(item, 3, 'Blibli', 'en');
+      expect(bulkEn).toContain('Reply *Yes 1* (or *Yes all*)');
+    });
+
+    it('formats correlated Wallet record notification in English and Indonesian', () => {
+      const notifId = formatCorrelatedWalletRecordNotification('rec-123', 'Blibli Store', -16700, 'IDR', 'id');
+      expect(notifId).toContain('Transaksi Sudah Tercatat');
+      expect(notifId).toContain('rec-123');
+
+      const notifEn = formatCorrelatedWalletRecordNotification('rec-123', 'Blibli Store', -16700, 'IDR', 'en');
+      expect(notifEn).toContain('Transaction Already Recorded');
+      expect(notifEn).toContain('rec-123');
+    });
+  });
 });
+
