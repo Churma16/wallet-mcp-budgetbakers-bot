@@ -216,6 +216,9 @@ export const indonesianDictionary: ResponseDictionary = {
       if (params.matchedCategoryName && !isTransfer) {
         lines.push(`Kategori: ${params.matchedCategoryName}`);
       }
+      if (params.isBankSyncedAccount) {
+        lines.push('💡 _Rekening ini terhubung dengan bank sync Wallet._');
+      }
 
       lines.push('');
       lines.push('Catat transaksi ini?');

@@ -394,6 +394,135 @@ describe('TransactionCorrelationService (Issue #153)', () => {
         ).suggestedAction
       ).toBe('CREATE_INDEPENDENT');
     });
+
+    it('prevents false-positive deduplication on bank-synced accounts when merchants conflict (Finding 1)', () => {
+      // Existing Wallet record from bank-sync: Rp 50.000 spent at Alfamart
+      const alfamartRecord: WalletRecordItem = {
+        id: 'rec-mandiri-alfamart',
+        accountId: 'acc-mandiri-123',
+        amount: -50000,
+        currency: 'IDR',
+        recordDate: '2026-10-14T10:00:00.000Z',
+        recordType: 'expense',
+        counterParty: 'ALFAMART KUDUS',
+        source: 'bank_sync',
+      };
+
+      // 40 minutes later, user spends Rp 50.000 at Starbucks with the same Mandiri account
+      const starbucksEvidence = createEvidence({
+        sourceType: 'EMAIL_BANK',
+        merchant: 'Starbucks Coffee',
+        accountId: 'acc-mandiri-123',
+        amount: -50000,
+        occurredAt: '2026-10-14T10:40:00.000Z',
+        referenceNumbers: ['MANDIRI-REF-STARBUCKS'],
+      });
+
+      const result = service.correlateEvidence(starbucksEvidence, [], [alfamartRecord]);
+
+      // Must NOT attach to Alfamart! Must remain separate (CREATE_INDEPENDENT)
+      expect(result.suggestedAction).toBe('CREATE_INDEPENDENT');
+      expect(result.confidence).toBe('LOW');
+    });
+
+    it('attaches to bank-sync Wallet record when merchant matches or reference matches', () => {
+      const alfamartRecord: WalletRecordItem = {
+        id: 'rec-mandiri-alfamart',
+        accountId: 'acc-mandiri-123',
+        amount: -50000,
+        currency: 'IDR',
+        recordDate: '2026-10-14T10:00:00.000Z',
+        recordType: 'expense',
+        counterParty: 'ALFAMART KUDUS',
+        source: 'bank_sync',
+      };
+
+      // Same merchant (Alfamart) arrives
+      const alfamartEvidence = createEvidence({
+        sourceType: 'EMAIL_BANK',
+        merchant: 'Alfamart',
+        accountId: 'acc-mandiri-123',
+        amount: -50000,
+        occurredAt: '2026-10-14T10:05:00.000Z',
+        referenceNumbers: [],
+      });
+
+      const result = service.correlateEvidence(alfamartEvidence, [], [alfamartRecord]);
+      expect(result.suggestedAction).toBe('ATTACH_WALLET_RECORD');
+      expect(result.confidence).toBe('HIGH');
+    });
+
+    it('correlates TRANSFER transactions against Wallet transfer records (Finding 2)', () => {
+      const transferRecord: WalletRecordItem = {
+        id: 'rec-transfer-1',
+        accountId: 'acc-mandiri-123',
+        amount: -250000,
+        currency: 'IDR',
+        recordDate: '2026-10-14T10:00:00.000Z',
+        recordType: 'transfer',
+        counterParty: 'Transfer ke BCA',
+        note: 'REF-TRF-12345',
+        transfer: {
+          type: 'transfer',
+          transferId: 'trf-12345',
+        },
+      };
+
+      const transferEvidence = createEvidence({
+        transactionType: 'TRANSFER',
+        amount: -250000,
+        currency: 'IDR',
+        accountId: 'acc-mandiri-123',
+        occurredAt: '2026-10-14T10:05:00.000Z',
+        referenceNumbers: ['REF-TRF-12345'],
+      });
+
+      const result = service.correlateEvidence(transferEvidence, [], [transferRecord]);
+      expect(result.suggestedAction).toBe('ATTACH_WALLET_RECORD');
+      expect(result.confidence).toBe('HIGH');
+    });
+
+    it('does not match non-transfer expense evidence against a transfer record (Finding 2)', () => {
+      const transferRecord: WalletRecordItem = {
+        id: 'rec-transfer-1',
+        accountId: 'acc-mandiri-123',
+        amount: -250000,
+        currency: 'IDR',
+        recordDate: '2026-10-14T10:00:00.000Z',
+        recordType: 'transfer',
+      };
+
+      const expenseEvidence = createEvidence({
+        transactionType: 'EXPENSE',
+        amount: -250000,
+        currency: 'IDR',
+        accountId: 'acc-mandiri-123',
+        occurredAt: '2026-10-14T10:05:00.000Z',
+        referenceNumbers: [],
+      });
+
+      const result = service.correlateEvidence(expenseEvidence, [], [transferRecord]);
+      expect(result.suggestedAction).toBe('CREATE_INDEPENDENT');
+    });
+
+    it('notes sync delay reason when account is bank-synced and no record found (Finding 3)', () => {
+      const evidence = createEvidence({
+        isBankSyncedAccount: true,
+        referenceNumbers: [],
+      });
+
+      const result = service.correlateEvidence(evidence, [], []);
+      expect(result.suggestedAction).toBe('CREATE_INDEPENDENT');
+      expect(result.reasons).toContain('Account is bank-synced; Wallet record may arrive later with sync delay');
+    });
+
+    it('preserves isBankSyncedAccount in fuseCandidateWithEvidence (Finding 3)', () => {
+      const candidate = createPendingItem({ isBankSyncedAccount: false });
+      const incoming = createEvidence({ isBankSyncedAccount: true });
+
+      const fused = service.fuseCandidateWithEvidence(candidate, incoming);
+      expect(fused.isBankSyncedAccount).toBe(true);
+    });
   });
 
   describe('note and category fusion permutations', () => {

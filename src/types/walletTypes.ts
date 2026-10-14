@@ -195,7 +195,7 @@ export interface WalletRecordItem {
   amount: number;
   currency: string;
   recordDate: string;
-  recordType: 'expense' | 'income';
+  recordType: 'expense' | 'income' | 'transfer';
   category?: {
     id: string;
     name: string;

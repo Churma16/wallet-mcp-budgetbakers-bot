@@ -197,7 +197,7 @@ export function formatCompactTransactionDate(
  */
 export function formatCompactTransactionAmount(
   amount: number,
-  recordType?: 'expense' | 'income',
+  recordType?: 'expense' | 'income' | 'transfer',
   currencyCode?: string,
   languageCode?: SupportedLanguage
 ): string {
@@ -722,6 +722,7 @@ export function formatPendingEmailTransactionNotification(
     matchedCategoryName: pendingItem.matchedCategoryName,
     accountNameHint: pendingItem.accountNameHint,
     referenceNumber: pendingItem.referenceNumber,
+    isBankSyncedAccount: pendingItem.isBankSyncedAccount,
     totalPendingCount,
   });
 }
@@ -766,6 +767,9 @@ export function formatEnrichedPendingEmailTransactionNotification(
   }
   if (pendingItem.note && pendingItem.note !== pendingItem.counterParty) {
     lines.push(isEnglish ? `Items/Note: ${pendingItem.note}` : `Rincian: ${pendingItem.note}`);
+  }
+  if (pendingItem.isBankSyncedAccount) {
+    lines.push(isEnglish ? '💡 _This account is linked to Wallet bank sync._' : '💡 _Rekening ini terhubung dengan bank sync Wallet._');
   }
 
   lines.push('');

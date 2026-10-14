@@ -67,7 +67,12 @@ export class TransactionCorrelationService {
     }
 
     const evidenceAmount = Math.abs(evidence.amount);
-    const evidenceSign = evidence.amount < 0 ? 'expense' : 'income';
+    const isTransferEvidence = evidence.transactionType === 'TRANSFER';
+    const evidenceSign = isTransferEvidence
+      ? 'transfer'
+      : evidence.amount < 0
+      ? 'expense'
+      : 'income';
     const evidenceTime = new Date(evidence.occurredAt).getTime();
     const evidenceCurrency = (evidence.currency || 'IDR').toUpperCase();
     const evidenceRefs = (evidence.referenceNumbers || []).map(r => r.toUpperCase());
@@ -78,8 +83,15 @@ export class TransactionCorrelationService {
       if (recordCurrency !== evidenceCurrency) {
         continue;
       }
-      if (record.recordType !== evidenceSign) {
-        continue;
+      const isRecordTransfer = record.recordType === 'transfer' || Boolean(record.transfer);
+      if (isTransferEvidence) {
+        if (!isRecordTransfer) {
+          continue;
+        }
+      } else {
+        if (record.recordType !== evidenceSign || isRecordTransfer) {
+          continue;
+        }
       }
 
       // 2. Amount check
@@ -99,18 +111,7 @@ export class TransactionCorrelationService {
       const recordNoteUpper = (record.note || '').toUpperCase();
       const hasRefMatch = evidenceRefs.some(ref => recordNoteUpper.includes(ref) || record.id.toUpperCase() === ref);
 
-      // 5. Account match: either account ID matches or account name aligns
-      const hasAccountMatch =
-        Boolean(evidence.accountId) && record.accountId === evidence.accountId;
-
-      // 6. Semantic merchant match
-      const recordMerchant = (record.counterParty || record.note || '').toLowerCase();
-      const evidenceMerchant = (evidence.merchant || '').toLowerCase();
-      const hasMerchantMatch =
-        evidenceMerchant.length > 2 &&
-        (recordMerchant.includes(evidenceMerchant) || evidenceMerchant.includes(recordMerchant));
-
-      // Determine confidence
+      // Determine confidence for reference match immediately
       if (hasRefMatch) {
         return {
           confidence: 'HIGH',
@@ -120,13 +121,36 @@ export class TransactionCorrelationService {
         };
       }
 
-      if (hasAccountMatch && (hasMerchantMatch || record.source === 'bank_sync')) {
+      // Check distinct merchant conflict (e.g. Alfamart vs Starbucks)
+      const recordCounterPartyOrNote = record.counterParty || record.note || '';
+      const isConflicting = this.detectConflictingMerchants(
+        { counterParty: recordCounterPartyOrNote } as PendingTransactionItem,
+        evidence
+      );
+      if (isConflicting) {
+        continue;
+      }
+
+      // 5. Account match: either account ID matches or account name aligns
+      const hasAccountMatch =
+        Boolean(evidence.accountId) && record.accountId === evidence.accountId;
+
+      // 6. Semantic merchant match
+      const recordMerchant = `${record.counterParty || ''} ${record.note || ''}`.toLowerCase();
+      const evidenceMerchant = (evidence.merchant || '').toLowerCase();
+      const hasMerchantMatch =
+        evidenceMerchant.length > 2 &&
+        (recordMerchant.includes(evidenceMerchant) || evidenceMerchant.includes(recordMerchant));
+
+      const isBankSynced = record.source === 'bank_sync' || Boolean(evidence.isBankSyncedAccount);
+
+      if (hasAccountMatch && (hasMerchantMatch || (isBankSynced && timeDiffMs <= this.tightWindowMilliseconds))) {
         return {
           confidence: 'HIGH',
           matchTarget: { type: 'WALLET_RECORD', record },
           reasons: [
             `Existing Wallet record (${record.id}) matches account, amount, and ${
-              record.source === 'bank_sync' ? 'bank-sync source' : 'merchant'
+              hasMerchantMatch ? 'merchant' : 'bank-sync source within tight window'
             }`,
           ],
           suggestedAction: 'ATTACH_WALLET_RECORD',
@@ -252,10 +276,15 @@ export class TransactionCorrelationService {
       };
     }
 
+    const reasons = ['No matching pending transaction or Wallet record found'];
+    if (evidence.isBankSyncedAccount) {
+      reasons.push('Account is bank-synced; Wallet record may arrive later with sync delay');
+    }
+
     return {
       confidence: 'LOW',
       matchTarget: { type: 'NONE' },
-      reasons: ['No matching pending transaction or Wallet record found'],
+      reasons,
       suggestedAction: 'CREATE_INDEPENDENT',
     };
   }
@@ -539,6 +568,10 @@ export class TransactionCorrelationService {
       ])
     ).filter(Boolean);
 
+    const resolvedIsBankSynced = Boolean(
+      candidate.isBankSyncedAccount || incoming.isBankSyncedAccount
+    );
+
     return {
       matchedAccountId: resolvedAccountId,
       accountNameHint: resolvedAccountName,
@@ -550,6 +583,7 @@ export class TransactionCorrelationService {
       referenceNumbers: mergedReferences,
       referenceNumber: mergedReferences[0] || candidate.referenceNumber,
       evidenceSources: mergedSources,
+      isBankSyncedAccount: resolvedIsBankSynced,
     };
   }
 }

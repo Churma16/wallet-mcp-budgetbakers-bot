@@ -21,6 +21,8 @@ export interface PendingTransactionItem {
   referenceNumbers?: string[];
   evidenceSources?: string[];
   emailSubject?: string;
+  isBankSyncedAccount?: boolean;
+  clarificationPrompt?: string;
   createdAt: Date;
   expiresAt: Date;
 }
@@ -317,6 +319,8 @@ export class PendingTransactionService {
       ticketId: existingItem.ticketId,
       createdAt: existingItem.createdAt,
       expiresAt: existingItem.expiresAt,
+      isBankSyncedAccount: update.isBankSyncedAccount ?? existingItem.isBankSyncedAccount,
+      clarificationPrompt: update.clarificationPrompt ?? existingItem.clarificationPrompt,
       referenceNumbers: mergedReferenceNumbers.length > 0 ? mergedReferenceNumbers : undefined,
       referenceNumber: update.referenceNumber || existingItem.referenceNumber || mergedReferenceNumbers[0],
       evidenceSources: mergedEvidenceSources.length > 0 ? mergedEvidenceSources : undefined,

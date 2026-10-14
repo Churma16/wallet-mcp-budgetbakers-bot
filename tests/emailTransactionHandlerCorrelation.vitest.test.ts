@@ -401,7 +401,7 @@ describe('EmailTransactionHandler Multi-Source Correlation Integration (Issue #1
     expect(messaging.broadcastNotification).toHaveBeenCalled();
   });
 
-  it('marks pending note with clarification when correlation result is CLARIFY', async () => {
+  it('marks pending note and includes prompt in broadcast message when correlation result is CLARIFY (Finding 4)', async () => {
     const pendingManager = new PendingTransactionService();
     const messaging = createMockMessaging();
 
@@ -450,6 +450,56 @@ describe('EmailTransactionHandler Multi-Source Correlation Integration (Issue #1
     expect(pendingManager.getAllPendingTransactions()).toHaveLength(2);
     const secondItem = pendingManager.getAllPendingTransactions()[1];
     expect(secondItem.note).toContain('[Klarifikasi: #1]');
+    expect(secondItem.clarificationPrompt).toContain('tiket #1');
+
+    // Broadcast message MUST include the clarification warning and prompt
+    expect(messaging.broadcastNotification).toHaveBeenCalledWith(
+      expect.stringContaining('Perlu Klarifikasi')
+    );
+    expect(messaging.broadcastNotification).toHaveBeenCalledWith(
+      expect.stringContaining('tiket #1')
+    );
+  });
+
+  it('includes bank-synced advisory in notification when matched account is bank-synced (Finding 3)', async () => {
+    const pendingManager = new PendingTransactionService();
+    const messaging = createMockMessaging();
+
+    const mockAi = {
+      processEmailTransactionMessage: vi.fn().mockResolvedValue({
+        isTransaction: true,
+        transactionType: 'EXPENSE',
+        amount: -85000,
+        counterParty: 'Sushi Tei',
+        accountNameHint: 'Mandiri Utama',
+        matchedAccountId: 'acc-mandiri',
+        note: 'Makan Siang',
+        recordDate: '2026-10-14T12:00:00.000Z',
+      }),
+    };
+
+    const handler = new EmailTransactionHandler(
+      mockAi as any,
+      createMockWalletCache() as any,
+      pendingManager,
+      messaging as any
+    );
+
+    await handler.handleEmailTransactionDetected({
+      emailSubject: 'Notifikasi Transaksi Mandiri',
+      emailSender: 'noreply.livin@bankmandiri.co.id',
+      emailDate: new Date('2026-10-14T12:00:00.000Z'),
+      cleanedBodyText: 'Debit Mandiri Rp 85.000',
+      gateResult: { passed: true, matchedBankRule: mandiriRule },
+    });
+
+    expect(pendingManager.getAllPendingTransactions()).toHaveLength(1);
+    const item = pendingManager.getAllPendingTransactions()[0];
+    expect(item.isBankSyncedAccount).toBe(true);
+
+    expect(messaging.broadcastNotification).toHaveBeenCalledWith(
+      expect.stringContaining('Rekening ini terhubung dengan bank sync Wallet')
+    );
   });
 });
 

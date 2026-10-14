@@ -218,6 +218,9 @@ export const englishDictionary: ResponseDictionary = {
       if (params.matchedCategoryName && !isTransfer) {
         lines.push(`Category: ${params.matchedCategoryName}`);
       }
+      if (params.isBankSyncedAccount) {
+        lines.push('💡 _This account is linked to Wallet bank sync._');
+      }
 
       lines.push('');
       lines.push('Record this transaction?');

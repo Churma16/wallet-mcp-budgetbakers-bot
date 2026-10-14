@@ -205,8 +205,18 @@ export class EmailTransactionHandler {
 
     // Case 3: Independent candidate (LOW confidence or CLARIFY)
     let initialNote = parsedData.note || detectedEvent.emailSubject;
-    if (correlationResult.suggestedAction === 'CLARIFY' && correlationResult.clarificationPrompt) {
-      initialNote = `[Klarifikasi: #${(correlationResult.matchTarget as any).pendingItem?.ticketId}] ${initialNote}`;
+    const isClarification =
+      correlationResult.suggestedAction === 'CLARIFY' &&
+      Boolean(correlationResult.clarificationPrompt);
+    const clarifyTargetTicketId =
+      correlationResult.matchTarget.type === 'PENDING_TRANSACTION'
+        ? correlationResult.matchTarget.pendingItem.ticketId
+        : undefined;
+
+    if (isClarification) {
+      initialNote = clarifyTargetTicketId
+        ? `[Klarifikasi: #${clarifyTargetTicketId}] ${initialNote}`
+        : `[Klarifikasi] ${initialNote}`;
     }
 
     const pendingItem = this.pendingTransactionManager.addPendingTransaction({
@@ -228,10 +238,16 @@ export class EmailTransactionHandler {
       referenceNumbers: extractedRefs,
       evidenceSources: [incomingEvidence.sourceType],
       emailSubject: detectedEvent.emailSubject,
+      isBankSyncedAccount: incomingEvidence.isBankSyncedAccount,
+      clarificationPrompt: isClarification ? correlationResult.clarificationPrompt : undefined,
     });
 
     const totalPendingCount = this.pendingTransactionManager.getAllPendingTransactions().length;
-    const notificationText = formatPendingEmailTransactionNotification(pendingItem, totalPendingCount);
+    let notificationText = formatPendingEmailTransactionNotification(pendingItem, totalPendingCount);
+
+    if (isClarification && correlationResult.clarificationPrompt) {
+      notificationText = `⚠️ *Perlu Klarifikasi*\n${correlationResult.clarificationPrompt}\n\n${notificationText}`;
+    }
 
     await this.messagingGateway.broadcastNotification(notificationText);
     applicationLogger.success(
