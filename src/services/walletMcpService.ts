@@ -688,6 +688,15 @@ export class WalletMcpClientService {
         balance: resolvedBalance,
         accountType: item.accountType || item.type,
         bankAccountNumber: item.bankAccountNumber || item.accountNumber || item.number || undefined,
+        isBankSynced: Boolean(
+          item.isBankSynced ||
+          item.bankSync ||
+          item.syncState === 'SYNCED' ||
+          item.syncState === 'ACTIVE' ||
+          item.bankId ||
+          item.connectedBank ||
+          false
+        ),
       };
     });
 
@@ -1009,6 +1018,7 @@ export class WalletMcpClientService {
         counterParty: item.counterParty || item.payee || undefined,
         labels: labelsArray,
         recordState: item.recordState || undefined,
+        source: item.source ? String(item.source) : undefined,
         transfer: item.transfer && typeof item.transfer === 'object'
           ? {
               type: String(item.transfer.type || ''),

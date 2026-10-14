@@ -21,6 +21,7 @@ import {
 } from './services/messaging/index.js';
 import { EmailListenerService } from './services/emailListenerService.js';
 import { PendingTransactionService } from './services/pendingTransactionService.js';
+import { TransactionCorrelationService } from './services/transactionCorrelationService.js';
 import {
   EmailTransactionHandler,
   PendingActionHandler,
@@ -79,13 +80,17 @@ export class Application {
     );
     this.pendingTransactionManager = new PendingTransactionService();
     this.messagingGateway = new MessagingGatewayService();
+    const transactionCorrelationService = new TransactionCorrelationService();
 
     this.emailTransactionHandler = new EmailTransactionHandler(
       this.financialAiProvider,
       this.walletCacheService,
       this.pendingTransactionManager,
       this.messagingGateway,
-      this.environmentConfig.defaultCurrency
+      this.environmentConfig.defaultCurrency,
+      transactionCorrelationService,
+      () => this.emailListenerService,
+      this.walletMcpClient
     );
 
     this.pendingActionHandler = new PendingActionHandler(

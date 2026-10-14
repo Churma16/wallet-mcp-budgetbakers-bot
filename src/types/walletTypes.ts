@@ -5,6 +5,7 @@ export interface WalletAccountItem {
   balance?: number;
   accountType?: string;
   bankAccountNumber?: string;
+  isBankSynced?: boolean;
 }
 
 export interface WalletCategoryItem {
@@ -210,6 +211,7 @@ export interface WalletRecordItem {
     icon?: string;
   }>;
   recordState?: string;
+  source?: string;
   transfer?: {
     type: string;
     transferId?: string;
