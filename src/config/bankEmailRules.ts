@@ -282,4 +282,91 @@ export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
       'transfer ke bank',
     ],
   },
+
+  // 7. Flip
+  {
+    bankKey: 'flip',
+    displayName: 'Flip',
+    accountNameHint: 'Flip',
+    senderDomains: ['flip.id'],
+    subjectKeywords: [
+      'successful transfer',
+      'transaction information',
+      'bukti pembayaran berhasil',
+      'transfer berhasil',
+      'transaksi berhasil',
+      'receipt',
+    ],
+    blacklistKeywords: [
+      'terms and conditions',
+      'kebijakan privasi',
+      'otp',
+      'kode verifikasi',
+      'promo',
+      'diskon',
+      'newsletter',
+      'keamanan',
+    ],
+    bodyRequiredPatterns: [
+      /(?:transaction details|transaction id|destination|nominal|total|successful|transfer|bukti pembayaran)/i,
+    ],
+    amountPriorityPatterns: [
+      /(?:Total\s*(?:Transaksi|Transfer|Pembayaran)|Nominal|Amount)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
+      /(?:Rp|IDR)\s*([\d.,]+)/i,
+    ],
+    referencePatterns: [
+      /(?:Transaction\s*ID|ID\s*Transaksi|No\.?\s*Transaksi|Ref)[:\s]*#?([A-Za-z0-9_-]+)/i,
+      /#([A-Za-z0-9_-]+)/i,
+    ],
+    transferOrTopupKeywords: [
+      'transfer',
+      'kirim uang',
+      'top up',
+      'topup',
+      'rekening',
+    ],
+  },
+
+  // 8. Grab
+  {
+    bankKey: 'grab',
+    displayName: 'Grab',
+    accountNameHint: 'Grab',
+    senderDomains: ['grab.com'],
+    subjectKeywords: [
+      'your grab e-receipt',
+      'e-receipt',
+      'tanda terima',
+      'tagihan',
+      'paket grabunlimited',
+      'perjalanan',
+    ],
+    blacklistKeywords: [
+      'promo',
+      'diskon',
+      'voucher',
+      'penawaran',
+      'paket hemat',
+      'newsletter',
+      'otp',
+      'verifikasi',
+      'login baru',
+    ],
+    bodyRequiredPatterns: [
+      /(?:total|tarif|pembayaran|biaya|fare|grabbike|grabcar|grabfood|grabmart|booking id)/i,
+    ],
+    amountPriorityPatterns: [
+      /(?:Total\s*(?:Tarif|Biaya|Pembayaran|Fare)|Jumlah\s*Total)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
+      /(?:Rp|IDR)\s*([\d.,]+)/i,
+    ],
+    referencePatterns: [
+      /(?:Booking\s*ID|Order\s*ID|ID\s*Pemesanan)[:\s]*([A-Za-z0-9-]+)/i,
+      /(A-[A-Z0-9]+)/i,
+    ],
+    transferOrTopupKeywords: [
+      'top up',
+      'isi saldo',
+      'ovo',
+    ],
+  },
 ];

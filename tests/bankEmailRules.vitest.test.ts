@@ -166,6 +166,41 @@ describe('bank email Gate 1 rules', () => {
       expect(result.matchedBankRule?.bankKey).toBe('shopeepay');
       expect(result.candidateAmount).toBe(125000);
     });
+
+    it('accepts a Flip transfer receipt and extracts amount and reference ID', () => {
+      const result = evaluateEmail(
+        'Successful transfer to FATHAN MUHAMMAD FAQIH. Here is the receipt.',
+        'no-reply@flip.id',
+        `Hello, Fathan Muhammad Faqih.
+         Yay, your transaction has been successfully processed. Here are the transaction details:
+         Transaction ID: #ST2610011255362009CNJD
+         Destination Name: FATHAN MUHAMMAD FAQIH
+         Destination Bank: Bank Jago Syariah
+         Amount: Rp2.000.000`
+      );
+
+      expect(result.passed).toBe(true);
+      expect(result.matchedBankRule?.bankKey).toBe('flip');
+      expect(result.candidateAmount).toBe(2000000);
+      expect(result.referenceNumber).toBe('ST2610011255362009CNJD');
+      expect(result.isTransferCandidate).toBe(true);
+    });
+
+    it('accepts a Grab ride e-receipt and extracts amount and booking ID', () => {
+      const result = evaluateEmail(
+        'Your Grab E-Receipt',
+        'no-reply@grab.com',
+        `Grab E-Receipt
+         Booking ID: A-9UQLPJWGW8CCAV
+         Layanan: GrabBike
+         Total Tarif: Rp70.100`
+      );
+
+      expect(result.passed).toBe(true);
+      expect(result.matchedBankRule?.bankKey).toBe('grab');
+      expect(result.candidateAmount).toBe(70100);
+      expect(result.referenceNumber).toBe('A-9UQLPJWGW8CCAV');
+    });
   });
 
   describe('security, blacklist, and edge-case filtering', () => {
@@ -185,6 +220,28 @@ describe('bank email Gate 1 rules', () => {
         'Promo Diskon Spesial ShopeePay 50%',
         'no-reply@shopeepay.co.id',
         'Dapatkan cashback koin hingga 50rb hanya hari ini!'
+      );
+
+      expect(result.passed).toBe(false);
+      expect(result.reason).toBe('SUBJECT_BLACKLIST_KEYWORD_MATCH');
+    });
+
+    it('rejects Flip terms and conditions update emails', () => {
+      const result = evaluateEmail(
+        'We’re updating our Terms and Conditions',
+        'hello@flip.id',
+        'Please review our updated terms and conditions.'
+      );
+
+      expect(result.passed).toBe(false);
+      expect(result.reason).toBe('SUBJECT_BLACKLIST_KEYWORD_MATCH');
+    });
+
+    it('rejects Grab promo discount emails', () => {
+      const result = evaluateEmail(
+        'Diskon Spesial Perjalanan GrabBike',
+        'no-reply@grab.com',
+        'Gunakan voucher diskon spesial ini sekarang.'
       );
 
       expect(result.passed).toBe(false);
