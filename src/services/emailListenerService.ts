@@ -227,6 +227,19 @@ export class EmailListenerService {
     });
 
     await client.connect();
+    if (!this.isServiceRunning) {
+      try {
+        client.removeAllListeners();
+        client.close();
+      } catch {
+        // Ignore teardown failure
+      }
+      if (this.imapClient === client) {
+        this.imapClient = null;
+      }
+      return;
+    }
+
     applicationLogger.success('Connected to Gmail IMAP successfully.');
     this.reconnectAttempt = 0;
 
@@ -273,12 +286,13 @@ export class EmailListenerService {
 
     try {
       const mailboxLock = await client.getMailboxLock('INBOX');
+      let onExists: (() => Promise<void>) | null = null;
 
       try {
         applicationLogger.info('INBOX opened. Scanning recent unseen/new messages...');
         await this.scanRecentMessages();
 
-        const onExists = async () => {
+        onExists = async () => {
           applicationLogger.info('New message notification received via IMAP exists event.');
           await this.scanRecentMessages();
         };
@@ -292,17 +306,22 @@ export class EmailListenerService {
           } catch (idleError: unknown) {
             // Idle interrupted or ping timeout, loop will continue if still running
             applicationLogger.fileDetail('debug', 'IMAP idle cycle reset', idleError);
-            break;
+            if (!client.usable) {
+              break;
+            }
           }
         }
       } finally {
+        if (onExists) {
+          client.off('exists', onExists);
+        }
         mailboxLock.release();
       }
     } catch (cycleError: unknown) {
       applicationLogger.error(`Error in IMAP idle cycle: ${cycleError}`);
     }
 
-    if (this.isServiceRunning && (!client.usable || this.imapClient !== client)) {
+    if (this.isServiceRunning && this.imapClient === client && !client.usable) {
       this.scheduleReconnect();
     }
   }

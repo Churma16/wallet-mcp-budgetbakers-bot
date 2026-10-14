@@ -194,4 +194,216 @@ describe('email listener reconnection resilience', () => {
       fs.rmSync(cacheDir, { recursive: true, force: true });
     }
   });
+
+  it('recovers from transient idle() errors when client remains usable', async () => {
+    vi.useFakeTimers();
+    const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wallet-email-idle-transient-'));
+    const createdClients: MockImapFlowClient[] = [];
+
+    const factory = () => {
+      const client = new MockImapFlowClient();
+      let idleCount = 0;
+      client.idle = async () => {
+        idleCount += 1;
+        if (idleCount === 1) {
+          throw new Error('Transient idle reset');
+        }
+        return new Promise(resolve => setTimeout(resolve, 10));
+      };
+      createdClients.push(client);
+      return client as unknown as ImapFlow;
+    };
+
+    const service = new EmailListenerService(
+      'imap.example.com',
+      993,
+      'test@example.com',
+      'password',
+      10,
+      async () => {},
+      cacheDir,
+      factory
+    );
+
+    try {
+      await service.startListening();
+      await vi.advanceTimersByTimeAsync(50);
+
+      // Client should still be active, no reconnection scheduled
+      assert.strictEqual(createdClients.length, 1);
+      assert.strictEqual(createdClients[0].usable, true);
+      await service.stop();
+    } finally {
+      vi.useRealTimers();
+      fs.rmSync(cacheDir, { recursive: true, force: true });
+    }
+  });
+
+  it('does not trigger spurious reconnect when a superseded client finishes its idle cycle', async () => {
+    vi.useFakeTimers();
+    const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wallet-email-zombie-'));
+    const createdClients: MockImapFlowClient[] = [];
+
+    let unblockClient0Idle: (() => void) | null = null;
+
+    const factory = () => {
+      const client = new MockImapFlowClient();
+      const index = createdClients.length;
+      if (index === 0) {
+        client.idle = async () => {
+          return new Promise(resolve => {
+            unblockClient0Idle = resolve;
+          });
+        };
+      }
+      createdClients.push(client);
+      return client as unknown as ImapFlow;
+    };
+
+    const service = new EmailListenerService(
+      'imap.example.com',
+      993,
+      'test@example.com',
+      'password',
+      10,
+      async () => {},
+      cacheDir,
+      factory
+    );
+
+    try {
+      await service.startListening();
+      assert.strictEqual(createdClients.length, 1);
+
+      // Emit close to trigger reconnect while client 0 is still blocked in idle
+      createdClients[0].usable = false;
+      createdClients[0].emit('close');
+
+      // Advance backoff timer so client 1 connects and becomes active
+      await vi.advanceTimersByTimeAsync(8000);
+      assert.strictEqual(createdClients.length, 2);
+
+      // Now unblock client 0's idle loop, causing its runMailboxIdleCycle to complete
+      if (unblockClient0Idle) {
+        (unblockClient0Idle as () => void)();
+      }
+      await vi.advanceTimersByTimeAsync(100);
+
+      // Advance timer again. No 3rd client should be created because client 0 was superseded
+      await vi.advanceTimersByTimeAsync(15000);
+      assert.strictEqual(createdClients.length, 2);
+
+      await service.stop();
+    } finally {
+      vi.useRealTimers();
+      fs.rmSync(cacheDir, { recursive: true, force: true });
+    }
+  });
+
+  it('tears down client and does not start idle cycle if stop() is called during connect()', async () => {
+    vi.useFakeTimers();
+    const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wallet-email-stop-connect-'));
+    const createdClients: MockImapFlowClient[] = [];
+
+    let resolveConnect: (() => void) | null = null;
+
+    const factory = () => {
+      const client = new MockImapFlowClient();
+      client.connect = async () => {
+        client.connectCalled += 1;
+        return new Promise<void>(resolve => {
+          resolveConnect = resolve;
+        });
+      };
+      createdClients.push(client);
+      return client as unknown as ImapFlow;
+    };
+
+    const service = new EmailListenerService(
+      'imap.example.com',
+      993,
+      'test@example.com',
+      'password',
+      10,
+      async () => {},
+      cacheDir,
+      factory
+    );
+
+    try {
+      const startPromise = service.startListening();
+
+      // Client was created and connect was initiated
+      assert.strictEqual(createdClients.length, 1);
+      assert.strictEqual(createdClients[0].connectCalled, 1);
+
+      // Stop service while connect is pending
+      await service.stop();
+
+      // Resolve connect
+      if (resolveConnect) {
+        (resolveConnect as () => void)();
+      }
+      await startPromise;
+
+      // Client should be closed and getMailboxLock never called
+      assert.strictEqual(createdClients[0].closeCalled, 1);
+      assert.strictEqual(createdClients[0].getMailboxLockCalled, 0);
+    } finally {
+      vi.useRealTimers();
+      fs.rmSync(cacheDir, { recursive: true, force: true });
+    }
+  });
+
+  it('unregisters exists event listener when mailbox lock is released', async () => {
+    vi.useFakeTimers();
+    const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wallet-email-exists-off-'));
+    const createdClients: MockImapFlowClient[] = [];
+
+    let unblockIdle: (() => void) | null = null;
+    const factory = () => {
+      const client = new MockImapFlowClient();
+      client.idle = async () => {
+        return new Promise(resolve => {
+          unblockIdle = resolve;
+        });
+      };
+      createdClients.push(client);
+      return client as unknown as ImapFlow;
+    };
+
+    const service = new EmailListenerService(
+      'imap.example.com',
+      993,
+      'test@example.com',
+      'password',
+      10,
+      async () => {},
+      cacheDir,
+      factory
+    );
+
+    try {
+      await service.startListening();
+      // Allow async mailbox lock and initial scan microtasks to settle
+      await vi.advanceTimersByTimeAsync(10);
+      assert.strictEqual(createdClients.length, 1);
+      assert.strictEqual(createdClients[0].listenerCount('exists'), 1);
+
+      // Make client unusable and unblock idle so runMailboxIdleCycle exits its loop and executes finally
+      createdClients[0].usable = false;
+      if (unblockIdle) {
+        (unblockIdle as () => void)();
+      }
+      await vi.advanceTimersByTimeAsync(10);
+
+      // The exists listener should be cleanly removed by the finally block without calling stop()
+      assert.strictEqual(createdClients[0].listenerCount('exists'), 0);
+
+      await service.stop();
+    } finally {
+      vi.useRealTimers();
+      fs.rmSync(cacheDir, { recursive: true, force: true });
+    }
+  });
 });
