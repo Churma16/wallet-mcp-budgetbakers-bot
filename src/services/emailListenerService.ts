@@ -3,6 +3,7 @@ import path from 'path';
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import { evaluateEmailThroughGateOne, GateEvaluationResult } from '../utils/emailGateEvaluator.js';
+import { calculateExponentialBackoff } from '../utils/exponentialBackoff.js';
 import { applicationLogger } from '../utils/logger.js';
 
 export interface EmailTransactionDetectedEvent {
@@ -25,6 +26,11 @@ export class EmailListenerService {
   private imapClient: ImapFlow | null = null;
   private isServiceRunning: boolean = false;
   private isHandlingIncomingMail: boolean = false;
+  private isReconnecting: boolean = false;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  private reconnectAttempt: number = 0;
+  private readonly reconnectBaseDelayMs: number = 5000;
+  private readonly reconnectMaxDelayMs: number = 60000;
   private startupCutoffTimestamp: Date;
   private readonly processedMessageIdSet: Set<string> = new Set<string>();
   private readonly processedReferenceNumberSet: Set<string> = new Set<string>();
@@ -39,7 +45,8 @@ export class EmailListenerService {
     private readonly imapPassword: string,
     private readonly lookbackMinutes: number = 10,
     private readonly onTransactionDetected: EmailTransactionCallback,
-    customCacheDirectoryPath?: string
+    customCacheDirectoryPath?: string,
+    private readonly imapClientFactory?: (options: ConstructorParameters<typeof ImapFlow>[0]) => ImapFlow
   ) {
     // Only accept emails after startup cutoff (with lookback window)
     const lookbackMilliseconds = this.lookbackMinutes * 60 * 1000;
@@ -115,6 +122,134 @@ export class EmailListenerService {
   }
 
   /**
+   * Instantiates a new ImapFlow client or uses custom factory if injected
+   */
+  private createImapClient(): ImapFlow {
+    const clientOptions = {
+      host: this.imapHost,
+      port: this.imapPort,
+      secure: true,
+      auth: {
+        user: this.imapUser,
+        pass: this.imapPassword,
+      },
+      logger: false as const,
+    };
+
+    if (this.imapClientFactory) {
+      return this.imapClientFactory(clientOptions);
+    }
+    return new ImapFlow(clientOptions);
+  }
+
+  /**
+   * Safely clears listeners and closes the active IMAP client
+   */
+  private cleanupCurrentClient(): void {
+    if (this.imapClient) {
+      try {
+        this.imapClient.removeAllListeners();
+        this.imapClient.close();
+      } catch {
+        // Ignore cleanup failure
+      }
+      this.imapClient = null;
+    }
+  }
+
+  /**
+   * Schedules a reconnection attempt with exponential backoff and jitter
+   */
+  private scheduleReconnect(): void {
+    if (!this.isServiceRunning || this.isReconnecting || this.reconnectTimer !== null) {
+      return;
+    }
+
+    const delayMs = calculateExponentialBackoff({
+      attempt: this.reconnectAttempt,
+      baseMs: this.reconnectBaseDelayMs,
+      maxMs: this.reconnectMaxDelayMs,
+      jitterMinMs: 500,
+      jitterMaxMs: 2000,
+    });
+    this.reconnectAttempt += 1;
+
+    applicationLogger.warn(
+      `Scheduling Gmail IMAP reconnection attempt ${this.reconnectAttempt} in ${(delayMs / 1000).toFixed(1)}s (delay: ${delayMs}ms)...`
+    );
+
+    this.reconnectTimer = setTimeout(async () => {
+      this.reconnectTimer = null;
+      if (!this.isServiceRunning) {
+        return;
+      }
+
+      this.isReconnecting = true;
+      try {
+        await this.establishConnectionAndListen();
+      } catch (reconnectError: unknown) {
+        applicationLogger.error(
+          `Gmail IMAP reconnection attempt ${this.reconnectAttempt} failed: ${reconnectError}`
+        );
+        this.isReconnecting = false;
+        if (this.isServiceRunning) {
+          this.scheduleReconnect();
+        }
+      } finally {
+        this.isReconnecting = false;
+      }
+    }, delayMs);
+  }
+
+  /**
+   * Creates a fresh ImapFlow client, establishes connection, and starts the mailbox idle cycle
+   */
+  private async establishConnectionAndListen(): Promise<void> {
+    if (!this.isServiceRunning) {
+      return;
+    }
+
+    this.cleanupCurrentClient();
+
+    applicationLogger.info('Initializing Gmail IMAP Client...');
+    const client = this.createImapClient();
+    this.imapClient = client;
+
+    client.on('error', error => {
+      applicationLogger.error(`Gmail IMAP Connection Error: ${error.message}`);
+    });
+
+    client.on('close', () => {
+      applicationLogger.warn('Gmail IMAP socket connection closed.');
+      if (this.isServiceRunning) {
+        this.scheduleReconnect();
+      }
+    });
+
+    await client.connect();
+    if (!this.isServiceRunning) {
+      try {
+        client.removeAllListeners();
+        client.close();
+      } catch {
+        // Ignore teardown failure
+      }
+      if (this.imapClient === client) {
+        this.imapClient = null;
+      }
+      return;
+    }
+
+    applicationLogger.success('Connected to Gmail IMAP successfully.');
+    this.reconnectAttempt = 0;
+
+    // Run mailbox idle cycle in the background
+    this.runMailboxIdleCycle(client).catch(cycleError => {
+      applicationLogger.error(`IMAP idle cycle error: ${cycleError}`);
+    });
+  }
+
+  /**
    * Starts the IMAP connection and enters real-time IDLE mode
    */
   public async startListening(): Promise<void> {
@@ -127,80 +262,67 @@ export class EmailListenerService {
     }
 
     this.isServiceRunning = true;
-    applicationLogger.info('Initializing Gmail IMAP Client...');
+    this.reconnectAttempt = 0;
 
-    this.imapClient = new ImapFlow({
-      host: this.imapHost,
-      port: this.imapPort,
-      secure: true,
-      auth: {
-        user: this.imapUser,
-        pass: this.imapPassword,
-      },
-      logger: false,
-    });
-
-    this.imapClient.on('error', error => {
-      applicationLogger.error(`Gmail IMAP Connection Error: ${error.message}`);
-    });
-
-    this.imapClient.on('close', () => {
-      applicationLogger.warn('Gmail IMAP socket connection closed.');
+    try {
+      await this.establishConnectionAndListen();
+    } catch (initialConnectError: unknown) {
+      applicationLogger.error(`Initial Gmail IMAP connection failed: ${initialConnectError}`);
       if (this.isServiceRunning) {
-        applicationLogger.info('Reconnecting Gmail IMAP in 5 seconds...');
-        setTimeout(() => {
-          if (this.isServiceRunning) {
-            this.runMailboxIdleCycle().catch(err => {
-              applicationLogger.error(`IMAP Reconnect cycle failed: ${err.message}`);
-            });
-          }
-        }, 5000);
+        this.scheduleReconnect();
       }
-    });
-
-    await this.imapClient.connect();
-    applicationLogger.success('Connected to Gmail IMAP successfully.');
-
-    // Run initial scan and enter IDLE loop
-    await this.runMailboxIdleCycle();
+      throw initialConnectError;
+    }
   }
 
   /**
    * Opens INBOX, fetches recent messages, and enters the IDLE loop
    */
-  private async runMailboxIdleCycle(): Promise<void> {
-    if (!this.imapClient || !this.isServiceRunning) {
+  private async runMailboxIdleCycle(activeClient?: ImapFlow): Promise<void> {
+    const client = activeClient || this.imapClient;
+    if (!client || !this.isServiceRunning) {
       return;
     }
 
     try {
-      const mailboxLock = await this.imapClient.getMailboxLock('INBOX');
+      const mailboxLock = await client.getMailboxLock('INBOX');
+      let onExists: (() => Promise<void>) | null = null;
 
       try {
         applicationLogger.info('INBOX opened. Scanning recent unseen/new messages...');
         await this.scanRecentMessages();
 
-        // Listen for new messages while mailbox lock is active
-        this.imapClient.on('exists', async () => {
+        onExists = async () => {
           applicationLogger.info('New message notification received via IMAP exists event.');
           await this.scanRecentMessages();
-        });
+        };
+
+        client.on('exists', onExists);
 
         // Loop IDLE while service is active
-        while (this.isServiceRunning && this.imapClient.usable) {
+        while (this.isServiceRunning && client.usable && this.imapClient === client) {
           try {
-            await this.imapClient.idle();
+            await client.idle();
           } catch (idleError: unknown) {
             // Idle interrupted or ping timeout, loop will continue if still running
             applicationLogger.fileDetail('debug', 'IMAP idle cycle reset', idleError);
-            break;
+            if (!client.usable) {
+              break;
+            }
           }
         }
       } finally {
+        if (onExists) {
+          client.off('exists', onExists);
+        }
         mailboxLock.release();
       }
     } catch (cycleError: unknown) {
       applicationLogger.error(`Error in IMAP idle cycle: ${cycleError}`);
+    }
+
+    if (this.isServiceRunning && this.imapClient === client && !client.usable) {
+      this.scheduleReconnect();
     }
   }
 
@@ -346,8 +468,13 @@ export class EmailListenerService {
    */
   public async stop(): Promise<void> {
     this.isServiceRunning = false;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (this.imapClient) {
       try {
+        this.imapClient.removeAllListeners();
         await this.imapClient.logout();
       } catch {
         this.imapClient.close();
