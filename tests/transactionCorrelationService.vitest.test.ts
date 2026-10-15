@@ -9,10 +9,7 @@ import {
 } from '../src/utils/humanResponseFormatter.js';
 
 describe('TransactionCorrelationService (Issue #153)', () => {
-  const service = new TransactionCorrelationService({
-    maxCorrelationWindowMilliseconds: 30 * 60 * 1000,
-    tightWindowMilliseconds: 15 * 60 * 1000,
-  });
+  const service = new TransactionCorrelationService();
 
   const baseInstant = '2026-10-14T10:18:00.000Z';
 
@@ -308,12 +305,12 @@ describe('TransactionCorrelationService (Issue #153)', () => {
       expect(result.suggestedAction).toBe('CREATE_INDEPENDENT');
     });
 
-    it('never merges when transaction occurred outside the correlation window (> 30 mins)', () => {
+    it('never merges when transaction occurred outside the correlation window (> 2 hours)', () => {
       const candidate = createPendingItem({
         recordDate: '2026-10-14T08:00:00.000Z',
       });
       const evidence = createEvidence({
-        occurredAt: '2026-10-14T09:15:00.000Z', // 75 minutes later
+        occurredAt: '2026-10-14T11:00:00.000Z', // 180 minutes later (> 120 mins)
       });
 
       const result = service.correlateEvidence(evidence, [candidate]);
@@ -586,6 +583,227 @@ describe('TransactionCorrelationService (Issue #153)', () => {
       const notifEn = formatCorrelatedWalletRecordNotification('rec-123', 'Blibli Store', -16700, 'IDR', 'en');
       expect(notifEn).toContain('Transaction Already Recorded');
       expect(notifEn).toContain('rec-123');
+    });
+  });
+
+  describe('Ride receipt latency and generic bank debit correlation (Grab + Bank Jago scenario)', () => {
+    const defaultService = new TransactionCorrelationService(); // Uses default 2-hour window
+
+    it('correlates a Grab receipt arriving 46 minutes after a Bank Jago debit card charge with Unknown merchant', () => {
+      // 17:27 WIB (10:27 UTC): Jago debit card charge notification
+      const jagoDebitCandidate = createPendingItem({
+        ticketId: 3,
+        bankDisplayName: 'Jago',
+        accountNameHint: 'Jago',
+        matchedAccountId: 'a7a51081-350c-4013-b99c-ffdaae10651d',
+        counterParty: 'Unknown',
+        amount: -68100,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        matchedCategoryId: 'cat-shopping',
+        matchedCategoryName: 'Shopping',
+        note: 'Transaksi menggunakan kartu debit Jago',
+        recordDate: '2026-10-15T10:27:22.000Z',
+        referenceNumber: undefined,
+        referenceNumbers: [],
+        evidenceSources: ['EMAIL_BANK'],
+      });
+
+      // 18:13 WIB (11:13 UTC, received 11:21 UTC): Grab E-Receipt issued 46 minutes later
+      const grabReceiptEvidence = createEvidence({
+        sourceType: 'EMAIL_PAYMENT',
+        sourceId: 'Your Grab E-Receipt',
+        merchant: 'Grab',
+        amount: -68100,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        accountHint: 'Jago Expense',
+        accountId: 'a7a51081-350c-4013-b99c-ffdaae10651d',
+        matchedCategoryId: 'cat-ojol',
+        matchedCategoryName: 'Ojol',
+        categoryId: 'cat-ojol',
+        categoryName: 'Ojol',
+        note: 'Grab ride',
+        occurredAt: '2026-10-15T11:13:34.000Z', // 46m 12s after debit
+        referenceNumbers: ['A-9V6UNX7W38J9AV'],
+      });
+
+      const result = defaultService.correlateEvidence(grabReceiptEvidence, [jagoDebitCandidate]);
+
+      expect(result.confidence).toBe('HIGH');
+      expect(result.suggestedAction).toBe('MERGE_PENDING');
+      expect(result.matchTarget.type).toBe('PENDING_TRANSACTION');
+      if (result.matchTarget.type === 'PENDING_TRANSACTION') {
+        expect(result.matchTarget.pendingItem.ticketId).toBe(3);
+      }
+
+      const fused = result.fusedPendingItem!;
+      expect(fused).toBeDefined();
+      // Counterparty upgraded from "Unknown" to "Grab"
+      expect(fused.counterParty).toBe('Grab');
+      // Category upgraded from generic "Shopping" to specific "Ojol"
+      expect(fused.matchedCategoryName).toBe('Ojol');
+      expect(fused.matchedCategoryId).toBe('cat-ojol');
+      // Note replaced from generic debit card note to "Grab ride"
+      expect(fused.note).toBe('Grab ride');
+      // Account preserved
+      expect(fused.matchedAccountId).toBe('a7a51081-350c-4013-b99c-ffdaae10651d');
+      // Reference merged
+      expect(fused.referenceNumbers).toContain('A-9V6UNX7W38J9AV');
+      // Both sources recorded
+      expect(fused.evidenceSources).toEqual(['EMAIL_BANK', 'EMAIL_PAYMENT']);
+    });
+
+    it('guarantees arrival order invariance when Grab receipt arrives before Bank debit', () => {
+      // Scenario: Grab receipt arrives first
+      const grabReceiptCandidate = createPendingItem({
+        ticketId: 4,
+        bankDisplayName: 'Grab',
+        accountNameHint: 'Jago Expense',
+        matchedAccountId: 'a7a51081-350c-4013-b99c-ffdaae10651d',
+        counterParty: 'Grab',
+        amount: -68100,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        matchedCategoryId: 'cat-ojol',
+        matchedCategoryName: 'Ojol',
+        note: 'Grab ride',
+        recordDate: '2026-10-15T11:13:34.000Z',
+        referenceNumber: 'A-9V6UNX7W38J9AV',
+        referenceNumbers: ['A-9V6UNX7W38J9AV'],
+        evidenceSources: ['EMAIL_PAYMENT'],
+      });
+
+      // Bank debit arrives second with generic "Unknown" and "Shopping"
+      const jagoDebitEvidence = createEvidence({
+        sourceType: 'EMAIL_BANK',
+        sourceId: 'Debit Card Notification',
+        merchant: 'Unknown',
+        amount: -68100,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        accountHint: 'Jago',
+        accountId: 'a7a51081-350c-4013-b99c-ffdaae10651d',
+        categoryId: 'cat-shopping',
+        categoryName: 'Shopping',
+        note: 'Transaksi menggunakan kartu debit Jago',
+        occurredAt: '2026-10-15T11:15:00.000Z',
+        referenceNumbers: [],
+      });
+
+      const result = defaultService.correlateEvidence(jagoDebitEvidence, [grabReceiptCandidate]);
+
+      expect(result.confidence).toBe('HIGH');
+      expect(result.suggestedAction).toBe('MERGE_PENDING');
+
+      const fused = result.fusedPendingItem!;
+      expect(fused.counterParty).toBe('Grab');
+      expect(fused.matchedCategoryName).toBe('Ojol');
+      expect(fused.note).toBe('Grab ride');
+      expect(fused.matchedAccountId).toBe('a7a51081-350c-4013-b99c-ffdaae10651d');
+      expect(fused.referenceNumbers).toContain('A-9V6UNX7W38J9AV');
+      expect(fused.evidenceSources?.sort()).toEqual(['EMAIL_BANK', 'EMAIL_PAYMENT'].sort());
+    });
+
+    it('correlates incoming Grab receipt with an existing Wallet record that has Unknown merchant', () => {
+      const existingWalletRecord: WalletRecordItem = {
+        id: 'rec-jago-unknown-1',
+        accountId: 'a7a51081-350c-4013-b99c-ffdaae10651d',
+        amount: -68100,
+        currency: 'IDR',
+        recordDate: '2026-10-15T10:27:22.000Z',
+        recordType: 'expense',
+        counterParty: 'Unknown',
+        note: 'Transaksi menggunakan kartu debit Jago',
+      };
+
+      const grabReceiptEvidence = createEvidence({
+        sourceType: 'EMAIL_PAYMENT',
+        merchant: 'Grab',
+        amount: -68100,
+        currency: 'IDR',
+        accountId: 'a7a51081-350c-4013-b99c-ffdaae10651d',
+        occurredAt: '2026-10-15T11:13:34.000Z',
+        referenceNumbers: ['A-9V6UNX7W38J9AV'],
+      });
+
+      const result = defaultService.correlateEvidence(grabReceiptEvidence, [], [existingWalletRecord]);
+
+      expect(result.confidence).toBe('HIGH');
+      expect(result.suggestedAction).toBe('ATTACH_WALLET_RECORD');
+      if (result.matchTarget.type === 'WALLET_RECORD') {
+        expect(result.matchTarget.record.id).toBe('rec-jago-unknown-1');
+      }
+    });
+
+    it('does not merge transactions occurring outside the 2-hour window (> 120 mins)', () => {
+      const jagoDebitCandidate = createPendingItem({
+        counterParty: 'Unknown',
+        amount: -68100,
+        recordDate: '2026-10-15T10:00:00.000Z',
+      });
+
+      const grabReceiptEvidence = createEvidence({
+        merchant: 'Grab',
+        amount: -68100,
+        occurredAt: '2026-10-15T12:30:00.000Z', // 150 minutes later (> 120 mins)
+      });
+
+      const result = defaultService.correlateEvidence(grabReceiptEvidence, [jagoDebitCandidate]);
+
+      expect(result.confidence).toBe('LOW');
+      expect(result.suggestedAction).toBe('CREATE_INDEPENDENT');
+    });
+
+    it('prevents attaching to generic Wallet record when incoming evidence is another generic bank notification (Finding 1)', () => {
+      // Existing Wallet record manually created without payee
+      const existingWalletRecord: WalletRecordItem = {
+        id: 'rec-manual-no-payee',
+        accountId: 'acc-mandiri-123',
+        amount: -50000,
+        currency: 'IDR',
+        recordDate: '2026-10-15T10:00:00.000Z',
+        recordType: 'expense',
+        counterParty: '', // Empty payee
+      };
+
+      // Second incoming transaction is also a generic bank debit, NOT a specific merchant receipt
+      const incomingBankEvidence = createEvidence({
+        sourceType: 'EMAIL_BANK',
+        merchant: 'Unknown',
+        amount: -50000,
+        currency: 'IDR',
+        accountId: 'acc-mandiri-123',
+        occurredAt: '2026-10-15T10:20:00.000Z', // 20m later
+        referenceNumbers: [],
+      });
+
+      const result = defaultService.correlateEvidence(incomingBankEvidence, [], [existingWalletRecord]);
+
+      // Should NOT attach to the generic manual record, preventing false-positive record swallowing
+      expect(result.suggestedAction).toBe('CREATE_INDEPENDENT');
+    });
+
+    it('accurately distinguishes generic tokens from legitimate merchants like Pos Indonesia and Deposit (Finding 2)', () => {
+      // Legitimate merchants must NOT be marked generic
+      expect(defaultService.isGenericMerchant('Pos Indonesia')).toBe(false);
+      expect(defaultService.isGenericMerchant('PT Pos Indonesia')).toBe(false);
+      expect(defaultService.isGenericMerchant('Deposit Box')).toBe(false);
+      expect(defaultService.isGenericMerchant('Mastercard Secure')).toBe(false);
+      expect(defaultService.isGenericMerchant('Grab')).toBe(false);
+      expect(defaultService.isGenericMerchant('Blibli')).toBe(false);
+
+      // Generic placeholders and payment gateways MUST be marked generic
+      expect(defaultService.isGenericMerchant('Unknown')).toBe(true);
+      expect(defaultService.isGenericMerchant('unknown')).toBe(true);
+      expect(defaultService.isGenericMerchant('Kartu Debit')).toBe(true);
+      expect(defaultService.isGenericMerchant('Debit Card')).toBe(true);
+      expect(defaultService.isGenericMerchant('POS Debit')).toBe(true);
+      expect(defaultService.isGenericMerchant('EDC')).toBe(true);
+      expect(defaultService.isGenericMerchant('QRIS')).toBe(true);
+      expect(defaultService.isGenericMerchant(undefined)).toBe(true);
+      expect(defaultService.isGenericMerchant(null)).toBe(true);
+      expect(defaultService.isGenericMerchant('')).toBe(true);
     });
   });
 });
