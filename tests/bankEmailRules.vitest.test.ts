@@ -201,6 +201,25 @@ describe('bank email Gate 1 rules', () => {
       expect(result.candidateAmount).toBe(70100);
       expect(result.referenceNumber).toBe('A-9UQLPJWGW8CCAV');
     });
+
+    it('accepts a Blibli offline store QRIS receipt and extracts amount and order ID', () => {
+      const result = evaluateEmail(
+        'Pembayaran QRIS Anda Telah Kami Terima - Offline Store - Bakwan Sayur [1pcs]',
+        'transaction@blibli.com',
+        `Halo, Fathan Muhammad Faqih!
+         Terima kasih telah melakukan pembayaran dengan QRIS.
+         No. Pesanan: 12198693563
+         Offline Store - Bakwan Sayur [1pcs] (Jumlah: 2) @ Rp 2.600
+         Offline Store - NASI UDUK + TELUR (Jumlah: 1) @ Rp 11.500
+         Total Pembayaran: Rp 16.700`
+      );
+
+      expect(result.passed).toBe(true);
+      expect(result.matchedBankRule?.bankKey).toBe('blibli');
+      expect(result.candidateAmount).toBe(16700);
+      expect(result.referenceNumber).toBe('12198693563');
+      expect(result.matchedBankRule?.ruleCategory).toBe('MERCHANT_RECEIPT');
+    });
   });
 
   describe('security, blacklist, and edge-case filtering', () => {
@@ -242,6 +261,17 @@ describe('bank email Gate 1 rules', () => {
         'Diskon Spesial Perjalanan GrabBike',
         'no-reply@grab.com',
         'Gunakan voucher diskon spesial ini sekarang.'
+      );
+
+      expect(result.passed).toBe(false);
+      expect(result.reason).toBe('SUBJECT_BLACKLIST_KEYWORD_MATCH');
+    });
+
+    it('rejects Blibli flash sale promo emails', () => {
+      const result = evaluateEmail(
+        'Flash Sale Promo Diskon Kilat Blibli',
+        'newsletter@blibli.com',
+        'Dapatkan diskon heboh hingga 80% hanya hari ini.'
       );
 
       expect(result.passed).toBe(false);

@@ -88,7 +88,19 @@ export class PendingActionHandler {
         await this.walletMcpClient.createRecords(recordsForThisTransaction);
 
         if (activeEmailListener) {
-          activeEmailListener.recordProcessedTransaction(undefined, item.referenceNumber);
+          const allRefs = Array.from(
+            new Set([
+              ...(item.referenceNumbers || []),
+              ...(item.referenceNumber ? [item.referenceNumber] : []),
+            ])
+          ).filter(Boolean);
+          if (allRefs.length > 0) {
+            for (const ref of allRefs) {
+              activeEmailListener.recordProcessedTransaction(undefined, ref);
+            }
+          } else {
+            activeEmailListener.recordProcessedTransaction(undefined, item.referenceNumber);
+          }
         }
 
         this.pendingTransactionManager.resolvePendingTransaction(item.ticketId);

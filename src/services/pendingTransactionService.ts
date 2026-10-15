@@ -18,7 +18,11 @@ export interface PendingTransactionItem {
   recordDate: string; // ISO 8601 string
   currency?: string;
   referenceNumber?: string;
+  referenceNumbers?: string[];
+  evidenceSources?: string[];
   emailSubject?: string;
+  isBankSyncedAccount?: boolean;
+  clarificationPrompt?: string;
   createdAt: Date;
   expiresAt: Date;
 }
@@ -279,6 +283,53 @@ export class PendingTransactionService {
     this.pendingAccountSelectionDraftMap.set(ticketId, updatedDraft);
     return updatedDraft;
   }
+
+  /**
+   * Enriches or updates an existing PENDING transaction with additional multi-source evidence
+   * (e.g. merging bank debit with merchant itemized receipt) without altering its ticket ID or lifecycle.
+   */
+  public enrichPendingTransaction(
+    ticketId: number,
+    update: Partial<PendingTransactionItem>
+  ): PendingTransactionItem | undefined {
+    const existingItem = this.pendingTransactionMap.get(ticketId);
+    if (!existingItem || this.dispatchStateMap.get(ticketId) !== 'PENDING') {
+      return undefined;
+    }
+
+    const mergedReferenceNumbers = Array.from(
+      new Set([
+        ...(existingItem.referenceNumbers || []),
+        ...(existingItem.referenceNumber ? [existingItem.referenceNumber] : []),
+        ...(update.referenceNumbers || []),
+        ...(update.referenceNumber ? [update.referenceNumber] : []),
+      ])
+    ).filter(Boolean);
+
+    const mergedEvidenceSources = Array.from(
+      new Set([
+        ...(existingItem.evidenceSources || []),
+        ...(update.evidenceSources || []),
+      ])
+    ).filter(Boolean);
+
+    const updatedItem: PendingTransactionItem = {
+      ...existingItem,
+      ...update,
+      ticketId: existingItem.ticketId,
+      createdAt: existingItem.createdAt,
+      expiresAt: existingItem.expiresAt,
+      isBankSyncedAccount: update.isBankSyncedAccount ?? existingItem.isBankSyncedAccount,
+      clarificationPrompt: update.clarificationPrompt ?? existingItem.clarificationPrompt,
+      referenceNumbers: mergedReferenceNumbers.length > 0 ? mergedReferenceNumbers : undefined,
+      referenceNumber: update.referenceNumber || existingItem.referenceNumber || mergedReferenceNumbers[0],
+      evidenceSources: mergedEvidenceSources.length > 0 ? mergedEvidenceSources : undefined,
+    };
+
+    this.pendingTransactionMap.set(ticketId, updatedItem);
+    return updatedItem;
+  }
+
 
   /**
    * Marks a ticket UNKNOWN when the server-side commit outcome cannot be determined safely.

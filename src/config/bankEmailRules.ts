@@ -1,3 +1,5 @@
+export type BankEmailRuleCategory = 'BANK' | 'E_WALLET' | 'MERCHANT_RECEIPT' | 'PAYMENT_GATEWAY';
+
 export interface BankEmailRuleDefinition {
   bankKey: string;
   displayName: string;
@@ -9,6 +11,7 @@ export interface BankEmailRuleDefinition {
   amountPriorityPatterns: RegExp[];
   referencePatterns: RegExp[];
   transferOrTopupKeywords: string[];
+  ruleCategory?: BankEmailRuleCategory;
 }
 
 export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
@@ -325,9 +328,10 @@ export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
       'topup',
       'rekening',
     ],
+    ruleCategory: 'PAYMENT_GATEWAY',
   },
 
-  // 8. Grab
+  // 12. Grab
   {
     bankKey: 'grab',
     displayName: 'Grab',
@@ -368,5 +372,48 @@ export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
       'isi saldo',
       'ovo',
     ],
+    ruleCategory: 'MERCHANT_RECEIPT',
+  },
+
+  // 13. Blibli
+  {
+    bankKey: 'blibli',
+    displayName: 'Blibli',
+    accountNameHint: 'Cash',
+    senderDomains: ['blibli.com'],
+    subjectKeywords: [
+      'pembayaran qris anda telah kami terima',
+      'pembayaran berhasil',
+      'pesanan anda telah dibayar',
+      'pesanan',
+      'blibli',
+      'qris',
+      'offline store',
+      'e-receipt',
+      'struk pembayaran',
+    ],
+    blacklistKeywords: [
+      'otp',
+      'kode verifikasi',
+      'promo',
+      'diskon',
+      'newsletter',
+      'flash sale',
+      'pengingat pembayaran',
+      'menunggu pembayaran',
+    ],
+    bodyRequiredPatterns: [
+      /(?:pembayaran\s*(?:qris\s*)?(?:anda\s*)?telah\s*kami\s*terima|terima\s*kasih\s*telah\s*melakukan\s*pembayaran|offline\s*store|total\s*pembayaran|detail\s*pesanan|produk)/i,
+    ],
+    amountPriorityPatterns: [
+      /(?:Total\s*Pembayaran|Total\s*Belanja|Total\s*Tagihan|Total)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
+      /(?:Rp|IDR)\s*([\d.,]+)/i,
+    ],
+    referencePatterns: [
+      /(?:No\.?\s*Pesanan|Nomor\s*Pesanan|Order\s*ID|Order\s*Number)[:\s]*([A-Za-z0-9_-]+)/i,
+      /(?:No\.?\s*Referensi|Nomor\s*Referensi|No\.?\s*Transaksi|Nomor\s*Transaksi|RRN)[:\s]*([A-Za-z0-9]+)/i,
+    ],
+    transferOrTopupKeywords: [],
+    ruleCategory: 'MERCHANT_RECEIPT',
   },
 ];

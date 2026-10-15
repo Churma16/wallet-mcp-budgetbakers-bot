@@ -197,7 +197,7 @@ export function formatCompactTransactionDate(
  */
 export function formatCompactTransactionAmount(
   amount: number,
-  recordType?: 'expense' | 'income',
+  recordType?: 'expense' | 'income' | 'transfer',
   currencyCode?: string,
   languageCode?: SupportedLanguage
 ): string {
@@ -722,9 +722,96 @@ export function formatPendingEmailTransactionNotification(
     matchedCategoryName: pendingItem.matchedCategoryName,
     accountNameHint: pendingItem.accountNameHint,
     referenceNumber: pendingItem.referenceNumber,
+    isBankSyncedAccount: pendingItem.isBankSyncedAccount,
     totalPendingCount,
   });
 }
+
+/**
+ * Formats notification when an existing pending ticket is enriched with multi-source evidence
+ * (e.g. Bank debit + Merchant item breakdown).
+ */
+export function formatEnrichedPendingEmailTransactionNotification(
+  pendingItem: PendingTransactionItem,
+  totalPendingCount: number = 1,
+  enrichedSourceDisplayName: string = 'Merchant',
+  languageCode?: SupportedLanguage
+): string {
+  const dictionary = getDictionary(languageCode);
+  const itemCurrency = pendingItem.currency || getDefaultCurrency();
+  const formattedAmount = formatCurrencyAmount(pendingItem.amount, itemCurrency, languageCode);
+  const formattedTime = formatTransactionDate(pendingItem.recordDate, languageCode);
+
+  const activeLang = languageCode || getActiveLanguage();
+  const isEnglish = activeLang === 'en';
+
+  const headline = isEnglish
+    ? `✨ *Transaction Enriched* (#${pendingItem.ticketId})`
+    : `✨ *Transaksi Diperkaya* (#${pendingItem.ticketId})`;
+
+  const sourceNotice = isEnglish
+    ? `Details from *${enrichedSourceDisplayName}* merged into *${pendingItem.bankDisplayName}* debit:`
+    : `Rincian dari *${enrichedSourceDisplayName}* digabungkan ke transaksi *${pendingItem.bankDisplayName}*:`;
+
+  const lines = [
+    headline,
+    sourceNotice,
+    `*${formattedAmount}* • ${pendingItem.counterParty || pendingItem.bankDisplayName}`,
+  ];
+
+  if (pendingItem.accountNameHint) {
+    lines.push(isEnglish ? `Account: ${pendingItem.accountNameHint}` : `Akun: ${pendingItem.accountNameHint}`);
+  }
+  if (pendingItem.matchedCategoryName) {
+    lines.push(isEnglish ? `Category: ${pendingItem.matchedCategoryName}` : `Kategori: ${pendingItem.matchedCategoryName}`);
+  }
+  if (pendingItem.note && pendingItem.note !== pendingItem.counterParty) {
+    lines.push(isEnglish ? `Items/Note: ${pendingItem.note}` : `Rincian: ${pendingItem.note}`);
+  }
+  if (pendingItem.isBankSyncedAccount) {
+    lines.push(isEnglish ? '💡 _This account is linked to Wallet bank sync._' : '💡 _Rekening ini terhubung dengan bank sync Wallet._');
+  }
+
+  lines.push('');
+  if (isEnglish) {
+    lines.push('Record this transaction?');
+    if (totalPendingCount > 1) {
+      lines.push(`• Reply *Yes ${pendingItem.ticketId}* (or *Yes all*)`);
+      lines.push(`• Reply *Cancel ${pendingItem.ticketId}*`);
+    } else {
+      lines.push('• Reply *Yes* (or *Cancel*)');
+    }
+  } else {
+    lines.push('Catat transaksi ini?');
+    if (totalPendingCount > 1) {
+      lines.push(`• Balas *Ya ${pendingItem.ticketId}* (atau *Ya semua*)`);
+      lines.push(`• Balas *Batal ${pendingItem.ticketId}*`);
+    } else {
+      lines.push('• Balas *Ya* (atau *Batal*)');
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Formats notification when incoming email evidence correlates with an existing Wallet record.
+ */
+export function formatCorrelatedWalletRecordNotification(
+  recordId: string,
+  merchant: string,
+  amount: number,
+  currency: string = 'IDR',
+  languageCode?: SupportedLanguage
+): string {
+  const formattedAmount = formatCurrencyAmount(amount, currency, languageCode);
+  const isEnglish = (languageCode || getActiveLanguage()) === 'en';
+  if (isEnglish) {
+    return `ℹ️ *Transaction Already Recorded*\nIncoming notification for *${merchant || 'Purchase'}* (${formattedAmount}) matches existing Wallet record (\`${recordId}\`). No duplicate ticket created.`;
+  }
+  return `ℹ️ *Transaksi Sudah Tercatat*\nNotifikasi untuk *${merchant || 'Transaksi'}* (${formattedAmount}) sudah tercatat di Wallet (ID: \`${recordId}\`). Tidak dibuat tiket duplikat.`;
+}
+
 
 /**
  * Formats success message after user confirms a single pending transaction

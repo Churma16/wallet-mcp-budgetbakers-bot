@@ -36,6 +36,7 @@ export interface PendingEmailNotificationParams {
   matchedCategoryName?: string;
   accountNameHint?: string;
   referenceNumber?: string;
+  isBankSyncedAccount?: boolean;
   totalPendingCount: number;
 }
 
