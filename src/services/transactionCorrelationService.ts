@@ -36,12 +36,32 @@ export class TransactionCorrelationService {
     if (!merchant) return true;
     const lower = merchant.trim().toLowerCase();
     if (!lower || lower === 'unknown') return true;
-    const genericTokens = [
-      'unknown',
+
+    // Special case: legitimate registered couriers and merchants
+    if (lower.includes('pos indonesia')) {
+      return false;
+    }
+
+    // Exact phrase checks
+    const exactPhrases = [
       'kartu debit',
       'debit card',
+      'pembayaran qris',
+      'edc/pos',
+      'pos debit',
+      'transaksi domestik',
+    ];
+    if (exactPhrases.some(phrase => lower.includes(phrase))) {
+      return true;
+    }
+
+    // Word-token boundary checks for identifiers
+    const words = lower.split(/[^a-z0-9]+/);
+    const genericWords = new Set([
+      'unknown',
       'debit',
       'card',
+      'kartu',
       'qris',
       'edc',
       'pos',
@@ -51,8 +71,9 @@ export class TransactionCorrelationService {
       'transfer',
       'transaksi',
       'merchant',
-    ];
-    return genericTokens.some(token => lower.includes(token));
+    ]);
+
+    return words.some(w => genericWords.has(w));
   }
 
   /**
@@ -171,10 +192,18 @@ export class TransactionCorrelationService {
       const isRecordMerchantGeneric = this.isGenericMerchant(record.counterParty);
       const isBankSynced = record.source === 'bank_sync' || Boolean(evidence.isBankSyncedAccount);
 
+      const isIncomingSpecificPayment =
+        (evidence.sourceType === 'EMAIL_PAYMENT' || evidence.sourceType === 'RECEIPT') &&
+        Boolean(evidence.merchant) &&
+        !this.isGenericMerchant(evidence.merchant) &&
+        (evidence.merchant?.length ?? 0) >= 2;
+
       if (
         hasAccountMatch &&
         (hasMerchantMatch ||
-          (isRecordMerchantGeneric && timeDiffMs <= this.maxCorrelationWindowMilliseconds) ||
+          (isRecordMerchantGeneric &&
+            isIncomingSpecificPayment &&
+            timeDiffMs <= this.maxCorrelationWindowMilliseconds) ||
           (isBankSynced && timeDiffMs <= this.tightWindowMilliseconds))
       ) {
         return {
@@ -185,7 +214,7 @@ export class TransactionCorrelationService {
               hasMerchantMatch
                 ? 'merchant'
                 : isRecordMerchantGeneric
-                ? 'generic bank debit record within window'
+                ? 'generic bank debit record paired with specific merchant receipt'
                 : 'bank-sync source within tight window'
             }`,
           ],

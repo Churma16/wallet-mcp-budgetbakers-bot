@@ -754,6 +754,57 @@ describe('TransactionCorrelationService (Issue #153)', () => {
       expect(result.confidence).toBe('LOW');
       expect(result.suggestedAction).toBe('CREATE_INDEPENDENT');
     });
+
+    it('prevents attaching to generic Wallet record when incoming evidence is another generic bank notification (Finding 1)', () => {
+      // Existing Wallet record manually created without payee
+      const existingWalletRecord: WalletRecordItem = {
+        id: 'rec-manual-no-payee',
+        accountId: 'acc-mandiri-123',
+        amount: -50000,
+        currency: 'IDR',
+        recordDate: '2026-10-15T10:00:00.000Z',
+        recordType: 'expense',
+        counterParty: '', // Empty payee
+      };
+
+      // Second incoming transaction is also a generic bank debit, NOT a specific merchant receipt
+      const incomingBankEvidence = createEvidence({
+        sourceType: 'EMAIL_BANK',
+        merchant: 'Unknown',
+        amount: -50000,
+        currency: 'IDR',
+        accountId: 'acc-mandiri-123',
+        occurredAt: '2026-10-15T10:20:00.000Z', // 20m later
+        referenceNumbers: [],
+      });
+
+      const result = defaultService.correlateEvidence(incomingBankEvidence, [], [existingWalletRecord]);
+
+      // Should NOT attach to the generic manual record, preventing false-positive record swallowing
+      expect(result.suggestedAction).toBe('CREATE_INDEPENDENT');
+    });
+
+    it('accurately distinguishes generic tokens from legitimate merchants like Pos Indonesia and Deposit (Finding 2)', () => {
+      // Legitimate merchants must NOT be marked generic
+      expect(defaultService.isGenericMerchant('Pos Indonesia')).toBe(false);
+      expect(defaultService.isGenericMerchant('PT Pos Indonesia')).toBe(false);
+      expect(defaultService.isGenericMerchant('Deposit Box')).toBe(false);
+      expect(defaultService.isGenericMerchant('Mastercard Secure')).toBe(false);
+      expect(defaultService.isGenericMerchant('Grab')).toBe(false);
+      expect(defaultService.isGenericMerchant('Blibli')).toBe(false);
+
+      // Generic placeholders and payment gateways MUST be marked generic
+      expect(defaultService.isGenericMerchant('Unknown')).toBe(true);
+      expect(defaultService.isGenericMerchant('unknown')).toBe(true);
+      expect(defaultService.isGenericMerchant('Kartu Debit')).toBe(true);
+      expect(defaultService.isGenericMerchant('Debit Card')).toBe(true);
+      expect(defaultService.isGenericMerchant('POS Debit')).toBe(true);
+      expect(defaultService.isGenericMerchant('EDC')).toBe(true);
+      expect(defaultService.isGenericMerchant('QRIS')).toBe(true);
+      expect(defaultService.isGenericMerchant(undefined)).toBe(true);
+      expect(defaultService.isGenericMerchant(null)).toBe(true);
+      expect(defaultService.isGenericMerchant('')).toBe(true);
+    });
   });
 });
 
