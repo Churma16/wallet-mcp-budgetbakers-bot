@@ -66,6 +66,7 @@ export interface ApplicationEnvironmentConfiguration {
   walletMcpBaseUrl: string;
   walletMcpAccessToken: string;
   allowedPhoneNumber: string;
+  allowedPhoneNumbers: string[];
   whatsappSessionPath: string;
   telegramBotToken: string;
   telegramAllowedUserId: string;
@@ -242,12 +243,11 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
 
   const rawAllowedPhoneNumber = (process.env.ALLOWED_PHONE_NUMBER || process.env.OWNER_PHONE_NUMBER || '')
     .trim();
-  const allowedPhoneNumber = normalizePhoneNumber(
-    rawAllowedPhoneNumber,
-    defaultCurrency,
-    appTimezone,
-    appLanguage
+  const rawNumberList = rawAllowedPhoneNumber.split(',').map(item => item.trim()).filter(Boolean);
+  const allowedPhoneNumbers = rawNumberList.map(rawNumber =>
+    normalizePhoneNumber(rawNumber, defaultCurrency, appTimezone, appLanguage)
   );
+  const allowedPhoneNumber = allowedPhoneNumbers[0] || '';
 
   // Resolve enabled messenger channels
   let enabledMessengerChannels: ('whatsapp' | 'telegram' | 'console')[] = [];
@@ -309,6 +309,7 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     walletMcpBaseUrl,
     walletMcpAccessToken,
     allowedPhoneNumber,
+    allowedPhoneNumbers,
     whatsappSessionPath,
     telegramBotToken,
     telegramAllowedUserId,

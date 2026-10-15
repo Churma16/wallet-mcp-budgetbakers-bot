@@ -72,6 +72,10 @@ export class PendingTransactionService {
   ): PendingTransactionItem {
     this.purgeExpiredTransactions();
 
+    if (this.pendingTransactionMap.size === 0 && this.pendingAccountSelectionDraftMap.size === 0) {
+      this.nextTicketSequentialId = 1;
+    }
+
     const ticketId = this.nextTicketSequentialId++;
     const createdAt = new Date();
     const expiresAt = new Date(createdAt.getTime() + this.defaultTimeToLiveMilliseconds);
@@ -95,6 +99,10 @@ export class PendingTransactionService {
     itemData: Omit<PendingAccountSelectionDraft, 'ticketId' | 'createdAt' | 'expiresAt'>
   ): PendingAccountSelectionDraft {
     this.purgeExpiredTransactions();
+
+    if (this.pendingTransactionMap.size === 0 && this.pendingAccountSelectionDraftMap.size === 0) {
+      this.nextTicketSequentialId = 1;
+    }
 
     const ticketId = this.nextTicketSequentialId++;
     const createdAt = new Date();
@@ -534,9 +542,17 @@ export class PendingTransactionService {
     }
   }
 
+  public getNextTicketSequentialId(): number {
+    return this.nextTicketSequentialId;
+  }
+
   private removeTicketMetadata(ticketId: number): void {
     this.pendingTransactionMap.delete(ticketId);
     this.pendingAccountSelectionDraftMap.delete(ticketId);
     this.dispatchStateMap.delete(ticketId);
+
+    if (this.pendingTransactionMap.size === 0 && this.pendingAccountSelectionDraftMap.size === 0) {
+      this.nextTicketSequentialId = 1;
+    }
   }
 }

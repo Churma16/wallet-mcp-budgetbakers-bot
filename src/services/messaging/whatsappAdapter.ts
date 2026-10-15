@@ -18,6 +18,7 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
   private socketInstance: WASocket | null = null;
   private isConnectingOrReconnecting = false;
   private readonly normalizedAllowedPhoneNumber: string;
+  private readonly normalizedAllowedPhoneNumbers: string[];
   private readonly maxMediaDownloadBytes: number;
   private readonly outgoingMessageIds = new MessageIdTracker();
   private readonly connectionResilience: WhatsappConnectionResilience;
@@ -27,11 +28,17 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
 
   constructor(
     private readonly sessionDataDirectoryPath: string,
-    allowedPhoneNumber: string,
+    allowedPhoneNumber: string | string[],
     private readonly onUserMessageReceived: UserMessageCallback,
     safeguardConfiguration?: WhatsappSafeguardConfiguration
   ) {
-    this.normalizedAllowedPhoneNumber = digitsOnly(allowedPhoneNumber || '');
+    const rawList = Array.isArray(allowedPhoneNumber)
+      ? allowedPhoneNumber
+      : (allowedPhoneNumber || '').split(',');
+    this.normalizedAllowedPhoneNumbers = rawList
+      .map(item => digitsOnly(item))
+      .filter(Boolean);
+    this.normalizedAllowedPhoneNumber = this.normalizedAllowedPhoneNumbers[0] || '';
     this.maxMediaDownloadBytes = safeguardConfiguration?.maxMediaDownloadBytes ?? 10 * 1024 * 1024;
     const getSocket = () => this.socketInstance;
 
@@ -50,7 +57,7 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
       safeguardConfiguration?.typingPresenceCooldownMs ?? 2500
     );
     this.inboundProcessor = new WhatsappInboundMessageProcessor(
-      this.normalizedAllowedPhoneNumber,
+      this.normalizedAllowedPhoneNumbers,
       this.onUserMessageReceived,
       getSocket,
       this.outgoingMessageIds,

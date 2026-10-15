@@ -14,15 +14,25 @@ import {
 
 export class WhatsappInboundMessageProcessor {
   private readonly incomingMessageIds = new MessageIdTracker();
+  private readonly normalizedAllowedPhoneNumbers: string[];
+  private readonly normalizedAllowedPhoneNumber: string;
 
   constructor(
-    private readonly normalizedAllowedPhoneNumber: string,
+    normalizedAllowedPhoneNumber: string | string[],
     private readonly onUserMessageReceived: UserMessageCallback,
     private readonly getSocket: WhatsappSocketProvider,
     private readonly outgoingMessageIds: MessageIdTracker,
     private readonly maxMediaDownloadBytes: number,
     private readonly sendTextMessage: (chatIdentifier: string, text: string) => Promise<void>
-  ) {}
+  ) {
+    const rawList = Array.isArray(normalizedAllowedPhoneNumber)
+      ? normalizedAllowedPhoneNumber
+      : (normalizedAllowedPhoneNumber || '').split(',');
+    this.normalizedAllowedPhoneNumbers = rawList
+      .map(item => digitsOnly(item))
+      .filter(Boolean);
+    this.normalizedAllowedPhoneNumber = this.normalizedAllowedPhoneNumbers[0] || '';
+  }
 
   public isTargetingSelf(
     remoteJid: string,
@@ -34,7 +44,7 @@ export class WhatsappInboundMessageProcessor {
     return Boolean(
       (botUserPhoneNumber && normalizedSenderDigits === botUserPhoneNumber) ||
       (botUserLinkedDeviceIdentifier && senderRawIdentifier === botUserLinkedDeviceIdentifier) ||
-      (this.normalizedAllowedPhoneNumber && normalizedSenderDigits === this.normalizedAllowedPhoneNumber)
+      (this.normalizedAllowedPhoneNumbers.includes(normalizedSenderDigits))
     );
   }
 
@@ -42,12 +52,15 @@ export class WhatsappInboundMessageProcessor {
     if (isMessageTargetingSelf) {
       return true;
     }
-    if (!this.normalizedAllowedPhoneNumber) {
+    if (this.normalizedAllowedPhoneNumbers.length === 0) {
       return false;
     }
     const [senderRawIdentifier, jidDomain] = remoteJid.split('@');
-    return jidDomain === 's.whatsapp.net' &&
-      digitsOnly(senderRawIdentifier) === this.normalizedAllowedPhoneNumber;
+    const senderDigits = digitsOnly(senderRawIdentifier);
+    if (jidDomain === 's.whatsapp.net' || jidDomain === 'lid') {
+      return this.normalizedAllowedPhoneNumbers.includes(senderDigits);
+    }
+    return false;
   }
 
   public async process(incomingMessages: proto.IWebMessageInfo[]): Promise<void> {
@@ -70,7 +83,29 @@ export class WhatsappInboundMessageProcessor {
       const botPhoneNumber = digitsOnly(socket?.user?.id?.split(':')[0]?.split('@')[0] || '');
       const botLinkedDeviceIdentifier = (socket?.user as { lid?: string } | undefined)?.lid
         ?.split(':')[0]?.split('@')[0] || '';
-      const targetsSelf = this.isTargetingSelf(remoteJid, botPhoneNumber, botLinkedDeviceIdentifier);
+      let targetsSelf = this.isTargetingSelf(remoteJid, botPhoneNumber, botLinkedDeviceIdentifier);
+
+      // Attempt to resolve LID to PN if sender is an unknown @lid
+      if (!targetsSelf && remoteJid.endsWith('@lid') && socket) {
+        try {
+          const signalRepo = (socket as unknown as { signalRepository?: { lidMapping?: { getPNForLID?: (jid: string) => Promise<string | undefined> } } }).signalRepository;
+          const lidStore = signalRepo?.lidMapping;
+          if (lidStore && typeof lidStore.getPNForLID === 'function') {
+            const mappedPn = await lidStore.getPNForLID(remoteJid);
+            if (mappedPn) {
+              const mappedDigits = digitsOnly(mappedPn);
+              if (
+                (botPhoneNumber && mappedDigits === botPhoneNumber) ||
+                this.normalizedAllowedPhoneNumbers.includes(mappedDigits)
+              ) {
+                targetsSelf = true;
+              }
+            }
+          }
+        } catch {
+          // Best-effort LID lookup; fall back to normal checks
+        }
+      }
 
       // Provider metadata rejects echoes to other chats. Messages manually sent to the
       // account's own chat remain supported; bot-authored echoes are rejected above by ID.
@@ -79,7 +114,7 @@ export class WhatsappInboundMessageProcessor {
       }
 
       if (!targetsSelf && !this.isAuthorizedSender(remoteJid, false)) {
-        const reason = this.normalizedAllowedPhoneNumber
+        const reason = this.normalizedAllowedPhoneNumbers.length > 0
           ? `WhatsApp ignored message from unauthorized sender: ${remoteJid}`
           : `WhatsApp ignored non-self message from ${remoteJid}: ALLOWED_PHONE_NUMBER is not configured (fail-closed).`;
         applicationLogger.security(reason);

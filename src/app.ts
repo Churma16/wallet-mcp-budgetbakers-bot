@@ -225,12 +225,14 @@ export class Application {
       });
     }
 
-    // 2. Register Messaging Adapters in Gateway
     if (this.environmentConfig.enabledMessengerChannels.includes('whatsapp')) {
-      if (this.environmentConfig.allowedPhoneNumber) {
+      const allowedPhoneList = this.environmentConfig.allowedPhoneNumbers?.length > 0
+        ? this.environmentConfig.allowedPhoneNumbers
+        : (this.environmentConfig.allowedPhoneNumber ? [this.environmentConfig.allowedPhoneNumber] : []);
+      if (allowedPhoneList.length > 0) {
         const whatsappAdapter = new WhatsappMessagingAdapter(
           this.environmentConfig.whatsappSessionPath,
-          this.environmentConfig.allowedPhoneNumber,
+          allowedPhoneList,
           event => this.userMessageHandler.handleIncomingUserMessage(event),
           {
             maxReconnectAttempts: this.environmentConfig.whatsappMaxReconnectAttempts,
