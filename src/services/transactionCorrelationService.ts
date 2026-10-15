@@ -77,6 +77,85 @@ export class TransactionCorrelationService {
   }
 
   /**
+   * Checks whether a transaction note is boilerplate / generic payment metadata
+   * (e.g. "Transaction using Jago debit card", "Pembayaran QRIS") rather than rich itemized details.
+   */
+  public isGenericNote(
+    note: string | undefined | null,
+    merchantOrCounterParty?: string | null,
+    subject?: string | null
+  ): boolean {
+    if (!note) return true;
+    const trimmed = note.trim();
+    if (!trimmed) return true;
+
+    // Detailed receipt notes containing order IDs (#), bullets, or item lines are NEVER generic
+    if (trimmed.includes('#') || trimmed.includes('•') || trimmed.includes('\n')) {
+      return false;
+    }
+
+    const lower = trimmed.toLowerCase();
+    if (
+      merchantOrCounterParty &&
+      lower === merchantOrCounterParty.trim().toLowerCase()
+    ) {
+      return true;
+    }
+    if (subject && lower === subject.trim().toLowerCase()) {
+      return true;
+    }
+
+    const genericExactPhrases = [
+      'unknown',
+      'pembayaran',
+      'pembayaran qris',
+      'pembayaran berhasil',
+      'pembayaran merchant',
+      'transaksi',
+      'transaksi berhasil',
+      'transaksi domestik',
+      'transaksi merchant',
+      'transaksi menggunakan kartu debit',
+      'transaksi menggunakan kartu debit jago',
+      'transaction using debit card',
+      'transaction using jago debit card',
+      'kartu debit',
+      'debit card',
+      'debit',
+      'pos/edc',
+      'pos debit',
+      'edc/pos',
+      'edc',
+      'qris',
+      'transfer',
+      'transfer dana',
+      'transfer masuk',
+      'transfer keluar',
+    ];
+
+    if (genericExactPhrases.includes(lower)) {
+      return true;
+    }
+
+    // Generic prefix / boilerplate patterns without specific product details
+    const genericPrefixes = [
+      'transaksi menggunakan kartu debit',
+      'transaction using debit card',
+      'transaction using jago debit card',
+      'pembayaran qris di',
+      'pembayaran qris',
+    ];
+
+    for (const prefix of genericPrefixes) {
+      if (lower.startsWith(prefix) && lower.length < prefix.length + 15) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * Evaluates incoming evidence against existing pending candidates and recent Wallet records.
    * Produces a deterministic correlation decision with confidence and suggested action.
    */
@@ -442,22 +521,42 @@ export class TransactionCorrelationService {
       return { isHighConfidence: false, reasons: [] };
     }
 
-    // Identify bank-side text and payment-side text
-    const bankText = (
-      isCandidateBank
-        ? `${candidate.counterParty} ${candidate.note} ${candidate.bankDisplayName}`
-        : `${evidence.merchant || ''} ${evidence.note || ''} ${evidence.accountHint || ''}`
-    ).toLowerCase();
+    // Disambiguate which side is bank and which side is payment/receipt
+    // When evidence is EMAIL_BANK, evidence is strictly the bank side and candidate is the payment side.
+    const isBankFromCandidate = isEvidencePayment || (isCandidateBank && !isEvidenceBank);
 
-    const paymentMerchant = (
-      isCandidatePayment ? candidate.counterParty : evidence.merchant || ''
-    ).toLowerCase();
+    const bankCounterParty = isBankFromCandidate
+      ? candidate.counterParty || ''
+      : evidence.merchant || '';
+    const bankNote = isBankFromCandidate
+      ? candidate.note || ''
+      : evidence.note || '';
+    const bankDisplayName = isBankFromCandidate
+      ? candidate.bankDisplayName || ''
+      : evidence.accountHint || evidence.merchant || '';
+    const bankAccountId = isBankFromCandidate
+      ? candidate.matchedAccountId
+      : evidence.accountId;
+    const bankAccountName = isBankFromCandidate
+      ? candidate.accountNameHint || ''
+      : evidence.accountHint || '';
 
-    const paymentText = (
-      isCandidatePayment
-        ? `${candidate.counterParty} ${candidate.note}`
-        : `${evidence.merchant || ''} ${evidence.note || ''}`
-    ).toLowerCase();
+    const paymentCounterParty = isBankFromCandidate
+      ? evidence.merchant || ''
+      : candidate.counterParty || '';
+    const paymentNote = isBankFromCandidate
+      ? evidence.note || ''
+      : candidate.note || '';
+    const paymentAccountId = isBankFromCandidate
+      ? evidence.accountId
+      : candidate.matchedAccountId;
+    const paymentAccountName = isBankFromCandidate
+      ? evidence.accountHint || ''
+      : candidate.accountNameHint || '';
+
+    const bankText = `${bankCounterParty} ${bankNote} ${bankDisplayName}`.toLowerCase();
+    const paymentMerchant = paymentCounterParty.toLowerCase().trim();
+    const paymentText = `${paymentCounterParty} ${paymentNote}`.toLowerCase();
 
     // Check 1: Bank counterparty mentions the merchant name (e.g. "BLIBLI.COM KUDUS - ID" mentions "blibli")
     if (paymentMerchant.length >= 3 && bankText.includes(paymentMerchant)) {
@@ -503,41 +602,50 @@ export class TransactionCorrelationService {
     // Check 4: Generic bank debit + specific merchant receipt
     // When bank notification lacks merchant text (e.g. Bank Jago debit card "Unknown")
     // but accounts are compatible, amounts match, and evidence provides a specific merchant receipt.
-    const bankMerchant = isCandidateBank ? (candidate.counterParty || '') : (evidence.merchant || '');
-    const isBankMerchantGeneric = this.isGenericMerchant(bankMerchant);
+    const isBankMerchantGeneric = this.isGenericMerchant(bankCounterParty);
     const isPaymentMerchantSpecific =
       Boolean(paymentMerchant) &&
       paymentMerchant.length >= 2 &&
       !this.isGenericMerchant(paymentMerchant);
 
     if (isBankMerchantGeneric && isPaymentMerchantSpecific) {
-      const bankAccountId = isCandidateBank ? candidate.matchedAccountId : evidence.accountId;
-      const paymentAccountId = isCandidatePayment ? candidate.matchedAccountId : evidence.accountId;
-
-      const bankAccountName = (isCandidateBank ? candidate.accountNameHint : evidence.accountHint) || '';
-      const paymentAccountName = (isCandidatePayment ? candidate.accountNameHint : evidence.accountHint) || '';
-
       const accountsMatch = Boolean(
         bankAccountId && paymentAccountId && bankAccountId === paymentAccountId
       );
-      const isPaymentAccountCash =
+
+      // Payment platform wallets (ShopeePay, GoPay, OVO, DANA) or cash/tunai
+      // are compatible with authoritative bank debits
+      const platformAccountKeywords = [
+        'cash',
+        'tunai',
+        'shopeepay',
+        'gopay',
+        'ovo',
+        'dana',
+        'linkaja',
+        'shopee',
+        'grab',
+        'blibli',
+      ];
+      const isPaymentAccountPlatformOrCash =
         !paymentAccountId ||
         paymentAccountId === 'acc-cash' ||
-        paymentAccountName.toLowerCase().includes('cash') ||
-        paymentAccountName.toLowerCase().includes('tunai');
+        platformAccountKeywords.some(keyword =>
+          paymentAccountName.toLowerCase().includes(keyword)
+        );
 
       const isAccountCompatible =
         !bankAccountId ||
         !paymentAccountId ||
         accountsMatch ||
-        isPaymentAccountCash;
+        isPaymentAccountPlatformOrCash;
 
       if (isAccountCompatible) {
         return {
           isHighConfidence: true,
           reasons: [
             `Authoritative bank debit with generic merchant '${
-              bankMerchant || 'Unknown'
+              bankCounterParty || 'Unknown'
             }' correlates with ${paymentMerchant} receipt${
               accountsMatch ? ' on verified account' : ''
             } within ${Math.round(timeDiffMs / 1000)}s window`,
@@ -615,7 +723,29 @@ export class TransactionCorrelationService {
     let resolvedAccountName = candidate.accountNameHint;
     let resolvedBankDisplayName = candidate.bankDisplayName;
 
-    if (isIncomingBank && incoming.accountId && (!isCandidateBank || resolvedAccountName === 'Cash')) {
+    const platformAccountKeywords = [
+      'cash',
+      'tunai',
+      'shopeepay',
+      'gopay',
+      'ovo',
+      'dana',
+      'linkaja',
+      'shopee',
+      'grab',
+      'blibli',
+    ];
+    const isCandidateAccountPlatform =
+      !resolvedAccountName ||
+      platformAccountKeywords.some(keyword =>
+        (resolvedAccountName || '').toLowerCase().includes(keyword)
+      );
+
+    if (
+      isIncomingBank &&
+      incoming.accountId &&
+      (!isCandidateBank || isCandidateAccountPlatform)
+    ) {
       resolvedAccountId = incoming.accountId;
       resolvedAccountName = incoming.accountHint || resolvedAccountName;
       resolvedBankDisplayName = incoming.merchant || incoming.accountHint || resolvedBankDisplayName;
@@ -639,29 +769,31 @@ export class TransactionCorrelationService {
     // 3. Note / Itemized breakdown resolution: merchant receipt items take precedence or enrich
     let resolvedNote = candidate.note;
     if (incoming.note && incoming.note !== candidate.note) {
-      const isCandidateNoteGeneric =
-        candidate.note.toLowerCase().includes('qris') ||
-        candidate.note.toLowerCase().includes('pembayaran') ||
-        candidate.note.toLowerCase().includes('kartu debit') ||
-        candidate.note.toLowerCase().includes('debit card') ||
-        candidate.note.toLowerCase().includes('debit') ||
-        candidate.note === candidate.counterParty ||
-        candidate.note === candidate.emailSubject;
-
-      const isIncomingNoteGeneric =
-        incoming.note.toLowerCase().includes('qris') ||
-        incoming.note.toLowerCase().includes('pembayaran') ||
-        incoming.note.toLowerCase().includes('kartu debit') ||
-        incoming.note.toLowerCase().includes('debit card') ||
-        incoming.note.toLowerCase().includes('debit') ||
-        incoming.note === incoming.merchant;
-
-      if (isCandidateNoteGeneric && !isIncomingNoteGeneric) {
+      if (!candidate.note) {
         resolvedNote = incoming.note;
-      } else if (!isCandidateNoteGeneric && isIncomingNoteGeneric) {
-        resolvedNote = candidate.note;
-      } else if (!candidate.note.includes(incoming.note)) {
-        resolvedNote = `${candidate.note} • ${incoming.note}`;
+      } else {
+        const isCandidateNoteGeneric = this.isGenericNote(
+          candidate.note,
+          candidate.counterParty,
+          candidate.emailSubject
+        );
+        const isIncomingNoteGeneric = this.isGenericNote(
+          incoming.note,
+          incoming.merchant,
+          incoming.sourceId
+        );
+
+        if (isCandidateNoteGeneric && !isIncomingNoteGeneric) {
+          resolvedNote = incoming.note;
+        } else if (!isCandidateNoteGeneric && isIncomingNoteGeneric) {
+          resolvedNote = candidate.note;
+        } else if (incoming.note.includes(candidate.note)) {
+          resolvedNote = incoming.note;
+        } else if (candidate.note.includes(incoming.note)) {
+          resolvedNote = candidate.note;
+        } else {
+          resolvedNote = `${candidate.note} • ${incoming.note}`;
+        }
       }
     }
 
