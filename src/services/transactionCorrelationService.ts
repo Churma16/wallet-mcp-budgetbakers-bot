@@ -4,6 +4,7 @@ import type {
   TransactionEvidence,
   CorrelationResult,
 } from '../types/transactionCorrelationTypes.js';
+import { CommercePlatformRegistry } from '../config/commercePlatforms.js';
 
 export interface TransactionCorrelationOptions {
   /**
@@ -16,17 +17,24 @@ export interface TransactionCorrelationOptions {
    * Default: 15 minutes (900,000 ms).
    */
   tightWindowMilliseconds?: number;
+  /**
+   * Optional platform registry instance (defaults to singleton).
+   */
+  platformRegistry?: CommercePlatformRegistry;
 }
 
 export class TransactionCorrelationService {
   private readonly maxCorrelationWindowMilliseconds: number;
   private readonly tightWindowMilliseconds: number;
+  private readonly platformRegistry: CommercePlatformRegistry;
 
   constructor(options?: TransactionCorrelationOptions) {
     this.maxCorrelationWindowMilliseconds =
       options?.maxCorrelationWindowMilliseconds ?? 120 * 60 * 1000; // 120 mins (2 hours)
     this.tightWindowMilliseconds =
       options?.tightWindowMilliseconds ?? 15 * 60 * 1000; // 15 mins
+    this.platformRegistry =
+      options?.platformRegistry ?? CommercePlatformRegistry.getInstance();
   }
 
   /**
@@ -257,9 +265,15 @@ export class TransactionCorrelationService {
         continue;
       }
 
-      // 5. Account match: either account ID matches or account name aligns
+      // 5. Account match: either account ID matches or incoming is platform wallet/cash
+      const isEvidencePlatformOrCash =
+        !evidence.accountId ||
+        evidence.accountId === 'acc-cash' ||
+        this.platformRegistry.isPlatformWallet(evidence.accountHint);
+
       const hasAccountMatch =
-        Boolean(evidence.accountId) && record.accountId === evidence.accountId;
+        (Boolean(evidence.accountId) && record.accountId === evidence.accountId) ||
+        isEvidencePlatformOrCash;
 
       // 6. Semantic merchant match
       const recordMerchant = `${record.counterParty || ''} ${record.note || ''}`.toLowerCase();
@@ -452,8 +466,8 @@ export class TransactionCorrelationService {
       return false;
     }
 
-    // Known brands
-    const knownBrands = ['blibli', 'grab', 'shopee', 'gojek', 'alfamart', 'alfagift', 'indomaret', 'flip'];
+    // Known brands registered in CommercePlatformRegistry
+    const knownBrands = this.platformRegistry.getAllMerchantKeywords();
     for (const brand of knownBrands) {
       if (candidateMerchant.includes(brand) && evidenceMerchant.includes(brand)) {
         return false;
@@ -570,8 +584,8 @@ export class TransactionCorrelationService {
       };
     }
 
-    // Check 2: Known merchant keyword extraction (e.g. blibli, grab, shopee, gojek, alfamart)
-    const knownMerchants = ['blibli', 'grab', 'shopee', 'gojek', 'alfamart', 'alfagift', 'indomaret', 'flip'];
+    // Check 2: Known merchant keyword extraction from platform registry
+    const knownMerchants = this.platformRegistry.getAllMerchantKeywords();
     for (const merchantKeyword of knownMerchants) {
       if (paymentText.includes(merchantKeyword) && bankText.includes(merchantKeyword)) {
         return {
@@ -615,24 +629,10 @@ export class TransactionCorrelationService {
 
       // Payment platform wallets (ShopeePay, GoPay, OVO, DANA) or cash/tunai
       // are compatible with authoritative bank debits
-      const platformAccountKeywords = [
-        'cash',
-        'tunai',
-        'shopeepay',
-        'gopay',
-        'ovo',
-        'dana',
-        'linkaja',
-        'shopee',
-        'grab',
-        'blibli',
-      ];
       const isPaymentAccountPlatformOrCash =
         !paymentAccountId ||
         paymentAccountId === 'acc-cash' ||
-        platformAccountKeywords.some(keyword =>
-          paymentAccountName.toLowerCase().includes(keyword)
-        );
+        this.platformRegistry.isPlatformWallet(paymentAccountName);
 
       const isAccountCompatible =
         !bankAccountId ||
@@ -691,20 +691,18 @@ export class TransactionCorrelationService {
     }
     const lowerName = (candidate.bankDisplayName || '').toLowerCase();
     const lowerCounter = (candidate.counterParty || '').toLowerCase();
-    const merchantKeywords = [
-      'blibli',
-      'grab',
-      'gojek',
-      'shopee',
-      'tokopedia',
-      'lazada',
-      'alfamart',
-      'alfagift',
-      'indomaret',
-      'receipt',
-      'struk',
-    ];
-    return merchantKeywords.some(k => lowerName.includes(k) || lowerCounter.includes(k));
+    if (
+      lowerName.includes('receipt') ||
+      lowerName.includes('struk') ||
+      lowerCounter.includes('receipt') ||
+      lowerCounter.includes('struk')
+    ) {
+      return true;
+    }
+    return (
+      this.platformRegistry.isCommerceMerchant(lowerName) ||
+      this.platformRegistry.isCommerceMerchant(lowerCounter)
+    );
   }
 
   /**
@@ -723,23 +721,9 @@ export class TransactionCorrelationService {
     let resolvedAccountName = candidate.accountNameHint;
     let resolvedBankDisplayName = candidate.bankDisplayName;
 
-    const platformAccountKeywords = [
-      'cash',
-      'tunai',
-      'shopeepay',
-      'gopay',
-      'ovo',
-      'dana',
-      'linkaja',
-      'shopee',
-      'grab',
-      'blibli',
-    ];
     const isCandidateAccountPlatform =
       !resolvedAccountName ||
-      platformAccountKeywords.some(keyword =>
-        (resolvedAccountName || '').toLowerCase().includes(keyword)
-      );
+      this.platformRegistry.isPlatformWallet(resolvedAccountName);
 
     if (
       isIncomingBank &&

@@ -1,3 +1,5 @@
+import { CommercePlatformRegistry } from './commercePlatforms.js';
+
 export type BankEmailRuleCategory = 'BANK' | 'E_WALLET' | 'MERCHANT_RECEIPT' | 'PAYMENT_GATEWAY';
 
 export interface BankEmailRuleDefinition {
@@ -14,7 +16,7 @@ export interface BankEmailRuleDefinition {
   ruleCategory?: BankEmailRuleCategory;
 }
 
-export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
+export const BANK_DEBIT_AND_GATEWAY_RULES: BankEmailRuleDefinition[] = [
   // 1. Bank Mandiri (Livin' by Mandiri)
   {
     bankKey: 'mandiri',
@@ -328,135 +330,13 @@ export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
     ],
     ruleCategory: 'PAYMENT_GATEWAY',
   },
+];
 
-  // 12. Grab
-  {
-    bankKey: 'grab',
-    displayName: 'Grab',
-    accountNameHint: 'Grab',
-    senderDomains: ['grab.com'],
-    subjectKeywords: [
-      'your grab e-receipt',
-      'e-receipt',
-      'tanda terima',
-      'tagihan',
-      'paket grabunlimited',
-      'perjalanan',
-    ],
-    blacklistKeywords: [
-      'promo',
-      'diskon',
-      'voucher',
-      'penawaran',
-      'paket hemat',
-      'newsletter',
-      'otp',
-      'verifikasi',
-      'login baru',
-    ],
-    bodyRequiredPatterns: [
-      /(?:total|tarif|pembayaran|biaya|fare|grabbike|grabcar|grabfood|grabmart|booking id)/i,
-    ],
-    amountPriorityPatterns: [
-      /(?:Total\s*(?:Tarif|Biaya|Pembayaran|Fare)|Jumlah\s*Total)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
-      /(?:Rp|IDR)\s*([\d.,]+)/i,
-    ],
-    referencePatterns: [
-      /(?:Booking\s*ID|Order\s*ID|ID\s*Pemesanan)[:\s]*([A-Za-z0-9-]+)/i,
-      /(A-[A-Z0-9]+)/i,
-    ],
-    transferOrTopupKeywords: [
-      'top up',
-      'isi saldo',
-      'ovo',
-    ],
-    ruleCategory: 'MERCHANT_RECEIPT',
-  },
-
-  // 13. Blibli
-  {
-    bankKey: 'blibli',
-    displayName: 'Blibli',
-    accountNameHint: 'Cash',
-    senderDomains: ['blibli.com'],
-    subjectKeywords: [
-      'pembayaran qris anda telah kami terima',
-      'pembayaran berhasil',
-      'pesanan anda telah dibayar',
-      'pesanan',
-      'blibli',
-      'qris',
-      'offline store',
-      'e-receipt',
-      'struk pembayaran',
-    ],
-    blacklistKeywords: [
-      'otp',
-      'kode verifikasi',
-      'promo',
-      'diskon',
-      'newsletter',
-      'flash sale',
-      'pengingat pembayaran',
-      'menunggu pembayaran',
-    ],
-    bodyRequiredPatterns: [
-      /(?:pembayaran\s*(?:qris\s*)?(?:anda\s*)?telah\s*kami\s*terima|terima\s*kasih\s*telah\s*melakukan\s*pembayaran|offline\s*store|total\s*pembayaran|detail\s*pesanan|produk)/i,
-    ],
-    amountPriorityPatterns: [
-      /(?:Total\s*Pembayaran|Total\s*Belanja|Total\s*Tagihan|Total)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
-      /(?:Rp|IDR)\s*([\d.,]+)/i,
-    ],
-    referencePatterns: [
-      /(?:No\.?\s*Pesanan|Nomor\s*Pesanan|Order\s*ID|Order\s*Number)[:\s]*([A-Za-z0-9_-]+)/i,
-      /(?:No\.?\s*Referensi|Nomor\s*Referensi|No\.?\s*Transaksi|Nomor\s*Transaksi|RRN)[:\s]*([A-Za-z0-9]+)/i,
-    ],
-    transferOrTopupKeywords: [],
-    ruleCategory: 'MERCHANT_RECEIPT',
-  },
-
-  // 14. Shopee (Marketplace Orders)
-  {
-    bankKey: 'shopee',
-    displayName: 'Shopee',
-    accountNameHint: 'Cash',
-    senderDomains: ['shopee.co.id'],
-    subjectKeywords: [
-      'pembayaranmu berhasil dikonfirmasi',
-      'pembayaran berhasil',
-      'rincian pesanan',
-      'pesanan selesai',
-      'pesanan anda telah',
-      'pesanan',
-      'tagihan',
-      'e-receipt',
-    ],
-    blacklistKeywords: [
-      'flash sale',
-      'gratis ongkir',
-      'promo',
-      'diskon',
-      'koin shopee',
-      'otp',
-      'verifikasi',
-      'telah dikirim',
-      'sedang dikirim',
-      'pengiriman',
-      'dikirim',
-      'pesanan dibatalkan',
-    ],
-    bodyRequiredPatterns: [
-      /(?:total pembayaran|total dibayarkan|total pesanan|rincian pesanan|rincian pembayaran|metode pembayaran)/i,
-    ],
-    amountPriorityPatterns: [
-      /(?:Total\s*(?:Dibayarkan|Pembayaran|Pesanan|Belanja)|Jumlah\s*Total)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
-      /(?:Rp|IDR)\s*([\d.,]+)/i,
-    ],
-    referencePatterns: [
-      /(?:No\.?\s*Pesanan|ID\s*Pesanan|Order\s*SN|No\.?\s*Transaksi)[:\s]*#?([A-Za-z0-9]+)/i,
-      /#([0-9]{6}[A-Z0-9]+)/i,
-    ],
-    transferOrTopupKeywords: [],
-    ruleCategory: 'MERCHANT_RECEIPT',
-  },
+/**
+ * Complete list of email rules, combining pure bank debit & gateway rules
+ * with declarative commerce platform rules from CommercePlatformRegistry.
+ */
+export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
+  ...BANK_DEBIT_AND_GATEWAY_RULES,
+  ...CommercePlatformRegistry.getInstance().toBankEmailRules(),
 ];
