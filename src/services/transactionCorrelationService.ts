@@ -8,7 +8,7 @@ import type {
 export interface TransactionCorrelationOptions {
   /**
    * Maximum time difference in milliseconds to consider two sources as matching.
-   * Default: 30 minutes (1,800,000 ms).
+   * Default: 120 minutes (7,200,000 ms) to support ride-hailing/delivery completion latency.
    */
   maxCorrelationWindowMilliseconds?: number;
   /**
@@ -24,9 +24,35 @@ export class TransactionCorrelationService {
 
   constructor(options?: TransactionCorrelationOptions) {
     this.maxCorrelationWindowMilliseconds =
-      options?.maxCorrelationWindowMilliseconds ?? 30 * 60 * 1000; // 30 mins
+      options?.maxCorrelationWindowMilliseconds ?? 120 * 60 * 1000; // 120 mins (2 hours)
     this.tightWindowMilliseconds =
       options?.tightWindowMilliseconds ?? 15 * 60 * 1000; // 15 mins
+  }
+
+  /**
+   * Checks whether a merchant or counterparty name is generic or placeholder (e.g. "Unknown", "Kartu Debit").
+   */
+  public isGenericMerchant(merchant: string | undefined | null): boolean {
+    if (!merchant) return true;
+    const lower = merchant.trim().toLowerCase();
+    if (!lower || lower === 'unknown') return true;
+    const genericTokens = [
+      'unknown',
+      'kartu debit',
+      'debit card',
+      'debit',
+      'card',
+      'qris',
+      'edc',
+      'pos',
+      'payment',
+      'pembayaran',
+      'bank',
+      'transfer',
+      'transaksi',
+      'merchant',
+    ];
+    return genericTokens.some(token => lower.includes(token));
   }
 
   /**
@@ -142,15 +168,25 @@ export class TransactionCorrelationService {
         evidenceMerchant.length > 2 &&
         (recordMerchant.includes(evidenceMerchant) || evidenceMerchant.includes(recordMerchant));
 
+      const isRecordMerchantGeneric = this.isGenericMerchant(record.counterParty);
       const isBankSynced = record.source === 'bank_sync' || Boolean(evidence.isBankSyncedAccount);
 
-      if (hasAccountMatch && (hasMerchantMatch || (isBankSynced && timeDiffMs <= this.tightWindowMilliseconds))) {
+      if (
+        hasAccountMatch &&
+        (hasMerchantMatch ||
+          (isRecordMerchantGeneric && timeDiffMs <= this.maxCorrelationWindowMilliseconds) ||
+          (isBankSynced && timeDiffMs <= this.tightWindowMilliseconds))
+      ) {
         return {
           confidence: 'HIGH',
           matchTarget: { type: 'WALLET_RECORD', record },
           reasons: [
             `Existing Wallet record (${record.id}) matches account, amount, and ${
-              hasMerchantMatch ? 'merchant' : 'bank-sync source within tight window'
+              hasMerchantMatch
+                ? 'merchant'
+                : isRecordMerchantGeneric
+                ? 'generic bank debit record within window'
+                : 'bank-sync source within tight window'
             }`,
           ],
           suggestedAction: 'ATTACH_WALLET_RECORD',
@@ -303,12 +339,8 @@ export class TransactionCorrelationService {
       return false;
     }
 
-    // Common non-conflicting gateway/QRIS tokens
-    const genericTokens = ['qris', 'edc', 'payment', 'pembayaran', 'bank', 'transfer', 'transaksi'];
-    const isCandidateGeneric = genericTokens.some(t => candidateMerchant.includes(t));
-    const isEvidenceGeneric = genericTokens.some(t => evidenceMerchant.includes(t));
-
-    if (isCandidateGeneric || isEvidenceGeneric) {
+    // If either merchant is generic / placeholder, they cannot be in conflict
+    if (this.isGenericMerchant(candidateMerchant) || this.isGenericMerchant(evidenceMerchant)) {
       return false;
     }
 
@@ -439,6 +471,52 @@ export class TransactionCorrelationService {
       };
     }
 
+    // Check 4: Generic bank debit + specific merchant receipt
+    // When bank notification lacks merchant text (e.g. Bank Jago debit card "Unknown")
+    // but accounts are compatible, amounts match, and evidence provides a specific merchant receipt.
+    const bankMerchant = isCandidateBank ? (candidate.counterParty || '') : (evidence.merchant || '');
+    const isBankMerchantGeneric = this.isGenericMerchant(bankMerchant);
+    const isPaymentMerchantSpecific =
+      Boolean(paymentMerchant) &&
+      paymentMerchant.length >= 2 &&
+      !this.isGenericMerchant(paymentMerchant);
+
+    if (isBankMerchantGeneric && isPaymentMerchantSpecific) {
+      const bankAccountId = isCandidateBank ? candidate.matchedAccountId : evidence.accountId;
+      const paymentAccountId = isCandidatePayment ? candidate.matchedAccountId : evidence.accountId;
+
+      const bankAccountName = (isCandidateBank ? candidate.accountNameHint : evidence.accountHint) || '';
+      const paymentAccountName = (isCandidatePayment ? candidate.accountNameHint : evidence.accountHint) || '';
+
+      const accountsMatch = Boolean(
+        bankAccountId && paymentAccountId && bankAccountId === paymentAccountId
+      );
+      const isPaymentAccountCash =
+        !paymentAccountId ||
+        paymentAccountId === 'acc-cash' ||
+        paymentAccountName.toLowerCase().includes('cash') ||
+        paymentAccountName.toLowerCase().includes('tunai');
+
+      const isAccountCompatible =
+        !bankAccountId ||
+        !paymentAccountId ||
+        accountsMatch ||
+        isPaymentAccountCash;
+
+      if (isAccountCompatible) {
+        return {
+          isHighConfidence: true,
+          reasons: [
+            `Authoritative bank debit with generic merchant '${
+              bankMerchant || 'Unknown'
+            }' correlates with ${paymentMerchant} receipt${
+              accountsMatch ? ' on verified account' : ''
+            } within ${Math.round(timeDiffMs / 1000)}s window`,
+          ],
+        };
+      }
+    }
+
     return { isHighConfidence: false, reasons: [] };
   }
 
@@ -446,20 +524,25 @@ export class TransactionCorrelationService {
     if (candidate.evidenceSources?.includes('EMAIL_BANK')) {
       return true;
     }
-    const lowerName = candidate.bankDisplayName.toLowerCase();
-    return (
-      lowerName.includes('bank') ||
-      lowerName.includes('mandiri') ||
-      lowerName.includes('bca') ||
-      lowerName.includes('bni') ||
-      lowerName.includes('bri') ||
-      lowerName.includes('jago') ||
-      lowerName.includes('seabank') ||
-      lowerName.includes('dana') ||
-      lowerName.includes('ovo') ||
-      lowerName.includes('gopay') ||
-      lowerName.includes('shopeepay')
-    );
+    const lowerName = (candidate.bankDisplayName || '').toLowerCase();
+    const lowerAccount = (candidate.accountNameHint || '').toLowerCase();
+    const bankKeywords = [
+      'bank',
+      'mandiri',
+      'bca',
+      'bni',
+      'bri',
+      'jago',
+      'seabank',
+      'dana',
+      'ovo',
+      'gopay',
+      'shopeepay',
+      'blu',
+      'jenius',
+      'cimb',
+    ];
+    return bankKeywords.some(k => lowerName.includes(k) || lowerAccount.includes(k));
   }
 
   private isPaymentOrReceiptSource(candidate: PendingTransactionItem): boolean {
@@ -469,13 +552,22 @@ export class TransactionCorrelationService {
     ) {
       return true;
     }
-    const lowerName = candidate.bankDisplayName.toLowerCase();
-    return (
-      lowerName.includes('blibli') ||
-      lowerName.includes('grab') ||
-      lowerName.includes('receipt') ||
-      lowerName.includes('struk')
-    );
+    const lowerName = (candidate.bankDisplayName || '').toLowerCase();
+    const lowerCounter = (candidate.counterParty || '').toLowerCase();
+    const merchantKeywords = [
+      'blibli',
+      'grab',
+      'gojek',
+      'shopee',
+      'tokopedia',
+      'lazada',
+      'alfamart',
+      'alfagift',
+      'indomaret',
+      'receipt',
+      'struk',
+    ];
+    return merchantKeywords.some(k => lowerName.includes(k) || lowerCounter.includes(k));
   }
 
   /**
@@ -507,7 +599,11 @@ export class TransactionCorrelationService {
 
     if (isIncomingPayment && incoming.merchant) {
       resolvedCounterParty = incoming.merchant;
-    } else if (!resolvedCounterParty && incoming.merchant) {
+    } else if (
+      (!resolvedCounterParty || this.isGenericMerchant(resolvedCounterParty)) &&
+      incoming.merchant &&
+      !this.isGenericMerchant(incoming.merchant)
+    ) {
       resolvedCounterParty = incoming.merchant;
     }
 
@@ -517,12 +613,18 @@ export class TransactionCorrelationService {
       const isCandidateNoteGeneric =
         candidate.note.toLowerCase().includes('qris') ||
         candidate.note.toLowerCase().includes('pembayaran') ||
+        candidate.note.toLowerCase().includes('kartu debit') ||
+        candidate.note.toLowerCase().includes('debit card') ||
+        candidate.note.toLowerCase().includes('debit') ||
         candidate.note === candidate.counterParty ||
         candidate.note === candidate.emailSubject;
 
       const isIncomingNoteGeneric =
         incoming.note.toLowerCase().includes('qris') ||
         incoming.note.toLowerCase().includes('pembayaran') ||
+        incoming.note.toLowerCase().includes('kartu debit') ||
+        incoming.note.toLowerCase().includes('debit card') ||
+        incoming.note.toLowerCase().includes('debit') ||
         incoming.note === incoming.merchant;
 
       if (isCandidateNoteGeneric && !isIncomingNoteGeneric) {
@@ -543,7 +645,12 @@ export class TransactionCorrelationService {
         !candidate.matchedCategoryName ||
         candidate.matchedCategoryName.toLowerCase().includes('umum') ||
         candidate.matchedCategoryName.toLowerCase().includes('lain') ||
-        candidate.matchedCategoryName.toLowerCase() === 'belanja';
+        candidate.matchedCategoryName.toLowerCase().includes('belanja') ||
+        candidate.matchedCategoryName.toLowerCase().includes('shopping') ||
+        candidate.matchedCategoryName.toLowerCase().includes('general') ||
+        candidate.matchedCategoryName.toLowerCase().includes('other') ||
+        candidate.matchedCategoryName.toLowerCase().includes('others') ||
+        candidate.matchedCategoryName.toLowerCase() === 'uncategorized';
 
       if (isCandidateCatGeneric) {
         resolvedCategoryId = incoming.categoryId;
