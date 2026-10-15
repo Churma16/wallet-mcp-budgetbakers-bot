@@ -247,13 +247,13 @@ export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
     bankKey: 'shopeepay',
     displayName: 'ShopeePay',
     accountNameHint: 'ShopeePay',
-    senderDomains: ['shopeepay.co.id', 'shopee.co.id'],
+    senderDomains: ['shopeepay.co.id'],
     subjectKeywords: [
-      'rincian pesanan',
-      'pembayaran berhasil',
       'transaksi shopeepay',
       'shopeepay berhasil',
-      'pesanan selesai',
+      'isi saldo shopeepay',
+      'transfer shopeepay',
+      'pembayaran shopeepay',
     ],
     blacklistKeywords: [
       'flash sale',
@@ -263,27 +263,25 @@ export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
       'koin shopee',
       'otp',
       'verifikasi',
-      'telah dikirim',
-      'sedang dikirim',
-      'pengiriman',
-      'dikirim',
-      'pesanan dibatalkan',
+      'login baru',
+      'perangkat baru',
     ],
     bodyRequiredPatterns: [
-      /(?:total pembayaran|shopeepay|total pesanan|rincian)/i,
+      /(?:total pembayaran|shopeepay|total transaksi|rincian transaksi)/i,
     ],
     amountPriorityPatterns: [
-      /(?:Total\s*(?:Pembayaran|Pesanan|Belanja)|Jumlah)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
+      /(?:Total\s*(?:Pembayaran|Transaksi|Isi Saldo)|Jumlah)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
       /(?:Rp|IDR)\s*([\d.,]+)/i,
     ],
     referencePatterns: [
-      /(?:No\.?\s*Pesanan|ID\s*Pesanan|Order\s*SN|No\.?\s*Transaksi)[:\s]*([A-Za-z0-9]+)/i,
+      /(?:No\.?\s*Transaksi|ID\s*Transaksi|No\.?\s*Referensi|Order\s*SN)[:\s]*([A-Za-z0-9]+)/i,
     ],
     transferOrTopupKeywords: [
       'isi saldo',
       'top up',
       'transfer ke bank',
     ],
+    ruleCategory: 'PAYMENT_GATEWAY',
   },
 
   // 7. Flip
@@ -412,6 +410,51 @@ export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
     referencePatterns: [
       /(?:No\.?\s*Pesanan|Nomor\s*Pesanan|Order\s*ID|Order\s*Number)[:\s]*([A-Za-z0-9_-]+)/i,
       /(?:No\.?\s*Referensi|Nomor\s*Referensi|No\.?\s*Transaksi|Nomor\s*Transaksi|RRN)[:\s]*([A-Za-z0-9]+)/i,
+    ],
+    transferOrTopupKeywords: [],
+    ruleCategory: 'MERCHANT_RECEIPT',
+  },
+
+  // 14. Shopee (Marketplace Orders)
+  {
+    bankKey: 'shopee',
+    displayName: 'Shopee',
+    accountNameHint: 'Cash',
+    senderDomains: ['shopee.co.id'],
+    subjectKeywords: [
+      'pembayaranmu berhasil dikonfirmasi',
+      'pembayaran berhasil',
+      'rincian pesanan',
+      'pesanan selesai',
+      'pesanan anda telah',
+      'pesanan',
+      'tagihan',
+      'e-receipt',
+    ],
+    blacklistKeywords: [
+      'flash sale',
+      'gratis ongkir',
+      'promo',
+      'diskon',
+      'koin shopee',
+      'otp',
+      'verifikasi',
+      'telah dikirim',
+      'sedang dikirim',
+      'pengiriman',
+      'dikirim',
+      'pesanan dibatalkan',
+    ],
+    bodyRequiredPatterns: [
+      /(?:total pembayaran|total dibayarkan|total pesanan|rincian pesanan|rincian pembayaran|metode pembayaran)/i,
+    ],
+    amountPriorityPatterns: [
+      /(?:Total\s*(?:Dibayarkan|Pembayaran|Pesanan|Belanja)|Jumlah\s*Total)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
+      /(?:Rp|IDR)\s*([\d.,]+)/i,
+    ],
+    referencePatterns: [
+      /(?:No\.?\s*Pesanan|ID\s*Pesanan|Order\s*SN|No\.?\s*Transaksi)[:\s]*#?([A-Za-z0-9]+)/i,
+      /#([0-9]{6}[A-Z0-9]+)/i,
     ],
     transferOrTopupKeywords: [],
     ruleCategory: 'MERCHANT_RECEIPT',

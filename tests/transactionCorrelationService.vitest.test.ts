@@ -805,6 +805,138 @@ describe('TransactionCorrelationService (Issue #153)', () => {
       expect(defaultService.isGenericMerchant(null)).toBe(true);
       expect(defaultService.isGenericMerchant('')).toBe(true);
     });
+
+    it('accurately identifies generic note boilerplate vs specific items and order numbers', () => {
+      // Boilerplate bank notes
+      expect(defaultService.isGenericNote('Transaction using Jago debit card')).toBe(true);
+      expect(defaultService.isGenericNote('Transaksi menggunakan kartu debit')).toBe(true);
+      expect(defaultService.isGenericNote('Pembayaran QRIS')).toBe(true);
+      expect(defaultService.isGenericNote('Kartu Debit')).toBe(true);
+      expect(defaultService.isGenericNote('QRIS')).toBe(true);
+      expect(defaultService.isGenericNote('')).toBe(true);
+      expect(defaultService.isGenericNote(undefined)).toBe(true);
+
+      // Notes repeating merchant name
+      expect(defaultService.isGenericNote('Shopee', 'Shopee')).toBe(true);
+      expect(defaultService.isGenericNote('Grab', 'Grab')).toBe(true);
+
+      // Rich merchant and receipt notes (MUST NOT be generic)
+      expect(defaultService.isGenericNote('Pembayaran pesanan Shopee (#261015PF5NYVHP)')).toBe(false);
+      expect(defaultService.isGenericNote('Grab ride')).toBe(false);
+      expect(defaultService.isGenericNote('2x Bakwan Sayur, 1x Nasi Uduk')).toBe(false);
+      expect(defaultService.isGenericNote('Kopi Kenangan Mantan')).toBe(false);
+    });
+  });
+
+  describe('E-commerce platform orders and authoritative bank debit correlation (Shopee + Bank Jago scenario)', () => {
+    const defaultService = new TransactionCorrelationService();
+
+    it('correlates a Bank Jago debit with a Shopee order receipt where candidate has Shopeepay platform account', () => {
+      // 21:07 WIB: Shopee order receipt arrives first (parsed with Shopeepay account from platform)
+      const shopeeCandidate = createPendingItem({
+        ticketId: 1,
+        sourceType: 'EMAIL',
+        bankDisplayName: 'Shopee',
+        accountNameHint: 'Shopeepay',
+        matchedAccountId: '46ffbd52-9ca6-4c0f-9e30-c3c48c4fe226',
+        counterParty: 'Shopee',
+        amount: -47664,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        matchedCategoryId: 'cat-shopping',
+        matchedCategoryName: 'Shopping',
+        note: 'Pembayaran pesanan Shopee (#261015PF5NYVHP, #261015PF5NYVHQ)',
+        recordDate: '2026-10-15T14:06:26.000Z',
+        referenceNumber: '261015PF5NYVHP',
+        referenceNumbers: ['261015PF5NYVHP'],
+        evidenceSources: ['EMAIL_PAYMENT'],
+      });
+
+      // 21:07 WIB: Bank Jago debit card charge arrives in the same minute
+      const jagoDebitEvidence = createEvidence({
+        sourceType: 'EMAIL_BANK',
+        sourceId: 'You have made a transaction using your debit card',
+        merchant: 'Unknown',
+        amount: -47664,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        accountHint: 'Jago Expense',
+        accountId: 'a7a51081-350c-4013-b99c-ffdaae10651d',
+        categoryId: 'cat-shopping',
+        categoryName: 'Shopping',
+        note: 'Transaction using Jago debit card',
+        occurredAt: '2026-10-15T14:06:26.000Z',
+        referenceNumbers: [],
+      });
+
+      const result = defaultService.correlateEvidence(jagoDebitEvidence, [shopeeCandidate]);
+
+      expect(result.confidence).toBe('HIGH');
+      expect(result.suggestedAction).toBe('MERGE_PENDING');
+      expect(result.matchTarget.type).toBe('PENDING_TRANSACTION');
+
+      const fused = result.fusedPendingItem!;
+      expect(fused).toBeDefined();
+      // Authoritative bank account overrides platform Shopeepay wallet
+      expect(fused.matchedAccountId).toBe('a7a51081-350c-4013-b99c-ffdaae10651d');
+      expect(fused.accountNameHint).toBe('Jago Expense');
+      expect(fused.counterParty).toBe('Shopee');
+      expect(fused.note).toBe('Pembayaran pesanan Shopee (#261015PF5NYVHP, #261015PF5NYVHQ)');
+      expect(fused.referenceNumbers).toContain('261015PF5NYVHP');
+      expect(fused.evidenceSources?.sort()).toEqual(['EMAIL_BANK', 'EMAIL_PAYMENT'].sort());
+    });
+
+    it('guarantees arrival order invariance when Bank Jago debit arrives before Shopee receipt', () => {
+      // Scenario: Bank Jago arrives first
+      const jagoCandidate = createPendingItem({
+        ticketId: 2,
+        sourceType: 'EMAIL',
+        bankDisplayName: 'Bank Jago',
+        accountNameHint: 'Jago Expense',
+        matchedAccountId: 'a7a51081-350c-4013-b99c-ffdaae10651d',
+        counterParty: 'Unknown',
+        amount: -47664,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        matchedCategoryId: 'cat-shopping',
+        matchedCategoryName: 'Shopping',
+        note: 'Transaction using Jago debit card',
+        recordDate: '2026-10-15T14:06:26.000Z',
+        referenceNumber: undefined,
+        referenceNumbers: [],
+        evidenceSources: ['EMAIL_BANK'],
+      });
+
+      // Shopee receipt arrives second
+      const shopeeEvidence = createEvidence({
+        sourceType: 'EMAIL_PAYMENT',
+        sourceId: 'Pembayaranmu Berhasil Dikonfirmasi',
+        merchant: 'Shopee',
+        amount: -47664,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        accountHint: 'Shopeepay',
+        accountId: '46ffbd52-9ca6-4c0f-9e30-c3c48c4fe226',
+        categoryId: 'cat-shopping',
+        categoryName: 'Shopping',
+        note: 'Pembayaran pesanan Shopee (#261015PF5NYVHP, #261015PF5NYVHQ)',
+        occurredAt: '2026-10-15T14:06:26.000Z',
+        referenceNumbers: ['261015PF5NYVHP'],
+      });
+
+      const result = defaultService.correlateEvidence(shopeeEvidence, [jagoCandidate]);
+
+      expect(result.confidence).toBe('HIGH');
+      expect(result.suggestedAction).toBe('MERGE_PENDING');
+
+      const fused = result.fusedPendingItem!;
+      expect(fused.matchedAccountId).toBe('a7a51081-350c-4013-b99c-ffdaae10651d');
+      expect(fused.accountNameHint).toBe('Jago Expense');
+      expect(fused.counterParty).toBe('Shopee');
+      expect(fused.note).toBe('Pembayaran pesanan Shopee (#261015PF5NYVHP, #261015PF5NYVHQ)');
+      expect(fused.referenceNumbers).toContain('261015PF5NYVHP');
+      expect(fused.evidenceSources?.sort()).toEqual(['EMAIL_BANK', 'EMAIL_PAYMENT'].sort());
+    });
   });
 });
 

@@ -167,6 +167,24 @@ describe('bank email Gate 1 rules', () => {
       expect(result.candidateAmount).toBe(125000);
     });
 
+    it('accepts a Shopee e-commerce order confirmation as MERCHANT_RECEIPT', () => {
+      const result = evaluateEmail(
+        'Pembayaranmu Berhasil Dikonfirmasi',
+        'info@mail.shopee.co.id',
+        `Hai fathanmf_, Pembayaran untuk pesanan #261015PF5NYVHP telah terkonfirmasi.
+         RINCIAN PEMBAYARAN
+         Metode Pembayaran: Kartu Kredit/Debit
+         Tanggal Pembayaran: 15 Okt 2026 21:06:26
+         Total Dibayarkan: Rp 47.664`
+      );
+
+      expect(result.passed).toBe(true);
+      expect(result.matchedBankRule?.bankKey).toBe('shopee');
+      expect(result.matchedBankRule?.ruleCategory).toBe('MERCHANT_RECEIPT');
+      expect(result.candidateAmount).toBe(47664);
+      expect(result.referenceNumber).toBe('261015PF5NYVHP');
+    });
+
     it('accepts a Flip transfer receipt and extracts amount and reference ID', () => {
       const result = evaluateEmail(
         'Successful transfer to FATHAN MUHAMMAD FAQIH. Here is the receipt.',
