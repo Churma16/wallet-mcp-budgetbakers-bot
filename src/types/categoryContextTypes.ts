@@ -1,3 +1,5 @@
+import { FinancialHealthConfigOverride } from './financialHealthTypes.js';
+
 /**
  * Types and interfaces for custom category semantics and user context definitions.
  */
@@ -27,12 +29,15 @@ export interface RawCategoryContextJson {
   userContext?: string | UserLifestyleContext;
   /** Category semantic definitions represented as an array or dictionary map */
   categories?: CategoryContextRule[] | Record<string, Omit<CategoryContextRule, 'category'>>;
+  /** Optional financial health and runway categorization overrides */
+  financialHealth?: FinancialHealthConfigOverride;
 }
 
 export interface NormalizedCategoryContextConfiguration {
   version: string;
   userContextSummary: string;
   categoryRules: CategoryContextRule[];
+  financialHealth?: FinancialHealthConfigOverride;
 }
 
 export interface CategoryContextValidationIssue {

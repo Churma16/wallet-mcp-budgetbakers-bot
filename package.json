@@ -13,6 +13,7 @@
         "start": "tsx src/index.ts",
         "setup": "tsx src/cli/setup.ts",
         "doctor": "tsx src/cli/doctor.ts",
+        "finance:pull": "tsx scripts/pullWalletData.ts",
         "test": "vitest run",
         "test:offline": "vitest run",
         "test:vitest": "vitest run",

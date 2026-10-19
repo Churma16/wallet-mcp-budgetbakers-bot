@@ -57,7 +57,16 @@ export interface ExtractedFinancialRecordItem {
 }
 
 export interface ExtractedFinancialIntent {
-  action: 'CREATE_RECORD' | 'CHECK_BUDGET' | 'CHECK_BALANCE' | 'TRANSACTION_HISTORY' | 'GENERAL_REPLY' | 'RECORD_EXPENSE' | 'RECORD_INCOME' | 'RECORD_TRANSFER';
+  action:
+    | 'CREATE_RECORD'
+    | 'CHECK_BUDGET'
+    | 'CHECK_BALANCE'
+    | 'CHECK_FINANCIAL_HEALTH'
+    | 'TRANSACTION_HISTORY'
+    | 'GENERAL_REPLY'
+    | 'RECORD_EXPENSE'
+    | 'RECORD_INCOME'
+    | 'RECORD_TRANSFER';
   records?: ExtractedFinancialRecordItem[];
   queryOptions?: TransactionHistoryQueryOptions;
   explanation?: string;

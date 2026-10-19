@@ -135,6 +135,7 @@ describe('SemanticToolBoundary (Issue #117)', () => {
     expect(Object.keys(SEMANTIC_TOOL_ALLOWLIST).sort()).toEqual([
       'get_balance',
       'get_budgets',
+      'get_financial_health',
       'get_transaction_history',
       'propose_transaction',
     ]);
@@ -148,6 +149,10 @@ describe('SemanticToolBoundary (Issue #117)', () => {
     });
     expect(createSemanticToolProposalFromFinancialIntent({ action: 'CHECK_BUDGET' })).toEqual({
       tool: 'get_budgets',
+      arguments: {},
+    });
+    expect(createSemanticToolProposalFromFinancialIntent({ action: 'CHECK_FINANCIAL_HEALTH' })).toEqual({
+      tool: 'get_financial_health',
       arguments: {},
     });
     expect(createSemanticToolProposalFromFinancialIntent({
