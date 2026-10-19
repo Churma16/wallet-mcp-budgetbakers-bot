@@ -63,7 +63,9 @@ export class PendingTransactionService {
   private readonly pendingTransactionMap: Map<number, PendingTransactionItem> = new Map();
   private readonly pendingAccountSelectionDraftMap: Map<number, PendingAccountSelectionDraft> = new Map();
   private readonly dispatchStateMap: Map<number, PendingTransactionDispatchState> = new Map();
+  private readonly recentlyResolvedTicketIds: Map<number, number> = new Map();
   private readonly defaultTimeToLiveMilliseconds: number = 24 * 60 * 60 * 1000; // 24 hours
+  private readonly recentResolvedTtlMilliseconds: number = 5 * 60 * 1000; // 5 minutes
 
   /**
    * Registers a new pending transaction and assigns a sequential ticket ID (#1, #2, etc.)
@@ -78,6 +80,7 @@ export class PendingTransactionService {
     }
 
     const ticketId = this.nextTicketSequentialId++;
+    this.recentlyResolvedTicketIds.delete(ticketId);
     const createdAt = new Date();
     const expiresAt = new Date(createdAt.getTime() + this.defaultTimeToLiveMilliseconds);
 
@@ -165,6 +168,19 @@ export class PendingTransactionService {
     return items[items.length - 1];
   }
 
+  /**
+   * Retrieves the oldest created pending transaction with PENDING status (FIFO).
+   */
+  public getOldestPendingTransaction(): PendingTransactionItem | undefined {
+    this.purgeExpiredTransactions();
+    for (const [ticketId, item] of this.pendingTransactionMap.entries()) {
+      if (this.dispatchStateMap.get(ticketId) === 'PENDING') {
+        return item;
+      }
+    }
+    return undefined;
+  }
+
   public getLatestPendingAccountSelectionDraft(
     channel: SupportedMessengerChannel,
     chatIdentifier: string,
@@ -239,6 +255,23 @@ export class PendingTransactionService {
 
     for (let index = entries.length - 1; index >= 0; index--) {
       const [ticketId, item] = entries[index];
+      if (this.dispatchStateMap.get(ticketId) === 'PENDING') {
+        this.dispatchStateMap.set(ticketId, 'PROCESSING');
+        return item;
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Atomically claims the oldest PENDING ticket (FIFO).
+   * Used for bare confirmations ('Ya' / 'Catat') so sequential confirmations
+   * process chronologically without race collisions.
+   */
+  public claimOldestPendingTransaction(): PendingTransactionItem | undefined {
+    this.purgeExpiredTransactions();
+    for (const [ticketId, item] of this.pendingTransactionMap.entries()) {
       if (this.dispatchStateMap.get(ticketId) === 'PENDING') {
         this.dispatchStateMap.set(ticketId, 'PROCESSING');
         return item;
@@ -451,6 +484,7 @@ export class PendingTransactionService {
   public resolvePendingTransaction(ticketId: number): PendingTransactionItem | undefined {
     const item = this.pendingTransactionMap.get(ticketId);
     if (item) {
+      this.recentlyResolvedTicketIds.set(ticketId, Date.now());
       this.removeTicketMetadata(ticketId);
     }
     return item;
@@ -461,6 +495,7 @@ export class PendingTransactionService {
   ): PendingAccountSelectionDraft | undefined {
     const draft = this.pendingAccountSelectionDraftMap.get(ticketId);
     if (draft) {
+      this.recentlyResolvedTicketIds.set(ticketId, Date.now());
       this.removeTicketMetadata(ticketId);
     }
     return draft;
@@ -471,7 +506,9 @@ export class PendingTransactionService {
    */
   public resolveAllPendingTransactions(): PendingTransactionItem[] {
     const items = Array.from(this.pendingTransactionMap.values());
+    const now = Date.now();
     for (const ticketId of this.pendingTransactionMap.keys()) {
+      this.recentlyResolvedTicketIds.set(ticketId, now);
       this.removeTicketMetadata(ticketId);
     }
     return items;
@@ -541,6 +578,21 @@ export class PendingTransactionService {
         this.removeTicketMetadata(ticketId);
       }
     }
+
+    for (const [ticketId, timestamp] of this.recentlyResolvedTicketIds.entries()) {
+      if (currentTime - timestamp > this.recentResolvedTtlMilliseconds) {
+        this.recentlyResolvedTicketIds.delete(ticketId);
+      }
+    }
+  }
+
+  public isTicketProcessing(ticketId: number): boolean {
+    return this.dispatchStateMap.get(ticketId) === 'PROCESSING';
+  }
+
+  public wasTicketRecentlyResolved(ticketId: number): boolean {
+    this.purgeExpiredTransactions();
+    return this.recentlyResolvedTicketIds.has(ticketId);
   }
 
   public getNextTicketSequentialId(): number {

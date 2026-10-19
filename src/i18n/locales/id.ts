@@ -204,10 +204,9 @@ export const indonesianDictionary: ResponseDictionary = {
         ? `${params.accountNameHint || 'Akun'} ➔ ${params.destinationAccountNameHint || 'Tujuan'}`
         : (params.counterParty || params.matchedCategoryName || params.bankDisplayName);
 
-      const ticketSuffix = params.totalPendingCount > 1 ? ` (#${params.ticketId})` : '';
       const lines = [
         headline,
-        `*${params.formattedAmount}* • ${merchantOrTitle}${ticketSuffix}`,
+        `*${params.formattedAmount}* • ${merchantOrTitle} (#${params.ticketId})`,
       ];
 
       if (params.accountNameHint && !isTransfer) {
@@ -229,11 +228,9 @@ export const indonesianDictionary: ResponseDictionary = {
         const otherCount = params.totalPendingCount - 1;
         lines.push('');
         lines.push(`_Ada ${otherCount} transaksi lain yang juga menunggu konfirmasi._`);
-      } else {
-        lines.push('• Balas *Ya* atau *Catat*');
-        lines.push('• Balas *Ya: <catatan>* untuk tambah rincian');
-        lines.push('• Balas *Batal* atau *Abaikan*');
-      }
+        lines.push(`• Balas *Ya* atau *Catat* (atau *Ya ${params.ticketId}*)`);
+        lines.push(`• Balas *Ya: <catatan>* untuk tambah rincian`);
+        lines.push(`• Balas *Batal* atau *Abaikan* (atau *Batal ${params.ticketId}*)`);
 
       return lines.join('\n');
     },
@@ -339,6 +336,32 @@ export const indonesianDictionary: ResponseDictionary = {
         return `❌ *${params.count} Transaksi Dibatalkan*\nSemua transaksi pending telah dihapus dan tidak dicatat ke Wallet.`;
       }
       return `❌ *Transaksi #${params.ticketId} Dibatalkan*\nTransaksi "${params.title}" (${params.formattedAmount}) tidak dicatat ke Wallet.`;
+    },
+
+    itemProcessing(ticketId: number): string {
+      return `⏳ *Transaksi #${ticketId} sedang diproses...*\nMohon tunggu sebentar, transaksi sedang dicatat ke Wallet.`;
+    },
+
+    itemAlreadyResolved(ticketId: number): string {
+      return `ℹ️ *Transaksi #${ticketId} sudah berhasil dicatat sebelumnya.*`;
+    },
+
+    itemNotFound(ticketId?: number): string {
+      return ticketId
+        ? `ℹ️ *Tiket #${ticketId} tidak ditemukan atau sudah selesai diproses.*`
+        : 'ℹ️ *Tidak ada transaksi yang menunggu konfirmasi saat ini.*';
+    },
+
+    noPendingItems: 'ℹ️ *Tidak ada transaksi yang menunggu konfirmasi saat ini.*',
+
+    itemProcessingCannotCancel(ticketId: number): string {
+      return `⏳ *Transaksi #${ticketId} sedang diproses dan tidak dapat dibatalkan.*`;
+    },
+
+    cancellationNotFound(ticketId?: number): string {
+      return ticketId
+        ? `ℹ️ *Tiket #${ticketId} tidak ditemukan atau sudah dibatalkan/selesai.*`
+        : 'ℹ️ *Tidak ada transaksi yang menunggu konfirmasi saat ini.*';
     },
   },
 
