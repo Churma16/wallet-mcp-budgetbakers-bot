@@ -23,6 +23,7 @@ export interface PendingTransactionItem {
   emailSubject?: string;
   isBankSyncedAccount?: boolean;
   clarificationPrompt?: string;
+  labels?: string[];
   createdAt: Date;
   expiresAt: Date;
 }

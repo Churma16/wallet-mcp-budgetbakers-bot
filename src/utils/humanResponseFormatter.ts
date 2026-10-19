@@ -840,7 +840,12 @@ export function formatPendingConfirmationSuccess(
   const isExpense = item.amount < 0 || item.transactionType === 'EXPENSE';
   const icon = isExpense ? '💸' : '💰';
   const defaultNote = isExpense ? dictionary.labels.expense : dictionary.labels.income;
-  const merchantOrNote = item.counterParty || item.note || defaultNote;
+  let merchantOrNote = item.counterParty || item.note || defaultNote;
+  if (item.note && item.note !== item.counterParty && !item.note.toLowerCase().startsWith('payment to')) {
+    merchantOrNote = item.counterParty
+      ? `${item.note} (${item.counterParty})`
+      : item.note;
+  }
 
   return dictionary.confirmation.singleSuccess({
     ticketId: item.ticketId,
@@ -849,6 +854,7 @@ export function formatPendingConfirmationSuccess(
     formattedTime,
     accountNameHint: item.accountNameHint,
     matchedCategoryName: item.matchedCategoryName,
+    labels: item.labels,
     icon,
     merchantOrNote,
   });
