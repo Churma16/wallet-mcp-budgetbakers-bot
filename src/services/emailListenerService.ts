@@ -41,15 +41,6 @@ export function extractCleanEmailBody(
     return rawTextContent.trim();
   }
 
-  if (typeof rawHtmlContent === 'string' && rawHtmlContent.trim().length > 0) {
-    return rawHtmlContent
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
   return '';
 }
 
