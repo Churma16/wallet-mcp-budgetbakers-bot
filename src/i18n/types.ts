@@ -166,6 +166,12 @@ export interface ResponseDictionary {
     singleSuccess(params: PendingConfirmationSuccessParams): string;
     bulkSuccess(items: PendingBulkItemParams[], currentTimestamp: string): string;
     cancellation(params: PendingCancellationParams): string;
+    itemProcessing(ticketId: number): string;
+    itemAlreadyResolved(ticketId: number): string;
+    itemNotFound(ticketId?: number): string;
+    noPendingItems: string;
+    itemProcessingCannotCancel(ticketId: number): string;
+    cancellationNotFound(ticketId?: number): string;
   };
 
   help: {

@@ -206,10 +206,9 @@ export const englishDictionary: ResponseDictionary = {
         ? `${params.accountNameHint || 'Account'} ➔ ${params.destinationAccountNameHint || 'Destination'}`
         : (params.counterParty || params.matchedCategoryName || params.bankDisplayName);
 
-      const ticketSuffix = params.totalPendingCount > 1 ? ` (#${params.ticketId})` : '';
       const lines = [
         headline,
-        `*${params.formattedAmount}* • ${merchantOrTitle}${ticketSuffix}`,
+        `*${params.formattedAmount}* • ${merchantOrTitle} (#${params.ticketId})`,
       ];
 
       if (params.accountNameHint && !isTransfer) {
@@ -231,8 +230,8 @@ export const englishDictionary: ResponseDictionary = {
         lines.push('');
         lines.push(`_There is ${otherCount} other transaction waiting for confirmation._`);
       } else {
-        lines.push('• Reply *Yes* or *Record*');
-        lines.push('• Reply *Cancel* or *Ignore*');
+        lines.push(`• Reply *Yes* or *Record* (or *Yes ${params.ticketId}*)`);
+        lines.push(`• Reply *Cancel* or *Ignore* (or *Cancel ${params.ticketId}*)`);
       }
 
       return lines.join('\n');
@@ -336,6 +335,32 @@ export const englishDictionary: ResponseDictionary = {
         return `❌ *${params.count} Transactions Cancelled*\nAll pending transactions have been discarded and were not recorded to Wallet.`;
       }
       return `❌ *Transaction #${params.ticketId} Cancelled*\nTransaction "${params.title}" (${params.formattedAmount}) was not recorded to Wallet.`;
+    },
+
+    itemProcessing(ticketId: number): string {
+      return `⏳ *Transaction #${ticketId} is currently being processed...*\nPlease wait a moment while it is being recorded to Wallet.`;
+    },
+
+    itemAlreadyResolved(ticketId: number): string {
+      return `ℹ️ *Transaction #${ticketId} was already successfully recorded.*`;
+    },
+
+    itemNotFound(ticketId?: number): string {
+      return ticketId
+        ? `ℹ️ *Ticket #${ticketId} not found or already completed.*`
+        : 'ℹ️ *No pending transactions waiting for confirmation.*';
+    },
+
+    noPendingItems: 'ℹ️ *No pending transactions waiting for confirmation.*',
+
+    itemProcessingCannotCancel(ticketId: number): string {
+      return `⏳ *Transaction #${ticketId} is currently being processed and cannot be cancelled.*`;
+    },
+
+    cancellationNotFound(ticketId?: number): string {
+      return ticketId
+        ? `ℹ️ *Ticket #${ticketId} not found or already cancelled.*`
+        : 'ℹ️ *No pending transactions waiting for confirmation.*';
     },
   },
 

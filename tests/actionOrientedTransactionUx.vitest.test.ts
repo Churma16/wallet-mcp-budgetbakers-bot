@@ -144,8 +144,8 @@ describe('Issue #154: Action-Oriented Pending & Uncertain Transaction UX', () =>
       expect(formatted).toContain('Starbucks Coffee');
       expect(formatted).toContain('BCA Prioritas');
 
-      // For single unambiguous item, ticket ID is not required in the headline
-      expect(formatted).not.toContain('(#101)');
+      // Single pending notification includes ticket ID badge so subsequent items do not cause ambiguity
+      expect(formatted).toContain('(#101)');
 
       // Clear action choices without jargon
       expect(formatted).toContain('Balas *Ya* atau *Catat*');
@@ -175,7 +175,7 @@ describe('Issue #154: Action-Oriented Pending & Uncertain Transaction UX', () =>
       expect(formatted).toContain('New Payment');
       expect(formatted).toContain('Starbucks Coffee');
       expect(formatted).toContain('BCA Prioritas');
-      expect(formatted).not.toContain('(#101)');
+      expect(formatted).toContain('(#101)');
       expect(formatted).toContain('Reply *Yes* or *Record*');
       expect(formatted).toContain('Reply *Cancel*');
     });
@@ -1464,7 +1464,7 @@ describe('Issue #154: Action-Oriented Pending & Uncertain Transaction UX', () =>
         Date.now()
       );
 
-      expect(mockGateway.lastMessage).toContain('Tiket transaksi tidak ditemukan atau sedang diproses.');
+      expect(mockGateway.lastMessage).toContain('Tiket #999 tidak ditemukan atau sudah dibatalkan/selesai.');
     });
   });
 

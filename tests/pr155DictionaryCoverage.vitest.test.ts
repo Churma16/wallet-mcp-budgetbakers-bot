@@ -42,9 +42,14 @@ describe('PR #155 response dictionary coverage', () => {
     expect(dictionary.reconciliation.absentSingle.length).toBeGreaterThan(0);
     expect(dictionary.reconciliation.notFoundWithTicket(43)).toContain('#43');
     expect(dictionary.reconciliation.notFoundNone.length).toBeGreaterThan(0);
-    const ambiguous = dictionary.reconciliation.ambiguous([44, 45]);
-    expect(ambiguous).toContain('#44');
-    expect(ambiguous).toContain('#45');
+    expect(dictionary.confirmation.itemProcessing(41)).toContain('#41');
+    expect(dictionary.confirmation.itemAlreadyResolved(41)).toContain('#41');
+    expect(dictionary.confirmation.itemNotFound(41)).toContain('#41');
+    expect(dictionary.confirmation.itemNotFound()).toMatch(/transaksi|transaction/i);
+    expect(dictionary.confirmation.noPendingItems.length).toBeGreaterThan(0);
+    expect(dictionary.confirmation.itemProcessingCannotCancel(41)).toContain('#41');
+    expect(dictionary.confirmation.cancellationNotFound(41)).toContain('#41');
+    expect(dictionary.confirmation.cancellationNotFound()).toMatch(/transaksi|transaction/i);
   });
 
   it.each([
@@ -60,7 +65,7 @@ describe('PR #155 response dictionary coverage', () => {
     expect(detailedSingle).toContain('Kopi Kenangan');
     expect(detailedSingle).toContain('BCA Utama');
     expect(detailedSingle).toContain('Food');
-    expect(detailedSingle).not.toContain('(#41)');
+    expect(detailedSingle).toContain('(#41)');
 
     const categoryFallback = dictionary.emailPending.formatNotification(baseEmailParams({
       typeLabel: 'Payment',
