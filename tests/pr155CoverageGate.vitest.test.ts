@@ -86,7 +86,13 @@ describe('PR #155 Sonar new-code coverage gate', () => {
       1,
       'whatsapp',
       'chat-coverage',
-      expect.stringContaining('Tiket transaksi tidak tersedia')
+      expect.stringContaining('Tidak ada transaksi yang menunggu konfirmasi')
+    );
+    expect(sendMessage).toHaveBeenNthCalledWith(
+      2,
+      'whatsapp',
+      'chat-coverage',
+      expect.stringContaining('Tiket #999 tidak ditemukan')
     );
   });
 

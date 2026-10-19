@@ -325,7 +325,7 @@ describe('PR #155 final changed-branch coverage', () => {
         Date.now()
       )).toBe(true);
       expect(createRecords).not.toHaveBeenCalled();
-      expect(messages.at(-1)).toContain('tidak tersedia');
+      expect(messages.at(-1)).toContain('tidak ditemukan');
     });
 
     it('rejects transfer without a resolved destination before dispatch', async () => {
@@ -388,7 +388,7 @@ describe('PR #155 final changed-branch coverage', () => {
 
       messages.length = 0;
       await handler.handlePendingAction(event, { actionType: 'REJECT' } as any, Date.now());
-      expect(messages.at(-1)).toContain('tidak ditemukan');
+      expect(messages.at(-1)).toMatch(/tidak ada transaksi/i);
     });
 
     it('covers targeted reconciliation not-found and invalid-action terminal return', async () => {

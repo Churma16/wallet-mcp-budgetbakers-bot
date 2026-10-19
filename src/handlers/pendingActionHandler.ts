@@ -17,6 +17,8 @@ import {
   formatBulkPendingConfirmationSuccess,
   formatPendingCancellationMessage,
 } from '../utils/humanResponseFormatter.js';
+import { getDictionary } from '../i18n/index.js';
+import { SupportedLanguage } from '../i18n/types.js';
 import {
   buildItemViewModelFromPendingItem,
   buildTransactionAttentionSummary,
@@ -66,10 +68,11 @@ export class PendingActionHandler {
     const itemsToRecord = this.claimTargetTransactions(confirmationIntent);
 
     if (itemsToRecord.length === 0) {
+      const outcomeMessage = this.formatConfirmFailureOutcomeMessage(confirmationIntent);
       await this.messagingGateway.sendMessage(
         event.channel,
         event.chatIdentifier,
-        '[WARN] Tiket transaksi tidak tersedia, sedang diproses, atau memerlukan rekonsiliasi manual.'
+        outcomeMessage
       );
       return true;
     }
@@ -166,8 +169,45 @@ export class PendingActionHandler {
       return item ? [item] : [];
     }
 
-    const latestItem = this.pendingTransactionManager.claimLatestPendingTransaction();
-    return latestItem ? [latestItem] : [];
+    const oldestItem = typeof (this.pendingTransactionManager as any).claimOldestPendingTransaction === 'function'
+      ? this.pendingTransactionManager.claimOldestPendingTransaction()
+      : this.pendingTransactionManager.claimLatestPendingTransaction();
+    return oldestItem ? [oldestItem] : [];
+  }
+
+  private formatConfirmFailureOutcomeMessage(
+    confirmationIntent: PendingConfirmationIntent,
+    languageCode?: SupportedLanguage
+  ): string {
+    const dictionary = getDictionary(languageCode);
+    if (typeof confirmationIntent.targetScope === 'number') {
+      const ticketId = confirmationIntent.targetScope;
+      if (this.pendingTransactionManager.isTicketProcessing(ticketId)) {
+        return dictionary.confirmation.itemProcessing(ticketId);
+      }
+      if (this.pendingTransactionManager.wasTicketRecentlyResolved(ticketId)) {
+        return dictionary.confirmation.itemAlreadyResolved(ticketId);
+      }
+      return dictionary.confirmation.itemNotFound(ticketId);
+    }
+
+    return dictionary.confirmation.noPendingItems;
+  }
+
+  private formatRejectFailureOutcomeMessage(
+    confirmationIntent: PendingConfirmationIntent,
+    languageCode?: SupportedLanguage
+  ): string {
+    const dictionary = getDictionary(languageCode);
+    if (typeof confirmationIntent.targetScope === 'number') {
+      const ticketId = confirmationIntent.targetScope;
+      if (this.pendingTransactionManager.isTicketProcessing(ticketId)) {
+        return dictionary.confirmation.itemProcessingCannotCancel(ticketId);
+      }
+      return dictionary.confirmation.cancellationNotFound(ticketId);
+    }
+
+    return dictionary.confirmation.noPendingItems;
   }
 
   private getTotalUncertainCount(): number {
@@ -316,11 +356,17 @@ export class PendingActionHandler {
         }
       }
     } else {
-      const latestItem = this.pendingTransactionManager.getLatestPendingTransaction();
-      if (latestItem) {
-        protectedUncertainItems = uncertainItems.filter(item => item.ticketId === latestItem.ticketId);
+      const manager = this.pendingTransactionManager as any;
+      const targetItem = (typeof manager.getOldestPendingTransaction === 'function'
+        ? manager.getOldestPendingTransaction()
+        : undefined) ||
+        (typeof manager.getLatestPendingTransaction === 'function'
+          ? manager.getLatestPendingTransaction()
+          : undefined);
+      if (targetItem) {
+        protectedUncertainItems = uncertainItems.filter(item => item.ticketId === targetItem.ticketId);
         if (protectedUncertainItems.length === 0) {
-          const rejectedItem = this.pendingTransactionManager.rejectPendingTransaction(latestItem.ticketId);
+          const rejectedItem = this.pendingTransactionManager.rejectPendingTransaction(targetItem.ticketId);
           if (rejectedItem) {
             rejectedItems.push(rejectedItem);
           }
@@ -347,10 +393,11 @@ export class PendingActionHandler {
     }
 
     if (replyMessages.length === 0) {
+      const outcomeMessage = this.formatRejectFailureOutcomeMessage(confirmationIntent);
       await this.messagingGateway.sendMessage(
         event.channel,
         event.chatIdentifier,
-        '[WARN] Tiket transaksi tidak ditemukan atau sedang diproses.'
+        outcomeMessage
       );
       return true;
     }
