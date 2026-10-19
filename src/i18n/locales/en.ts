@@ -230,9 +230,11 @@ export const englishDictionary: ResponseDictionary = {
         const otherCount = params.totalPendingCount - 1;
         lines.push('');
         lines.push(`_There is ${otherCount} other transaction waiting for confirmation._`);
+      } else {
         lines.push(`• Reply *Yes* or *Record* (or *Yes ${params.ticketId}*)`);
         lines.push(`• Reply *Yes: <note>* to add details`);
         lines.push(`• Reply *Cancel* or *Ignore* (or *Cancel ${params.ticketId}*)`);
+      }
 
       return lines.join('\n');
     },

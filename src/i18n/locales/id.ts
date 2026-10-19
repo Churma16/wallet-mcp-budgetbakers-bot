@@ -228,9 +228,11 @@ export const indonesianDictionary: ResponseDictionary = {
         const otherCount = params.totalPendingCount - 1;
         lines.push('');
         lines.push(`_Ada ${otherCount} transaksi lain yang juga menunggu konfirmasi._`);
+      } else {
         lines.push(`• Balas *Ya* atau *Catat* (atau *Ya ${params.ticketId}*)`);
         lines.push(`• Balas *Ya: <catatan>* untuk tambah rincian`);
         lines.push(`• Balas *Batal* atau *Abaikan* (atau *Batal ${params.ticketId}*)`);
+      }
 
       return lines.join('\n');
     },
