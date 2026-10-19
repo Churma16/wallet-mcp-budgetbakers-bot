@@ -820,9 +820,18 @@ describe('TransactionCorrelationService (Issue #153)', () => {
       expect(defaultService.isGenericNote('Shopee', 'Shopee')).toBe(true);
       expect(defaultService.isGenericNote('Grab', 'Grab')).toBe(true);
 
+      // Generic e-receipts and debit card patterns
+      expect(defaultService.isGenericNote('Debit card transaction via Bank Jago')).toBe(true);
+      expect(defaultService.isGenericNote('Debit card transaction')).toBe(true);
+      expect(defaultService.isGenericNote('Grab E-Receipt')).toBe(true);
+      expect(defaultService.isGenericNote('Tokopedia Receipt')).toBe(true);
+      expect(defaultService.isGenericNote('Bukti Pembayaran')).toBe(true);
+
       // Rich merchant and receipt notes (MUST NOT be generic)
       expect(defaultService.isGenericNote('Pembayaran pesanan Shopee (#261015PF5NYVHP)')).toBe(false);
       expect(defaultService.isGenericNote('Grab ride')).toBe(false);
+      expect(defaultService.isGenericNote('GrabBike: Stasiun Gambir -> Grand Indonesia')).toBe(false);
+      expect(defaultService.isGenericNote('GrabCar: Bandara Soekarno Hatta -> Hotel')).toBe(false);
       expect(defaultService.isGenericNote('2x Bakwan Sayur, 1x Nasi Uduk')).toBe(false);
       expect(defaultService.isGenericNote('Kopi Kenangan Mantan')).toBe(false);
     });
@@ -935,6 +944,56 @@ describe('TransactionCorrelationService (Issue #153)', () => {
       expect(fused.counterParty).toBe('Shopee');
       expect(fused.note).toBe('Pembayaran pesanan Shopee (#261015PF5NYVHP, #261015PF5NYVHQ)');
       expect(fused.referenceNumbers).toContain('261015PF5NYVHP');
+      expect(fused.evidenceSources?.sort()).toEqual(['EMAIL_BANK', 'EMAIL_PAYMENT'].sort());
+    });
+
+    it('correlates a Bank Jago debit with a Grab ride receipt and fuses route details over generic debit card boilerplate', () => {
+      // 10:29 UTC: Bank Jago debit card candidate
+      const jagoCandidate = createPendingItem({
+        ticketId: 1,
+        sourceType: 'EMAIL',
+        bankDisplayName: 'Bank Jago',
+        accountNameHint: 'Jago Expense',
+        matchedAccountId: 'a7a51081-350c-4013-b99c-ffdaae10651d',
+        counterParty: 'Unknown',
+        amount: -65800,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        matchedCategoryId: 'cat-uncat',
+        matchedCategoryName: 'Uncategorized',
+        note: 'Debit card transaction via Bank Jago',
+        recordDate: '2026-10-19T10:28:41.000Z',
+        evidenceSources: ['EMAIL_BANK'],
+      });
+
+      // 11:15 UTC: Grab E-Receipt arrives with ride route
+      const grabEvidence = createEvidence({
+        sourceType: 'EMAIL_PAYMENT',
+        sourceId: 'Your Grab E-Receipt',
+        merchant: 'Grab',
+        amount: -65800,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        accountHint: 'Grab',
+        categoryId: 'eb6133fd-2918-48f6-bef7-f4941a43ff2c',
+        categoryName: 'Ojol',
+        note: 'GrabBike: Stasiun Gambir -> Grand Indonesia',
+        occurredAt: '2026-10-19T11:14:53.000Z',
+        referenceNumbers: ['A-9VNE5TRGWUABAV'],
+      });
+
+      const result = defaultService.correlateEvidence(grabEvidence, [jagoCandidate]);
+
+      expect(result.confidence).toBe('HIGH');
+      expect(result.suggestedAction).toBe('MERGE_PENDING');
+
+      const fused = result.fusedPendingItem!;
+      expect(fused.matchedAccountId).toBe('a7a51081-350c-4013-b99c-ffdaae10651d');
+      expect(fused.accountNameHint).toBe('Jago Expense');
+      expect(fused.counterParty).toBe('Grab');
+      expect(fused.matchedCategoryName).toBe('Ojol');
+      expect(fused.note).toBe('GrabBike: Stasiun Gambir -> Grand Indonesia');
+      expect(fused.referenceNumbers).toContain('A-9VNE5TRGWUABAV');
       expect(fused.evidenceSources?.sort()).toEqual(['EMAIL_BANK', 'EMAIL_PAYMENT'].sort());
     });
   });

@@ -2,9 +2,47 @@ import fs from 'fs';
 import path from 'path';
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
+import { convert } from 'html-to-text';
 import { evaluateEmailThroughGateOne, GateEvaluationResult } from '../utils/emailGateEvaluator.js';
 import { calculateExponentialBackoff } from '../utils/exponentialBackoff.js';
 import { applicationLogger } from '../utils/logger.js';
+
+/**
+ * Extracts clean plain-text from email content.
+ * Prioritizes converting HTML email bodies using html-to-text to strip <style>, <script>,
+ * images, and ads while cleanly formatting tables, line breaks, and ride/order receipts.
+ */
+export function extractCleanEmailBody(
+  rawTextContent?: string | null,
+  rawHtmlContent?: string | boolean | null
+): string {
+  if (typeof rawHtmlContent === 'string' && rawHtmlContent.trim().length > 0) {
+    try {
+      const converted = convert(rawHtmlContent, {
+        wordwrap: false,
+        tables: true,
+        selectors: [
+          { selector: 'img', format: 'skip' },
+          { selector: 'a', options: { ignoreHref: true } },
+          { selector: 'style', format: 'skip' },
+          { selector: 'script', format: 'skip' },
+        ],
+      });
+      const normalized = converted.replace(/\u00a0/g, ' ').trim();
+      if (normalized.length > 0) {
+        return normalized;
+      }
+    } catch {
+      // Fall through to fallback on parser failure
+    }
+  }
+
+  if (typeof rawTextContent === 'string' && rawTextContent.trim().length > 0) {
+    return rawTextContent.trim();
+  }
+
+  return '';
+}
 
 export interface EmailTransactionDetectedEvent {
   gateResult: GateEvaluationResult;
@@ -390,10 +428,8 @@ export class EmailListenerService {
             continue;
           }
 
-          // Extract text content (strip heavy tags if html)
-          const rawTextContent = parsedMime.text || '';
-          const rawHtmlContent = typeof parsedMime.html === 'string' ? parsedMime.html : '';
-          const cleanBodyText = rawTextContent || rawHtmlContent.replace(/<[^>]+>/g, ' ');
+          // Extract clean text content (handles HTML receipts, strips CSS/script, formats tables)
+          const cleanBodyText = extractCleanEmailBody(parsedMime.text, parsedMime.html);
 
           // Evaluate through Gate 1: Logic & Dictionary
           const gateResult = evaluateEmailThroughGateOne(
@@ -436,7 +472,7 @@ export class EmailListenerService {
               emailSubject,
               emailSender: senderAddress,
               emailDate,
-              cleanedBodyText: cleanBodyText.substring(0, 3000), // Trim for prompt efficiency
+              cleanedBodyText: cleanBodyText.substring(0, 12000), // Rich context limit for LLM prompt efficiency
               rawMessageId,
             });
 
