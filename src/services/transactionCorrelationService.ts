@@ -127,6 +127,8 @@ export class TransactionCorrelationService {
       'transaksi menggunakan kartu debit jago',
       'transaction using debit card',
       'transaction using jago debit card',
+      'debit card transaction',
+      'debit card transaction via bank jago',
       'kartu debit',
       'debit card',
       'debit',
@@ -139,6 +141,18 @@ export class TransactionCorrelationService {
       'transfer dana',
       'transfer masuk',
       'transfer keluar',
+      'e-receipt',
+      'grab e-receipt',
+      'grab receipt',
+      'gojek receipt',
+      'electronic receipt',
+      'struk digital',
+      'struk pembayaran',
+      'tanda terima',
+      'tanda terima elektronik',
+      'bukti pembayaran',
+      'bukti transaksi',
+      'bukti transfer',
     ];
 
     if (genericExactPhrases.includes(lower)) {
@@ -150,12 +164,40 @@ export class TransactionCorrelationService {
       'transaksi menggunakan kartu debit',
       'transaction using debit card',
       'transaction using jago debit card',
+      'debit card transaction via',
+      'debit card transaction',
+      'transaksi kartu debit',
       'pembayaran qris di',
       'pembayaran qris',
+      'pembayaran via',
+      'pembayaran berhasil',
+      'payment via',
+      'payment using',
     ];
 
     for (const prefix of genericPrefixes) {
-      if (lower.startsWith(prefix) && lower.length < prefix.length + 15) {
+      if (lower.startsWith(prefix) && lower.length < prefix.length + 25) {
+        return true;
+      }
+    }
+
+    // Generic merchant e-receipt patterns like "[merchant] e-receipt" or "e-receipt [merchant]"
+    if (
+      lower.endsWith('e-receipt') ||
+      lower.endsWith('receipt') ||
+      lower.startsWith('e-receipt') ||
+      lower.startsWith('tanda terima') ||
+      lower.startsWith('bukti pembayaran')
+    ) {
+      const stripped = lower
+        .replace(/^(e-receipt|receipt|tanda terima|bukti pembayaran)\s*/i, '')
+        .replace(/\s*(e-receipt|receipt)$/i, '')
+        .trim();
+      if (
+        !stripped ||
+        stripped.split(/\s+/).length <= 2 ||
+        (merchantOrCounterParty && stripped === merchantOrCounterParty.trim().toLowerCase())
+      ) {
         return true;
       }
     }
