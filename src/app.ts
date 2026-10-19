@@ -97,7 +97,8 @@ export class Application {
       this.pendingTransactionManager,
       this.walletMcpClient,
       this.messagingGateway,
-      () => this.emailListenerService
+      () => this.emailListenerService,
+      this.walletCacheService
     );
 
     this.transactionHistoryService = new TransactionHistoryService(

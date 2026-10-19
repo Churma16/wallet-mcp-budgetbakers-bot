@@ -224,12 +224,14 @@ export const indonesianDictionary: ResponseDictionary = {
       lines.push('Catat transaksi ini?');
       if (params.totalPendingCount > 1) {
         lines.push(`• Balas *Ya ${params.ticketId}* (atau *Ya semua*)`);
+        lines.push(`• Balas *Ya ${params.ticketId}: <catatan>* untuk tambah rincian`);
         lines.push(`• Balas *Batal ${params.ticketId}*`);
         const otherCount = params.totalPendingCount - 1;
         lines.push('');
         lines.push(`_Ada ${otherCount} transaksi lain yang juga menunggu konfirmasi._`);
       } else {
         lines.push('• Balas *Ya* atau *Catat*');
+        lines.push('• Balas *Ya: <catatan>* untuk tambah rincian');
         lines.push('• Balas *Batal* atau *Abaikan*');
       }
 
@@ -305,6 +307,9 @@ export const indonesianDictionary: ResponseDictionary = {
       }
       if (params.matchedCategoryName) {
         metaParts.push(`📂 ${params.matchedCategoryName}`);
+      }
+      if (params.labels && params.labels.length > 0) {
+        metaParts.push(`🔖 ${params.labels.map(label => `#${label}`).join(' ')}`);
       }
       if (metaParts.length > 0) {
         lines.push(metaParts.join(' • '));

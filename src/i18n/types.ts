@@ -50,6 +50,7 @@ export interface PendingConfirmationSuccessParams {
   icon?: string;
   merchantOrNote?: string;
   matchedCategoryName?: string;
+  labels?: string[];
 }
 
 export interface PendingBulkItemParams {

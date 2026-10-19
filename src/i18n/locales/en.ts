@@ -226,12 +226,14 @@ export const englishDictionary: ResponseDictionary = {
       lines.push('Record this transaction?');
       if (params.totalPendingCount > 1) {
         lines.push(`• Reply *Yes ${params.ticketId}* (or *Yes all*)`);
+        lines.push(`• Reply *Yes ${params.ticketId}: <note>* to add details`);
         lines.push(`• Reply *Cancel ${params.ticketId}*`);
         const otherCount = params.totalPendingCount - 1;
         lines.push('');
         lines.push(`_There is ${otherCount} other transaction waiting for confirmation._`);
       } else {
         lines.push('• Reply *Yes* or *Record*');
+        lines.push('• Reply *Yes: <note>* to add details');
         lines.push('• Reply *Cancel* or *Ignore*');
       }
 
@@ -307,6 +309,9 @@ export const englishDictionary: ResponseDictionary = {
       }
       if (params.matchedCategoryName) {
         metaParts.push(`📂 ${params.matchedCategoryName}`);
+      }
+      if (params.labels && params.labels.length > 0) {
+        metaParts.push(`🔖 ${params.labels.map(label => `#${label}`).join(' ')}`);
       }
       if (metaParts.length > 0) {
         lines.push(metaParts.join(' • '));

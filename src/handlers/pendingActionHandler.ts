@@ -29,6 +29,7 @@ import {
   formatReconciliationAmbiguousResponse,
 } from '../utils/transactionStatusFormatter.js';
 import { formatAccountSelectionPrompt } from '../utils/accountClarificationFormatter.js';
+import { WalletCacheService } from '../services/walletCacheService.js';
 import { applicationLogger } from '../utils/logger.js';
 
 export class PendingActionHandler {
@@ -36,7 +37,8 @@ export class PendingActionHandler {
     private readonly pendingTransactionManager: PendingTransactionService,
     private readonly walletMcpClient: WalletMcpClientService,
     private readonly messagingGateway: MessagingGatewayService,
-    private readonly emailListenerServiceGetter: () => EmailListenerService | null
+    private readonly emailListenerServiceGetter: () => EmailListenerService | null,
+    private readonly walletCacheService?: WalletCacheService
   ) {}
 
   /**
@@ -78,6 +80,34 @@ export class PendingActionHandler {
     const successfulTickets: number[] = [];
     const retryableFailedTickets: number[] = [];
     const uncertainTickets: number[] = [];
+
+    // Apply inline custom overrides (note, category, tags) if provided
+    if (confirmationIntent.customNote) {
+      for (const item of itemsToRecord) {
+        item.note = confirmationIntent.customNote;
+      }
+    }
+
+    if (confirmationIntent.customCategoryHint && this.walletCacheService) {
+      const categories = this.walletCacheService.getCategories();
+      const hintLower = confirmationIntent.customCategoryHint.toLowerCase();
+      const matchedCat = categories.find(c =>
+        c.name.toLowerCase() === hintLower ||
+        c.name.toLowerCase().includes(hintLower)
+      );
+      if (matchedCat) {
+        for (const item of itemsToRecord) {
+          item.matchedCategoryId = matchedCat.id;
+          item.matchedCategoryName = matchedCat.name;
+        }
+      }
+    }
+
+    if (confirmationIntent.customTags && confirmationIntent.customTags.length > 0) {
+      for (const item of itemsToRecord) {
+        item.labels = confirmationIntent.customTags;
+      }
+    }
 
     applicationLogger.mcp(`Processing ${itemsToRecord.length} claimed transaction(s) individually...`);
 
@@ -208,6 +238,7 @@ export class PendingActionHandler {
         recordDate: item.recordDate,
         note: item.note,
         counterParty: item.counterParty,
+        labels: item.labels,
       },
     ];
   }
