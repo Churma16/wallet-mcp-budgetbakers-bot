@@ -194,6 +194,55 @@ describe('TransactionCorrelationService (Issue #153)', () => {
       expect(fusedA.evidenceSources?.sort()).toEqual(['EMAIL_BANK', 'EMAIL_PAYMENT'].sort());
       expect(fusedB.evidenceSources?.sort()).toEqual(['EMAIL_BANK', 'EMAIL_PAYMENT'].sort());
     });
+
+    it('correlates authoritative Bank Jago debit with GrabFood receipt when payment method is generic Visa, even across 27-minute delivery window', () => {
+      const bankDebitCandidate = createPendingItem({
+        bankDisplayName: 'Bank Jago',
+        accountNameHint: 'Jago Expense',
+        matchedAccountId: 'acc-jago-expense',
+        counterParty: 'Bank Jago',
+        amount: -54500,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        matchedCategoryId: 'cat-uncategorized',
+        matchedCategoryName: 'Uncategorized',
+        note: 'Debit card transaction',
+        recordDate: '2026-10-20T04:00:40.000Z',
+        referenceNumber: undefined,
+        referenceNumbers: [],
+        evidenceSources: ['EMAIL_BANK'],
+      });
+
+      const grabReceiptEvidence = createEvidence({
+        sourceType: 'EMAIL_PAYMENT',
+        sourceId: 'Your Grab E-Receipt',
+        merchant: "d'BestO - RSUD Koja",
+        amount: -54500,
+        currency: 'IDR',
+        occurredAt: '2026-10-20T04:27:48.000Z', // 27 minutes 8 seconds later
+        accountHint: 'Visa',
+        accountId: 'acc-mandiri-tentative', // AI tentative guess
+        note: "GrabFood dari d'BestO - RSUD Koja: 1x Paket Sadas, 1x CLBK Paha Atas, 2x Paha Atas, 1x Dada, 1x CLBK Dada",
+        categoryId: 'cat-food-pokok',
+        categoryName: 'Makan Pokok',
+        referenceNumbers: ['A-9VQEFJMWW96JAV'],
+      });
+
+      const result = service.correlateEvidence(grabReceiptEvidence, [bankDebitCandidate]);
+
+      expect(result.confidence).toBe('HIGH');
+      expect(result.suggestedAction).toBe('MERGE_PENDING');
+
+      const fused = result.fusedPendingItem!;
+      // Bank Jago remains the authoritative account
+      expect(fused.matchedAccountId).toBe('acc-jago-expense');
+      expect(fused.accountNameHint).toBe('Jago Expense');
+      // Merchant and note are enriched by Grab
+      expect(fused.counterParty).toBe("d'BestO - RSUD Koja");
+      expect(fused.note).toContain("GrabFood dari d'BestO - RSUD Koja");
+      expect(fused.matchedCategoryName).toBe('Makan Pokok');
+      expect(fused.referenceNumbers).toContain('A-9VQEFJMWW96JAV');
+    });
   });
 
   describe('correlation with existing native Wallet records', () => {

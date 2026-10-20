@@ -686,6 +686,7 @@ export interface PendingConfirmationIntent {
   customNote?: string;
   customCategoryHint?: string;
   customTags?: string[];
+  rawCustomInput?: string;
 }
 
 export function detectPendingConfirmationAction(userMessageText: string): PendingConfirmationIntent | null {
@@ -788,7 +789,8 @@ export function detectPendingConfirmationAction(userMessageText: string): Pendin
     const hashtagResult = extractHashtags(rawNote);
     const cleanedNote = hashtagResult.cleanedText.trim();
     const customTags = hashtagResult.tags.length > 0 ? hashtagResult.tags : undefined;
-    const customCategoryHint = customTags ? customTags[0] : undefined;
+    const rawCategoryTag = customTags ? customTags[0] : undefined;
+    const customCategoryHint = rawCategoryTag ? rawCategoryTag.replace(/[-_]+/g, ' ').trim() : undefined;
     const customNote = cleanedNote.length > 0 ? cleanedNote : undefined;
 
     return {
@@ -797,6 +799,7 @@ export function detectPendingConfirmationAction(userMessageText: string): Pendin
       customNote,
       customCategoryHint,
       customTags,
+      rawCustomInput: rawNote,
     };
   }
 
