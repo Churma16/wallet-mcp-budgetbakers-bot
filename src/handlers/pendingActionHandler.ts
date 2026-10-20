@@ -137,6 +137,17 @@ export class PendingActionHandler {
         for (const hint of candidateHints) {
           const escaped = hint.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           const wordRegex = new RegExp(`(^|\\s)${escaped}(\\s|$)`, 'i');
+
+          // Check if any current item category already satisfies the word boundary hint
+          const alreadySatisfiedCat = itemsToRecord
+            .map(item => categories.find(c => c.id === item.matchedCategoryId))
+            .find(cat => cat && wordRegex.test(normalize(cat.name)));
+
+          if (alreadySatisfiedCat) {
+            matchedCat = alreadySatisfiedCat;
+            break;
+          }
+
           matchedCat = categories.find(c => wordRegex.test(normalize(c.name)));
           if (matchedCat) break;
         }
@@ -145,10 +156,13 @@ export class PendingActionHandler {
       // Priority C: Substring match only for explicit category hints (not generic notes)
       if (!matchedCat && confirmationIntent.customCategoryHint) {
         const hint = normalize(confirmationIntent.customCategoryHint);
-        const alreadySatisfied = itemsToRecord.find(item =>
-          item.matchedCategoryName && normalize(item.matchedCategoryName).includes(hint)
-        );
-        if (!alreadySatisfied) {
+        const alreadySatisfiedCat = itemsToRecord
+          .map(item => categories.find(c => c.id === item.matchedCategoryId))
+          .find(cat => cat && normalize(cat.name).includes(hint));
+
+        if (alreadySatisfiedCat) {
+          matchedCat = alreadySatisfiedCat;
+        } else {
           matchedCat = categories.find(c => normalize(c.name).includes(hint));
         }
       }

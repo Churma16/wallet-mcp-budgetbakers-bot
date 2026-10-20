@@ -356,6 +356,104 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
       expect(dispatchedRecords[0].categoryId).toBe('cat-nafsu');
     });
 
+    it('matches category via word boundary pattern when no exact match exists (Priority B)', async () => {
+      const pendingService = new PendingTransactionService();
+      let dispatchedRecords: any[] = [];
+      const mockWalletClient = {
+        createRecords: vi.fn(async (records) => {
+          dispatchedRecords = records;
+          return { summary: { total: 1, succeeded: 1, failed: 0 }, results: [{ inputIndex: 0, success: true, recordId: 'r1' }] };
+        }),
+      } as unknown as WalletMcpClientService;
+
+      const mockCacheService = {
+        getCategories: vi.fn(() => [
+          { id: 'cat-hangout', name: 'Makan Hangout' },
+          { id: 'cat-nafsu', name: 'Makan Nafsu' },
+        ]),
+        getAccounts: vi.fn(() => []),
+      } as unknown as WalletCacheService;
+
+      const handler = new PendingActionHandler(pendingService, mockWalletClient, { sendMessage: vi.fn() } as any, () => null, mockCacheService);
+
+      pendingService.addPendingTransaction({
+        sourceType: 'EMAIL',
+        bankDisplayName: 'Grab',
+        accountNameHint: 'Jago',
+        counterParty: 'Store',
+        amount: -10000,
+        transactionType: 'EXPENSE',
+        matchedAccountId: 'acc-jago',
+        note: 'Order',
+        recordDate: '2026-10-20T04:27:48Z',
+      });
+
+      // "#Nafsu" matches word boundary inside "Makan Nafsu"
+      const intent = detectPendingConfirmationAction('Ya: #Nafsu');
+      await handler.handlePendingAction(createMockEvent('Ya: #Nafsu'), intent!, Date.now());
+
+      expect(dispatchedRecords[0].categoryId).toBe('cat-nafsu');
+    });
+
+    it('matches category via substring fallback (Priority C) and respects alreadySatisfied', async () => {
+      const pendingService = new PendingTransactionService();
+      let dispatchedRecords: any[] = [];
+      const mockWalletClient = {
+        createRecords: vi.fn(async (records) => {
+          dispatchedRecords = records;
+          return { summary: { total: 1, succeeded: 1, failed: 0 }, results: [{ inputIndex: 0, success: true, recordId: 'r2' }] };
+        }),
+      } as unknown as WalletMcpClientService;
+
+      const mockCacheService = {
+        getCategories: vi.fn(() => [
+          { id: 'cat-hangout', name: 'Makan Hangout' },
+          { id: 'cat-pokok', name: 'Makan Pokok' },
+        ]),
+        getAccounts: vi.fn(() => []),
+      } as unknown as WalletCacheService;
+
+      const handler = new PendingActionHandler(pendingService, mockWalletClient, { sendMessage: vi.fn() } as any, () => null, mockCacheService);
+
+      // Scenario 1: Substring match "#Hang" matches "Makan Hangout"
+      pendingService.addPendingTransaction({
+        sourceType: 'EMAIL',
+        bankDisplayName: 'Grab',
+        accountNameHint: 'Jago',
+        counterParty: 'Store',
+        amount: -10000,
+        transactionType: 'EXPENSE',
+        matchedAccountId: 'acc-jago',
+        note: 'Order',
+        recordDate: '2026-10-20T04:27:48Z',
+      });
+
+      const intent1 = detectPendingConfirmationAction('Ya: #Hang');
+      await handler.handlePendingAction(createMockEvent('Ya: #Hang'), intent1!, Date.now());
+      expect(dispatchedRecords[0].categoryId).toBe('cat-hangout');
+
+      // Scenario 2: alreadySatisfied - Item already has Makan Pokok and user confirms with #Makan
+      dispatchedRecords = [];
+      pendingService.addPendingTransaction({
+        sourceType: 'EMAIL',
+        bankDisplayName: 'Grab',
+        accountNameHint: 'Jago',
+        counterParty: 'Store',
+        amount: -15000,
+        transactionType: 'EXPENSE',
+        matchedAccountId: 'acc-jago',
+        matchedCategoryId: 'cat-pokok',
+        matchedCategoryName: 'Makan Pokok',
+        note: 'Order Pokok',
+        recordDate: '2026-10-20T04:27:48Z',
+      });
+
+      const intent2 = detectPendingConfirmationAction('Ya: #Makan');
+      await handler.handlePendingAction(createMockEvent('Ya: #Makan'), intent2!, Date.now());
+      // Category remains cat-pokok because Makan Pokok already satisfies the hint "Makan"
+      expect(dispatchedRecords[0].categoryId).toBe('cat-pokok');
+    });
+
     it('works with specific ticket number syntax: Ya 1: Headset Sony', async () => {
       const pendingService = new PendingTransactionService();
       const sentMessages: string[] = [];
