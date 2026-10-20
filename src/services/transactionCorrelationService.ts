@@ -85,6 +85,30 @@ export class TransactionCorrelationService {
   }
 
   /**
+   * Checks whether an account hint, payment method, or account name refers to a generic card network
+   * (e.g. "Visa", "Mastercard", "Debit Card", "Kartu Debit").
+   */
+  public isGenericCardAccountOrMethod(text?: string | null): boolean {
+    if (!text) return false;
+    const lower = text.toLowerCase().trim();
+    const genericCardTokens = [
+      'visa',
+      'mastercard',
+      'jcb',
+      'amex',
+      'american express',
+      'debit card',
+      'credit card',
+      'kartu debit',
+      'kartu kredit',
+    ];
+    return genericCardTokens.some(token => {
+      const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(lower);
+    });
+  }
+
+  /**
    * Checks whether a transaction note is boilerplate / generic payment metadata
    * (e.g. "Transaction using Jago debit card", "Pembayaran QRIS") rather than rich itemized details.
    */
@@ -451,7 +475,13 @@ export class TransactionCorrelationService {
       }
 
       // If plausible but ambiguous within tight window, mark for medium confidence
-      if (timeDiffMs <= this.tightWindowMilliseconds && !mediumConfidenceCandidate) {
+      // For merchant payments/receipts (e.g. food delivery GrabFood/GoFood), delays up to 45 mins between bank debit and final receipt are normal
+      const effectiveTightWindow =
+        evidence.sourceType === 'EMAIL_PAYMENT' || evidence.sourceType === 'RECEIPT'
+          ? Math.max(this.tightWindowMilliseconds, 45 * 60 * 1000)
+          : this.tightWindowMilliseconds;
+
+      if (timeDiffMs <= effectiveTightWindow && !mediumConfidenceCandidate) {
         mediumConfidenceCandidate = {
           item: candidate,
           reasons: [
@@ -676,11 +706,18 @@ export class TransactionCorrelationService {
         paymentAccountId === 'acc-cash' ||
         this.platformRegistry.isPlatformWallet(paymentAccountName);
 
+      // Generic card networks (Visa, Mastercard, Debit Card, etc.) mentioned in merchant receipts
+      // (e.g. Grab "Visa: Rp 54500") are compatible with authoritative bank debits
+      const isGenericCardNetwork =
+        this.isGenericCardAccountOrMethod(paymentAccountName) ||
+        this.isGenericCardAccountOrMethod(evidence.accountHint);
+
       const isAccountCompatible =
         !bankAccountId ||
         !paymentAccountId ||
         accountsMatch ||
-        isPaymentAccountPlatformOrCash;
+        isPaymentAccountPlatformOrCash ||
+        isGenericCardNetwork;
 
       if (isAccountCompatible) {
         return {

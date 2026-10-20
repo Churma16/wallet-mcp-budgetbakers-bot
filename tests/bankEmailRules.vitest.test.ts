@@ -238,6 +238,29 @@ describe('bank email Gate 1 rules', () => {
       expect(result.referenceNumber).toBe('12198693563');
       expect(result.matchedBankRule?.ruleCategory).toBe('MERCHANT_RECEIPT');
     });
+
+    it('accepts a Bank Jago QRIS payment with Terminal ID and Danamon acquirer without false transfer flag', () => {
+      const result = evaluateEmail(
+        'You have made a payment to KOALASTORE\u200B.DIGI💸',
+        'noreply@jago.com',
+        `Assalamu'alaikum FATHAN MUHAMMAD FAQIH,
+         Thank you for trusting Jago! You have made a payment, and here are the details:
+         From: 5074****7335
+         To: KOALASTORE .DIGI
+         Amount: Rp 13.637
+         Transaction Date: 20 October 2026, 13:34 WIB
+         Transaction Status: Successful
+         Acquirer Name: Bank Danamon
+         Terminal ID: 452696984`
+      );
+
+      expect(result.passed).toBe(true);
+      expect(result.matchedBankRule?.bankKey).toBe('jago');
+      expect(result.candidateAmount).toBe(13637);
+      expect(result.referenceNumber).toBe('452696984');
+      // "Bank Danamon" must not falsely trigger "dana" transfer/topup keyword
+      expect(result.isTransferCandidate).toBe(false);
+    });
   });
 
   describe('security, blacklist, and edge-case filtering', () => {

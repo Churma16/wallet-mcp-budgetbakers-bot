@@ -107,7 +107,7 @@ export const BANK_DEBIT_AND_GATEWAY_RULES: BankEmailRuleDefinition[] = [
       /(?:Rp|IDR)\s*([\d.,]+)/i,
     ],
     referencePatterns: [
-      /(?:ID\s*Transaksi|No\.?\s*Referensi|Kode\s*Transaksi)[:\s]*([A-Za-z0-9]+)/i,
+      /(?:ID\s*Transaksi|No\.?\s*Referensi|Kode\s*Transaksi|Terminal\s*ID)[:\s]*([A-Za-z0-9]+)/i,
     ],
     transferOrTopupKeywords: [
       'top up',

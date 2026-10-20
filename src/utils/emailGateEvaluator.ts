@@ -150,9 +150,11 @@ export function evaluateEmailThroughGateOne(
   startupCutoffTimestamp: Date,
   processedReferenceNumberSet: Set<string>
 ): GateEvaluationResult {
-  const normalizedSubject = emailSubject.toLowerCase().trim();
+  const sanitizedSubject = emailSubject.replace(/[\u200B-\u200D\uFEFF]/g, '');
+  const sanitizedBody = emailBodyText.replace(/[\u200B-\u200D\uFEFF]/g, '');
+  const normalizedSubject = sanitizedSubject.toLowerCase().trim();
   const senderDomain = extractSenderDomain(emailSenderAddress);
-  const rawCombinedContent = `${emailSubject}\n${emailBodyText}`;
+  const rawCombinedContent = `${sanitizedSubject}\n${sanitizedBody}`;
   const normalizedCombinedContent = rawCombinedContent.toLowerCase();
 
   // 1. Check Date Filter: Ignore emails received before the startup cutoff
@@ -265,10 +267,12 @@ export function evaluateEmailThroughGateOne(
     };
   }
 
-  // 7. Check for Transfer or Top-Up Candidate indicators
-  const isTransferCandidate = matchedRule.transferOrTopupKeywords.some(keyword =>
-    normalizedCombinedContent.includes(keyword.toLowerCase())
-  );
+  // 7. Check for Transfer or Top-Up Candidate indicators (using word boundary check to avoid false positives like Danamon matching dana)
+  const isTransferCandidate = matchedRule.transferOrTopupKeywords.some(keyword => {
+    const escapedKeyword = keyword.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const wordBoundaryPattern = new RegExp(`(^|[^a-z0-9])${escapedKeyword}([^a-z0-9]|$)`, 'i');
+    return wordBoundaryPattern.test(normalizedCombinedContent);
+  });
 
   return {
     passed: true,
