@@ -1,5 +1,6 @@
 import { CategoryContextRule } from '../types/categoryContextTypes.js';
 import { WalletAccountItem, WalletCategoryItem } from '../types/walletTypes.js';
+import { isGenericParentCategory } from './ai/aiPromptBuilder.js';
 
 export type SemanticEntityResolutionReason = 'AMBIGUOUS' | 'UNRESOLVED';
 
@@ -124,10 +125,12 @@ export function resolveSemanticCategoryHint(
   const matchedIds = new Set<string>();
   for (const category of categories) {
     const categoryText = normalize(category.name);
+    const categoryWords = words(categoryText);
+    const hasWordMatch = categoryWords.some(w => w.length > 2 && hintWords.has(w));
     if (
       categoryText.length > 0 &&
       normalizedHint.length > 2 &&
-      (categoryText.includes(normalizedHint) || normalizedHint.includes(categoryText))
+      (categoryText.includes(normalizedHint) || normalizedHint.includes(categoryText) || hasWordMatch)
     ) {
       matchedIds.add(category.id);
     }
@@ -142,7 +145,13 @@ export function resolveSemanticCategoryHint(
     }
   }
 
-  const semanticMatches = categories.filter(category => matchedIds.has(category.id));
+  let semanticMatches = categories.filter(category => matchedIds.has(category.id));
+  if (semanticMatches.length > 1) {
+    const specificMatches = semanticMatches.filter(cat => !isGenericParentCategory(cat));
+    if (specificMatches.length > 0 && specificMatches.length < semanticMatches.length) {
+      semanticMatches = specificMatches;
+    }
+  }
   if (semanticMatches.length === 1) return resolved(semanticMatches[0], 'SEMANTIC');
   return unresolved(rawHint, semanticMatches);
 }
