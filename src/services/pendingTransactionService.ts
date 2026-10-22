@@ -77,10 +77,14 @@ export class PendingTransactionService {
   private readonly pendingAccountSelectionDraftMap: Map<number, PendingAccountSelectionDraft> = new Map();
   private readonly dispatchStateMap: Map<number, PendingTransactionDispatchState> = new Map();
   private readonly recentlyResolvedTicketIds: Map<number, number> = new Map();
-  private readonly defaultTimeToLiveMilliseconds: number = 24 * 60 * 60 * 1000; // 24 hours
+  private readonly defaultTimeToLiveMilliseconds: number;
   private readonly recentResolvedTtlMilliseconds: number = 5 * 60 * 1000; // 5 minutes
 
-  constructor(private readonly storageFilePath?: string) {
+  constructor(
+    private readonly storageFilePath?: string,
+    defaultTimeToLiveMilliseconds: number = 24 * 60 * 60 * 1000 // 24 hours (1 day)
+  ) {
+    this.defaultTimeToLiveMilliseconds = defaultTimeToLiveMilliseconds;
     if (this.storageFilePath) {
       this.loadFromStorage();
     }

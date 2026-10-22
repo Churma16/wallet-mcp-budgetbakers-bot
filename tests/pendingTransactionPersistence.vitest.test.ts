@@ -32,6 +32,45 @@ describe('Pending Transaction Queue Persistence & Category Safeguards', () => {
       expect(service.getNextTicketSequentialId()).toBe(1);
     });
 
+    it('sets default TTL to exactly 24 hours (1 day) for new pending transactions and drafts', () => {
+      const service = new PendingTransactionService();
+      const item = service.addPendingTransaction({
+        sourceType: 'EMAIL',
+        bankDisplayName: 'Bank Jago',
+        accountNameHint: 'Jago Expense',
+        counterParty: 'Jago',
+        amount: -44000,
+        transactionType: 'EXPENSE',
+        matchedAccountId: 'acc-1',
+        note: 'Kuota XL',
+        recordDate: '2026-10-22T03:34:03.000Z',
+      });
+      const draft = service.addPendingAccountSelectionDraft({
+        sourceType: 'USER',
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-1',
+        records: [
+          {
+            accountId: '',
+            amount: -25000,
+            recordDate: '2026-10-22T04:00:00.000Z',
+            note: 'Coffee',
+          },
+        ],
+        pendingRecordIndex: 0,
+        accountHint: 'BCA',
+        candidateAccounts: [],
+      });
+
+      const itemTtl = item.expiresAt.getTime() - item.createdAt.getTime();
+      const draftTtl = draft.expiresAt.getTime() - draft.createdAt.getTime();
+
+      // Expect 24 hours in milliseconds (1 day = 86,400,000 ms)
+      expect(itemTtl).toBe(24 * 60 * 60 * 1000);
+      expect(draftTtl).toBe(24 * 60 * 60 * 1000);
+    });
+
     it('persists a newly registered pending transaction to disk and restores it', () => {
       const service1 = new PendingTransactionService(storageFile);
       const item = service1.addPendingTransaction({
