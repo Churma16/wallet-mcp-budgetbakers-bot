@@ -1,3 +1,4 @@
+import path from 'node:path';
 import dotenv from 'dotenv';
 import { applicationLogger } from '../utils/logger.js';
 import { digitsOnly } from '../utils/digitNormalization.js';
@@ -89,6 +90,7 @@ export interface ApplicationEnvironmentConfiguration {
   telegramStartupRetryDelayMs: number;
   maxMediaDownloadMb: number;
   categoryContextFilePath: string;
+  pendingTransactionsStoragePath: string;
 }
 
 
@@ -294,6 +296,11 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     'config/category-context.json'
   ).trim();
 
+  const pendingTransactionsStoragePath = (
+    process.env.PENDING_TRANSACTIONS_STORAGE_PATH ||
+    path.join(whatsappSessionPath, 'pending_transactions.json')
+  ).trim();
+
   return {
     aiProvider,
     aiProviders,
@@ -332,6 +339,7 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     telegramStartupRetryDelayMs,
     maxMediaDownloadMb,
     categoryContextFilePath,
+    pendingTransactionsStoragePath,
   };
 }
 

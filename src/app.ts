@@ -78,7 +78,9 @@ export class Application {
       this.environmentConfig,
       this.categoryContextService
     );
-    this.pendingTransactionManager = new PendingTransactionService();
+    this.pendingTransactionManager = new PendingTransactionService(
+      this.environmentConfig.pendingTransactionsStoragePath
+    );
     this.messagingGateway = new MessagingGatewayService();
     const transactionCorrelationService = new TransactionCorrelationService();
 
