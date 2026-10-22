@@ -264,7 +264,11 @@ export function buildEmailSystemInstruction(
     .map(acc => `ID "${acc.id}": "${acc.name}"`)
     .join(', ');
 
-  const formattedCategories = availableCategoryList
+  const assignableCategoryList = availableCategoryList.filter(
+    cat => cat.isAssignable !== false && cat.group?.id !== 'system_categories'
+  );
+
+  const formattedCategories = assignableCategoryList
     .map(cat => `ID "${cat.id}": "${cat.name}"`)
     .join(', ');
 
@@ -435,14 +439,25 @@ export function resolveEmailExtractedEntities(
   if (parsedData.matchedCategoryId) {
     const directCat = availableCategoryList.find(cat => cat.id === parsedData.matchedCategoryId);
     if (directCat) {
-      parsedData.matchedCategoryName = directCat.name;
+      if (directCat.isAssignable !== false && directCat.group?.id !== 'system_categories') {
+        parsedData.matchedCategoryName = directCat.name;
+      } else {
+        parsedData.matchedCategoryId = undefined;
+        parsedData.matchedCategoryName = undefined;
+      }
     } else {
       const nameCat = availableCategoryList.find(
-        cat => cat.name.toLowerCase() === parsedData.matchedCategoryId?.toLowerCase()
+        cat =>
+          cat.name.toLowerCase() === parsedData.matchedCategoryId?.toLowerCase() &&
+          cat.isAssignable !== false &&
+          cat.group?.id !== 'system_categories'
       );
       if (nameCat) {
         parsedData.matchedCategoryId = nameCat.id;
         parsedData.matchedCategoryName = nameCat.name;
+      } else {
+        parsedData.matchedCategoryId = undefined;
+        parsedData.matchedCategoryName = undefined;
       }
     }
   }
