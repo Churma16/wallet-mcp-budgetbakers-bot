@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { SupportedMessengerChannel } from './messaging/types.js';
@@ -782,7 +783,7 @@ export class PendingTransactionService {
       };
 
       const serialized = JSON.stringify(snapshot, null, 2);
-      const tempPath = `${this.storageFilePath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
+      const tempPath = `${this.storageFilePath}.tmp.${Date.now()}.${randomUUID()}`;
       fs.writeFileSync(tempPath, serialized, 'utf-8');
       fs.renameSync(tempPath, this.storageFilePath);
     } catch (error) {
