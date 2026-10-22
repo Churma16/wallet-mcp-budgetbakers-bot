@@ -86,6 +86,7 @@ export class PendingActionHandler {
 
     // Apply inline custom overrides (category, note, tags) if provided
     let effectiveCustomNote = confirmationIntent.customNote;
+    let effectiveCustomTags = confirmationIntent.customTags;
 
     if (
       this.walletCacheService &&
@@ -185,6 +186,7 @@ export class PendingActionHandler {
                 normalize(matchedCat.name))
           ) {
             effectiveCustomNote = undefined;
+            effectiveCustomTags = undefined;
           }
         }
       }
@@ -196,9 +198,9 @@ export class PendingActionHandler {
       }
     }
 
-    if (confirmationIntent.customTags && confirmationIntent.customTags.length > 0) {
+    if (effectiveCustomTags && effectiveCustomTags.length > 0) {
       for (const item of itemsToRecord) {
-        item.labels = confirmationIntent.customTags;
+        item.labels = effectiveCustomTags;
       }
     }
 

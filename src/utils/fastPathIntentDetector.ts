@@ -786,11 +786,48 @@ export function detectPendingConfirmationAction(userMessageText: string): Pendin
       }
     }
 
-    const hashtagResult = extractHashtags(rawNote);
+    let customCategoryHint: string | undefined;
+    let textToParseForTagsAndNote = rawNote;
+
+    // Check for explicit category trigger prefix: cat:, kategori:, or category:
+    const categoryTriggerMatch = rawNote.match(/(?:^|\s)(cat|kategori|category):\s*/i);
+    if (categoryTriggerMatch && categoryTriggerMatch.index !== undefined) {
+      const prefixMatchIndex = categoryTriggerMatch.index;
+      // Adjust prefixMatchIndex if leading whitespace matched
+      const actualPrefixIndex = categoryTriggerMatch[0].startsWith(' ') || categoryTriggerMatch[0].startsWith('\t')
+        ? prefixMatchIndex + 1
+        : prefixMatchIndex;
+      const contentStartIndex = actualPrefixIndex + categoryTriggerMatch[0].trimStart().length;
+
+      const nextHashIndex = rawNote.indexOf('#', contentStartIndex);
+      const rawCategorySnippet = nextHashIndex !== -1
+        ? rawNote.slice(contentStartIndex, nextHashIndex)
+        : rawNote.slice(contentStartIndex);
+
+      const cleanedCategorySnippet = rawCategorySnippet
+        .trim()
+        .replace(/^["']+|["']+$/g, '')
+        .trim();
+
+      if (cleanedCategorySnippet.length > 0) {
+        customCategoryHint = cleanedCategorySnippet;
+      }
+
+      const textBeforeCat = rawNote.slice(0, actualPrefixIndex);
+      const textAfterCat = nextHashIndex !== -1 ? rawNote.slice(nextHashIndex) : '';
+      textToParseForTagsAndNote = `${textBeforeCat} ${textAfterCat}`.trim();
+    }
+
+    const hashtagResult = extractHashtags(textToParseForTagsAndNote);
     const cleanedNote = hashtagResult.cleanedText.trim();
     const customTags = hashtagResult.tags.length > 0 ? hashtagResult.tags : undefined;
-    const rawCategoryTag = customTags ? customTags[0] : undefined;
-    const customCategoryHint = rawCategoryTag ? rawCategoryTag.replace(/[-_]+/g, ' ').trim() : undefined;
+
+    // If no explicit cat: trigger was provided, retain legacy hashtag category fallback
+    if (!customCategoryHint) {
+      const rawCategoryTag = customTags ? customTags[0] : undefined;
+      customCategoryHint = rawCategoryTag ? rawCategoryTag.replace(/[-_]+/g, ' ').trim() : undefined;
+    }
+
     const customNote = cleanedNote.length > 0 ? cleanedNote : undefined;
 
     return {

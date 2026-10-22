@@ -87,6 +87,61 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
       });
     });
 
+    it('detects explicit cat: trigger with multi-word category and separate tags', () => {
+      const intent = detectPendingConfirmationAction('Ya: makan siang cat:makan nafsu #kantor #reimburse');
+      expect(intent).toEqual<PendingConfirmationIntent>({
+        actionType: 'CONFIRM',
+        targetScope: 'LATEST',
+        customNote: 'makan siang',
+        customCategoryHint: 'makan nafsu',
+        customTags: ['kantor', 'reimburse'],
+        rawCustomInput: 'makan siang cat:makan nafsu #kantor #reimburse',
+      });
+    });
+
+    it('detects explicit cat: trigger with spaces around colon and without tags', () => {
+      const intent = detectPendingConfirmationAction('Ya 1: Gemini Pro cat: Pengeluaran Digital');
+      expect(intent).toEqual<PendingConfirmationIntent>({
+        actionType: 'CONFIRM',
+        targetScope: 1,
+        customNote: 'Gemini Pro',
+        customCategoryHint: 'Pengeluaran Digital',
+        customTags: undefined,
+        rawCustomInput: 'Gemini Pro cat: Pengeluaran Digital',
+      });
+    });
+
+    it('detects explicit cat: trigger alone without custom note', () => {
+      const intent = detectPendingConfirmationAction('Ya: cat:Makan Nafsu');
+      expect(intent).toEqual<PendingConfirmationIntent>({
+        actionType: 'CONFIRM',
+        targetScope: 'LATEST',
+        customNote: undefined,
+        customCategoryHint: 'Makan Nafsu',
+        customTags: undefined,
+        rawCustomInput: 'cat:Makan Nafsu',
+      });
+    });
+
+    it('detects kategori: and category: synonyms with optional quotes', () => {
+      const intentKategori = detectPendingConfirmationAction('Catat: bakso kategori: "Makan Pokok" #lunch');
+      expect(intentKategori?.customNote).toBe('bakso');
+      expect(intentKategori?.customCategoryHint).toBe('Makan Pokok');
+      expect(intentKategori?.customTags).toEqual(['lunch']);
+
+      const intentCategory = detectPendingConfirmationAction("Ya: coffee category: 'Food & Dining'");
+      expect(intentCategory?.customNote).toBe('coffee');
+      expect(intentCategory?.customCategoryHint).toBe('Food & Dining');
+      expect(intentCategory?.customTags).toBeUndefined();
+    });
+
+    it('detects cat: placed after hashtags', () => {
+      const intent = detectPendingConfirmationAction('Ya: makan siang #kantor cat:makan nafsu');
+      expect(intent?.customNote).toBe('makan siang');
+      expect(intent?.customCategoryHint).toBe('makan nafsu');
+      expect(intent?.customTags).toEqual(['kantor']);
+    });
+
     it('preserves existing pure confirmation and cancellation commands', () => {
       expect(detectPendingConfirmationAction('ya')).toEqual({
         actionType: 'CONFIRM',
@@ -506,6 +561,291 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
       expect(handled).toBe(true);
       expect(dispatchedRecords[0].note).toBe('Headset Sony');
       expect(sentMessages[0]).toContain('Headset Sony (Shopee Indonesia)');
+    });
+
+    it('end-to-end: resolves explicit cat: trigger to category and attaches separate tags to Wallet MCP without category duplication', async () => {
+      const pendingService = new PendingTransactionService();
+      const sentMessages: string[] = [];
+      const mockGateway = {
+        sendMessage: vi.fn(async (_channel, _chatId, text) => {
+          sentMessages.push(text);
+        }),
+      } as unknown as MessagingGatewayService;
+
+      let dispatchedRecords: any[] = [];
+      const mockWalletClient = {
+        createRecords: vi.fn(async (records) => {
+          dispatchedRecords = records;
+          return {
+            summary: { total: 1, succeeded: 1, failed: 0 },
+            results: [{ inputIndex: 0, success: true, recordId: 'rec-cat-test' }],
+          };
+        }),
+      } as unknown as WalletMcpClientService;
+
+      const mockCacheService = {
+        getCategories: vi.fn(() => [
+          { id: 'cat-nafsu', name: 'Makan Nafsu' },
+          { id: 'cat-shopping', name: 'Shopping' },
+        ]),
+        getAccounts: vi.fn(() => [
+          { id: 'acc-jago', name: 'Jago Expense', currency: 'IDR' },
+        ]),
+      } as unknown as WalletCacheService;
+
+      const handler = new PendingActionHandler(
+        pendingService,
+        mockWalletClient,
+        mockGateway,
+        () => null,
+        mockCacheService
+      );
+
+      pendingService.addPendingTransaction({
+        sourceType: 'EMAIL',
+        bankDisplayName: 'Bank Jago',
+        accountNameHint: 'Jago Expense',
+        counterParty: 'Warung Nasi',
+        amount: -45000,
+        transactionType: 'EXPENSE',
+        matchedAccountId: 'acc-jago',
+        matchedCategoryId: 'cat-shopping',
+        matchedCategoryName: 'Shopping',
+        note: 'Payment to Warung Nasi',
+        recordDate: '2026-10-21T02:00:00Z',
+      });
+
+      // User confirms with: "Ya: makan siang cat:makan nafsu #kantor #reimburse"
+      const intent = detectPendingConfirmationAction('Ya: makan siang cat:makan nafsu #kantor #reimburse');
+      expect(intent).not.toBeNull();
+
+      const handled = await handler.handlePendingAction(
+        createMockEvent('Ya: makan siang cat:makan nafsu #kantor #reimburse'),
+        intent!,
+        Date.now()
+      );
+
+      expect(handled).toBe(true);
+      expect(dispatchedRecords).toHaveLength(1);
+      // Note is overridden to "makan siang"
+      expect(dispatchedRecords[0].note).toBe('makan siang');
+      // Category is resolved to "Makan Nafsu"
+      expect(dispatchedRecords[0].categoryId).toBe('cat-nafsu');
+      // Labels contain only the explicit tags
+      expect(dispatchedRecords[0].labels).toEqual(['kantor', 'reimburse']);
+      expect(sentMessages[0]).toContain('📂 Makan Nafsu');
+      expect(sentMessages[0]).toContain('🔖 #kantor #reimburse');
+    });
+
+    it('end-to-end: resolves explicit cat: trigger without tags and does not add any labels', async () => {
+      const pendingService = new PendingTransactionService();
+      const sentMessages: string[] = [];
+      const mockGateway = {
+        sendMessage: vi.fn(async (_channel, _chatId, text) => {
+          sentMessages.push(text);
+        }),
+      } as unknown as MessagingGatewayService;
+
+      let dispatchedRecords: any[] = [];
+      const mockWalletClient = {
+        createRecords: vi.fn(async (records) => {
+          dispatchedRecords = records;
+          return {
+            summary: { total: 1, succeeded: 1, failed: 0 },
+            results: [{ inputIndex: 0, success: true, recordId: 'rec-digital' }],
+          };
+        }),
+      } as unknown as WalletMcpClientService;
+
+      const mockCacheService = {
+        getCategories: vi.fn(() => [
+          { id: 'cat-digital', name: 'Pengeluaran Digital' },
+          { id: 'cat-shopping', name: 'Shopping' },
+        ]),
+        getAccounts: vi.fn(() => [
+          { id: 'acc-jago', name: 'Jago Expense', currency: 'IDR' },
+        ]),
+      } as unknown as WalletCacheService;
+
+      const handler = new PendingActionHandler(
+        pendingService,
+        mockWalletClient,
+        mockGateway,
+        () => null,
+        mockCacheService
+      );
+
+      pendingService.addPendingTransaction({
+        sourceType: 'EMAIL',
+        bankDisplayName: 'Bank Jago',
+        accountNameHint: 'Jago Expense',
+        counterParty: 'Google',
+        amount: -85470,
+        transactionType: 'EXPENSE',
+        matchedAccountId: 'acc-jago',
+        matchedCategoryId: 'cat-shopping',
+        matchedCategoryName: 'Shopping',
+        note: 'Payment to Google',
+        recordDate: '2026-10-20T16:26:18Z',
+      });
+
+      // User confirms with: "Ya 1: Gemini Pro cat: Pengeluaran Digital"
+      const intent = detectPendingConfirmationAction('Ya 1: Gemini Pro cat: Pengeluaran Digital');
+      expect(intent).not.toBeNull();
+      expect(intent?.targetScope).toBe(1);
+
+      const handled = await handler.handlePendingAction(
+        createMockEvent('Ya 1: Gemini Pro cat: Pengeluaran Digital'),
+        intent!,
+        Date.now()
+      );
+
+      expect(handled).toBe(true);
+      expect(dispatchedRecords).toHaveLength(1);
+      expect(dispatchedRecords[0].note).toBe('Gemini Pro');
+      expect(dispatchedRecords[0].categoryId).toBe('cat-digital');
+      // Labels MUST be undefined, ensuring no unwanted tags (like #produk) are created
+      expect(dispatchedRecords[0].labels).toBeUndefined();
+      expect(sentMessages[0]).toContain('📂 Pengeluaran Digital');
+      expect(sentMessages[0]).not.toContain('🔖');
+    });
+
+    it('end-to-end: preserves existing pending note when only cat: is provided', async () => {
+      const pendingService = new PendingTransactionService();
+      const sentMessages: string[] = [];
+      const mockGateway = {
+        sendMessage: vi.fn(async (_channel, _chatId, text) => {
+          sentMessages.push(text);
+        }),
+      } as unknown as MessagingGatewayService;
+
+      let dispatchedRecords: any[] = [];
+      const mockWalletClient = {
+        createRecords: vi.fn(async (records) => {
+          dispatchedRecords = records;
+          return {
+            summary: { total: 1, succeeded: 1, failed: 0 },
+            results: [{ inputIndex: 0, success: true, recordId: 'rec-preserve' }],
+          };
+        }),
+      } as unknown as WalletMcpClientService;
+
+      const mockCacheService = {
+        getCategories: vi.fn(() => [
+          { id: 'cat-nafsu', name: 'Makan Nafsu' },
+          { id: 'cat-shopping', name: 'Shopping' },
+        ]),
+        getAccounts: vi.fn(() => [
+          { id: 'acc-jago', name: 'Jago Expense', currency: 'IDR' },
+        ]),
+      } as unknown as WalletCacheService;
+
+      const handler = new PendingActionHandler(
+        pendingService,
+        mockWalletClient,
+        mockGateway,
+        () => null,
+        mockCacheService
+      );
+
+      pendingService.addPendingTransaction({
+        sourceType: 'EMAIL',
+        bankDisplayName: 'Bank Jago',
+        accountNameHint: 'Jago Expense',
+        counterParty: 'Bank Jago',
+        amount: -54500,
+        transactionType: 'EXPENSE',
+        matchedAccountId: 'acc-jago',
+        matchedCategoryId: 'cat-shopping',
+        matchedCategoryName: 'Shopping',
+        note: 'GrabFood dari dBestO: 1x Paket Sadas',
+        recordDate: '2026-10-20T04:27:48Z',
+      });
+
+      // User confirms with: "Ya: cat:Makan Nafsu"
+      const intent = detectPendingConfirmationAction('Ya: cat:Makan Nafsu');
+      expect(intent).not.toBeNull();
+
+      const handled = await handler.handlePendingAction(
+        createMockEvent('Ya: cat:Makan Nafsu'),
+        intent!,
+        Date.now()
+      );
+
+      expect(handled).toBe(true);
+      expect(dispatchedRecords).toHaveLength(1);
+      // Original note is preserved
+      expect(dispatchedRecords[0].note).toBe('GrabFood dari dBestO: 1x Paket Sadas');
+      expect(dispatchedRecords[0].categoryId).toBe('cat-nafsu');
+      expect(dispatchedRecords[0].labels).toBeUndefined();
+    });
+
+    it('end-to-end: legacy #makan nafsu category override does not add makan to labels', async () => {
+      const pendingService = new PendingTransactionService();
+      const sentMessages: string[] = [];
+      const mockGateway = {
+        sendMessage: vi.fn(async (_channel, _chatId, text) => {
+          sentMessages.push(text);
+        }),
+      } as unknown as MessagingGatewayService;
+
+      let dispatchedRecords: any[] = [];
+      const mockWalletClient = {
+        createRecords: vi.fn(async (records) => {
+          dispatchedRecords = records;
+          return {
+            summary: { total: 1, succeeded: 1, failed: 0 },
+            results: [{ inputIndex: 0, success: true, recordId: 'rec-legacy-nafsu' }],
+          };
+        }),
+      } as unknown as WalletMcpClientService;
+
+      const mockCacheService = {
+        getCategories: vi.fn(() => [
+          { id: 'cat-nafsu', name: 'Makan Nafsu' },
+          { id: 'cat-shopping', name: 'Shopping' },
+        ]),
+        getAccounts: vi.fn(() => [
+          { id: 'acc-jago', name: 'Jago Expense', currency: 'IDR' },
+        ]),
+      } as unknown as WalletCacheService;
+
+      const handler = new PendingActionHandler(
+        pendingService,
+        mockWalletClient,
+        mockGateway,
+        () => null,
+        mockCacheService
+      );
+
+      pendingService.addPendingTransaction({
+        sourceType: 'EMAIL',
+        bankDisplayName: 'Bank Jago',
+        accountNameHint: 'Jago Expense',
+        counterParty: 'Bank Jago',
+        amount: -54500,
+        transactionType: 'EXPENSE',
+        matchedAccountId: 'acc-jago',
+        matchedCategoryId: 'cat-shopping',
+        matchedCategoryName: 'Shopping',
+        note: 'GrabFood dari dBestO: 1x Paket Sadas',
+        recordDate: '2026-10-20T04:27:48Z',
+      });
+
+      // User confirms with legacy: "Ya 1: #makan nafsu"
+      const intent = detectPendingConfirmationAction('Ya 1: #makan nafsu');
+      expect(intent).not.toBeNull();
+
+      const handled = await handler.handlePendingAction(
+        createMockEvent('Ya 1: #makan nafsu'),
+        intent!,
+        Date.now()
+      );
+
+      expect(handled).toBe(true);
+      expect(dispatchedRecords[0].categoryId).toBe('cat-nafsu');
+      // Labels MUST be undefined (not ['makan'])
+      expect(dispatchedRecords[0].labels).toBeUndefined();
     });
   });
 
