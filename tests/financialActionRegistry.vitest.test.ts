@@ -437,7 +437,8 @@ describe('FinancialActionRegistry & Action Handlers (Issue #116)', () => {
       expect(registeredActions).toContain('TRANSACTION_HISTORY');
       expect(registeredActions).toContain('TRANSACTION_SUMMARY');
       expect(registeredActions).toContain('CREATE_RECORD');
-      expect(registeredActions.length).toBe(6);
+      expect(registeredActions).toContain('CHECK_FINANCIAL_HEALTH');
+      expect(registeredActions.length).toBe(7);
     });
   });
 

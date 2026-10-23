@@ -31,6 +31,7 @@ import {
 import { TransactionHistoryService } from './services/transactionHistoryService.js';
 import { TransactionSummaryService } from './services/transactionSummaryService.js';
 import { WalletMcpCapabilityService } from './services/walletMcpCapabilityService.js';
+import { FinancialHealthService } from './services/financialHealthService.js';
 import { FinancialActionExecutor } from './services/financialActionExecutor.js';
 import { FinancialActionRegistry, createDefaultFinancialActionRegistry } from './actions/index.js';
 import { WalletRecordPreparationService } from './services/walletRecordPreparationService.js';
@@ -56,6 +57,7 @@ export class Application {
   private readonly fastPathHandler: FastPathHandler;
   private readonly userMessageHandler: UserMessageHandler;
   private readonly financialActionRegistry: FinancialActionRegistry;
+  private readonly financialHealthService: FinancialHealthService;
   private isRunning: boolean = false;
 
   constructor(customConfig?: ApplicationEnvironmentConfiguration) {
@@ -113,12 +115,21 @@ export class Application {
       this.walletCapabilityService
     );
 
+    this.financialHealthService = new FinancialHealthService(
+      this.walletMcpClient,
+      this.walletCacheService,
+      this.transactionHistoryService,
+      this.transactionSummaryService,
+      this.categoryContextService
+    );
+
     this.financialActionExecutor = new FinancialActionExecutor(
       this.walletMcpClient,
       this.walletCacheService,
       this.messagingGateway,
       this.transactionHistoryService,
-      this.transactionSummaryService
+      this.transactionSummaryService,
+      this.financialHealthService
     );
 
     const recordPreparationService = new WalletRecordPreparationService(
@@ -217,6 +228,13 @@ export class Application {
     // 1. Initialize Wallet MCP Client & Pre-cache accounts & categories
     applicationLogger.info('Connecting to BudgetBakers Wallet MCP Server...');
     await this.walletCacheService.initialize();
+
+    // Trigger eager warm-up for Financial Health category heuristics in background
+    void this.financialHealthService.warmUpCache().catch(warmUpErr => {
+      applicationLogger.warn('Financial health heuristic warm-up encountered error during startup', {
+        error: warmUpErr instanceof Error ? warmUpErr.message : String(warmUpErr),
+      });
+    });
     try {
       await this.walletCapabilityService.refreshCapabilities();
       applicationLogger.info('Discovered Wallet MCP capabilities and client profile.');

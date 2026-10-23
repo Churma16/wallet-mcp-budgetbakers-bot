@@ -33,3 +33,5 @@ config/category-context.json
 # Local agent workspaces and locks
 .worktrees/
 skills-lock.json
+.pnpm-store/
+.codex-remote-attachments/

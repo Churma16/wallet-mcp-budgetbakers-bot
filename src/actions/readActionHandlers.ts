@@ -6,6 +6,7 @@ import { formatTransactionAttentionSummary } from '../utils/transactionStatusFor
 import {
   CheckBalanceActionContext,
   CheckBudgetActionContext,
+  CheckFinancialHealthActionContext,
   CheckQueueActionContext,
   FinancialActionHandler,
   HelpMenuActionContext,
@@ -118,3 +119,20 @@ export class CheckQueueActionHandler implements FinancialActionHandler<'CHECK_QU
     await this.messagingGateway.sendMessage(context.event.channel, context.event.chatIdentifier, replyMessage);
   }
 }
+
+/**
+ * Handles financial health and runway evaluation queries by delegating to the shared FinancialActionExecutor.
+ */
+export class CheckFinancialHealthActionHandler implements FinancialActionHandler<'CHECK_FINANCIAL_HEALTH'> {
+  public readonly action = 'CHECK_FINANCIAL_HEALTH' as const;
+
+  constructor(private readonly financialActionExecutor: FinancialActionExecutor) {}
+
+  public async execute(context: CheckFinancialHealthActionContext): Promise<void> {
+    await this.financialActionExecutor.executeCheckFinancialHealth(context.event, {
+      processingStartTimestamp: context.processingStartTimestamp,
+      routingSource: context.routingSource,
+    });
+  }
+}
+

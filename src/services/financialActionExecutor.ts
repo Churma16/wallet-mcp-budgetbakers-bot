@@ -16,6 +16,9 @@ import {
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../utils/logger.js';
 
+import { FinancialHealthService } from './financialHealthService.js';
+import { formatFinancialHealthMessage } from '../utils/financialHealthFormatter.js';
+
 export interface FinancialActionExecutionContext {
   readonly processingStartTimestamp?: number;
   readonly routingSource?: 'fast-path' | 'ai' | 'direct';
@@ -24,13 +27,15 @@ export interface FinancialActionExecutionContext {
 export class FinancialActionExecutor {
   private readonly transactionHistoryService: TransactionHistoryService;
   private readonly transactionSummaryService: TransactionSummaryService;
+  private readonly financialHealthService: FinancialHealthService;
 
   constructor(
     private readonly walletMcpClient: WalletMcpClientService,
     private readonly walletCacheService: WalletCacheService,
     private readonly messagingGateway: MessagingGatewayService,
     transactionHistoryService?: TransactionHistoryService,
-    transactionSummaryService?: TransactionSummaryService
+    transactionSummaryService?: TransactionSummaryService,
+    financialHealthService?: FinancialHealthService
   ) {
     this.transactionHistoryService =
       transactionHistoryService ||
@@ -41,6 +46,14 @@ export class FinancialActionExecutor {
         walletMcpClient,
         walletCacheService,
         this.transactionHistoryService
+      );
+    this.financialHealthService =
+      financialHealthService ||
+      new FinancialHealthService(
+        walletMcpClient,
+        walletCacheService,
+        this.transactionHistoryService,
+        this.transactionSummaryService
       );
   }
 
@@ -222,4 +235,40 @@ export class FinancialActionExecutor {
       `[${event.channel.toUpperCase()}] Sent help guidance menu via Fast-path (${processingDurationMs}ms).`
     );
   }
+
+  /**
+   * Executes a financial health and runway evaluation by aggregating accounts,
+   * active budgets, and categorized cash flow, formatting the multi-section
+   * summary, and dispatching it to the user.
+   */
+  public async executeCheckFinancialHealth(
+    event: IncomingUserMessageEvent,
+    executionContext?: FinancialActionExecutionContext
+  ): Promise<void> {
+    const processingStartTimestamp = executionContext?.processingStartTimestamp ?? Date.now();
+
+    applicationLogger.mcp('Evaluating financial health and runway...');
+
+    const evaluationResult = await this.financialHealthService.evaluateFinancialHealth(
+      new Date(processingStartTimestamp)
+    );
+    const replyMessage = formatFinancialHealthMessage(evaluationResult);
+
+    const routingDetailSuffix = executionContext?.routingSource === 'fast-path' ? ' (Fast-path)' : '';
+    applicationLogger.fileDetail('mcp', `Dispatched Financial Health Reply${routingDetailSuffix}`, {
+      channel: event.channel,
+      liquidBalance: evaluationResult.totalLiquidBalance,
+      runwaySufficient: evaluationResult.runway.isSufficient,
+      replyText: replyMessage,
+    });
+
+    await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
+
+    const processingDurationMs = Date.now() - processingStartTimestamp;
+    const viaRoutingSuffix = executionContext?.routingSource === 'fast-path' ? ' via Fast-path' : '';
+    applicationLogger.success(
+      `[${event.channel.toUpperCase()}] Sent financial health evaluation${viaRoutingSuffix} (${processingDurationMs}ms).`
+    );
+  }
 }
+

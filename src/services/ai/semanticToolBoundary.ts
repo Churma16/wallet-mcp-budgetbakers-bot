@@ -16,6 +16,7 @@ export const SEMANTIC_TOOL_ALLOWLIST = {
   get_balance: { access: 'read' },
   get_budgets: { access: 'read' },
   get_transaction_history: { access: 'read' },
+  get_financial_health: { access: 'read' },
   propose_transaction: { access: 'mutation' },
 } as const;
 
@@ -642,6 +643,8 @@ export function createSemanticToolProposalFromFinancialIntent(
       return { tool: 'get_balance', arguments: {} };
     case 'CHECK_BUDGET':
       return { tool: 'get_budgets', arguments: {} };
+    case 'CHECK_FINANCIAL_HEALTH':
+      return { tool: 'get_financial_health', arguments: {} };
     case 'TRANSACTION_HISTORY':
       return { tool: 'get_transaction_history', arguments: intent.queryOptions };
     case 'CREATE_RECORD':
@@ -707,6 +710,24 @@ export class SemanticToolBoundary {
         access,
         context: {
           action: 'CHECK_BUDGET',
+          event: request.event,
+          processingStartTimestamp: request.processingStartTimestamp,
+          routingSource: 'ai',
+        },
+      };
+    }
+
+    if (tool === 'get_financial_health') {
+      if (!hasEmptyReadArguments(request.proposal.arguments)) {
+        return reject('INVALID_ARGUMENTS', 'Financial health lookup does not accept model-controlled arguments.');
+      }
+
+      return {
+        accepted: true,
+        tool,
+        access,
+        context: {
+          action: 'CHECK_FINANCIAL_HEALTH',
           event: request.event,
           processingStartTimestamp: request.processingStartTimestamp,
           routingSource: 'ai',

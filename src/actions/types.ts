@@ -43,11 +43,16 @@ export interface CheckQueueActionContext extends BaseFinancialActionContext {
   readonly action: 'CHECK_QUEUE';
 }
 
+export interface CheckFinancialHealthActionContext extends BaseFinancialActionContext {
+  readonly action: 'CHECK_FINANCIAL_HEALTH';
+}
+
 export type FinancialActionContext =
   | CheckBalanceActionContext
   | CheckBudgetActionContext
   | HelpMenuActionContext
   | CheckQueueActionContext
+  | CheckFinancialHealthActionContext
   | TransactionHistoryActionContext
   | TransactionSummaryActionContext
   | CreateRecordActionContext;

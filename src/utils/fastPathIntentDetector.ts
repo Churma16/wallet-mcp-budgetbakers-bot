@@ -19,6 +19,7 @@ export type FastPathAction =
   | 'CHECK_BUDGET'
   | 'HELP_MENU'
   | 'CHECK_QUEUE'
+  | 'CHECK_FINANCIAL_HEALTH'
   | FastPathTransactionHistoryAction
   | FastPathTransactionSummaryAction
   | null;
@@ -675,6 +676,13 @@ export function detectFastPathAction(userMessageText: string): FastPathAction {
     /^(?:cek|check|lihat|view|status)?\s*(?:antrean|antrian|queue|pending)(?:\s+transaksi)?$|^(?:cek|check|lihat|view)?\s*status(?:\s+(?:transaksi|antrean|antrian|queue))?$/i;
   if (queuePattern.test(trimmedLowerText)) {
     return 'CHECK_QUEUE';
+  }
+
+  const sanitizedText = trimmedLowerText.replace(/[?!.]+$/, '').trim();
+  const financialHealthPattern =
+    /^(?:cek|lihat|info|evaluasi|check|view|show)?\s*(?:kesehatan\s+keuangan|kondisi\s+keuangan|financial\s+health|runway(?:\s+keuangan)?|cashflow|cash\s+flow|arus\s+kas|(?:uang|uangku|duit)\s+cukup(?:\s+(?:ga|gak|ngga|nggak))?|apakah\s+(?:uang|duit)(?:ku)?(?:\s+saya)?\s+cukup(?:\s+(?:ga|gak|ngga|nggak))?|bisa\s+beli\s+(?:ini\s+)?(?:ga|gak|ngga|nggak)|do\s+i\s+have\s+money(?:\s+to\s+fill\s+that)?|can\s+i\s+afford(?:\s+this)?|duit|keuangan)(?:\s+(?:saya|my|bulan\s+ini|this\s+month))?$/i;
+  if (financialHealthPattern.test(sanitizedText)) {
+    return 'CHECK_FINANCIAL_HEALTH';
   }
 
   return null;

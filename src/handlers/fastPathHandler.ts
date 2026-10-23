@@ -10,6 +10,7 @@ import {
   FinancialActionRegistry,
   CheckBalanceActionHandler,
   CheckBudgetActionHandler,
+  CheckFinancialHealthActionHandler,
   CheckQueueActionHandler,
   HelpMenuActionHandler,
   TransactionHistoryActionHandler,
@@ -63,6 +64,7 @@ export class FastPathHandler {
       this.financialActionRegistry = new FinancialActionRegistry();
       this.financialActionRegistry.register(new CheckBalanceActionHandler(this.financialActionExecutor));
       this.financialActionRegistry.register(new CheckBudgetActionHandler(this.financialActionExecutor));
+      this.financialActionRegistry.register(new CheckFinancialHealthActionHandler(this.financialActionExecutor));
       this.financialActionRegistry.register(new HelpMenuActionHandler(this.financialActionExecutor));
       this.financialActionRegistry.register(new TransactionHistoryActionHandler(this.financialActionExecutor));
       this.financialActionRegistry.register(new TransactionSummaryActionHandler(this.financialActionExecutor));
@@ -166,6 +168,17 @@ export class FastPathHandler {
       applicationLogger.info('Fast-path matched: CHECK_QUEUE (0 AI tokens consumed)');
       await this.financialActionRegistry.execute({
         action: 'CHECK_QUEUE',
+        event,
+        processingStartTimestamp,
+        routingSource: 'fast-path',
+      });
+      return true;
+    }
+
+    if (fastPathAction === 'CHECK_FINANCIAL_HEALTH') {
+      applicationLogger.info('Fast-path matched: CHECK_FINANCIAL_HEALTH (0 AI tokens consumed)');
+      await this.financialActionRegistry.execute({
+        action: 'CHECK_FINANCIAL_HEALTH',
         event,
         processingStartTimestamp,
         routingSource: 'fast-path',

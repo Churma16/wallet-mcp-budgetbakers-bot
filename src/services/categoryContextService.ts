@@ -11,6 +11,7 @@ import {
   CategoryContextValidationIssue,
   CategoryContextOverheadReport,
 } from '../types/categoryContextTypes.js';
+import { FinancialHealthConfigOverride } from '../types/financialHealthTypes.js';
 import { applicationLogger } from '../utils/logger.js';
 
 export class CategoryContextService {
@@ -31,6 +32,7 @@ export class CategoryContextService {
       version: '1.0',
       userContextSummary: '',
       categoryRules: [],
+      financialHealth: undefined,
     };
   }
 
@@ -300,14 +302,60 @@ export class CategoryContextService {
       }
     }
 
+    // 4. Financial Health Override
+    let financialHealth: FinancialHealthConfigOverride | undefined;
+    if (typeof typedInput.financialHealth === 'object' && typedInput.financialHealth !== null) {
+      financialHealth = this.validateFinancialHealthConfig(typedInput.financialHealth);
+    }
+
     return {
       isValid: issues.filter(i => i.severity === 'error').length === 0,
       configuration: {
         version: versionString,
         userContextSummary,
         categoryRules: uniqueRules,
+        financialHealth,
       },
       issues,
+    };
+  }
+
+  private validateFinancialHealthConfig(raw: unknown): FinancialHealthConfigOverride | undefined {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+      return undefined;
+    }
+
+    const typed = raw as Record<string, unknown>;
+    const extractStringArray = (field: string): string[] | undefined => {
+      if (!Array.isArray(typed[field])) return undefined;
+      const filtered = (typed[field] as unknown[])
+        .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+        .map(item => item.trim());
+      return filtered.length > 0 ? filtered : undefined;
+    };
+
+    const overrideRegularCategoryIds = extractStringArray('overrideRegularCategoryIds');
+    const overrideDiscretionaryCategoryIds = extractStringArray('overrideDiscretionaryCategoryIds');
+    const overrideRegularCategoryNames = extractStringArray('overrideRegularCategoryNames');
+    const overrideDiscretionaryCategoryNames = extractStringArray('overrideDiscretionaryCategoryNames');
+    const recurringPayees = extractStringArray('recurringPayees');
+
+    if (
+      !overrideRegularCategoryIds &&
+      !overrideDiscretionaryCategoryIds &&
+      !overrideRegularCategoryNames &&
+      !overrideDiscretionaryCategoryNames &&
+      !recurringPayees
+    ) {
+      return undefined;
+    }
+
+    return {
+      overrideRegularCategoryIds,
+      overrideDiscretionaryCategoryIds,
+      overrideRegularCategoryNames,
+      overrideDiscretionaryCategoryNames,
+      recurringPayees,
     };
   }
 

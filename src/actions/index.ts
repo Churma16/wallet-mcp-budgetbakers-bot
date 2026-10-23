@@ -8,6 +8,7 @@ import { FinancialActionRegistry } from './financialActionRegistry.js';
 import {
   CheckBalanceActionHandler,
   CheckBudgetActionHandler,
+  CheckFinancialHealthActionHandler,
   CheckQueueActionHandler,
   HelpMenuActionHandler,
   TransactionHistoryActionHandler,
@@ -44,6 +45,7 @@ export function createDefaultFinancialActionRegistry(
 
   registry.register(new CheckBalanceActionHandler(dependencies.financialActionExecutor));
   registry.register(new CheckBudgetActionHandler(dependencies.financialActionExecutor));
+  registry.register(new CheckFinancialHealthActionHandler(dependencies.financialActionExecutor));
   registry.register(new HelpMenuActionHandler(dependencies.financialActionExecutor));
   registry.register(new TransactionHistoryActionHandler(dependencies.financialActionExecutor));
   registry.register(new TransactionSummaryActionHandler(dependencies.financialActionExecutor));
