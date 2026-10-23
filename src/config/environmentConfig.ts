@@ -101,7 +101,7 @@ export interface ProviderConfigStrategy {
 export const PROVIDER_CONFIG_STRATEGIES: Record<SupportedAiProviderType, ProviderConfigStrategy> = {
   openrouter: {
     getDefaultBaseUrl: () => 'https://openrouter.ai/api/v1',
-    getDefaultModel: () => 'google/gemini-2.0-flash-exp:free',
+    getDefaultModel: () => 'openrouter/free',
     getDefaultApiKey: () => process.env.OPENROUTER_API_KEY || '',
   },
   groq: {

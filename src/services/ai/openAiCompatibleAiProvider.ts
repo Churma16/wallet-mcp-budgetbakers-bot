@@ -327,7 +327,7 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
         );
         return {
           action: 'GENERAL_REPLY',
-          explanation: `Model '${this.candidateModelList[0]}' yang Anda gunakan saat ini belum mendukung pembacaan gambar / foto struk. Silakan gunakan model multimodal (contoh: google/gemini-2.0-flash-exp:free di OpenRouter atau aktifkan AI_PROVIDER=gemini).`,
+          explanation: `Model '${this.candidateModelList[0]}' yang Anda gunakan saat ini belum mendukung pembacaan gambar / foto struk. Silakan gunakan model multimodal (contoh: openrouter/free di OpenRouter atau aktifkan AI_PROVIDER=gemini).`,
         };
       }
       throw visionError;
