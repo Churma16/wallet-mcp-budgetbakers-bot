@@ -258,13 +258,13 @@ Fill in these credentials to get the bot running immediately.
 | `OPENAI_API_KEY` | OpenAI API Key (required if `openai` is in `AI_PROVIDER`) | `sk-...` |
 | `AI_API_KEY` | Generic API key for custom OpenAI-compatible endpoint | `sk-...` |
 | `AI_BASE_URL` | Custom endpoint for OpenAI-compatible providers | `https://openrouter.ai/api/v1` |
-| `AI_MODEL` | Active model for OpenRouter / Groq / Ollama / OpenAI | `meta-llama/llama-3.3-70b-instruct:free` |
-| `AI_FALLBACK_MODELS` | Comma-separated fallback models for alternative providers | `google/gemini-2.0-flash-exp:free` |
+| `AI_MODEL` | Active model for OpenRouter / Groq / Ollama / OpenAI | `openrouter/free` |
+| `AI_FALLBACK_MODELS` | Comma-separated fallback models for alternative providers | `google/gemma-4-31b-it:free,nvidia/nemotron-3.5-lightning:free` |
 | `AI_TIMEOUT_SECONDS` | Request timeout in seconds for alternative AI providers | `25` |
 
 > [!TIP]
 > **Recommended Multi-Provider Fallback Setup**:
-> Set `AI_PROVIDER=gemini,openrouter` with your `GEMINI_API_KEY` and `OPENROUTER_API_KEY`. The bot will utilize Gemini's high-speed native multimodal engine, and automatically fail over to OpenRouter free models (e.g. `meta-llama/llama-3.3-70b-instruct:free`) if Gemini hits rate limits (`429`) or server overload (`503`).
+> Set `AI_PROVIDER=gemini,openrouter` with your `GEMINI_API_KEY` and `OPENROUTER_API_KEY`. The bot will utilize Gemini's high-speed native multimodal engine, and automatically fail over to OpenRouter free models (e.g. `openrouter/free`) if Gemini hits rate limits (`429`) or server overload (`503`).
 
 **1C. Messaging Channels (Choose at least one: WhatsApp or Telegram):**
 | Variable | Description | Example / Default |

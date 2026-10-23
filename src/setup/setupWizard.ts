@@ -63,7 +63,7 @@ const PROVIDER_DEFAULT_BASE_URL: Partial<Record<SupportedAiProviderType, string>
 
 const PROVIDER_DEFAULT_MODEL: Record<SupportedAiProviderType, string> = {
   gemini: 'gemini-3.5-flash-lite',
-  openrouter: 'google/gemini-2.0-flash-exp:free',
+  openrouter: 'openrouter/free',
   groq: 'llama-3.3-70b-versatile',
   openai: 'gpt-4o-mini',
   ollama: 'llama3.2',
