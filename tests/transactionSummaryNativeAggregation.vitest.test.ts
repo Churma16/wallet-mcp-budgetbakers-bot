@@ -656,26 +656,65 @@ describe('native Wallet MCP summary aggregation (Issue #161)', () => {
     expect(summary.totals[0].expense).toBe(25000);
   });
 
-  it('initializes FastPathHandler default TransactionSummaryService when none is provided', () => {
-    const mockClient = createMockWalletMcpClient(async () => ({ results: [], limit: 1000, offset: 0 }));
-    const mockCache = createMockWalletCacheService();
-    const handler = new FastPathHandler(
-      {
-        pendingActionHandler: {} as any,
-        emailTransactionHandler: {} as any,
-        userMessageHandler: {} as any,
-      },
-      mockClient,
-      mockCache
+  it('dispatches TRANSACTION_SUMMARY through injected financialActionRegistry in FastPathHandler', async () => {
+    const executeSpy = vi.fn().mockResolvedValue(undefined);
+    const registry = {
+      hasHandler: vi.fn().mockReturnValue(true),
+      execute: executeSpy,
+    } as any;
+    const handler = new FastPathHandler(registry);
+    const event = {
+      channel: 'whatsapp' as const,
+      chatIdentifier: '123456@s.whatsapp.net',
+      senderIdentifier: '123456',
+      messageType: 'text' as const,
+      textPayload: 'total pengeluaran bulan ini',
+      rawMessageTimestamp: new Date(),
+    };
+    const handled = await handler.handleFastPath(
+      event,
+      { type: 'TRANSACTION_SUMMARY', options: {} },
+      Date.now()
     );
-    expect(handler).toBeDefined();
+    expect(handled).toBe(true);
+    expect(executeSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'TRANSACTION_SUMMARY', routingSource: 'fast-path' })
+    );
   });
 
-  it('initializes FinancialActionExecutor default TransactionSummaryService when none is provided', () => {
+  it('delegates to explicitly injected TransactionSummaryService in FinancialActionExecutor', async () => {
     const mockClient = createMockWalletMcpClient(async () => ({ results: [], limit: 1000, offset: 0 }));
     const mockCache = createMockWalletCacheService();
-    const executor = new FinancialActionExecutor(mockClient, mockCache);
-    expect(executor).toBeDefined();
+    const mockGateway = { sendMessage: vi.fn().mockResolvedValue(undefined) } as any;
+    const mockHistory = {} as any;
+    const summarySpy = vi.fn().mockResolvedValue({
+      transactionCount: 0,
+      excludedTransferCount: 0,
+      totals: [],
+      breakdown: [],
+      groupBy: 'none',
+      isMultiCurrency: false,
+      isComplete: true,
+    });
+    const mockSummaryService = { getTransactionSummary: summarySpy } as any;
+    const executor = new FinancialActionExecutor(
+      mockClient,
+      mockCache,
+      mockGateway,
+      mockHistory,
+      mockSummaryService
+    );
+    await executor.executeTransactionSummary(
+      {
+        channel: 'whatsapp',
+        chatIdentifier: '123456@s.whatsapp.net',
+        senderIdentifier: '123456',
+        messageType: 'text',
+        rawMessageTimestamp: new Date(),
+      },
+      {}
+    );
+    expect(summarySpy).toHaveBeenCalledTimes(1);
   });
 
   it('dispatches fetchRecordsAggregation tool call with full filters through callMcpTool', async () => {

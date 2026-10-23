@@ -3,6 +3,7 @@ import path from 'path';
 import { afterEach, beforeEach, describe, it } from 'vitest';
 import { applicationLogger } from '../src/utils/logger.js';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
+import { createTestUserMessageHandler } from './fixtures/compositionFixtures.js';
 import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
 import { WalletMcpRequestError } from '../src/services/walletMcpService.js';
@@ -185,15 +186,12 @@ async function runFinancialLoggingPolicyTests(): Promise<void> {
       getCategories: () => [],
     };
 
-    const handler = new UserMessageHandler(
-      messagingGatewayMock as any,
-      pendingTransactionManagerMock as any,
-      {} as any,
-      {} as any,
-      financialAiProviderMock as any,
-      walletCacheServiceMock as any,
-      {} as any
-    );
+    const handler = createTestUserMessageHandler({
+      messagingGateway: messagingGatewayMock as any,
+      pendingTransactionManager: pendingTransactionManagerMock as any,
+      financialAiProvider: financialAiProviderMock as any,
+      walletCacheService: walletCacheServiceMock as any,
+    });
 
     applicationLogger.info(handlerStartMarker);
     await handler.handleIncomingUserMessage({

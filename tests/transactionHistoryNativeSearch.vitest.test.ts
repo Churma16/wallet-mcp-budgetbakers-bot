@@ -8,6 +8,7 @@ import {
 import { TransactionHistoryService } from '../src/services/transactionHistoryService.js';
 import { WalletCacheService } from '../src/services/walletCacheService.js';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
+import { createTestFastPathHandler } from './fixtures/compositionFixtures.js';
 import { detectFastPathAction } from '../src/utils/fastPathIntentDetector.js';
 import { formatTransactionHistoryMessage } from '../src/utils/humanResponseFormatter.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
@@ -750,7 +751,7 @@ describe('native Wallet MCP text search and compatibility shim (Issue #162)', ()
 
     it('executes end-to-end fast path dispatch for search queries', async () => {
       setActiveLanguage('id');
-      const { client, cacheService } = createHarness();
+      const { client, cacheService, historyService } = createHarness();
 
       const sentMessages: string[] = [];
       const mockGateway = {
@@ -759,7 +760,12 @@ describe('native Wallet MCP text search and compatibility shim (Issue #162)', ()
         },
       } as any;
 
-      const fastPathHandler = new FastPathHandler(client, cacheService, mockGateway);
+      const fastPathHandler = createTestFastPathHandler({
+        walletMcpClient: client,
+        walletCacheService: cacheService,
+        messagingGateway: mockGateway,
+        transactionHistoryService: historyService,
+      });
       const incomingEvent = {
         channel: 'whatsapp' as const,
         chatIdentifier: '628123456789@s.whatsapp.net',

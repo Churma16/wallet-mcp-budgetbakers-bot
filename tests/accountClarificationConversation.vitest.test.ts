@@ -1,4 +1,5 @@
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
+import { createTestUserMessageHandler } from './fixtures/compositionFixtures.js';
 import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
 import { AccountClarificationConversationService } from '../src/services/ai/accountClarificationConversationService.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
@@ -263,19 +264,15 @@ function createHarness(
     conversationService
   );
 
-  const userMessageHandler = new UserMessageHandler(
-    messagingGateway as any,
+  const userMessageHandler = createTestUserMessageHandler({
+    messagingGateway: messagingGateway as any,
     pendingTransactionManager,
     pendingActionHandler,
     fastPathHandler,
     financialAiProvider,
-    walletCacheService as any,
-    walletMcpClient as any,
-    undefined,
-    undefined,
-    undefined,
-    accountClarificationHandler
-  );
+    walletCacheService: walletCacheService as any,
+    accountClarificationHandler,
+  });
 
   return {
     userMessageHandler,
@@ -370,19 +367,15 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
         conversationService
       );
 
-      const userMessageHandler = new UserMessageHandler(
-        messagingGateway as any,
+      const userMessageHandler = createTestUserMessageHandler({
+        messagingGateway: messagingGateway as any,
         pendingTransactionManager,
-        new MockPendingActionHandler() as any,
-        new MockFastPathHandler() as any,
-        minimalAiProvider as any,
-        walletCacheService as any,
-        walletMcpClient as any,
-        undefined,
-        undefined,
-        undefined,
-        accountClarificationHandler
-      );
+        pendingActionHandler: new MockPendingActionHandler() as any,
+        fastPathHandler: new MockFastPathHandler() as any,
+        financialAiProvider: minimalAiProvider as any,
+        walletCacheService: walletCacheService as any,
+        accountClarificationHandler,
+      });
 
       await userMessageHandler.handleIncomingUserMessage(
         createIncomingEvent('Makan siang 75rb pakai BCA')

@@ -15,6 +15,7 @@ import {
 import { FinancialActionExecutor } from '../src/services/financialActionExecutor.js';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
+import { createTestUserMessageHandler } from './fixtures/compositionFixtures.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
 import { WalletAccountItem, WalletCategoryItem, WalletBudgetProgressItem } from '../src/types/walletTypes.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
@@ -477,33 +478,21 @@ describe('FinancialActionRegistry & Action Handlers (Issue #116)', () => {
         clearTypingPresence: vi.fn(),
       };
 
-      const fastPathHandler = new FastPathHandler(
-        {} as any,
-        {} as any,
-        mockGateway as any,
-        undefined,
-        undefined,
-        undefined,
-        registry
-      );
+      const fastPathHandler = new FastPathHandler(registry);
 
       const mockAiProvider = {
         providerName: 'mock-ai',
         processTextMessage: vi.fn(),
       };
 
-      const userMessageHandler = new UserMessageHandler(
-        mockGateway as any,
-        { hasPendingTransactions: () => false } as any,
-        {} as any,
+      const userMessageHandler = createTestUserMessageHandler({
+        messagingGateway: mockGateway as any,
+        pendingTransactionManager: { hasPendingTransactions: () => false } as any,
         fastPathHandler,
-        mockAiProvider as any,
-        { getAccounts: () => [], getCategories: () => [] } as any,
-        {} as any,
-        undefined,
-        undefined,
-        registry
-      );
+        financialAiProvider: mockAiProvider as any,
+        walletCacheService: { getAccounts: () => [], getCategories: () => [] } as any,
+        financialActionRegistry: registry,
+      });
 
       // Fast-path execution for balance
       const fastPathBalanceEvent = createMockIncomingEvent('saldo');
@@ -586,18 +575,14 @@ describe('FinancialActionRegistry & Action Handlers (Issue #116)', () => {
         createRecords: vi.fn(),
       };
 
-      const userMessageHandler = new UserMessageHandler(
-        mockGateway as any,
-        { hasPendingTransactions: () => false } as any,
-        {} as any,
-        { handleFastPath: vi.fn().mockResolvedValue(false) } as any,
-        mockAiProvider as any,
-        { getAccounts: () => [], getCategories: () => [] } as any,
-        mockWalletMcpClient as any,
-        undefined,
-        undefined,
-        registry
-      );
+      const userMessageHandler = createTestUserMessageHandler({
+        messagingGateway: mockGateway as any,
+        pendingTransactionManager: { hasPendingTransactions: () => false } as any,
+        fastPathHandler: { handleFastPath: vi.fn().mockResolvedValue(false) } as any,
+        financialAiProvider: mockAiProvider as any,
+        walletCacheService: { getAccounts: () => [], getCategories: () => [] } as any,
+        financialActionRegistry: registry,
+      });
 
       const textEvent = createMockIncomingEvent('beli makan tapi belum ada nominal');
       await userMessageHandler.handleIncomingUserMessage(textEvent);
@@ -643,18 +628,14 @@ describe('FinancialActionRegistry & Action Handlers (Issue #116)', () => {
         createRecords: vi.fn(),
       };
 
-      const userMessageHandler = new UserMessageHandler(
-        mockGateway as any,
-        { hasPendingTransactions: () => false } as any,
-        {} as any,
-        { handleFastPath: vi.fn().mockResolvedValue(false) } as any,
-        mockAiProvider as any,
-        { getAccounts: () => [], getCategories: () => [] } as any,
-        mockWalletMcpClient as any,
-        undefined,
-        undefined,
-        registry
-      );
+      const userMessageHandler = createTestUserMessageHandler({
+        messagingGateway: mockGateway as any,
+        pendingTransactionManager: { hasPendingTransactions: () => false } as any,
+        fastPathHandler: { handleFastPath: vi.fn().mockResolvedValue(false) } as any,
+        financialAiProvider: mockAiProvider as any,
+        walletCacheService: { getAccounts: () => [], getCategories: () => [] } as any,
+        financialActionRegistry: registry,
+      });
 
       const textEvent = createMockIncomingEvent('catat pengeluaran');
       await userMessageHandler.handleIncomingUserMessage(textEvent);
@@ -690,18 +671,14 @@ describe('FinancialActionRegistry & Action Handlers (Issue #116)', () => {
         }),
       };
 
-      const userMessageHandler = new UserMessageHandler(
-        mockGateway as any,
-        { hasPendingTransactions: () => false } as any,
-        {} as any,
-        { handleFastPath: vi.fn().mockResolvedValue(false) } as any,
-        mockAiProvider as any,
-        { getAccounts: () => [], getCategories: () => [] } as any,
-        {} as any,
-        undefined,
-        undefined,
-        registry
-      );
+      const userMessageHandler = createTestUserMessageHandler({
+        messagingGateway: mockGateway as any,
+        pendingTransactionManager: { hasPendingTransactions: () => false } as any,
+        fastPathHandler: { handleFastPath: vi.fn().mockResolvedValue(false) } as any,
+        financialAiProvider: mockAiProvider as any,
+        walletCacheService: { getAccounts: () => [], getCategories: () => [] } as any,
+        financialActionRegistry: registry,
+      });
 
       const textEvent = createMockIncomingEvent('halo');
       await userMessageHandler.handleIncomingUserMessage(textEvent);
@@ -736,18 +713,14 @@ describe('FinancialActionRegistry & Action Handlers (Issue #116)', () => {
         }),
       };
 
-      const userMessageHandler = new UserMessageHandler(
-        mockGateway as any,
-        { hasPendingTransactions: () => false } as any,
-        {} as any,
-        { handleFastPath: vi.fn().mockResolvedValue(false) } as any,
-        mockAiProvider as any,
-        { getAccounts: () => [], getCategories: () => [] } as any,
-        {} as any,
-        undefined,
-        undefined,
-        registry
-      );
+      const userMessageHandler = createTestUserMessageHandler({
+        messagingGateway: mockGateway as any,
+        pendingTransactionManager: { hasPendingTransactions: () => false } as any,
+        fastPathHandler: { handleFastPath: vi.fn().mockResolvedValue(false) } as any,
+        financialAiProvider: mockAiProvider as any,
+        walletCacheService: { getAccounts: () => [], getCategories: () => [] } as any,
+        financialActionRegistry: registry,
+      });
 
       const imageEvent: IncomingUserMessageEvent = {
         channel: 'whatsapp',

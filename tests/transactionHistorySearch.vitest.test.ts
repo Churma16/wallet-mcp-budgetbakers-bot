@@ -3,6 +3,7 @@ import {
   MAX_TRANSACTION_HISTORY_LIMIT,
 } from '../src/services/walletMcpService.js';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
+import { createTestFastPathHandler } from './fixtures/compositionFixtures.js';
 import { detectFastPathAction } from '../src/utils/fastPathIntentDetector.js';
 import {
   matchesTransactionRecordSearch,
@@ -333,7 +334,12 @@ describe('Transaction History Text Search Tests (Issue #102 & #177)', () => {
         },
       } as any;
 
-      const handler = new FastPathHandler(queryContext.client, queryContext.cache, mockGateway);
+      const handler = createTestFastPathHandler({
+        walletMcpClient: queryContext.client,
+        walletCacheService: queryContext.cache,
+        messagingGateway: mockGateway,
+        transactionHistoryService: queryContext.service,
+      });
       const mockEvent = {
         channel: 'whatsapp' as const,
         chatIdentifier: '123456@s.whatsapp.net',

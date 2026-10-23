@@ -13,6 +13,7 @@ import {
   CreateRecordInputPayload,
 } from '../src/types/walletTypes.js';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
+import { createTestUserMessageHandler } from './fixtures/compositionFixtures.js';
 import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
@@ -517,15 +518,15 @@ test('7. UserMessageHandler Hashtag Fallback & Label Resolution', async () => {
   } as unknown as WalletMcpClientService;
   const testCache = new WalletCacheService(mockClient);
   await testCache.initialize();
-  const handler = new UserMessageHandler(
-    mockMessagingGateway as any,
-    mockPendingService as any,
-    mockPendingActionHandler as any,
-    mockFastPathHandler as any,
-    mockAiProvider as any,
-    testCache,
-    mockClient
-  );
+  const handler = createTestUserMessageHandler({
+    messagingGateway: mockMessagingGateway as any,
+    pendingTransactionManager: mockPendingService as any,
+    pendingActionHandler: mockPendingActionHandler as any,
+    fastPathHandler: mockFastPathHandler as any,
+    financialAiProvider: mockAiProvider as any,
+    walletCacheService: testCache,
+    walletMcpClient: mockClient,
+  });
 
   aiRecordOutput = [{
     accountId: 'acc-bca', amount: -25000, recordDate: '2026-09-11T12:00:00Z',

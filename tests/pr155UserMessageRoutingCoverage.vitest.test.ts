@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
+import { createTestUserMessageHandler } from './fixtures/compositionFixtures.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 
@@ -86,19 +87,16 @@ function createHandler(options: {
     execute: vi.fn(),
   };
 
-  const handler = new UserMessageHandler(
-    gateway as any,
-    pending as any,
-    pendingAction as any,
-    fastPath as any,
-    ai as any,
-    cache as any,
-    {} as any,
-    {} as any,
-    {} as any,
-    registry as any,
-    accountClarification as any
-  );
+  const handler = createTestUserMessageHandler({
+    messagingGateway: gateway as any,
+    pendingTransactionManager: pending as any,
+    pendingActionHandler: pendingAction as any,
+    fastPathHandler: fastPath as any,
+    financialAiProvider: ai as any,
+    walletCacheService: cache as any,
+    financialActionRegistry: registry as any,
+    accountClarificationHandler: accountClarification as any,
+  });
 
   return { handler, gateway, pending, pendingAction, fastPath, accountClarification, ai, messages };
 }

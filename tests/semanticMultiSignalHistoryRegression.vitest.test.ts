@@ -3,6 +3,10 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
+import {
+  createTestFinancialActionExecutor,
+  createTestUserMessageHandler,
+} from './fixtures/compositionFixtures.js';
 import { detectFastPathAction } from '../src/utils/fastPathIntentDetector.js';
 import {
   normalizeTransactionHistoryFilters,
@@ -138,30 +142,18 @@ function createRegressionHandler(
   };
   const fastPath =
     fastPathMode === 'real'
-      ? new FastPathHandler(
-          {} as any,
-          walletCacheService as any,
-          gateway as any,
-          undefined,
-          undefined,
-          undefined,
-          registry as any
-        )
+      ? new FastPathHandler(registry as any)
       : { handleFastPath: vi.fn().mockResolvedValue(Boolean(fastPathMode)) };
 
-  const handler = new UserMessageHandler(
-    gateway as any,
-    { hasPendingTransactions: vi.fn().mockReturnValue(false) } as any,
-    {} as any,
-    fastPath as any,
-    aiProvider,
-    walletCacheService as any,
-    {} as any,
-    {} as any,
-    {} as any,
-    registry as any,
-    { handlePendingAccountSelectionReply: vi.fn().mockResolvedValue(false) } as any
-  );
+  const handler = createTestUserMessageHandler({
+    messagingGateway: gateway as any,
+    pendingTransactionManager: { hasPendingTransactions: vi.fn().mockReturnValue(false) } as any,
+    fastPathHandler: fastPath as any,
+    financialAiProvider: aiProvider,
+    walletCacheService: walletCacheService as any,
+    financialActionRegistry: registry as any,
+    accountClarificationHandler: { handlePendingAccountSelectionReply: vi.fn().mockResolvedValue(false) } as any,
+  });
   return { handler, gateway, registry, fastPath, walletCacheService };
 }
 
@@ -1071,16 +1063,16 @@ describe('Issue #160 comment checklist regression corpus', () => {
         clearTypingPresence: vi.fn().mockResolvedValue(undefined),
         sendMessage: vi.fn().mockResolvedValue(undefined),
       };
-      const realExecutor = new FinancialActionExecutor(
-        client as any,
-        {
+      const realExecutor = createTestFinancialActionExecutor({
+        walletMcpClient: client as any,
+        walletCacheService: {
           getAccounts: () => MOCK_ACCOUNTS,
           getCategories: () => ISSUE_173_CATEGORIES,
           refreshAccounts: async () => MOCK_ACCOUNTS,
         } as any,
-        realGateway as any,
-        historyService
-      );
+        messagingGateway: realGateway as any,
+        transactionHistoryService: historyService,
+      });
       const realRegistry = new FinancialActionRegistry();
       realRegistry.register(new TransactionHistoryActionHandler(realExecutor));
 
@@ -1132,16 +1124,16 @@ describe('Issue #160 comment checklist regression corpus', () => {
         clearTypingPresence: vi.fn().mockResolvedValue(undefined),
         sendMessage: vi.fn().mockResolvedValue(undefined),
       };
-      const realExecutor = new FinancialActionExecutor(
-        client as any,
-        {
+      const realExecutor = createTestFinancialActionExecutor({
+        walletMcpClient: client as any,
+        walletCacheService: {
           getAccounts: () => MOCK_ACCOUNTS,
           getCategories: () => ISSUE_173_CATEGORIES,
           refreshAccounts: async () => MOCK_ACCOUNTS,
         } as any,
-        realGateway as any,
-        historyService
-      );
+        messagingGateway: realGateway as any,
+        transactionHistoryService: historyService,
+      });
       const realRegistry = new FinancialActionRegistry();
       realRegistry.register(new TransactionHistoryActionHandler(realExecutor));
 
@@ -1189,16 +1181,16 @@ describe('Issue #160 comment checklist regression corpus', () => {
         clearTypingPresence: vi.fn().mockResolvedValue(undefined),
         sendMessage: vi.fn().mockResolvedValue(undefined),
       };
-      const realExecutor = new FinancialActionExecutor(
-        client as any,
-        {
+      const realExecutor = createTestFinancialActionExecutor({
+        walletMcpClient: client as any,
+        walletCacheService: {
           getAccounts: () => MOCK_ACCOUNTS,
           getCategories: () => ISSUE_173_CATEGORIES,
           refreshAccounts: async () => MOCK_ACCOUNTS,
         } as any,
-        realGateway as any,
-        historyService
-      );
+        messagingGateway: realGateway as any,
+        transactionHistoryService: historyService,
+      });
       const realRegistry = new FinancialActionRegistry();
       realRegistry.register(new TransactionHistoryActionHandler(realExecutor));
       const executeSpy = vi.spyOn(realRegistry, 'execute');
@@ -1263,16 +1255,16 @@ describe('Issue #160 comment checklist regression corpus', () => {
         clearTypingPresence: vi.fn().mockResolvedValue(undefined),
         sendMessage: vi.fn().mockResolvedValue(undefined),
       };
-      const realExecutor = new FinancialActionExecutor(
-        client as any,
-        {
+      const realExecutor = createTestFinancialActionExecutor({
+        walletMcpClient: client as any,
+        walletCacheService: {
           getAccounts: () => MOCK_ACCOUNTS,
           getCategories: () => ISSUE_173_CATEGORIES,
           refreshAccounts: async () => MOCK_ACCOUNTS,
         } as any,
-        realGateway as any,
-        historyService
-      );
+        messagingGateway: realGateway as any,
+        transactionHistoryService: historyService,
+      });
       const realRegistry = new FinancialActionRegistry();
       realRegistry.register(new TransactionHistoryActionHandler(realExecutor));
       const executeSpy = vi.spyOn(realRegistry, 'execute');
@@ -1323,16 +1315,16 @@ describe('Issue #160 comment checklist regression corpus', () => {
         clearTypingPresence: vi.fn().mockResolvedValue(undefined),
         sendMessage: vi.fn().mockResolvedValue(undefined),
       };
-      const realExecutor = new FinancialActionExecutor(
-        client as any,
-        {
+      const realExecutor = createTestFinancialActionExecutor({
+        walletMcpClient: client as any,
+        walletCacheService: {
           getAccounts: () => MOCK_ACCOUNTS,
           getCategories: () => ISSUE_173_CATEGORIES,
           refreshAccounts: async () => MOCK_ACCOUNTS,
         } as any,
-        realGateway as any,
-        historyService
-      );
+        messagingGateway: realGateway as any,
+        transactionHistoryService: historyService,
+      });
       const realRegistry = new FinancialActionRegistry();
       realRegistry.register(new TransactionHistoryActionHandler(realExecutor));
       const executeSpy = vi.spyOn(realRegistry, 'execute');
@@ -1403,16 +1395,16 @@ describe('Issue #160 comment checklist regression corpus', () => {
           clearTypingPresence: vi.fn().mockResolvedValue(undefined),
           sendMessage: vi.fn().mockResolvedValue(undefined),
         };
-        const realExecutor = new FinancialActionExecutor(
-          client as any,
-          {
+        const realExecutor = createTestFinancialActionExecutor({
+          walletMcpClient: client as any,
+          walletCacheService: {
             getAccounts: () => MOCK_ACCOUNTS,
             getCategories: () => ISSUE_173_CATEGORIES,
             refreshAccounts: async () => MOCK_ACCOUNTS,
           } as any,
-          realGateway as any,
-          historyService
-        );
+          messagingGateway: realGateway as any,
+          transactionHistoryService: historyService,
+        });
         const realRegistry = new FinancialActionRegistry();
         realRegistry.register(new TransactionHistoryActionHandler(realExecutor));
         const executeSpy = vi.spyOn(realRegistry, 'execute');
@@ -1477,16 +1469,16 @@ describe('Issue #160 comment checklist regression corpus', () => {
         clearTypingPresence: vi.fn().mockResolvedValue(undefined),
         sendMessage: vi.fn().mockResolvedValue(undefined),
       };
-      const realExecutor = new FinancialActionExecutor(
-        client as any,
-        {
+      const realExecutor = createTestFinancialActionExecutor({
+        walletMcpClient: client as any,
+        walletCacheService: {
           getAccounts: () => MOCK_ACCOUNTS,
           getCategories: () => ISSUE_173_CATEGORIES,
           refreshAccounts: async () => MOCK_ACCOUNTS,
         } as any,
-        realGateway as any,
-        historyService
-      );
+        messagingGateway: realGateway as any,
+        transactionHistoryService: historyService,
+      });
       const realRegistry = new FinancialActionRegistry();
       realRegistry.register(new TransactionHistoryActionHandler(realExecutor));
       const executeSpy = vi.spyOn(realRegistry, 'execute');
@@ -1548,16 +1540,16 @@ describe('Issue #160 comment checklist regression corpus', () => {
         clearTypingPresence: vi.fn().mockResolvedValue(undefined),
         sendMessage: vi.fn().mockResolvedValue(undefined),
       };
-      const realExecutor = new FinancialActionExecutor(
-        client as any,
-        {
+      const realExecutor = createTestFinancialActionExecutor({
+        walletMcpClient: client as any,
+        walletCacheService: {
           getAccounts: () => MOCK_ACCOUNTS,
           getCategories: () => ISSUE_173_CATEGORIES,
           refreshAccounts: async () => MOCK_ACCOUNTS,
         } as any,
-        realGateway as any,
-        historyService
-      );
+        messagingGateway: realGateway as any,
+        transactionHistoryService: historyService,
+      });
       const realRegistry = new FinancialActionRegistry();
       realRegistry.register(new TransactionHistoryActionHandler(realExecutor));
       const executeSpy = vi.spyOn(realRegistry, 'execute');
@@ -1662,16 +1654,16 @@ describe('Issue #160 comment checklist regression corpus', () => {
         clearTypingPresence: vi.fn().mockResolvedValue(undefined),
         sendMessage: vi.fn().mockResolvedValue(undefined),
       };
-      const realExecutor = new FinancialActionExecutor(
-        client as any,
-        {
+      const realExecutor = createTestFinancialActionExecutor({
+        walletMcpClient: client as any,
+        walletCacheService: {
           getAccounts: () => MOCK_ACCOUNTS,
           getCategories: () => ISSUE_173_CATEGORIES,
           refreshAccounts: async () => MOCK_ACCOUNTS,
         } as any,
-        realGateway as any,
-        historyService
-      );
+        messagingGateway: realGateway as any,
+        transactionHistoryService: historyService,
+      });
       const realRegistry = new FinancialActionRegistry();
       realRegistry.register(new TransactionHistoryActionHandler(realExecutor));
       const executeSpy = vi.spyOn(realRegistry, 'execute');

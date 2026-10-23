@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
-import { createDefaultFinancialActionRegistry } from '../src/actions/index.js';
+import { createDefaultFinancialActionRegistry, FinancialActionRegistry } from '../src/actions/index.js';
 
 const event = {
   channel: 'whatsapp',
@@ -58,17 +58,9 @@ describe('PR #155 remaining changed branches', () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it('constructs the default fast-path registry without queue registration when no pending service is supplied', () => {
-    const handler = new FastPathHandler(
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      undefined,
-      undefined
-    );
+  it('constructs fast-path handler with an explicit registry', () => {
+    const registry = new FinancialActionRegistry();
+    const handler = new FastPathHandler(registry);
     expect(handler).toBeInstanceOf(FastPathHandler);
   });
 

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
+import { FinancialActionRegistry, CheckQueueActionHandler } from '../src/actions/index.js';
 import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
 import {
@@ -262,15 +263,7 @@ describe('PR #155 final changed-branch coverage', () => {
     it('returns false for null action and forwards CHECK_QUEUE to an injected registry', async () => {
       const execute = vi.fn().mockResolvedValue(undefined);
       const registry = { execute } as any;
-      const handler = new FastPathHandler(
-        {} as any,
-        {} as any,
-        {} as any,
-        {} as any,
-        {} as any,
-        {} as any,
-        registry
-      );
+      const handler = new FastPathHandler(registry);
 
       expect(await handler.handleFastPath(event, null, 123)).toBe(false);
       expect(await handler.handleFastPath(event, 'CHECK_QUEUE', 456)).toBe(true);
@@ -281,23 +274,16 @@ describe('PR #155 final changed-branch coverage', () => {
       }));
     });
 
-    it('registers and executes CHECK_QUEUE in the default registry when pending service is supplied', async () => {
+    it('registers and executes CHECK_QUEUE in the provided registry when pending service is supplied', async () => {
       const service = new PendingTransactionService();
       addTransaction(service);
       const messages: string[] = [];
       const gateway = {
         sendMessage: vi.fn(async (_channel: string, _chat: string, message: string) => messages.push(message)),
       } as any;
-      const handler = new FastPathHandler(
-        {} as any,
-        {} as any,
-        gateway,
-        {} as any,
-        {} as any,
-        {} as any,
-        undefined,
-        service
-      );
+      const registry = new FinancialActionRegistry();
+      registry.register(new CheckQueueActionHandler(service, gateway));
+      const handler = new FastPathHandler(registry);
 
       expect(await handler.handleFastPath(event, 'CHECK_QUEUE', Date.now())).toBe(true);
       expect(messages.at(-1)).toContain('Status Transaksi');

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
+import { createTestFastPathHandler } from './fixtures/compositionFixtures.js';
 import { TransactionHistoryService } from '../src/services/transactionHistoryService.js';
 import { TransactionSummaryService } from '../src/services/transactionSummaryService.js';
 import { WalletMcpClientService } from '../src/services/walletMcpService.js';
@@ -69,13 +70,10 @@ describe('Transaction Summary Fast-Path Handler Tests (Issue #103 & #140)', () =
         },
       } as any;
 
-      const handler = new FastPathHandler(
-        {} as any,
-        {} as any,
-        mockGateway,
-        {} as unknown as TransactionHistoryService,
-        mockSummaryService
-      );
+      const handler = createTestFastPathHandler({
+        messagingGateway: mockGateway,
+        transactionSummaryService: mockSummaryService,
+      });
 
       const action = detectFastPathAction('total pengeluaran bulan ini');
       expect(typeof action).toBe('object');
@@ -136,13 +134,10 @@ describe('Transaction Summary Fast-Path Handler Tests (Issue #103 & #140)', () =
         },
       } as any;
 
-      const handler = new FastPathHandler(
-        {} as any,
-        {} as any,
-        mockGateway,
-        {} as unknown as TransactionHistoryService,
-        mockSummaryService
-      );
+      const handler = createTestFastPathHandler({
+        messagingGateway: mockGateway,
+        transactionSummaryService: mockSummaryService,
+      });
 
       const action = detectFastPathAction('total pengeluaran bulan ini');
       const processingStartTimestamp = Date.now();
@@ -196,13 +191,10 @@ describe('Transaction Summary Fast-Path Handler Tests (Issue #103 & #140)', () =
         },
       } as any;
 
-      const handler = new FastPathHandler(
-        {} as any,
-        {} as any,
-        mockGateway,
-        {} as unknown as TransactionHistoryService,
-        mockSummaryService
-      );
+      const handler = createTestFastPathHandler({
+        messagingGateway: mockGateway,
+        transactionSummaryService: mockSummaryService,
+      });
 
       const action = detectFastPathAction('total pengeluaran bulan ini');
       const processingStartTimestamp = Date.now();
@@ -263,13 +255,10 @@ describe('Transaction Summary Fast-Path Handler Tests (Issue #103 & #140)', () =
         },
       } as any;
 
-      const handler = new FastPathHandler(
-        {} as any,
-        {} as any,
-        mockGateway,
-        {} as unknown as TransactionHistoryService,
-        mockSummaryService
-      );
+      const handler = createTestFastPathHandler({
+        messagingGateway: mockGateway,
+        transactionSummaryService: mockSummaryService,
+      });
 
       const action = detectFastPathAction('total pengeluaran bulan ini');
       const processingStartTimestamp = Date.now();
@@ -348,13 +337,13 @@ describe('Transaction Summary Fast-Path Handler Tests (Issue #103 & #140)', () =
         },
       } as any;
 
-      const handler = new FastPathHandler(
-        mockMcpClient,
-        mockCache,
-        mockGateway,
-        mockHistoryService,
-        summaryService
-      );
+      const handler = createTestFastPathHandler({
+        walletMcpClient: mockMcpClient,
+        walletCacheService: mockCache,
+        messagingGateway: mockGateway,
+        transactionHistoryService: mockHistoryService,
+        transactionSummaryService: summaryService,
+      });
 
       const action = detectFastPathAction('total pengeluaran bulan ini');
       const processingStartTimestamp = Date.now();

@@ -3,6 +3,7 @@ import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
 import { WalletMcpRequestError } from '../src/services/walletMcpService.js';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
+import { createTestUserMessageHandler } from './fixtures/compositionFixtures.js';
 import { setActiveLanguage, englishDictionary, indonesianDictionary } from '../src/i18n/index.js';
 import { formatAccountSelectionUnknownOutcome } from '../src/utils/accountClarificationFormatter.js';
 
@@ -345,19 +346,16 @@ describe('PR #155 changed-condition coverage', () => {
         processTextMessage: vi.fn().mockResolvedValue({ action: 'GENERAL_REPLY', explanation: 'ok' }),
         processImageMessage: vi.fn().mockResolvedValue({ action: 'GENERAL_REPLY', explanation: 'image ok' }),
       };
-      const handler = new UserMessageHandler(
-        { sendTypingPresence: vi.fn(), clearTypingPresence: vi.fn(), sendMessage: vi.fn() } as any,
-        new PendingTransactionService(),
-        pendingAction as any,
-        fastPath as any,
-        ai as any,
-        { getAccounts: () => [], getCategories: () => [] } as any,
-        {} as any,
-        {} as any,
-        {} as any,
-        { hasHandler: () => false, execute: vi.fn() } as any,
-        clarification as any
-      );
+      const handler = createTestUserMessageHandler({
+        messagingGateway: { sendTypingPresence: vi.fn(), clearTypingPresence: vi.fn(), sendMessage: vi.fn() } as any,
+        pendingTransactionManager: new PendingTransactionService(),
+        pendingActionHandler: pendingAction as any,
+        fastPathHandler: fastPath as any,
+        financialAiProvider: ai as any,
+        walletCacheService: { getAccounts: () => [], getCategories: () => [] } as any,
+        financialActionRegistry: { hasHandler: () => false, execute: vi.fn() } as any,
+        accountClarificationHandler: clarification as any,
+      });
       return { handler, pendingAction, clarification, fastPath, ai };
     }
 

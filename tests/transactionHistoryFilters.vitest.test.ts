@@ -7,6 +7,7 @@ import {
 import { TransactionHistoryService } from '../src/services/transactionHistoryService.js';
 import { WalletCacheService } from '../src/services/walletCacheService.js';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
+import { createTestFastPathHandler } from './fixtures/compositionFixtures.js';
 import { detectFastPathAction } from '../src/utils/fastPathIntentDetector.js';
 import {
   normalizeTransactionHistoryFilters,
@@ -1646,7 +1647,12 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
         },
       };
 
-      const handler = new FastPathHandler(queryContext.client, queryContext.cache, mockGateway);
+      const handler = createTestFastPathHandler({
+        walletMcpClient: queryContext.client,
+        walletCacheService: queryContext.cache,
+        messagingGateway: mockGateway,
+        transactionHistoryService: queryContext.service,
+      });
 
       const fastPathAction = detectFastPathAction('riwayat bca');
       assert.ok(fastPathAction);
