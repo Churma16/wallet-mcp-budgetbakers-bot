@@ -40,6 +40,11 @@ export interface PendingEmailNotificationParams {
   totalPendingCount: number;
 }
 
+export interface PendingConfirmationPromptParams {
+  ticketId: number;
+  totalPendingCount: number;
+}
+
 export interface PendingConfirmationSuccessParams {
   ticketId: number;
   isTransfer: boolean;
@@ -135,6 +140,7 @@ export interface ResponseDictionary {
 
   emailPending: {
     formatNotification(params: PendingEmailNotificationParams): string;
+    formatConfirmationPrompt(params: PendingConfirmationPromptParams): string;
   };
 
   status: {

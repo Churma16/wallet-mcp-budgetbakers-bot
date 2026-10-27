@@ -3,12 +3,30 @@ import {
   RecordMessageParams,
   MultipleRecordsItemParams,
   PendingEmailNotificationParams,
+  PendingConfirmationPromptParams,
   PendingConfirmationSuccessParams,
   PendingBulkItemParams,
   PendingCancellationParams,
   type TransactionSortOrder,
   type UnresolvedFilterIssue,
 } from '../types.js';
+
+export function formatPendingConfirmationPromptId(params: PendingConfirmationPromptParams): string {
+  const lines: string[] = ['Catat transaksi ini?'];
+  if (params.totalPendingCount > 1) {
+    lines.push(`• Balas *Ya ${params.ticketId}* (atau *Ya semua*)`);
+    lines.push(`• Balas *Ya ${params.ticketId}: <catatan> cat:<kategori> #<tag>* untuk tambah rincian`);
+    lines.push(`• Balas *Batal ${params.ticketId}*`);
+    const otherCount = params.totalPendingCount - 1;
+    lines.push('');
+    lines.push(`_Ada ${otherCount} transaksi lain yang juga menunggu konfirmasi._`);
+  } else {
+    lines.push(`• Balas *Ya* atau *Catat* (atau *Ya ${params.ticketId}*)`);
+    lines.push(`• Balas *Ya: <catatan> cat:<kategori> #<tag>* untuk tambah rincian`);
+    lines.push(`• Balas *Batal* atau *Abaikan* (atau *Batal ${params.ticketId}*)`);
+  }
+  return lines.join('\n');
+}
 
 export const indonesianDictionary: ResponseDictionary = {
   languageCode: 'id',
@@ -197,6 +215,7 @@ export const indonesianDictionary: ResponseDictionary = {
   },
 
   emailPending: {
+    formatConfirmationPrompt: formatPendingConfirmationPromptId,
     formatNotification(params: PendingEmailNotificationParams): string {
       const isTransfer = params.typeLabel.includes('Transfer');
       const headline = isTransfer ? '🔄 *Transfer Baru*' : '📩 *Pembayaran Baru*';
@@ -220,19 +239,12 @@ export const indonesianDictionary: ResponseDictionary = {
       }
 
       lines.push('');
-      lines.push('Catat transaksi ini?');
-      if (params.totalPendingCount > 1) {
-        lines.push(`• Balas *Ya ${params.ticketId}* (atau *Ya semua*)`);
-        lines.push(`• Balas *Ya ${params.ticketId}: <catatan>* untuk tambah rincian`);
-        lines.push(`• Balas *Batal ${params.ticketId}*`);
-        const otherCount = params.totalPendingCount - 1;
-        lines.push('');
-        lines.push(`_Ada ${otherCount} transaksi lain yang juga menunggu konfirmasi._`);
-      } else {
-        lines.push(`• Balas *Ya* atau *Catat* (atau *Ya ${params.ticketId}*)`);
-        lines.push(`• Balas *Ya: <catatan>* untuk tambah rincian`);
-        lines.push(`• Balas *Batal* atau *Abaikan* (atau *Batal ${params.ticketId}*)`);
-      }
+      lines.push(
+        formatPendingConfirmationPromptId({
+          ticketId: params.ticketId,
+          totalPendingCount: params.totalPendingCount,
+        })
+      );
 
       return lines.join('\n');
     },

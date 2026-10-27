@@ -3,12 +3,30 @@ import {
   RecordMessageParams,
   MultipleRecordsItemParams,
   PendingEmailNotificationParams,
+  PendingConfirmationPromptParams,
   PendingConfirmationSuccessParams,
   PendingBulkItemParams,
   PendingCancellationParams,
   type TransactionSortOrder,
   type UnresolvedFilterIssue,
 } from '../types.js';
+
+export function formatPendingConfirmationPromptEn(params: PendingConfirmationPromptParams): string {
+  const lines: string[] = ['Record this transaction?'];
+  if (params.totalPendingCount > 1) {
+    lines.push(`• Reply *Yes ${params.ticketId}* (or *Yes all*)`);
+    lines.push(`• Reply *Yes ${params.ticketId}: <note> cat:<category> #<tag>* to add details`);
+    lines.push(`• Reply *Cancel ${params.ticketId}*`);
+    const otherCount = params.totalPendingCount - 1;
+    lines.push('');
+    lines.push(`_There is ${otherCount} other transaction waiting for confirmation._`);
+  } else {
+    lines.push(`• Reply *Yes* or *Record* (or *Yes ${params.ticketId}*)`);
+    lines.push(`• Reply *Yes: <note> cat:<category> #<tag>* to add details`);
+    lines.push(`• Reply *Cancel* or *Ignore* (or *Cancel ${params.ticketId}*)`);
+  }
+  return lines.join('\n');
+}
 
 export const englishDictionary: ResponseDictionary = {
   languageCode: 'en',
@@ -199,6 +217,7 @@ export const englishDictionary: ResponseDictionary = {
   },
 
   emailPending: {
+    formatConfirmationPrompt: formatPendingConfirmationPromptEn,
     formatNotification(params: PendingEmailNotificationParams): string {
       const isTransfer = params.typeLabel.includes('Transfer');
       const headline = isTransfer ? '🔄 *New Transfer*' : '📩 *New Payment*';
@@ -222,19 +241,12 @@ export const englishDictionary: ResponseDictionary = {
       }
 
       lines.push('');
-      lines.push('Record this transaction?');
-      if (params.totalPendingCount > 1) {
-        lines.push(`• Reply *Yes ${params.ticketId}* (or *Yes all*)`);
-        lines.push(`• Reply *Yes ${params.ticketId}: <note>* to add details`);
-        lines.push(`• Reply *Cancel ${params.ticketId}*`);
-        const otherCount = params.totalPendingCount - 1;
-        lines.push('');
-        lines.push(`_There is ${otherCount} other transaction waiting for confirmation._`);
-      } else {
-        lines.push(`• Reply *Yes* or *Record* (or *Yes ${params.ticketId}*)`);
-        lines.push(`• Reply *Yes: <note>* to add details`);
-        lines.push(`• Reply *Cancel* or *Ignore* (or *Cancel ${params.ticketId}*)`);
-      }
+      lines.push(
+        formatPendingConfirmationPromptEn({
+          ticketId: params.ticketId,
+          totalPendingCount: params.totalPendingCount,
+        })
+      );
 
       return lines.join('\n');
     },

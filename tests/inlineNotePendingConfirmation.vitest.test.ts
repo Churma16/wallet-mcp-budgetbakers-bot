@@ -9,6 +9,7 @@ import { MessagingGatewayService, IncomingUserMessageEvent } from '../src/servic
 import { WalletMcpClientService } from '../src/services/walletMcpService.js';
 import { WalletCacheService } from '../src/services/walletCacheService.js';
 import { indonesianDictionary, englishDictionary } from '../src/i18n/index.js';
+import { formatPendingConfirmationPrompt } from '../src/utils/humanResponseFormatter.js';
 
 function createMockEvent(text: string): IncomingUserMessageEvent {
   return {
@@ -862,7 +863,7 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
         totalPendingCount: 1,
       });
 
-      expect(notifSingle).toContain('Balas *Ya: <catatan>* untuk tambah rincian');
+      expect(notifSingle).toContain('Balas *Ya: <catatan> cat:<kategori> #<tag>* untuk tambah rincian');
 
       const notifMulti = indonesianDictionary.emailPending.formatNotification({
         ticketId: 2,
@@ -875,7 +876,7 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
         totalPendingCount: 2,
       });
 
-      expect(notifMulti).toContain('Balas *Ya 2: <catatan>* untuk tambah rincian');
+      expect(notifMulti).toContain('Balas *Ya 2: <catatan> cat:<kategori> #<tag>* untuk tambah rincian');
     });
 
     it('includes inline note hint in English notification', () => {
@@ -890,7 +891,51 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
         totalPendingCount: 1,
       });
 
-      expect(notif).toContain('Reply *Yes: <note>* to add details');
+      expect(notif).toContain('Reply *Yes: <note> cat:<category> #<tag>* to add details');
+    });
+
+    it('formats centralized pending confirmation prompt in Indonesian and English', () => {
+      const idSingle = indonesianDictionary.emailPending.formatConfirmationPrompt({
+        ticketId: 1,
+        totalPendingCount: 1,
+      });
+      expect(idSingle).toContain('Catat transaksi ini?');
+      expect(idSingle).toContain('• Balas *Ya* atau *Catat* (atau *Ya 1*)');
+      expect(idSingle).toContain('• Balas *Ya: <catatan> cat:<kategori> #<tag>* untuk tambah rincian');
+      expect(idSingle).toContain('• Balas *Batal* atau *Abaikan* (atau *Batal 1*)');
+
+      const idMulti = indonesianDictionary.emailPending.formatConfirmationPrompt({
+        ticketId: 5,
+        totalPendingCount: 3,
+      });
+      expect(idMulti).toContain('• Balas *Ya 5* (atau *Ya semua*)');
+      expect(idMulti).toContain('• Balas *Ya 5: <catatan> cat:<kategori> #<tag>* untuk tambah rincian');
+      expect(idMulti).toContain('• Balas *Batal 5*');
+      expect(idMulti).toContain('_Ada 2 transaksi lain yang juga menunggu konfirmasi._');
+
+      const enSingle = englishDictionary.emailPending.formatConfirmationPrompt({
+        ticketId: 1,
+        totalPendingCount: 1,
+      });
+      expect(enSingle).toContain('Record this transaction?');
+      expect(enSingle).toContain('• Reply *Yes* or *Record* (or *Yes 1*)');
+      expect(enSingle).toContain('• Reply *Yes: <note> cat:<category> #<tag>* to add details');
+      expect(enSingle).toContain('• Reply *Cancel* or *Ignore* (or *Cancel 1*)');
+
+      const enMulti = englishDictionary.emailPending.formatConfirmationPrompt({
+        ticketId: 8,
+        totalPendingCount: 4,
+      });
+      expect(enMulti).toContain('• Reply *Yes 8* (or *Yes all*)');
+      expect(enMulti).toContain('• Reply *Yes 8: <note> cat:<category> #<tag>* to add details');
+      expect(enMulti).toContain('• Reply *Cancel 8*');
+      expect(enMulti).toContain('_There is 3 other transaction waiting for confirmation._');
+
+      const helperId = formatPendingConfirmationPrompt(1, 1, 'id');
+      expect(helperId).toBe(idSingle);
+
+      const helperEn = formatPendingConfirmationPrompt(8, 4, 'en');
+      expect(helperEn).toBe(enMulti);
     });
   });
 });
