@@ -611,17 +611,21 @@ describe('TransactionCorrelationService (Issue #153)', () => {
 
       const singleId = formatEnrichedPendingEmailTransactionNotification(item, 1, 'Blibli', 'id');
       expect(singleId).toContain('Transaksi Diperkaya');
-      expect(singleId).toContain('Balas *Ya* (atau *Batal*)');
+      expect(singleId).toContain('Balas *Ya* atau *Catat* (atau *Ya 1*)');
+      expect(singleId).toContain('Balas *Ya: <catatan> cat:<kategori> #<tag>* untuk tambah rincian');
 
       const bulkId = formatEnrichedPendingEmailTransactionNotification(item, 3, 'Blibli', 'id');
       expect(bulkId).toContain('Balas *Ya 1* (atau *Ya semua*)');
+      expect(bulkId).toContain('Balas *Ya 1: <catatan> cat:<kategori> #<tag>* untuk tambah rincian');
 
       const singleEn = formatEnrichedPendingEmailTransactionNotification(item, 1, 'Blibli', 'en');
       expect(singleEn).toContain('Transaction Enriched');
-      expect(singleEn).toContain('Reply *Yes* (or *Cancel*)');
+      expect(singleEn).toContain('Reply *Yes* or *Record* (or *Yes 1*)');
+      expect(singleEn).toContain('Reply *Yes: <note> cat:<category> #<tag>* to add details');
 
       const bulkEn = formatEnrichedPendingEmailTransactionNotification(item, 3, 'Blibli', 'en');
       expect(bulkEn).toContain('Reply *Yes 1* (or *Yes all*)');
+      expect(bulkEn).toContain('Reply *Yes 1: <note> cat:<category> #<tag>* to add details');
     });
 
     it('formats correlated Wallet record notification in English and Indonesian', () => {

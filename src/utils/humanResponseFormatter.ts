@@ -773,25 +773,29 @@ export function formatEnrichedPendingEmailTransactionNotification(
   }
 
   lines.push('');
-  if (isEnglish) {
-    lines.push('Record this transaction?');
-    if (totalPendingCount > 1) {
-      lines.push(`• Reply *Yes ${pendingItem.ticketId}* (or *Yes all*)`);
-      lines.push(`• Reply *Cancel ${pendingItem.ticketId}*`);
-    } else {
-      lines.push('• Reply *Yes* (or *Cancel*)');
-    }
-  } else {
-    lines.push('Catat transaksi ini?');
-    if (totalPendingCount > 1) {
-      lines.push(`• Balas *Ya ${pendingItem.ticketId}* (atau *Ya semua*)`);
-      lines.push(`• Balas *Batal ${pendingItem.ticketId}*`);
-    } else {
-      lines.push('• Balas *Ya* (atau *Batal*)');
-    }
-  }
+  lines.push(
+    dictionary.emailPending.formatConfirmationPrompt({
+      ticketId: pendingItem.ticketId,
+      totalPendingCount,
+    })
+  );
 
   return lines.join('\n');
+}
+
+/**
+ * Centralized formatter for pending confirmation instructions/prompts.
+ */
+export function formatPendingConfirmationPrompt(
+  ticketId: number,
+  totalPendingCount: number = 1,
+  languageCode?: SupportedLanguage
+): string {
+  const dictionary = getDictionary(languageCode);
+  return dictionary.emailPending.formatConfirmationPrompt({
+    ticketId,
+    totalPendingCount,
+  });
 }
 
 /**
