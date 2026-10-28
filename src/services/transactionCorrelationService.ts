@@ -5,6 +5,14 @@ import type {
   CorrelationResult,
 } from '../types/transactionCorrelationTypes.js';
 import { CommercePlatformRegistry } from '../config/commercePlatforms.js';
+import {
+  isGenericMerchant,
+  isGenericCardAccountOrMethod,
+  detectConflictingMerchants,
+} from './correlation/merchantClassifier.js';
+import { isGenericNote } from './correlation/noteClassifier.js';
+import { evaluateComplementarySources } from './correlation/complementarySourceEvaluator.js';
+import { fuseCandidateWithEvidence } from './correlation/transactionFuser.js';
 
 export interface TransactionCorrelationOptions {
   /**
@@ -41,47 +49,7 @@ export class TransactionCorrelationService {
    * Checks whether a merchant or counterparty name is generic or placeholder (e.g. "Unknown", "Kartu Debit").
    */
   public isGenericMerchant(merchant: string | undefined | null): boolean {
-    if (!merchant) return true;
-    const lower = merchant.trim().toLowerCase();
-    if (!lower || lower === 'unknown') return true;
-
-    // Special case: legitimate registered couriers and merchants
-    if (lower.includes('pos indonesia')) {
-      return false;
-    }
-
-    // Exact phrase checks
-    const exactPhrases = [
-      'kartu debit',
-      'debit card',
-      'pembayaran qris',
-      'edc/pos',
-      'pos debit',
-      'transaksi domestik',
-    ];
-    if (exactPhrases.some(phrase => lower.includes(phrase))) {
-      return true;
-    }
-
-    // Word-token boundary checks for identifiers
-    const words = lower.split(/[^a-z0-9]+/);
-    const genericWords = new Set([
-      'unknown',
-      'debit',
-      'card',
-      'kartu',
-      'qris',
-      'edc',
-      'pos',
-      'payment',
-      'pembayaran',
-      'bank',
-      'transfer',
-      'transaksi',
-      'merchant',
-    ]);
-
-    return words.some(w => genericWords.has(w));
+    return isGenericMerchant(merchant);
   }
 
   /**
@@ -89,23 +57,7 @@ export class TransactionCorrelationService {
    * (e.g. "Visa", "Mastercard", "Debit Card", "Kartu Debit").
    */
   public isGenericCardAccountOrMethod(text?: string | null): boolean {
-    if (!text) return false;
-    const lower = text.toLowerCase().trim();
-    const genericCardTokens = [
-      'visa',
-      'mastercard',
-      'jcb',
-      'amex',
-      'american express',
-      'debit card',
-      'credit card',
-      'kartu debit',
-      'kartu kredit',
-    ];
-    return genericCardTokens.some(token => {
-      const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(lower);
-    });
+    return isGenericCardAccountOrMethod(text);
   }
 
   /**
@@ -117,116 +69,7 @@ export class TransactionCorrelationService {
     merchantOrCounterParty?: string | null,
     subject?: string | null
   ): boolean {
-    if (!note) return true;
-    const trimmed = note.trim();
-    if (!trimmed) return true;
-
-    // Detailed receipt notes containing order IDs (#), bullets, or item lines are NEVER generic
-    if (trimmed.includes('#') || trimmed.includes('•') || trimmed.includes('\n')) {
-      return false;
-    }
-
-    const lower = trimmed.toLowerCase();
-    if (
-      merchantOrCounterParty &&
-      lower === merchantOrCounterParty.trim().toLowerCase()
-    ) {
-      return true;
-    }
-    if (subject && lower === subject.trim().toLowerCase()) {
-      return true;
-    }
-
-    const genericExactPhrases = [
-      'unknown',
-      'pembayaran',
-      'pembayaran qris',
-      'pembayaran berhasil',
-      'pembayaran merchant',
-      'transaksi',
-      'transaksi berhasil',
-      'transaksi domestik',
-      'transaksi merchant',
-      'transaksi menggunakan kartu debit',
-      'transaksi menggunakan kartu debit jago',
-      'transaction using debit card',
-      'transaction using jago debit card',
-      'debit card transaction',
-      'debit card transaction via bank jago',
-      'kartu debit',
-      'debit card',
-      'debit',
-      'pos/edc',
-      'pos debit',
-      'edc/pos',
-      'edc',
-      'qris',
-      'transfer',
-      'transfer dana',
-      'transfer masuk',
-      'transfer keluar',
-      'e-receipt',
-      'grab e-receipt',
-      'grab receipt',
-      'gojek receipt',
-      'electronic receipt',
-      'struk digital',
-      'struk pembayaran',
-      'tanda terima',
-      'tanda terima elektronik',
-      'bukti pembayaran',
-      'bukti transaksi',
-      'bukti transfer',
-    ];
-
-    if (genericExactPhrases.includes(lower)) {
-      return true;
-    }
-
-    // Generic prefix / boilerplate patterns without specific product details
-    const genericPrefixes = [
-      'transaksi menggunakan kartu debit',
-      'transaction using debit card',
-      'transaction using jago debit card',
-      'debit card transaction via',
-      'debit card transaction',
-      'transaksi kartu debit',
-      'pembayaran qris di',
-      'pembayaran qris',
-      'pembayaran via',
-      'pembayaran berhasil',
-      'payment via',
-      'payment using',
-    ];
-
-    for (const prefix of genericPrefixes) {
-      if (lower.startsWith(prefix) && lower.length < prefix.length + 25) {
-        return true;
-      }
-    }
-
-    // Generic merchant e-receipt patterns like "[merchant] e-receipt" or "e-receipt [merchant]"
-    if (
-      lower.endsWith('e-receipt') ||
-      lower.endsWith('receipt') ||
-      lower.startsWith('e-receipt') ||
-      lower.startsWith('tanda terima') ||
-      lower.startsWith('bukti pembayaran')
-    ) {
-      const stripped = lower
-        .replace(/^(e-receipt|receipt|tanda terima|bukti pembayaran)\s*/i, '')
-        .replace(/\s*(e-receipt|receipt)$/i, '')
-        .trim();
-      if (
-        !stripped ||
-        stripped.split(/\s+/).length <= 2 ||
-        (merchantOrCounterParty && stripped === merchantOrCounterParty.trim().toLowerCase())
-      ) {
-        return true;
-      }
-    }
-
-    return false;
+    return isGenericNote(note, merchantOrCounterParty, subject);
   }
 
   /**
@@ -275,7 +118,7 @@ export class TransactionCorrelationService {
       : 'income';
     const evidenceTime = new Date(evidence.occurredAt).getTime();
     const evidenceCurrency = (evidence.currency || 'IDR').toUpperCase();
-    const evidenceRefs = (evidence.referenceNumbers || []).map(r => r.toUpperCase());
+    const evidenceRefs = (evidence.referenceNumbers || []).map(ref => ref.toUpperCase());
 
     for (const record of records) {
       // 1. Currency & direction check
@@ -309,7 +152,9 @@ export class TransactionCorrelationService {
 
       // 4. Strong correlation: explicit reference number match
       const recordNoteUpper = (record.note || '').toUpperCase();
-      const hasRefMatch = evidenceRefs.some(ref => recordNoteUpper.includes(ref) || record.id.toUpperCase() === ref);
+      const hasRefMatch = evidenceRefs.some(
+        ref => recordNoteUpper.includes(ref) || record.id.toUpperCase() === ref
+      );
 
       // Determine confidence for reference match immediately
       if (hasRefMatch) {
@@ -323,9 +168,10 @@ export class TransactionCorrelationService {
 
       // Check distinct merchant conflict (e.g. Alfamart vs Starbucks)
       const recordCounterPartyOrNote = record.counterParty || record.note || '';
-      const isConflicting = this.detectConflictingMerchants(
-        { counterParty: recordCounterPartyOrNote } as PendingTransactionItem,
-        evidence
+      const isConflicting = detectConflictingMerchants(
+        { counterParty: recordCounterPartyOrNote },
+        evidence,
+        this.platformRegistry
       );
       if (isConflicting) {
         continue;
@@ -348,13 +194,13 @@ export class TransactionCorrelationService {
         evidenceMerchant.length > 2 &&
         (recordMerchant.includes(evidenceMerchant) || evidenceMerchant.includes(recordMerchant));
 
-      const isRecordMerchantGeneric = this.isGenericMerchant(record.counterParty);
+      const isRecordMerchantGeneric = isGenericMerchant(record.counterParty);
       const isBankSynced = record.source === 'bank_sync' || Boolean(evidence.isBankSyncedAccount);
 
       const isIncomingSpecificPayment =
         (evidence.sourceType === 'EMAIL_PAYMENT' || evidence.sourceType === 'RECEIPT') &&
         Boolean(evidence.merchant) &&
-        !this.isGenericMerchant(evidence.merchant) &&
+        !isGenericMerchant(evidence.merchant) &&
         (evidence.merchant?.length ?? 0) >= 2;
 
       if (
@@ -396,7 +242,7 @@ export class TransactionCorrelationService {
     const evidenceIsExpense = evidence.amount < 0 || evidence.transactionType === 'EXPENSE';
     const evidenceCurrency = (evidence.currency || 'IDR').toUpperCase();
     const evidenceTime = new Date(evidence.occurredAt).getTime();
-    const evidenceRefs = (evidence.referenceNumbers || []).map(r => r.toUpperCase());
+    const evidenceRefs = (evidence.referenceNumbers || []).map(ref => ref.toUpperCase());
 
     let mediumConfidenceCandidate: {
       item: PendingTransactionItem;
@@ -451,16 +297,24 @@ export class TransactionCorrelationService {
       }
 
       // Check distinct merchant conflict (e.g. Indomaret vs Starbucks)
-      const isConflictingMerchant = this.detectConflictingMerchants(candidate, evidence);
+      const isConflictingMerchant = detectConflictingMerchants(
+        candidate,
+        evidence,
+        this.platformRegistry
+      );
       if (isConflictingMerchant) {
         continue; // Must remain separate
       }
 
       // Check cross-source complementarity (e.g. Bank Debit + Merchant Receipt)
-      const complementarityResult = this.evaluateComplementarySources(
+      const complementarityResult = evaluateComplementarySources(
         candidate,
         evidence,
-        timeDiffMs
+        timeDiffMs,
+        {
+          platformRegistry: this.platformRegistry,
+          tightWindowMilliseconds: this.tightWindowMilliseconds,
+        }
       );
 
       if (complementarityResult.isHighConfidence) {
@@ -520,271 +374,6 @@ export class TransactionCorrelationService {
   }
 
   /**
-   * Determines whether candidate and incoming evidence point to distinctly different merchants.
-   */
-  private detectConflictingMerchants(
-    candidate: PendingTransactionItem,
-    evidence: TransactionEvidence
-  ): boolean {
-    const candidateMerchant = (candidate.counterParty || '').trim().toLowerCase();
-    const evidenceMerchant = (evidence.merchant || '').trim().toLowerCase();
-
-    if (!candidateMerchant || !evidenceMerchant) {
-      return false;
-    }
-
-    // If either merchant is generic / placeholder, they cannot be in conflict
-    if (this.isGenericMerchant(candidateMerchant) || this.isGenericMerchant(evidenceMerchant)) {
-      return false;
-    }
-
-    // Known brands registered in CommercePlatformRegistry
-    const knownBrands = this.platformRegistry.getAllMerchantKeywords();
-    for (const brand of knownBrands) {
-      if (candidateMerchant.includes(brand) && evidenceMerchant.includes(brand)) {
-        return false;
-      }
-    }
-
-    // Substring match
-    if (
-      candidateMerchant.includes(evidenceMerchant) ||
-      evidenceMerchant.includes(candidateMerchant)
-    ) {
-      return false;
-    }
-
-    // Token overlap match (e.g. "blibli.com kudus" vs "blibli offline store")
-    const candidateTokens = candidateMerchant.split(/[^a-z0-9]+/).filter(t => t.length >= 4);
-    const evidenceTokens = evidenceMerchant.split(/[^a-z0-9]+/).filter(t => t.length >= 4);
-    if (candidateTokens.some(t => evidenceTokens.includes(t))) {
-      return false;
-    }
-
-    // Both have distinct specific merchant names that do not match
-    return true;
-  }
-
-  /**
-   * Evaluates if one source is a bank debit and the other is a merchant/payment receipt
-   * whose details semantically match.
-   */
-  private evaluateComplementarySources(
-    candidate: PendingTransactionItem,
-    evidence: TransactionEvidence,
-    timeDiffMs: number
-  ): { isHighConfidence: boolean; reasons: string[] } {
-    const isCandidateBank = this.isBankSource(candidate);
-    const isEvidenceBank = evidence.sourceType === 'EMAIL_BANK';
-
-    const isCandidatePayment = this.isPaymentOrReceiptSource(candidate);
-    const isEvidencePayment =
-      evidence.sourceType === 'EMAIL_PAYMENT' || evidence.sourceType === 'RECEIPT';
-
-    const isCrossSource =
-      (isCandidateBank && isEvidencePayment) || (isCandidatePayment && isEvidenceBank);
-
-    if (!isCrossSource) {
-      // Check if both are same merchant within tight window
-      const candidateMerchant = (candidate.counterParty || '').toLowerCase();
-      const evidenceMerchant = (evidence.merchant || '').toLowerCase();
-      if (
-        candidateMerchant &&
-        evidenceMerchant &&
-        (candidateMerchant.includes(evidenceMerchant) || evidenceMerchant.includes(candidateMerchant)) &&
-        timeDiffMs <= this.tightWindowMilliseconds
-      ) {
-        return {
-          isHighConfidence: true,
-          reasons: [
-            `Same merchant (${candidate.counterParty}) within tight window (${Math.round(
-              timeDiffMs / 1000
-            )}s)`,
-          ],
-        };
-      }
-
-      return { isHighConfidence: false, reasons: [] };
-    }
-
-    // Disambiguate which side is bank and which side is payment/receipt
-    // When evidence is EMAIL_BANK, evidence is strictly the bank side and candidate is the payment side.
-    const isBankFromCandidate = isEvidencePayment || (isCandidateBank && !isEvidenceBank);
-
-    const bankCounterParty = isBankFromCandidate
-      ? candidate.counterParty || ''
-      : evidence.merchant || '';
-    const bankNote = isBankFromCandidate
-      ? candidate.note || ''
-      : evidence.note || '';
-    const bankDisplayName = isBankFromCandidate
-      ? candidate.bankDisplayName || ''
-      : evidence.accountHint || evidence.merchant || '';
-    const bankAccountId = isBankFromCandidate
-      ? candidate.matchedAccountId
-      : evidence.accountId;
-    const bankAccountName = isBankFromCandidate
-      ? candidate.accountNameHint || ''
-      : evidence.accountHint || '';
-
-    const paymentCounterParty = isBankFromCandidate
-      ? evidence.merchant || ''
-      : candidate.counterParty || '';
-    const paymentNote = isBankFromCandidate
-      ? evidence.note || ''
-      : candidate.note || '';
-    const paymentAccountId = isBankFromCandidate
-      ? evidence.accountId
-      : candidate.matchedAccountId;
-    const paymentAccountName = isBankFromCandidate
-      ? evidence.accountHint || ''
-      : candidate.accountNameHint || '';
-
-    const bankText = `${bankCounterParty} ${bankNote} ${bankDisplayName}`.toLowerCase();
-    const paymentMerchant = paymentCounterParty.toLowerCase().trim();
-    const paymentText = `${paymentCounterParty} ${paymentNote}`.toLowerCase();
-
-    // Check 1: Bank counterparty mentions the merchant name (e.g. "BLIBLI.COM KUDUS - ID" mentions "blibli")
-    if (paymentMerchant.length >= 3 && bankText.includes(paymentMerchant)) {
-      return {
-        isHighConfidence: true,
-        reasons: [
-          `Bank transaction records merchant '${paymentMerchant}' within ${Math.round(
-            timeDiffMs / 1000
-          )}s window`,
-        ],
-      };
-    }
-
-    // Check 2: Known merchant keyword extraction from platform registry
-    const knownMerchants = this.platformRegistry.getAllMerchantKeywords();
-    for (const merchantKeyword of knownMerchants) {
-      if (paymentText.includes(merchantKeyword) && bankText.includes(merchantKeyword)) {
-        return {
-          isHighConfidence: true,
-          reasons: [
-            `Shared merchant keyword '${merchantKeyword}' across bank debit and payment receipt (${Math.round(
-              timeDiffMs / 1000
-            )}s window)`,
-          ],
-        };
-      }
-    }
-
-    // Check 3: Tight QRIS payment window (bank counterparty is QRIS and payment receipt arrives within 15 mins)
-    const isBankQris = bankText.includes('qris');
-    const isPaymentQris = paymentText.includes('qris') || paymentText.includes('offline store');
-    if (isBankQris && isPaymentQris && timeDiffMs <= this.tightWindowMilliseconds) {
-      return {
-        isHighConfidence: true,
-        reasons: [
-          `QRIS payment receipt correlates with bank QRIS debit within ${Math.round(
-            timeDiffMs / 1000
-          )}s window`,
-        ],
-      };
-    }
-
-    // Check 4: Generic bank debit + specific merchant receipt
-    // When bank notification lacks merchant text (e.g. Bank Jago debit card "Unknown")
-    // but accounts are compatible, amounts match, and evidence provides a specific merchant receipt.
-    const isBankMerchantGeneric = this.isGenericMerchant(bankCounterParty);
-    const isPaymentMerchantSpecific =
-      Boolean(paymentMerchant) &&
-      paymentMerchant.length >= 2 &&
-      !this.isGenericMerchant(paymentMerchant);
-
-    if (isBankMerchantGeneric && isPaymentMerchantSpecific) {
-      const accountsMatch = Boolean(
-        bankAccountId && paymentAccountId && bankAccountId === paymentAccountId
-      );
-
-      // Payment platform wallets (ShopeePay, GoPay, OVO, DANA) or cash/tunai
-      // are compatible with authoritative bank debits
-      const isPaymentAccountPlatformOrCash =
-        !paymentAccountId ||
-        paymentAccountId === 'acc-cash' ||
-        this.platformRegistry.isPlatformWallet(paymentAccountName);
-
-      // Generic card networks (Visa, Mastercard, Debit Card, etc.) mentioned in merchant receipts
-      // (e.g. Grab "Visa: Rp 54500") are compatible with authoritative bank debits
-      const isGenericCardNetwork =
-        this.isGenericCardAccountOrMethod(paymentAccountName) ||
-        this.isGenericCardAccountOrMethod(evidence.accountHint);
-
-      const isAccountCompatible =
-        !bankAccountId ||
-        !paymentAccountId ||
-        accountsMatch ||
-        isPaymentAccountPlatformOrCash ||
-        isGenericCardNetwork;
-
-      if (isAccountCompatible) {
-        return {
-          isHighConfidence: true,
-          reasons: [
-            `Authoritative bank debit with generic merchant '${
-              bankCounterParty || 'Unknown'
-            }' correlates with ${paymentMerchant} receipt${
-              accountsMatch ? ' on verified account' : ''
-            } within ${Math.round(timeDiffMs / 1000)}s window`,
-          ],
-        };
-      }
-    }
-
-    return { isHighConfidence: false, reasons: [] };
-  }
-
-  private isBankSource(candidate: PendingTransactionItem): boolean {
-    if (candidate.evidenceSources?.includes('EMAIL_BANK')) {
-      return true;
-    }
-    const lowerName = (candidate.bankDisplayName || '').toLowerCase();
-    const lowerAccount = (candidate.accountNameHint || '').toLowerCase();
-    const bankKeywords = [
-      'bank',
-      'mandiri',
-      'bca',
-      'bni',
-      'bri',
-      'jago',
-      'seabank',
-      'dana',
-      'ovo',
-      'gopay',
-      'shopeepay',
-      'blu',
-      'jenius',
-      'cimb',
-    ];
-    return bankKeywords.some(k => lowerName.includes(k) || lowerAccount.includes(k));
-  }
-
-  private isPaymentOrReceiptSource(candidate: PendingTransactionItem): boolean {
-    if (
-      candidate.evidenceSources?.includes('EMAIL_PAYMENT') ||
-      candidate.evidenceSources?.includes('RECEIPT')
-    ) {
-      return true;
-    }
-    const lowerName = (candidate.bankDisplayName || '').toLowerCase();
-    const lowerCounter = (candidate.counterParty || '').toLowerCase();
-    if (
-      lowerName.includes('receipt') ||
-      lowerName.includes('struk') ||
-      lowerCounter.includes('receipt') ||
-      lowerCounter.includes('struk')
-    ) {
-      return true;
-    }
-    return (
-      this.platformRegistry.isCommerceMerchant(lowerName) ||
-      this.platformRegistry.isCommerceMerchant(lowerCounter)
-    );
-  }
-
-  /**
    * Fuses existing candidate state with incoming evidence according to field precedence rules.
    * Ensures arrival order invariance: (Bank + Receipt) produces the same outcome as (Receipt + Bank).
    */
@@ -792,129 +381,6 @@ export class TransactionCorrelationService {
     candidate: PendingTransactionItem,
     incoming: TransactionEvidence
   ): Partial<PendingTransactionItem> {
-    const isCandidateBank = this.isBankSource(candidate);
-    const isIncomingBank = incoming.sourceType === 'EMAIL_BANK';
-
-    // 1. Account resolution: authoritative bank source takes precedence
-    let resolvedAccountId = candidate.matchedAccountId;
-    let resolvedAccountName = candidate.accountNameHint;
-    let resolvedBankDisplayName = candidate.bankDisplayName;
-
-    const isCandidateAccountPlatform =
-      !resolvedAccountName ||
-      this.platformRegistry.isPlatformWallet(resolvedAccountName);
-
-    if (
-      isIncomingBank &&
-      incoming.accountId &&
-      (!isCandidateBank || isCandidateAccountPlatform)
-    ) {
-      resolvedAccountId = incoming.accountId;
-      resolvedAccountName = incoming.accountHint || resolvedAccountName;
-      resolvedBankDisplayName = incoming.merchant || incoming.accountHint || resolvedBankDisplayName;
-    }
-
-    // 2. CounterParty / Merchant resolution: cleaner merchant receipt name takes precedence
-    let resolvedCounterParty = candidate.counterParty;
-    const isIncomingPayment =
-      incoming.sourceType === 'EMAIL_PAYMENT' || incoming.sourceType === 'RECEIPT';
-
-    if (isIncomingPayment && incoming.merchant) {
-      resolvedCounterParty = incoming.merchant;
-    } else if (
-      (!resolvedCounterParty || this.isGenericMerchant(resolvedCounterParty)) &&
-      incoming.merchant &&
-      !this.isGenericMerchant(incoming.merchant)
-    ) {
-      resolvedCounterParty = incoming.merchant;
-    }
-
-    // 3. Note / Itemized breakdown resolution: merchant receipt items take precedence or enrich
-    let resolvedNote = candidate.note;
-    if (incoming.note && incoming.note !== candidate.note) {
-      if (!candidate.note) {
-        resolvedNote = incoming.note;
-      } else {
-        const isCandidateNoteGeneric = this.isGenericNote(
-          candidate.note,
-          candidate.counterParty,
-          candidate.emailSubject
-        );
-        const isIncomingNoteGeneric = this.isGenericNote(
-          incoming.note,
-          incoming.merchant,
-          incoming.sourceId
-        );
-
-        if (isCandidateNoteGeneric && !isIncomingNoteGeneric) {
-          resolvedNote = incoming.note;
-        } else if (!isCandidateNoteGeneric && isIncomingNoteGeneric) {
-          resolvedNote = candidate.note;
-        } else if (incoming.note.includes(candidate.note)) {
-          resolvedNote = incoming.note;
-        } else if (candidate.note.includes(incoming.note)) {
-          resolvedNote = candidate.note;
-        } else {
-          resolvedNote = `${candidate.note} • ${incoming.note}`;
-        }
-      }
-    }
-
-    // 4. Category resolution: specific merchant category takes precedence over generic bank category
-    let resolvedCategoryId = candidate.matchedCategoryId;
-    let resolvedCategoryName = candidate.matchedCategoryName;
-
-    if (incoming.categoryId && incoming.categoryName) {
-      const isCandidateCatGeneric =
-        !candidate.matchedCategoryName ||
-        candidate.matchedCategoryName.toLowerCase().includes('umum') ||
-        candidate.matchedCategoryName.toLowerCase().includes('lain') ||
-        candidate.matchedCategoryName.toLowerCase().includes('belanja') ||
-        candidate.matchedCategoryName.toLowerCase().includes('shopping') ||
-        candidate.matchedCategoryName.toLowerCase().includes('general') ||
-        candidate.matchedCategoryName.toLowerCase().includes('other') ||
-        candidate.matchedCategoryName.toLowerCase().includes('others') ||
-        candidate.matchedCategoryName.toLowerCase() === 'uncategorized';
-
-      if (isCandidateCatGeneric) {
-        resolvedCategoryId = incoming.categoryId;
-        resolvedCategoryName = incoming.categoryName;
-      }
-    }
-
-    // 5. Reference numbers: union of all references
-    const mergedReferences = Array.from(
-      new Set([
-        ...(candidate.referenceNumbers || []),
-        ...(candidate.referenceNumber ? [candidate.referenceNumber] : []),
-        ...(incoming.referenceNumbers || []),
-      ])
-    ).filter(Boolean);
-
-    // 6. Evidence provenance: union of all sources
-    const mergedSources = Array.from(
-      new Set([
-        ...(candidate.evidenceSources || []),
-        incoming.sourceType,
-      ])
-    ).filter(Boolean);
-
-    const resolvedIsBankSynced = Boolean(
-      candidate.isBankSyncedAccount || incoming.isBankSyncedAccount
-    );
-
-    return {
-      matchedAccountId: resolvedAccountId,
-      accountNameHint: resolvedAccountName,
-      bankDisplayName: resolvedBankDisplayName,
-      counterParty: resolvedCounterParty,
-      note: resolvedNote,
-      matchedCategoryId: resolvedCategoryId,
-      matchedCategoryName: resolvedCategoryName,
-      referenceNumbers: mergedReferences,
-      referenceNumber: mergedReferences[0] || candidate.referenceNumber,
-      evidenceSources: mergedSources,
-      isBankSyncedAccount: resolvedIsBankSynced,
-    };
+    return fuseCandidateWithEvidence(candidate, incoming, this.platformRegistry);
   }
 }
