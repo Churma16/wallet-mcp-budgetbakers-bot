@@ -1,3 +1,7 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { CategoryContextService } from '../src/services/categoryContextService.js';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
 import { WalletMcpRequestError } from '../src/services/walletMcpService.js';
@@ -564,5 +568,76 @@ describe('Category Clarification and Auto Mode', () => {
     expect(mcpClient.calls.length).toBe(0);
     expect(gateway.messages.length).toBe(1);
     expect(gateway.messages[0].content).toContain('tidak ditemukan');
+  });
+
+  it('Suite 10: Dynamic categoryResolutionMode from CategoryContextService and env override', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'category-context-override-'));
+    const configPath = path.join(tempDir, 'category-context.json');
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        version: '1.0',
+        settings: { categoryResolutionMode: 'auto' },
+      }),
+      'utf8'
+    );
+
+    const contextService = new CategoryContextService(configPath);
+
+    const aiProvider = new MockFinancialAiProvider({
+      action: 'CREATE_RECORD',
+      records: [
+        {
+          accountId: 'acc-bca',
+          amount: -30000,
+          recordDate: '2026-09-10T12:00:00+07:00',
+          categoryHint: 'obat',
+          note: 'Paracetamol',
+        },
+      ],
+    });
+
+    try {
+      delete process.env.CATEGORY_RESOLUTION_MODE;
+
+      // 1. When categoryResolutionMode is not explicitly passed to UserMessageHandler,
+      // it delegates resolution to CategoryContextService which resolves 'auto' from settings JSON
+      const handlerWithService = new UserMessageHandler(
+        gateway as any,
+        pendingManager,
+        new MockPendingActionHandler() as any,
+        new MockFastPathHandler() as any,
+        aiProvider as any,
+        cache as any,
+        mcpClient as any,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        contextService
+      );
+
+      await handlerWithService.handleIncomingUserMessage(createEvent('Paracetamol 30rb cat:obat'));
+      expect(mcpClient.calls.length).toBe(1);
+      expect(mcpClient.calls[0][0].categoryId).toBe('cat-kesehatan');
+
+      // 2. Env override takes priority: if CATEGORY_RESOLUTION_MODE='ask', it overrides JSON 'auto'
+      process.env.CATEGORY_RESOLUTION_MODE = 'ask';
+      mcpClient.calls = [];
+      gateway.messages = [];
+
+      await handlerWithService.handleIncomingUserMessage(createEvent('Amoxicillin 25rb cat:obat'));
+      // Should now prompt instead of auto-matching
+      expect(mcpClient.calls.length).toBe(0);
+      expect(gateway.messages.length).toBe(1);
+      expect(gateway.messages[0].content).toContain('Pilih kategori yang sesuai');
+    } finally {
+      delete process.env.CATEGORY_RESOLUTION_MODE;
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
   });
 });

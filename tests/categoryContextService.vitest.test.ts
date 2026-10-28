@@ -157,6 +157,68 @@ describe('category context and disambiguation', () => {
     expect(configuration.categoryRules[1].category).toBe('Valid Category');
   });
 
+  it('parses categoryResolutionMode from settings block and defaults safely', () => {
+    // 1. Explicit auto mode
+    const autoFilePath = writeFixture('auto-settings.json', {
+      settings: { categoryResolutionMode: 'auto' },
+      categories: [{ category: 'Test' }],
+    });
+    const autoService = new CategoryContextService(autoFilePath);
+    expect(autoService.getConfiguration().categoryResolutionMode).toBe('auto');
+    expect(autoService.getCategoryResolutionMode()).toBe('auto');
+
+    // 2. Explicit ask mode
+    const askFilePath = writeFixture('ask-settings.json', {
+      settings: { categoryResolutionMode: 'ask' },
+    });
+    const askService = new CategoryContextService(askFilePath);
+    expect(askService.getConfiguration().categoryResolutionMode).toBe('ask');
+    expect(askService.getCategoryResolutionMode()).toBe('ask');
+
+    // 3. Missing settings defaults to ask
+    const defaultFilePath = writeFixture('default-settings.json', {
+      version: '1.0',
+    });
+    const defaultService = new CategoryContextService(defaultFilePath);
+    expect(defaultService.getConfiguration().categoryResolutionMode).toBe('ask');
+
+    // 4. Invalid mode emits warning and falls back to ask
+    const invalidFilePath = writeFixture('invalid-settings.json', {
+      settings: { categoryResolutionMode: 'invalid_mode' },
+    });
+    const invalidService = new CategoryContextService(invalidFilePath);
+    const result = invalidService.loadConfiguration();
+    expect(result.isValid).toBe(true);
+    expect(result.configuration.categoryResolutionMode).toBe('ask');
+    expect(result.issues.some(i => i.propertyPath === 'settings.categoryResolutionMode' && i.severity === 'warning')).toBe(true);
+  });
+
+  it('hot-reloads categoryResolutionMode dynamically when file is updated on disk', () => {
+    const targetFilePath = path.join(temporaryDirectory, 'hot-reload-settings.json');
+    fs.writeFileSync(
+      targetFilePath,
+      JSON.stringify({ settings: { categoryResolutionMode: 'ask' } }),
+      'utf8'
+    );
+
+    const service = new CategoryContextService(targetFilePath);
+    expect(service.getCategoryResolutionMode()).toBe('ask');
+
+    // Advance time and modify file on disk to 'auto'
+    vi.advanceTimersByTime(2000);
+    const newMtime = new Date(Date.now() + 5000);
+    fs.writeFileSync(
+      targetFilePath,
+      JSON.stringify({ settings: { categoryResolutionMode: 'auto' } }),
+      'utf8'
+    );
+    fs.utimesSync(targetFilePath, newMtime, newMtime);
+
+    // Dynamic reload without restart
+    expect(service.getCategoryResolutionMode()).toBe('auto');
+    expect(service.getConfiguration().categoryResolutionMode).toBe('auto');
+  });
+
   it('formats compact context in deterministic alphabetical order', () => {
     const filePath = writeFixture('unsorted-category-context.json', {
       userContext: 'Tech worker in BSD.',

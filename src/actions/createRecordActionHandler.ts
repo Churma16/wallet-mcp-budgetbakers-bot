@@ -50,12 +50,23 @@ export class CreateRecordActionHandler implements FinancialActionHandler<'CREATE
     private readonly accountClarificationHandler: AccountClarificationHandler,
     private readonly categoryContextService?: CategoryContextService,
     private readonly categoryClarificationHandler?: CategoryClarificationHandler,
-    private readonly categoryResolutionMode: 'ask' | 'auto' = 'ask',
+    private readonly categoryResolutionMode?: 'ask' | 'auto',
     categoryClarificationConversationService?: CategoryClarificationConversationService
   ) {
     this.categoryClarificationConversationService =
       categoryClarificationConversationService ||
       new CategoryClarificationConversationService();
+  }
+
+  private resolveActiveCategoryResolutionMode(): 'ask' | 'auto' {
+    const environmentOverride = process.env.CATEGORY_RESOLUTION_MODE?.trim().toLowerCase();
+    if (environmentOverride === 'auto' || environmentOverride === 'ask') {
+      return environmentOverride;
+    }
+    if (this.categoryContextService) {
+      return this.categoryContextService.getCategoryResolutionMode();
+    }
+    return this.categoryResolutionMode ?? 'ask';
   }
 
   public async execute(context: CreateRecordActionContext): Promise<void> {
@@ -113,7 +124,8 @@ export class CreateRecordActionHandler implements FinancialActionHandler<'CREATE
     );
 
     if (currentValidationResult.validationErrors.length === 0 && categoryIssues.length > 0) {
-      if (this.categoryResolutionMode === 'auto') {
+      const activeCategoryResolutionMode = this.resolveActiveCategoryResolutionMode();
+      if (activeCategoryResolutionMode === 'auto') {
         let autoResolvedAny = false;
         for (const issue of categoryIssues) {
           const matchedCategory = await this.categoryClarificationConversationService.selectBestCategory(

@@ -183,7 +183,7 @@ export class UserMessageHandler {
         recordPreparationService: this.recordPreparationService,
         accountClarificationHandler: this.accountClarificationHandler,
         categoryClarificationHandler: this.categoryClarificationHandler,
-        categoryResolutionMode: categoryResolutionMode ?? (process.env.CATEGORY_RESOLUTION_MODE === 'auto' ? 'auto' : 'ask'),
+        categoryResolutionMode,
         categoryContextService,
       });
     }
