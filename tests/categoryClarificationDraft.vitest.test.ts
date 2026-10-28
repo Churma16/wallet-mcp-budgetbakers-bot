@@ -412,4 +412,157 @@ describe('Category Clarification and Auto Mode', () => {
     await handler.handleIncomingUserMessage(createEvent('1'));
     expect(mcpClient.calls.length).toBe(2);
   });
+  it('Suite 7: Flexible numeric replies like #1 and 1. finalize the draft', async () => {
+    const aiProvider = new MockFinancialAiProvider({
+      action: 'CREATE_RECORD',
+      records: [
+        {
+          accountId: 'acc-bca',
+          amount: -50000,
+          recordDate: '2026-09-10T12:00:00+07:00',
+          categoryHint: 'obat',
+          note: 'Beli obat',
+        },
+      ],
+    });
+
+    const handler = new UserMessageHandler(
+      gateway as any,
+      pendingManager,
+      new MockPendingActionHandler() as any,
+      new MockFastPathHandler() as any,
+      aiProvider as any,
+      cache as any,
+      mcpClient as any,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'ask'
+    );
+
+    await handler.handleIncomingUserMessage(createEvent('Beli obat 50rb cat:obat'));
+    expect(gateway.messages.length).toBe(1);
+
+    // User replies with '#1'
+    await handler.handleIncomingUserMessage(createEvent('#1'));
+    expect(mcpClient.calls.length).toBe(1);
+    expect(mcpClient.calls[0][0].categoryId).toBe('cat-kesehatan');
+  });
+
+  it('Suite 8: Reply routing prioritizes newer category draft over older account draft', async () => {
+    const accountProvider = new MockFinancialAiProvider({
+      action: 'CREATE_RECORD',
+      records: [
+        {
+          amount: -20000,
+          recordDate: '2026-09-10T12:00:00+07:00',
+          categoryId: 'cat-makanan',
+          note: 'Makan',
+        },
+      ],
+    });
+
+    const handler = new UserMessageHandler(
+      gateway as any,
+      pendingManager,
+      new MockPendingActionHandler() as any,
+      new MockFastPathHandler() as any,
+      accountProvider as any,
+      cache as any,
+      mcpClient as any,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'ask'
+    );
+
+    // 1. First transaction creates an account clarification draft (#1)
+    await handler.handleIncomingUserMessage(createEvent('Makan 20rb'));
+    const accountDraft = pendingManager.getLatestPendingAccountSelectionDraft('whatsapp', '+628123456789', '+628123456789');
+    expect(accountDraft).toBeDefined();
+
+    // 2. Second transaction creates a category clarification draft (#2)
+    const categoryDraft = pendingManager.addPendingCategorySelectionDraft({
+      sourceType: 'USER',
+      channel: 'whatsapp',
+      senderIdentifier: '+628123456789',
+      chatIdentifier: '+628123456789',
+      records: [
+        {
+          accountId: 'acc-bca',
+          amount: -50000,
+          recordDate: '2026-09-10T12:00:00+07:00',
+          categoryHint: 'obat',
+          note: 'Beli obat',
+        },
+      ],
+      pendingRecordIndex: 0,
+      categoryHint: 'obat',
+      candidateCategories: [{ id: 'cat-kesehatan', name: 'Kesehatan & Medis' }],
+    });
+    expect(categoryDraft.ticketId).toBeGreaterThan(accountDraft!.ticketId);
+
+    // 3. User replies '1' - it must resolve the NEWER category draft, not hijack the account draft!
+    await handler.handleIncomingUserMessage(createEvent('1'));
+
+    expect(mcpClient.calls.length).toBe(1);
+    expect(mcpClient.calls[0][0].categoryId).toBe('cat-kesehatan');
+    expect(mcpClient.calls[0][0].accountId).toBe('acc-bca');
+  });
+
+  it('Suite 9: Mixed unresolved entity batch fails validation safely without silently dropping records', async () => {
+    const mixedProvider = new MockFinancialAiProvider({
+      action: 'CREATE_RECORD',
+      records: [
+        {
+          // Missing account
+          amount: -20000,
+          recordDate: '2026-09-10T12:00:00+07:00',
+          categoryId: 'cat-makanan',
+          note: 'Makan',
+        },
+        {
+          // Unresolved category
+          accountId: 'acc-bca',
+          amount: -50000,
+          recordDate: '2026-09-10T12:00:00+07:00',
+          categoryHint: 'obat',
+          note: 'Beli obat',
+        },
+      ],
+    });
+
+    const handler = new UserMessageHandler(
+      gateway as any,
+      pendingManager,
+      new MockPendingActionHandler() as any,
+      new MockFastPathHandler() as any,
+      mixedProvider as any,
+      cache as any,
+      mcpClient as any,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'ask'
+    );
+
+    await handler.handleIncomingUserMessage(createEvent('Makan 20rb dan Beli obat 50rb'));
+
+    // Because entities are mixed, it should reject safely instead of dropping record 0
+    expect(mcpClient.calls.length).toBe(0);
+    expect(gateway.messages.length).toBe(1);
+    expect(gateway.messages[0].content).toContain('tidak ditemukan');
+  });
 });

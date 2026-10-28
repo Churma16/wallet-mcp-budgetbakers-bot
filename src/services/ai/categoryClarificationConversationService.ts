@@ -28,8 +28,9 @@ export class CategoryClarificationConversationService {
     const normalizedReply = userReply.trim();
 
     // 1. Cheap deterministic numeric fast-path (1-based index)
-    if (/^\d+$/.test(normalizedReply)) {
-      const selectedIndex = Number.parseInt(normalizedReply, 10) - 1;
+    const numericMatch = normalizedReply.match(/^\s*#?(\d+)\.?\s*$/);
+    if (numericMatch) {
+      const selectedIndex = Number.parseInt(numericMatch[1], 10) - 1;
       if (selectedIndex >= 0 && selectedIndex < candidateCategories.length) {
         return candidateCategories[selectedIndex];
       }

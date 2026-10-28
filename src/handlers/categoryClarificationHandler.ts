@@ -394,7 +394,7 @@ export class CategoryClarificationHandler {
         await this.messagingGateway.sendMessage(
           event.channel,
           event.chatIdentifier,
-          getDictionary().errors.validationRejected('Kategori tidak valid.')
+          getDictionary().errors.validationRejected(getDictionary().errors.accountResolutionFallback)
         );
         return true;
       }
@@ -456,6 +456,23 @@ export class CategoryClarificationHandler {
     if (!this.pendingTransactionManager.getPendingCategorySelectionDraft(claimedDraft.ticketId)) {
       applicationLogger.info(
         `[Category Clarification] Draft #${claimedDraft.ticketId} was cancelled before dispatch; aborting dispatch.`
+      );
+      return true;
+    }
+
+    if (
+      !validationResult.isValid ||
+      validationResult.sanitizedRecords.length === 0 ||
+      validationResult.sanitizedRecords.length !== updatedRecords.length
+    ) {
+      this.pendingTransactionManager.releaseProcessingCategorySelectionDraft(claimedDraft.ticketId);
+      this.pendingTransactionManager.rejectPendingCategorySelectionDraft(claimedDraft.ticketId);
+      await this.messagingGateway.sendMessage(
+        event.channel,
+        event.chatIdentifier,
+        getDictionary().errors.validationRejected(
+          validationResult.validationErrors.join('\n') || getDictionary().errors.accountResolutionFallback
+        )
       );
       return true;
     }

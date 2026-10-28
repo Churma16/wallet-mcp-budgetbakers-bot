@@ -151,7 +151,9 @@ export class CreateRecordActionHandler implements FinancialActionHandler<'CREATE
 
       if (
         currentValidationResult.validationErrors.length === 0 &&
+        currentValidationResult.accountResolutionIssues.length === 0 &&
         remainingCategoryIssues.length > 0 &&
+        currentValidationResult.entityResolutionIssues.every(issue => issue.entityType === 'CATEGORY') &&
         this.categoryClarificationHandler
       ) {
         const drafted = await this.categoryClarificationHandler.createPendingCategorySelectionDraft(
