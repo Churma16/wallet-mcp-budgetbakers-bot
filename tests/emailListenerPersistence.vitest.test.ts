@@ -286,6 +286,120 @@ async function testGateOneRejectionCachesImmediately(): Promise<void> {
   }
 }
 
+async function testQueuedScanProcessesConcurrentIncomingMail(): Promise<void> {
+  const cacheDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'wallet-email-queued-'));
+  const messageId1 = 'msg-1@example.com';
+  const messageId2 = 'msg-2@example.com';
+  const processedUids: string[] = [];
+
+  let releaseFirstCallback: (() => void) | undefined;
+  const callback1Deferred = new Promise<void>(resolve => {
+    releaseFirstCallback = resolve;
+  });
+
+  const mailStore: Record<
+    number,
+    { source: Buffer; envelope: { from: Array<{ address: string }>; messageId?: string } }
+  > = {
+    1: {
+      source: buildRawEmail(
+        messageId1,
+        'Notifikasi Transaksi 1',
+        'notifications@bankmandiri.co.id',
+        'Nominal: Rp 10.000\nNo. Referensi: REF-CONCURRENT-1'
+      ),
+      envelope: {
+        from: [{ address: 'notifications@bankmandiri.co.id' }],
+        messageId: `<${messageId1}>`,
+      },
+    },
+    2: {
+      source: buildRawEmail(
+        messageId2,
+        'Notifikasi Transaksi 2',
+        'notifications@bankmandiri.co.id',
+        'Nominal: Rp 20.000\nNo. Referensi: REF-CONCURRENT-2'
+      ),
+      envelope: {
+        from: [{ address: 'notifications@bankmandiri.co.id' }],
+        messageId: `<${messageId2}>`,
+      },
+    },
+  };
+
+  let searchCalls = 0;
+  const fakeClient = {
+    usable: true,
+    search: async () => {
+      searchCalls += 1;
+      if (searchCalls === 1) {
+        return [1];
+      }
+      return [1, 2];
+    },
+    fetchOne: async (uid: string) => {
+      const num = Number(uid);
+      const item = mailStore[num];
+      return {
+        source: item.source,
+        internalDate: new Date(),
+        envelope: item.envelope,
+      };
+    },
+  };
+
+  try {
+    let callbackCount = 0;
+    let onFirstCallback: (() => void) | undefined;
+    const firstCallbackPromise = new Promise<void>(res => {
+      onFirstCallback = res;
+    });
+
+    const service = new EmailListenerService(
+      'imap.example.com',
+      993,
+      'user@example.com',
+      'password',
+      10,
+      async event => {
+        callbackCount += 1;
+        processedUids.push(event.rawMessageId);
+        if (callbackCount === 1) {
+          onFirstCallback?.();
+          await callback1Deferred;
+        }
+      },
+      cacheDirectory
+    );
+
+    const internalService = service as unknown as EmailListenerTestAccess;
+    internalService.imapClient = fakeClient as unknown as FakeImapClient;
+
+    const scanPromise = service.scanRecentMessages();
+
+    await firstCallbackPromise;
+    assert.equal(callbackCount, 1);
+    assert.equal(internalService.isHandlingIncomingMail, true);
+
+    const concurrentScanPromise = service.scanRecentMessages();
+    await concurrentScanPromise;
+
+    releaseFirstCallback?.();
+    await scanPromise;
+
+    assert.equal(callbackCount, 2, 'both emails must be processed by the queued scan loop');
+    assert.deepEqual(processedUids, [`<${messageId1}>`, `<${messageId2}>`]);
+    assert.deepEqual(
+      readProcessedMessageIds(cacheDirectory).sort(),
+      [`<${messageId1}>`, `<${messageId2}>`].sort(),
+      'both message IDs must be persisted in cache'
+    );
+  } finally {
+    releaseFirstCallback?.();
+    fs.rmSync(cacheDirectory, { recursive: true, force: true });
+  }
+}
+
 describe('email listener transactional persistence', () => {
   it('commits a successful candidate after the downstream callback', async () => {
     await testSuccessfulCandidateCommitsAfterCallback();
@@ -301,5 +415,9 @@ describe('email listener transactional persistence', () => {
 
   it('caches a Gate 1 rejection immediately', async () => {
     await testGateOneRejectionCachesImmediately();
+  });
+
+  it('queues and processes follow-up scans when concurrent mail arrives', async () => {
+    await testQueuedScanProcessesConcurrentIncomingMail();
   });
 });
