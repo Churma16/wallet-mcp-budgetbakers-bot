@@ -1,5 +1,4 @@
 import {
-  BANK_EMAIL_RULES,
   BankEmailRuleDefinition,
   getAllBankEmailRules,
 } from '../config/bankEmailRules.js';

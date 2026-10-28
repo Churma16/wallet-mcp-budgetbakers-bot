@@ -195,7 +195,7 @@ export const DEFAULT_COMMERCE_PLATFORMS: CommercePlatformDefinition[] = [
       'balasan untuk komentar',
     ],
     bodyRequiredPatterns: [
-      /(?:pembayaran\s*(?:atas\s*)?pesanan\s*(?:anda\s*)?(?:sudah\s*kami\s*terima|diterima)|total\s*pembayaran|nomor\s*pesanan|detail\s*pesanan|alfagift)/i,
+      /(?:pembayaran\s*(?:atas\s*)?pesanan\s*(?:anda\s*)?(?:sudah\s*kami\s*terima|diterima)|total\s*pembayaran|nomor\s*pesanan|detail\s*pesanan)/i,
     ],
     amountPriorityPatterns: [
       /(?:Total\s*Pembayaran|Total\s*Belanja|Total\s*Tagihan|Total|sebesar)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
