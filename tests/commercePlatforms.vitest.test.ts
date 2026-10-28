@@ -17,13 +17,14 @@ describe('CommercePlatformRegistry', () => {
   });
 
   describe('Registration & Retrieval', () => {
-    it('initializes with default commerce platforms (Grab, Blibli, Shopee)', () => {
+    it('initializes with default commerce platforms (Grab, Blibli, Shopee, Alfagift)', () => {
       const allPlatforms = registry.getAll();
       const ids = allPlatforms.map(p => p.id);
 
       expect(ids).toContain('grab');
       expect(ids).toContain('blibli');
       expect(ids).toContain('shopee');
+      expect(ids).toContain('alfagift');
       expect(allPlatforms.length).toBe(DEFAULT_COMMERCE_PLATFORMS.length);
     });
 
@@ -104,7 +105,7 @@ describe('CommercePlatformRegistry', () => {
   describe('toBankEmailRules translation', () => {
     it('generates valid BankEmailRuleDefinition entries with MERCHANT_RECEIPT category', () => {
       const generatedRules = registry.toBankEmailRules();
-      expect(generatedRules.length).toBe(3);
+      expect(generatedRules.length).toBe(DEFAULT_COMMERCE_PLATFORMS.length);
 
       const shopeeRule = generatedRules.find(r => r.bankKey === 'shopee');
       expect(shopeeRule).toBeDefined();
@@ -113,6 +114,14 @@ describe('CommercePlatformRegistry', () => {
       expect(shopeeRule?.senderDomains).toContain('shopee.co.id');
       expect(shopeeRule?.referencePatterns.length).toBeGreaterThan(0);
       expect(shopeeRule?.amountPriorityPatterns.length).toBeGreaterThan(0);
+
+      const alfagiftRule = generatedRules.find(r => r.bankKey === 'alfagift');
+      expect(alfagiftRule).toBeDefined();
+      expect(alfagiftRule?.displayName).toBe('Alfagift');
+      expect(alfagiftRule?.ruleCategory).toBe('MERCHANT_RECEIPT');
+      expect(alfagiftRule?.senderDomains).toContain('alfagift.id');
+      expect(alfagiftRule?.referencePatterns.length).toBeGreaterThan(0);
+      expect(alfagiftRule?.amountPriorityPatterns.length).toBeGreaterThan(0);
 
       const grabRule = generatedRules.find(r => r.bankKey === 'grab');
       expect(grabRule).toBeDefined();

@@ -1,4 +1,7 @@
-import { BANK_EMAIL_RULES, BankEmailRuleDefinition } from '../config/bankEmailRules.js';
+import {
+  BankEmailRuleDefinition,
+  getAllBankEmailRules,
+} from '../config/bankEmailRules.js';
 
 export interface GateEvaluationResult {
   passed: boolean;
@@ -168,8 +171,9 @@ export function evaluateEmailThroughGateOne(
 
   // 2. Check the parsed sender domain against the rules dictionary.
   // Exact domains and legitimate subdomains are allowed; substrings are not.
+  const activeRules = getAllBankEmailRules();
   const matchedRule = senderDomain
-    ? BANK_EMAIL_RULES.find(ruleDefinition =>
+    ? activeRules.find(ruleDefinition =>
         ruleDefinition.senderDomains.some(allowedDomain =>
           doesSenderDomainMatchAllowedDomain(senderDomain, allowedDomain)
         )

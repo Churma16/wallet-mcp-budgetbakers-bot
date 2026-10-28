@@ -239,6 +239,37 @@ describe('bank email Gate 1 rules', () => {
       expect(result.matchedBankRule?.ruleCategory).toBe('MERCHANT_RECEIPT');
     });
 
+    it('accepts an Alfagift order payment receipt and extracts its facts', () => {
+      const result = evaluateEmail(
+        'Pembayaran Pesanan (#O-261028-AGVGLZH) Diterima',
+        'noreply@alfagift.id',
+        `Pembayaran pesanan O-261028-AGVGLZH sebesar Rp 26.200 sudah kami terima.
+         PEMBAYARAN DITERIMA
+         Hai Fathan,
+         Pembayaran atas pesanan Anda sudah kami terima. Terima kasih telah berbelanja di Alfagift.
+         Nomor Pesanan       O-261028-AGVGLZH
+         Total Pembayaran    Rp 26.200
+         Metode Pembayaran   QRIS
+         Waktu Pembayaran    28 October 2026 15:19 WIB
+         Nomor Referensi     T-261028-AGXYFBW
+         NAMA PRODUK                                              HARGA       QTY   SUBTOTAL
+         Promag Obat Maag & Kembung Mint Segar 10 Tablet Kunyah   Rp 11.600   1     Rp 11.600
+         Entrostop Obat Diare 10 Tablet                           Rp 11.700   1     Rp 11.700
+         Cielo Minuman Soda Rasa Leci 400 ml                      Rp 6.300    1     Rp 6.300
+            Subtotal Belanja:        Rp 29.600
+            Diskon:                  Rp 3.400
+            Voucher:                 Rp 0
+            Ongkos Kirim:            Rp 10.000 Rp 0
+            Total Pembayaran:        Rp 26.200`
+      );
+
+      expect(result.passed).toBe(true);
+      expect(result.matchedBankRule?.bankKey).toBe('alfagift');
+      expect(result.candidateAmount).toBe(26200);
+      expect(result.referenceNumber).toBe('O-261028-AGVGLZH');
+      expect(result.matchedBankRule?.ruleCategory).toBe('MERCHANT_RECEIPT');
+    });
+
     it('accepts a Bank Jago QRIS payment with Terminal ID and Danamon acquirer without false transfer flag', () => {
       const result = evaluateEmail(
         'You have made a payment to KOALASTORE\u200B.DIGI💸',
@@ -313,6 +344,50 @@ describe('bank email Gate 1 rules', () => {
         'Flash Sale Promo Diskon Kilat Blibli',
         'newsletter@blibli.com',
         'Dapatkan diskon heboh hingga 80% hanya hari ini.'
+      );
+
+      expect(result.passed).toBe(false);
+      expect(result.reason).toBe('SUBJECT_BLACKLIST_KEYWORD_MATCH');
+    });
+
+    it('rejects Alfagift awaiting payment notification emails', () => {
+      const result = evaluateEmail(
+        'Menunggu Pembayaran QRIS Untuk Pesanan di Alfagift (#O-261028-AGVGLZH)',
+        'noreply@alfagift.id',
+        'Selesaikan pembayaran pesanan Anda.'
+      );
+
+      expect(result.passed).toBe(false);
+      expect(result.reason).toBe('SUBJECT_BLACKLIST_KEYWORD_MATCH');
+    });
+
+    it('rejects Alfagift cart reminder emails', () => {
+      const result = evaluateEmail(
+        'Keranjang-mu sudah kami jaga, Sekarang tugas kamu yuk untuk selesain',
+        'no-reply@e.alfagift.id',
+        'Yuk selesaikan belanjaanmu sekarang.'
+      );
+
+      expect(result.passed).toBe(false);
+      expect(result.reason).toBe('SUBJECT_BLACKLIST_KEYWORD_MATCH');
+    });
+
+    it('rejects Alfagift delivery completion emails', () => {
+      const result = evaluateEmail(
+        'Pengiriman Pesanan (# S-261026-AGFHWGT) Telah Selesai',
+        'noreply@alfagift.id',
+        'Pesanan Anda telah selesai dikirim oleh kurir.'
+      );
+
+      expect(result.passed).toBe(false);
+      expect(result.reason).toBe('SUBJECT_BLACKLIST_KEYWORD_MATCH');
+    });
+
+    it('rejects Alfagift product recommendation and promo blast emails', () => {
+      const result = evaluateEmail(
+        'Alfagift punya rekomendasi produk yang cocok untuk kamu! Cek Sekarang!!',
+        'no-reply@e.alfagift.id',
+        'Berdasarkan produk yang pernah kamu beli, kami menemukan produk yang mungkin cocok.'
       );
 
       expect(result.passed).toBe(false);
