@@ -210,13 +210,14 @@ export class CategoryContextService {
       typeof typedInput.settings === 'object' &&
       !Array.isArray(typedInput.settings)
     ) {
-      const rawMode = typedInput.settings.categoryResolutionMode;
-      if (rawMode === 'auto' || rawMode === 'ask') {
-        categoryResolutionMode = rawMode;
-      } else if (rawMode !== undefined) {
+      const rawModeInput = typedInput.settings.categoryResolutionMode;
+      const normalizedMode = typeof rawModeInput === 'string' ? rawModeInput.trim().toLowerCase() : rawModeInput;
+      if (normalizedMode === 'auto' || normalizedMode === 'ask') {
+        categoryResolutionMode = normalizedMode;
+      } else if (rawModeInput !== undefined) {
         issues.push({
           propertyPath: 'settings.categoryResolutionMode',
-          message: `Invalid categoryResolutionMode '${String(rawMode)}'. Must be 'ask' or 'auto'.`,
+          message: `Invalid categoryResolutionMode '${String(rawModeInput)}'. Must be 'ask' or 'auto'.`,
           severity: 'warning',
         });
       }

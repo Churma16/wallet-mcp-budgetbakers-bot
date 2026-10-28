@@ -42,6 +42,9 @@ export class CreateRecordActionHandler implements FinancialActionHandler<'CREATE
 
   private readonly categoryClarificationConversationService: CategoryClarificationConversationService;
 
+  /**
+   * @param categoryResolutionMode Optional fallback mode used only if categoryContextService is omitted
+   */
   constructor(
     private readonly walletMcpClient: WalletMcpClientService,
     private readonly walletCacheService: WalletCacheService,

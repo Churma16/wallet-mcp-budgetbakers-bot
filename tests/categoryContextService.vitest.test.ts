@@ -191,6 +191,13 @@ describe('category context and disambiguation', () => {
     expect(result.isValid).toBe(true);
     expect(result.configuration.categoryResolutionMode).toBe('ask');
     expect(result.issues.some(i => i.propertyPath === 'settings.categoryResolutionMode' && i.severity === 'warning')).toBe(true);
+
+    // 5. Case-insensitive mode is normalized cleanly
+    const mixedCaseFilePath = writeFixture('mixed-case-settings.json', {
+      settings: { categoryResolutionMode: '  AuTo  ' },
+    });
+    const mixedCaseService = new CategoryContextService(mixedCaseFilePath);
+    expect(mixedCaseService.getCategoryResolutionMode()).toBe('auto');
   });
 
   it('hot-reloads categoryResolutionMode dynamically when file is updated on disk', () => {

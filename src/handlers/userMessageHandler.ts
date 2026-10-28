@@ -320,12 +320,12 @@ export class UserMessageHandler {
       }
 
       if (event.messageType === 'text' && event.textPayload) {
-        const latestAccountDraft = this.pendingTransactionManager.getLatestPendingAccountSelectionDraft(
+        const latestAccountDraft = this.pendingTransactionManager.getLatestPendingAccountSelectionDraft?.(
           event.channel,
           event.chatIdentifier,
           event.senderIdentifier
         );
-        const latestCategoryDraft = this.pendingTransactionManager.getLatestPendingCategorySelectionDraft(
+        const latestCategoryDraft = this.pendingTransactionManager.getLatestPendingCategorySelectionDraft?.(
           event.channel,
           event.chatIdentifier,
           event.senderIdentifier
