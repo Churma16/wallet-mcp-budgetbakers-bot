@@ -3,6 +3,8 @@ import { WalletCacheService } from '../services/walletCacheService.js';
 import { MessagingGatewayService } from '../services/messaging/index.js';
 import { WalletRecordPreparationService } from '../services/walletRecordPreparationService.js';
 import { AccountClarificationHandler } from '../handlers/accountClarificationHandler.js';
+import { CategoryClarificationHandler } from '../handlers/categoryClarificationHandler.js';
+import { CategoryClarificationConversationService } from '../services/ai/categoryClarificationConversationService.js';
 import { CreateRecordActionContext, FinancialActionHandler } from './types.js';
 import {
   AccountResolutionIssue,
@@ -38,14 +40,23 @@ function formatAccountResolutionIssueMessage(issue: AccountResolutionIssue): str
 export class CreateRecordActionHandler implements FinancialActionHandler<'CREATE_RECORD'> {
   public readonly action = 'CREATE_RECORD' as const;
 
+  private readonly categoryClarificationConversationService: CategoryClarificationConversationService;
+
   constructor(
     private readonly walletMcpClient: WalletMcpClientService,
     private readonly walletCacheService: WalletCacheService,
     private readonly messagingGateway: MessagingGatewayService,
     private readonly recordPreparationService: WalletRecordPreparationService,
     private readonly accountClarificationHandler: AccountClarificationHandler,
-    private readonly categoryContextService?: CategoryContextService
-  ) {}
+    private readonly categoryContextService?: CategoryContextService,
+    private readonly categoryClarificationHandler?: CategoryClarificationHandler,
+    private readonly categoryResolutionMode: 'ask' | 'auto' = 'ask',
+    categoryClarificationConversationService?: CategoryClarificationConversationService
+  ) {
+    this.categoryClarificationConversationService =
+      categoryClarificationConversationService ||
+      new CategoryClarificationConversationService();
+  }
 
   public async execute(context: CreateRecordActionContext): Promise<void> {
     const event = context.event;
@@ -69,7 +80,7 @@ export class CreateRecordActionHandler implements FinancialActionHandler<'CREATE
       accountId: record.accountId ?? record.accountHint ?? '',
     }));
 
-    const validationResult = validateAndSanitizeFinancialRecords(
+    let currentValidationResult = validateAndSanitizeFinancialRecords(
       incomingRecords,
       cachedAccounts,
       cachedCategories,
@@ -80,14 +91,14 @@ export class CreateRecordActionHandler implements FinancialActionHandler<'CREATE
     );
 
     if (
-      validationResult.validationErrors.length === 0 &&
-      validationResult.accountResolutionIssues.length > 0 &&
-      validationResult.entityResolutionIssues.every(issue => issue.entityType === 'ACCOUNT')
+      currentValidationResult.validationErrors.length === 0 &&
+      currentValidationResult.accountResolutionIssues.length > 0 &&
+      currentValidationResult.entityResolutionIssues.every(issue => issue.entityType === 'ACCOUNT')
     ) {
       const drafted = await this.accountClarificationHandler.createPendingAccountSelectionDraft(
         event,
         incomingRecords,
-        validationResult.accountResolutionIssues,
+        currentValidationResult.accountResolutionIssues,
         cachedAccounts,
         cachedCategories,
         requestReferenceInstant
@@ -96,6 +107,68 @@ export class CreateRecordActionHandler implements FinancialActionHandler<'CREATE
         return;
       }
     }
+
+    const categoryIssues = currentValidationResult.entityResolutionIssues.filter(
+      issue => issue.entityType === 'CATEGORY'
+    );
+
+    if (currentValidationResult.validationErrors.length === 0 && categoryIssues.length > 0) {
+      if (this.categoryResolutionMode === 'auto') {
+        let autoResolvedAny = false;
+        for (const issue of categoryIssues) {
+          const matchedCategory = await this.categoryClarificationConversationService.selectBestCategory(
+            issue.hint,
+            issue.candidates,
+            cachedCategories,
+            incomingRecords[issue.recordIndex]?.note
+          );
+          if (matchedCategory) {
+            incomingRecords[issue.recordIndex] = {
+              ...incomingRecords[issue.recordIndex],
+              categoryId: matchedCategory.id,
+              categoryHint: undefined,
+            };
+            autoResolvedAny = true;
+          }
+        }
+
+        if (autoResolvedAny) {
+          currentValidationResult = validateAndSanitizeFinancialRecords(
+            incomingRecords,
+            cachedAccounts,
+            cachedCategories,
+            event.textPayload,
+            requestReferenceInstant,
+            undefined,
+            this.categoryContextService?.getConfiguration().categoryRules
+          );
+        }
+      }
+
+      const remainingCategoryIssues = currentValidationResult.entityResolutionIssues.filter(
+        issue => issue.entityType === 'CATEGORY'
+      );
+
+      if (
+        currentValidationResult.validationErrors.length === 0 &&
+        remainingCategoryIssues.length > 0 &&
+        this.categoryClarificationHandler
+      ) {
+        const drafted = await this.categoryClarificationHandler.createPendingCategorySelectionDraft(
+          event,
+          incomingRecords,
+          remainingCategoryIssues,
+          cachedAccounts,
+          cachedCategories,
+          requestReferenceInstant
+        );
+        if (drafted) {
+          return;
+        }
+      }
+    }
+
+    const validationResult = currentValidationResult;
 
     if (!validationResult.isValid || validationResult.sanitizedRecords.length === 0) {
       const accountResolutionMessages = validationResult.accountResolutionIssues.map(
