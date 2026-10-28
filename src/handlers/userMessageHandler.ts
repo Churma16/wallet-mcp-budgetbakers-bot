@@ -183,7 +183,7 @@ export class UserMessageHandler {
         recordPreparationService: this.recordPreparationService,
         accountClarificationHandler: this.accountClarificationHandler,
         categoryClarificationHandler: this.categoryClarificationHandler,
-        categoryResolutionMode: categoryResolutionMode ?? (process.env.CATEGORY_RESOLUTION_MODE === 'auto' ? 'auto' : 'ask'),
+        categoryResolutionMode,
         categoryContextService,
       });
     }
@@ -320,12 +320,12 @@ export class UserMessageHandler {
       }
 
       if (event.messageType === 'text' && event.textPayload) {
-        const latestAccountDraft = this.pendingTransactionManager.getLatestPendingAccountSelectionDraft(
+        const latestAccountDraft = this.pendingTransactionManager.getLatestPendingAccountSelectionDraft?.(
           event.channel,
           event.chatIdentifier,
           event.senderIdentifier
         );
-        const latestCategoryDraft = this.pendingTransactionManager.getLatestPendingCategorySelectionDraft(
+        const latestCategoryDraft = this.pendingTransactionManager.getLatestPendingCategorySelectionDraft?.(
           event.channel,
           event.chatIdentifier,
           event.senderIdentifier

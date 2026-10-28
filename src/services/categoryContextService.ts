@@ -29,6 +29,7 @@ export class CategoryContextService {
   private createEmptyConfiguration(): NormalizedCategoryContextConfiguration {
     return {
       version: '1.0',
+      categoryResolutionMode: 'ask',
       userContextSummary: '',
       categoryRules: [],
     };
@@ -156,7 +157,16 @@ export class CategoryContextService {
    * Returns current normalized configuration
    */
   public getConfiguration(): NormalizedCategoryContextConfiguration {
+    this.refreshIfModifiedOnDisk();
     return this.normalizedConfiguration;
+  }
+
+  /**
+   * Returns active category resolution mode ('ask' | 'auto'), refreshing from disk if modified.
+   */
+  public getCategoryResolutionMode(): 'ask' | 'auto' {
+    this.refreshIfModifiedOnDisk();
+    return this.normalizedConfiguration.categoryResolutionMode;
   }
 
   /**
@@ -193,7 +203,33 @@ export class CategoryContextService {
     // 1. Version
     const versionString = typedInput.version !== undefined ? String(typedInput.version).trim() : '1.0';
 
-    // 2. User Lifestyle Context
+    // 2. Settings (Behavioral configuration)
+    let categoryResolutionMode: 'ask' | 'auto' = 'ask';
+    if (
+      typedInput.settings &&
+      typeof typedInput.settings === 'object' &&
+      !Array.isArray(typedInput.settings)
+    ) {
+      const rawModeInput = typedInput.settings.categoryResolutionMode;
+      const normalizedMode = typeof rawModeInput === 'string' ? rawModeInput.trim().toLowerCase() : rawModeInput;
+      if (normalizedMode === 'auto' || normalizedMode === 'ask') {
+        categoryResolutionMode = normalizedMode;
+      } else if (rawModeInput !== undefined) {
+        issues.push({
+          propertyPath: 'settings.categoryResolutionMode',
+          message: `Invalid categoryResolutionMode '${String(rawModeInput)}'. Must be 'ask' or 'auto'.`,
+          severity: 'warning',
+        });
+      }
+    } else if (typedInput.settings !== undefined) {
+      issues.push({
+        propertyPath: 'settings',
+        message: 'Property settings must be an object.',
+        severity: 'warning',
+      });
+    }
+
+    // 3. User Lifestyle Context
     let userContextSummary = '';
     if (typeof typedInput.userContext === 'string') {
       userContextSummary = typedInput.userContext.trim();
@@ -304,6 +340,7 @@ export class CategoryContextService {
       isValid: issues.filter(i => i.severity === 'error').length === 0,
       configuration: {
         version: versionString,
+        categoryResolutionMode,
         userContextSummary,
         categoryRules: uniqueRules,
       },

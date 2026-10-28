@@ -20,9 +20,16 @@ export interface UserLifestyleContext {
   notes?: string[];
 }
 
+export interface CategoryContextSettings {
+  /** Mode for handling ambiguous/unresolved categories: 'ask' (prompt user) or 'auto' (AI best guess) */
+  categoryResolutionMode?: 'ask' | 'auto';
+}
+
 export interface RawCategoryContextJson {
   /** Optional schema or configuration version indicator */
   version?: string | number;
+  /** Behavioral or application configuration settings */
+  settings?: CategoryContextSettings;
   /** High-level user profile or lifestyle hints */
   userContext?: string | UserLifestyleContext;
   /** Category semantic definitions represented as an array or dictionary map */
@@ -31,6 +38,7 @@ export interface RawCategoryContextJson {
 
 export interface NormalizedCategoryContextConfiguration {
   version: string;
+  categoryResolutionMode: 'ask' | 'auto';
   userContextSummary: string;
   categoryRules: CategoryContextRule[];
 }

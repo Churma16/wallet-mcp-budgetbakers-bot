@@ -1,6 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "version": "1.0",
+  "settings": {
+    "categoryResolutionMode": "ask"
+  },
   "userContext": {
     "profile": "Software engineer living in Jakarta/Singapore. Hybrid work setup with daily commute, frequent weekend dining, and grocery shopping.",
     "notes": [
