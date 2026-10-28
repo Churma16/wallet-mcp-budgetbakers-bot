@@ -294,7 +294,7 @@ RULES:
 8. "note": Rich, informative description of the transaction items or purpose:
    - For ride-hailing / transportation receipts (e.g. Grab, Gojek): Extract the specific ride service and route if present (e.g. "GrabBike: Stasiun Gambir -> Grand Indonesia" or "GrabCar: Bandara Soekarno Hatta -> Hotel").
    - For food delivery (e.g. GrabFood, GoFood, ShopeeFood): Extract the restaurant name and item breakdown (e.g. "2x Nasi Goreng, 1x Es Teh").
-   - For commerce/retail (e.g. Tokopedia, Shopee, Blibli): Extract purchased item names or order summary.
+   - For commerce/retail (e.g. Tokopedia, Shopee, Blibli, Alfagift): Extract purchased item names or order summary.
    - For bill payments / utilities: Extract bill type, account/customer number, or period.
    - NEVER use generic boilerplate like "Grab E-Receipt", "Bukti Pembayaran", "E-Receipt", "Debit card transaction", or repeating only the merchant name if specific item, route, or service details are present in the email.
 9. UNTRUSTED DATA SECURITY:

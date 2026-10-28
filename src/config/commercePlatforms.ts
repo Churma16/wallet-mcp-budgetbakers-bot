@@ -160,6 +160,56 @@ export const DEFAULT_COMMERCE_PLATFORMS: CommercePlatformDefinition[] = [
     platformWallets: ['shopee', 'shopeepay', 'spaylater'],
     merchantKeywords: ['shopee', 'shopeepay'],
   },
+
+  // 4. Alfagift
+  {
+    id: 'alfagift',
+    displayName: 'Alfagift',
+    defaultCategory: 'Groceries',
+    defaultAccountHint: 'Cash',
+    senderDomains: ['alfagift.id', 'alfamart.co.id'],
+    subjectKeywords: [
+      'pembayaran pesanan',
+      'pembayaran diterima',
+      'pesanan di alfagift',
+      'e-receipt',
+      'struk pembayaran',
+    ],
+    blacklistKeywords: [
+      'menunggu pembayaran',
+      'keranjang',
+      'pengiriman pesanan',
+      'telah selesai',
+      'verifikasi',
+      'create pin',
+      'otp',
+      'promo',
+      'diskon',
+      'cashback',
+      'voucher',
+      'a-poin',
+      'rekomendasi',
+      'selamat datang',
+      'ulang tahun',
+      'birthday',
+      'balasan untuk komentar',
+    ],
+    bodyRequiredPatterns: [
+      /(?:pembayaran\s*(?:atas\s*)?pesanan\s*(?:anda\s*)?(?:sudah\s*kami\s*terima|diterima)|total\s*pembayaran|nomor\s*pesanan|detail\s*pesanan|alfagift)/i,
+    ],
+    amountPriorityPatterns: [
+      /(?:Total\s*Pembayaran|Total\s*Belanja|Total\s*Tagihan|Total|sebesar)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
+      /(?:Rp|IDR)\s*([\d.,]+)/i,
+    ],
+    referencePatterns: [
+      /(?:Nomor\s*Pesanan|No\.?\s*Pesanan|Order\s*ID)[:\s]*#?([A-Za-z0-9_-]+)/i,
+      /(?:Nomor\s*Referensi|No\.?\s*Referensi|Nomor\s*Transaksi|No\.?\s*Transaksi)[:\s]*([A-Za-z0-9_-]+)/i,
+      /(?:#|\()([OTS]-[0-9]{6}-[A-Z0-9]+)/i,
+      /([OTS]-[0-9]{6}-[A-Z0-9]+)/i,
+    ],
+    platformWallets: ['alfagift', 'a-poin', 'aladin'],
+    merchantKeywords: ['alfagift', 'alfamart', 'sumber alfaria trijaya'],
+  },
 ];
 
 export class CommercePlatformRegistry {

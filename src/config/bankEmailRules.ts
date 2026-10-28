@@ -333,10 +333,18 @@ export const BANK_DEBIT_AND_GATEWAY_RULES: BankEmailRuleDefinition[] = [
 ];
 
 /**
+ * Resolves the complete active list of email rules, combining pure bank debit & gateway rules
+ * with dynamic and declarative commerce platform rules from CommercePlatformRegistry.
+ */
+export function getAllBankEmailRules(): BankEmailRuleDefinition[] {
+  return [
+    ...BANK_DEBIT_AND_GATEWAY_RULES,
+    ...CommercePlatformRegistry.getInstance().toBankEmailRules(),
+  ];
+}
+
+/**
  * Complete list of email rules, combining pure bank debit & gateway rules
  * with declarative commerce platform rules from CommercePlatformRegistry.
  */
-export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = [
-  ...BANK_DEBIT_AND_GATEWAY_RULES,
-  ...CommercePlatformRegistry.getInstance().toBankEmailRules(),
-];
+export const BANK_EMAIL_RULES: BankEmailRuleDefinition[] = getAllBankEmailRules();
