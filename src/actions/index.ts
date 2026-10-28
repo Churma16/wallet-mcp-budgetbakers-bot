@@ -4,6 +4,8 @@ import { WalletCacheService } from '../services/walletCacheService.js';
 import { MessagingGatewayService } from '../services/messaging/index.js';
 import { WalletRecordPreparationService } from '../services/walletRecordPreparationService.js';
 import { AccountClarificationHandler } from '../handlers/accountClarificationHandler.js';
+import { CategoryClarificationHandler } from '../handlers/categoryClarificationHandler.js';
+import { CategoryClarificationConversationService } from '../services/ai/categoryClarificationConversationService.js';
 import { FinancialActionRegistry } from './financialActionRegistry.js';
 import {
   CheckBalanceActionHandler,
@@ -31,6 +33,9 @@ export interface DefaultFinancialActionRegistryDependencies {
   readonly accountClarificationHandler: AccountClarificationHandler;
   readonly pendingTransactionService?: PendingTransactionService;
   readonly categoryContextService?: CategoryContextService;
+  readonly categoryClarificationHandler?: CategoryClarificationHandler;
+  readonly categoryResolutionMode?: 'ask' | 'auto';
+  readonly categoryClarificationConversationService?: CategoryClarificationConversationService;
 }
 
 /**
@@ -59,7 +64,10 @@ export function createDefaultFinancialActionRegistry(
       dependencies.messagingGateway,
       dependencies.recordPreparationService,
       dependencies.accountClarificationHandler,
-      dependencies.categoryContextService
+      dependencies.categoryContextService,
+      dependencies.categoryClarificationHandler,
+      dependencies.categoryResolutionMode,
+      dependencies.categoryClarificationConversationService
     )
   );
 

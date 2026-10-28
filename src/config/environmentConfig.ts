@@ -89,6 +89,7 @@ export interface ApplicationEnvironmentConfiguration {
   telegramStartupRetryDelayMs: number;
   maxMediaDownloadMb: number;
   categoryContextFilePath: string;
+  categoryResolutionMode: 'ask' | 'auto';
 }
 
 
@@ -294,6 +295,10 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     'config/category-context.json'
   ).trim();
 
+
+  const rawCategoryResolutionMode = process.env.CATEGORY_RESOLUTION_MODE?.trim().toLowerCase();
+  const categoryResolutionMode: 'ask' | 'auto' = rawCategoryResolutionMode === 'auto' ? 'auto' : 'ask';
+
   return {
     aiProvider,
     aiProviders,
@@ -332,6 +337,7 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     telegramStartupRetryDelayMs,
     maxMediaDownloadMb,
     categoryContextFilePath,
+    categoryResolutionMode,
   };
 }
 
@@ -446,6 +452,7 @@ export function validateApplicationConfiguration(
       hint: 'Specify a valid IANA timezone identifier (e.g. "Asia/Jakarta", "America/New_York", or "UTC").',
     });
   }
+
 
   return {
     isValid: validationErrorList.length === 0,

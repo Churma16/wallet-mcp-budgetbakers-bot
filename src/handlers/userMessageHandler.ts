@@ -12,6 +12,9 @@ import { validateReceiptFinancialIntentEnvelope } from '../services/ai/jsonExtra
 import { WalletMcpClientService } from '../services/walletMcpService.js';
 import { WalletCacheService } from '../services/walletCacheService.js';
 import { AccountClarificationHandler } from './accountClarificationHandler.js';
+import { CategoryClarificationHandler } from './categoryClarificationHandler.js';
+import { CategoryClarificationConversationService } from '../services/ai/categoryClarificationConversationService.js';
+import { CategoryContextService } from '../services/categoryContextService.js';
 import { PendingActionHandler } from './pendingActionHandler.js';
 import { FastPathHandler } from './fastPathHandler.js';
 import { FinancialActionExecutor } from '../services/financialActionExecutor.js';
@@ -108,6 +111,7 @@ export function shouldDeferHistoryCategoryToSemanticResolver(
 
 export class UserMessageHandler {
   private readonly accountClarificationHandler: AccountClarificationHandler;
+  private readonly categoryClarificationHandler: CategoryClarificationHandler;
   private readonly financialActionExecutor: FinancialActionExecutor;
   private readonly recordPreparationService: WalletRecordPreparationService;
   private readonly financialActionRegistry: FinancialActionRegistry;
@@ -127,7 +131,10 @@ export class UserMessageHandler {
     financialActionRegistry?: FinancialActionRegistry,
     accountClarificationHandler?: AccountClarificationHandler,
     semanticToolBoundary?: SemanticToolBoundary,
-    semanticToolAuthorizationResolver?: SemanticToolAuthorizationResolver
+    semanticToolAuthorizationResolver?: SemanticToolAuthorizationResolver,
+    categoryClarificationHandler?: CategoryClarificationHandler,
+    categoryResolutionMode?: 'ask' | 'auto',
+    categoryContextService?: CategoryContextService
   ) {
     this.financialActionExecutor =
       financialActionExecutor ||
@@ -147,8 +154,19 @@ export class UserMessageHandler {
         walletCacheService,
         messagingGateway,
         this.recordPreparationService,
-        undefined,
+        categoryContextService,
         new AccountClarificationConversationService(financialAiProvider)
+      );
+    this.categoryClarificationHandler =
+      categoryClarificationHandler ||
+      new CategoryClarificationHandler(
+        pendingTransactionManager,
+        walletMcpClient,
+        walletCacheService,
+        messagingGateway,
+        this.recordPreparationService,
+        categoryContextService,
+        new CategoryClarificationConversationService(financialAiProvider)
       );
     this.semanticToolBoundary = semanticToolBoundary || new SemanticToolBoundary();
     this.semanticToolAuthorizationResolver =
@@ -164,6 +182,9 @@ export class UserMessageHandler {
         messagingGateway: this.messagingGateway,
         recordPreparationService: this.recordPreparationService,
         accountClarificationHandler: this.accountClarificationHandler,
+        categoryClarificationHandler: this.categoryClarificationHandler,
+        categoryResolutionMode: categoryResolutionMode ?? (process.env.CATEGORY_RESOLUTION_MODE === 'auto' ? 'auto' : 'ask'),
+        categoryContextService,
       });
     }
   }
@@ -214,21 +235,39 @@ export class UserMessageHandler {
               typeof manager.getAllPendingTransactions === 'function' &&
               typeof manager.getPendingTransactionState === 'function'
             ) {
-              const clarificationDraft = manager.getLatestPendingAccountSelectionDraft(
+              const accountDraft = manager.getLatestPendingAccountSelectionDraft?.(
                 event.channel,
                 event.chatIdentifier,
                 event.senderIdentifier
               );
+              const categoryDraft = manager.getLatestPendingCategorySelectionDraft?.(
+                event.channel,
+                event.chatIdentifier,
+                event.senderIdentifier
+              );
+
+              let clarificationDraft = accountDraft;
+              let clarificationIsPending = Boolean(
+                clarificationDraft &&
+                (this.accountClarificationHandler?.isCancellablePreDispatch
+                  ? this.accountClarificationHandler.isCancellablePreDispatch(clarificationDraft.ticketId)
+                  : manager.getPendingAccountSelectionDraftState?.(clarificationDraft.ticketId) === 'PENDING')
+              );
+
+              if (categoryDraft && (!accountDraft || categoryDraft.ticketId > accountDraft.ticketId)) {
+                clarificationDraft = categoryDraft as any;
+                clarificationIsPending = Boolean(
+                  categoryDraft &&
+                  (this.categoryClarificationHandler?.isCancellablePreDispatch
+                    ? this.categoryClarificationHandler.isCancellablePreDispatch(categoryDraft.ticketId)
+                    : manager.getPendingCategorySelectionDraftState?.(categoryDraft.ticketId) === 'PENDING')
+                );
+              }
+
               const pendingStandardItems = manager.getAllPendingTransactions().filter(
                 item => manager.getPendingTransactionState?.(item.ticketId) === 'PENDING'
               );
               const standardPendingItem = pendingStandardItems[pendingStandardItems.length - 1];
-              const clarificationIsPending = Boolean(
-                clarificationDraft &&
-                (this.accountClarificationHandler?.isCancellablePreDispatch
-                  ? this.accountClarificationHandler.isCancellablePreDispatch(clarificationDraft.ticketId)
-                  : manager.getPendingAccountSelectionDraftState(clarificationDraft.ticketId) === 'PENDING')
-              );
 
               if (clarificationDraft && clarificationIsPending && standardPendingItem) {
                 const dictionary = getDictionary();
@@ -281,13 +320,58 @@ export class UserMessageHandler {
       }
 
       if (event.messageType === 'text' && event.textPayload) {
-        const handled = await this.accountClarificationHandler.handlePendingAccountSelectionReply(
-          event,
-          event.textPayload,
-          processingStartTimestamp
+        const latestAccountDraft = this.pendingTransactionManager.getLatestPendingAccountSelectionDraft(
+          event.channel,
+          event.chatIdentifier,
+          event.senderIdentifier
         );
-        if (handled) {
-          return;
+        const latestCategoryDraft = this.pendingTransactionManager.getLatestPendingCategorySelectionDraft(
+          event.channel,
+          event.chatIdentifier,
+          event.senderIdentifier
+        );
+
+        const categoryIsNewer = Boolean(
+          latestCategoryDraft &&
+          (!latestAccountDraft || latestCategoryDraft.ticketId > latestAccountDraft.ticketId)
+        );
+
+        if (categoryIsNewer) {
+          const handledCategory = await this.categoryClarificationHandler.handlePendingCategorySelectionReply(
+            event,
+            event.textPayload,
+            processingStartTimestamp
+          );
+          if (handledCategory) {
+            return;
+          }
+
+          const handledAccount = await this.accountClarificationHandler.handlePendingAccountSelectionReply(
+            event,
+            event.textPayload,
+            processingStartTimestamp
+          );
+          if (handledAccount) {
+            return;
+          }
+        } else {
+          const handledAccount = await this.accountClarificationHandler.handlePendingAccountSelectionReply(
+            event,
+            event.textPayload,
+            processingStartTimestamp
+          );
+          if (handledAccount) {
+            return;
+          }
+
+          const handledCategory = await this.categoryClarificationHandler.handlePendingCategorySelectionReply(
+            event,
+            event.textPayload,
+            processingStartTimestamp
+          );
+          if (handledCategory) {
+            return;
+          }
         }
       }
 
