@@ -64,8 +64,10 @@ export class EmailListenerService {
   private imapClient: ImapFlow | null = null;
   private isServiceRunning: boolean = false;
   private isHandlingIncomingMail: boolean = false;
+  private hasPendingScanRequest: boolean = false;
   private isReconnecting: boolean = false;
   private reconnectTimer: NodeJS.Timeout | null = null;
+  private fallbackPollTimer: NodeJS.Timeout | null = null;
   private reconnectAttempt: number = 0;
   private readonly reconnectBaseDelayMs: number = 5000;
   private readonly reconnectMaxDelayMs: number = 60000;
@@ -84,7 +86,8 @@ export class EmailListenerService {
     private readonly lookbackMinutes: number = 10,
     private readonly onTransactionDetected: EmailTransactionCallback,
     customCacheDirectoryPath?: string,
-    private readonly imapClientFactory?: (options: ConstructorParameters<typeof ImapFlow>[0]) => ImapFlow
+    private readonly imapClientFactory?: (options: ConstructorParameters<typeof ImapFlow>[0]) => ImapFlow,
+    private readonly fallbackPollIntervalMs: number = 5 * 60 * 1000
   ) {
     // Only accept emails after startup cutoff (with lookback window)
     const lookbackMilliseconds = this.lookbackMinutes * 60 * 1000;
@@ -301,6 +304,7 @@ export class EmailListenerService {
 
     this.isServiceRunning = true;
     this.reconnectAttempt = 0;
+    this.startFallbackPoll();
 
     try {
       await this.establishConnectionAndListen();
@@ -365,18 +369,84 @@ export class EmailListenerService {
   }
 
   /**
-   * Scans messages arriving after the startupCutoffTimestamp
+   * Starts periodic fallback scan timer to guard against missed IMAP IDLE socket wakeups
+   */
+  private startFallbackPoll(): void {
+    this.stopFallbackPoll();
+    if (this.fallbackPollIntervalMs > 0) {
+      this.fallbackPollTimer = setInterval(() => {
+        if (
+          this.isServiceRunning &&
+          this.imapClient &&
+          this.imapClient.usable &&
+          !this.isHandlingIncomingMail
+        ) {
+          applicationLogger.fileDetail('debug', 'Triggering periodic fallback IMAP scan');
+          void this.scanRecentMessages();
+        }
+      }, this.fallbackPollIntervalMs);
+      this.fallbackPollTimer.unref?.();
+    }
+  }
+
+  /**
+   * Clears the fallback periodic scan timer
+   */
+  private stopFallbackPoll(): void {
+    if (this.fallbackPollTimer) {
+      clearInterval(this.fallbackPollTimer);
+      this.fallbackPollTimer = null;
+    }
+  }
+
+  /**
+   * Scans messages arriving after the cutoff timestamp, queuing follow-up scans
+   * if new exists events arrive while a scan is already in progress.
    */
   public async scanRecentMessages(): Promise<void> {
-    if (!this.imapClient || !this.imapClient.usable || this.isHandlingIncomingMail) {
+    if (!this.imapClient || !this.imapClient.usable) {
+      return;
+    }
+
+    if (this.isHandlingIncomingMail) {
+      this.hasPendingScanRequest = true;
+      applicationLogger.info('Incoming IMAP event queued: active scan in progress.');
       return;
     }
 
     this.isHandlingIncomingMail = true;
 
     try {
-      // Search for unseen messages or messages since the cutoff date
-      const searchDate = new Date(this.startupCutoffTimestamp.getTime() - 60000); // 1 min buffer
+      do {
+        this.hasPendingScanRequest = false;
+        await this.performRecentMessagesScan();
+      } while (this.hasPendingScanRequest && this.imapClient?.usable);
+    } finally {
+      this.isHandlingIncomingMail = false;
+      this.hasPendingScanRequest = false;
+    }
+  }
+
+  /**
+   * Executes a single recent message scan pass across the INBOX
+   */
+  private async performRecentMessagesScan(): Promise<void> {
+    if (!this.imapClient || !this.imapClient.usable) {
+      return;
+    }
+
+    try {
+      // Use sliding lookback window with 1-min buffer while never querying before startupCutoffTimestamp
+      const searchBufferMs = 60000;
+      const slidingLookbackMs = this.lookbackMinutes * 60 * 1000;
+      const slidingCutoffDate = new Date(Date.now() - slidingLookbackMs - searchBufferMs);
+      const searchDate = new Date(
+        Math.max(
+          this.startupCutoffTimestamp.getTime() - searchBufferMs,
+          slidingCutoffDate.getTime()
+        )
+      );
+
       const searchResultUids = await this.imapClient.search(
         { since: searchDate },
         { uid: true }
@@ -399,18 +469,30 @@ export class EmailListenerService {
             continue;
           }
 
+          // Fast deduplication pre-check from envelope before parsing MIME source
+          const envelopeMessageId = fetchResult.envelope?.messageId;
+          const cleanEnvelopeId = envelopeMessageId ? envelopeMessageId.replace(/^<|>$/g, '') : undefined;
+          const isEnvelopeAlreadyProcessed = Boolean(
+            envelopeMessageId &&
+              (this.processedMessageIdSet.has(envelopeMessageId) ||
+                (cleanEnvelopeId && this.processedMessageIdSet.has(cleanEnvelopeId)) ||
+                (cleanEnvelopeId && this.processedMessageIdSet.has(`<${cleanEnvelopeId}>`)) ||
+                this.inFlightMessageIdSet.has(envelopeMessageId) ||
+                (cleanEnvelopeId && this.inFlightMessageIdSet.has(cleanEnvelopeId)))
+          );
+
+          if (isEnvelopeAlreadyProcessed) {
+            continue;
+          }
+
           // Parse raw RFC822 MIME source
           const parsedMime = await simpleParser(fetchResult.source);
-          let emailDate: Date;
-          if (parsedMime.date instanceof Date) {
-            emailDate = parsedMime.date;
-          } else if (fetchResult.internalDate instanceof Date) {
-            emailDate = fetchResult.internalDate;
-          } else if (typeof fetchResult.internalDate === 'string') {
-            emailDate = new Date(fetchResult.internalDate);
-          } else {
-            emailDate = new Date();
-          }
+          const emailDate =
+            parsedMime.date instanceof Date
+              ? parsedMime.date
+              : fetchResult.internalDate
+                ? new Date(fetchResult.internalDate)
+                : new Date();
 
           const emailSubject = parsedMime.subject || '';
           const senderAddress =
@@ -418,7 +500,7 @@ export class EmailListenerService {
             parsedMime.from?.text ||
             fetchResult.envelope?.from?.[0]?.address ||
             '';
-          const rawMessageId = parsedMime.messageId || String(messageUid);
+          const rawMessageId = parsedMime.messageId || envelopeMessageId || String(messageUid);
 
           // Fast deduplication check: Has this email message ID already been processed or claimed by another scan?
           if (
@@ -494,8 +576,6 @@ export class EmailListenerService {
       }
     } catch (scanError) {
       applicationLogger.error(`Error during IMAP scan: ${scanError}`);
-    } finally {
-      this.isHandlingIncomingMail = false;
     }
   }
 
@@ -504,6 +584,7 @@ export class EmailListenerService {
    */
   public async stop(): Promise<void> {
     this.isServiceRunning = false;
+    this.stopFallbackPoll();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
