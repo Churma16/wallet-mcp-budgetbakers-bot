@@ -406,4 +406,45 @@ describe('email listener reconnection resilience', () => {
       fs.rmSync(cacheDir, { recursive: true, force: true });
     }
   });
+
+  it('triggers periodic fallback scan via fallbackPollTimer', async () => {
+    vi.useFakeTimers();
+    const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wallet-email-fallback-poll-'));
+    let searchCount = 0;
+
+    const factory = () => {
+      const client = new MockImapFlowClient();
+      client.search = async () => {
+        searchCount += 1;
+        return [];
+      };
+      return client as unknown as ImapFlow;
+    };
+
+    const service = new EmailListenerService(
+      'imap.example.com',
+      993,
+      'test@example.com',
+      'password',
+      10,
+      async () => {},
+      cacheDir,
+      factory,
+      1000
+    );
+
+    try {
+      await service.startListening();
+      await vi.advanceTimersByTimeAsync(10);
+      assert.strictEqual(searchCount, 1, 'initial scan should run on startup');
+
+      await vi.advanceTimersByTimeAsync(1000);
+      assert.strictEqual(searchCount, 2, 'fallback timer should trigger second scan pass');
+
+      await service.stop();
+    } finally {
+      vi.useRealTimers();
+      fs.rmSync(cacheDir, { recursive: true, force: true });
+    }
+  });
 });

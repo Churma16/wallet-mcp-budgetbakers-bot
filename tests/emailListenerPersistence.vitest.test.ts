@@ -400,6 +400,49 @@ async function testQueuedScanProcessesConcurrentIncomingMail(): Promise<void> {
   }
 }
 
+async function testEnvelopeDeduplicationPreCheckSkipsParsing(): Promise<void> {
+  const cacheDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'wallet-email-envelope-skip-'));
+  const messageId = 'cached-envelope@example.com';
+  let callbackCount = 0;
+
+  try {
+    const service = new EmailListenerService(
+      'imap.example.com',
+      993,
+      'user@example.com',
+      'password',
+      10,
+      async () => {
+        callbackCount += 1;
+      },
+      cacheDirectory
+    );
+
+    service.recordProcessedTransaction(`<${messageId}>`);
+
+    const fakeClient = {
+      usable: true,
+      search: async () => [1],
+      fetchOne: async () => ({
+        source: Buffer.from('NOT A VALID MIME AND SHOULD NEVER BE PARSED'),
+        internalDate: new Date(),
+        envelope: {
+          from: [{ address: 'notifications@bankmandiri.co.id' }],
+          messageId: `<${messageId}>`,
+        },
+      }),
+    };
+
+    const internalService = service as unknown as EmailListenerTestAccess;
+    internalService.imapClient = fakeClient as unknown as FakeImapClient;
+
+    await service.scanRecentMessages();
+    assert.equal(callbackCount, 0, 'cached envelope messageId must be skipped before parsing');
+  } finally {
+    fs.rmSync(cacheDirectory, { recursive: true, force: true });
+  }
+}
+
 describe('email listener transactional persistence', () => {
   it('commits a successful candidate after the downstream callback', async () => {
     await testSuccessfulCandidateCommitsAfterCallback();
@@ -419,5 +462,9 @@ describe('email listener transactional persistence', () => {
 
   it('queues and processes follow-up scans when concurrent mail arrives', async () => {
     await testQueuedScanProcessesConcurrentIncomingMail();
+  });
+
+  it('skips parsing raw MIME source when envelope messageId is already in cache', async () => {
+    await testEnvelopeDeduplicationPreCheckSkipsParsing();
   });
 });

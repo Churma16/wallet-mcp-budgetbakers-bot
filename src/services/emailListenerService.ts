@@ -471,26 +471,28 @@ export class EmailListenerService {
 
           // Fast deduplication pre-check from envelope before parsing MIME source
           const envelopeMessageId = fetchResult.envelope?.messageId;
-          if (
+          const cleanEnvelopeId = envelopeMessageId ? envelopeMessageId.replace(/^<|>$/g, '') : undefined;
+          const isEnvelopeAlreadyProcessed = Boolean(
             envelopeMessageId &&
-            (this.processedMessageIdSet.has(envelopeMessageId) ||
-              this.inFlightMessageIdSet.has(envelopeMessageId))
-          ) {
+              (this.processedMessageIdSet.has(envelopeMessageId) ||
+                (cleanEnvelopeId && this.processedMessageIdSet.has(cleanEnvelopeId)) ||
+                (cleanEnvelopeId && this.processedMessageIdSet.has(`<${cleanEnvelopeId}>`)) ||
+                this.inFlightMessageIdSet.has(envelopeMessageId) ||
+                (cleanEnvelopeId && this.inFlightMessageIdSet.has(cleanEnvelopeId)))
+          );
+
+          if (isEnvelopeAlreadyProcessed) {
             continue;
           }
 
           // Parse raw RFC822 MIME source
           const parsedMime = await simpleParser(fetchResult.source);
-          let emailDate: Date;
-          if (parsedMime.date instanceof Date) {
-            emailDate = parsedMime.date;
-          } else if (fetchResult.internalDate instanceof Date) {
-            emailDate = fetchResult.internalDate;
-          } else if (typeof fetchResult.internalDate === 'string') {
-            emailDate = new Date(fetchResult.internalDate);
-          } else {
-            emailDate = new Date();
-          }
+          const emailDate =
+            parsedMime.date instanceof Date
+              ? parsedMime.date
+              : fetchResult.internalDate
+                ? new Date(fetchResult.internalDate)
+                : new Date();
 
           const emailSubject = parsedMime.subject || '';
           const senderAddress =
