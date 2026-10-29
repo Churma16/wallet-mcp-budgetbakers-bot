@@ -111,9 +111,11 @@ export class TransactionCorrelationService {
 
     const evidenceAmount = Math.abs(evidence.amount);
     const isTransferEvidence = evidence.transactionType === 'TRANSFER';
+    const isExpenseEvidence =
+      evidence.amount < 0 || evidence.transactionType === 'EXPENSE';
     const evidenceSign = isTransferEvidence
       ? 'transfer'
-      : evidence.amount < 0
+      : isExpenseEvidence
       ? 'expense'
       : 'income';
     const evidenceTime = new Date(evidence.occurredAt).getTime();

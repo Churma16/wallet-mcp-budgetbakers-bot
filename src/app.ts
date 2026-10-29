@@ -301,7 +301,15 @@ export class Application {
           this.environmentConfig.emailImapUser,
           this.environmentConfig.emailImapPassword,
           this.environmentConfig.emailLookbackMinutes,
-          detectedEvent => this.emailTransactionHandler.handleEmailTransactionDetected(detectedEvent)
+          detectedEvent => this.emailTransactionHandler.handleEmailTransactionDetected(detectedEvent),
+          undefined,
+          undefined,
+          undefined,
+          3,
+          async dlqItem => {
+            const alertText = `⚠️ *[Gagal Ekstraksi Email]*\nEmail transaksi gagal diproses AI setelah ${dlqItem.attempts}x percobaan.\nSubjek: *${dlqItem.subject}*\nPengirim: \`${dlqItem.sender}\`\nError: \`${dlqItem.lastError}\``;
+            await this.messagingGateway.broadcastNotification(alertText);
+          }
         );
 
         this.emailListenerService.startListening().catch(emailStartError => {
