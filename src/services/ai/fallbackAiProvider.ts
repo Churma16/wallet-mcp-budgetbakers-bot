@@ -10,6 +10,7 @@ import { PendingAccountSelectionCandidate } from '../pendingTransactionService.j
 import { WalletAccountItem, WalletCategoryItem } from '../../types/walletTypes.js';
 import { GateEvaluationResult } from '../../utils/emailGateEvaluator.js';
 import { applicationLogger, formatConciseErrorMessage } from '../../utils/logger.js';
+import { isAiResponseParseError } from './jsonExtractionHelper.js';
 
 /**
  * Checks whether an error is a recoverable provider-level failure eligible for failover
@@ -18,6 +19,10 @@ import { applicationLogger, formatConciseErrorMessage } from '../../utils/logger
 export function isRecoverableProviderError(error: unknown): boolean {
   if (!error) {
     return false;
+  }
+
+  if (isAiResponseParseError(error)) {
+    return true;
   }
 
   const errorMessage = (
