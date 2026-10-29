@@ -1,5 +1,12 @@
 import type { PendingTransactionItem } from '../services/pendingTransactionService.js';
 import type { WalletRecordItem } from './walletTypes.js';
+import {
+  CorrelationConfidence,
+  CorrelationSuggestedAction,
+  type InternalTransactionTypeValue,
+} from '../constants/index.js';
+
+export type { CorrelationConfidence, CorrelationSuggestedAction };
 
 export type TransactionEvidenceSource =
   | 'EMAIL_BANK'
@@ -9,13 +16,13 @@ export type TransactionEvidenceSource =
   | 'WALLET_RECORD'
   | 'OTHER';
 
-export type CorrelationConfidence = 'HIGH' | 'MEDIUM' | 'LOW';
 
-export type CorrelationSuggestedAction =
-  | 'MERGE_PENDING'
-  | 'ATTACH_WALLET_RECORD'
-  | 'CLARIFY'
-  | 'CREATE_INDEPENDENT';
+
+
+
+
+
+
 
 export interface TransactionEvidence {
   sourceType: TransactionEvidenceSource;
@@ -34,7 +41,7 @@ export interface TransactionEvidence {
   note?: string;
   categoryId?: string;
   categoryName?: string;
-  transactionType?: 'EXPENSE' | 'INCOME' | 'TRANSFER';
+  transactionType?: InternalTransactionTypeValue;
   isBankSyncedAccount?: boolean;
   rawPayload?: Record<string, unknown>;
 }

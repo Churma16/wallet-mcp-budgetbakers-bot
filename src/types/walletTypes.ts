@@ -1,3 +1,8 @@
+import type {
+  FilterErrorReasonValue,
+  WalletMcpRecordTypeValue,
+} from '../constants/index.js';
+
 export interface WalletAccountItem {
   id: string;
   name: string;
@@ -182,7 +187,7 @@ export interface AppliedTransactionHistoryFilters {
 export interface UnresolvedFilterIssue {
   filterKey: 'account' | 'category' | 'recordType' | 'dateRange' | 'searchQuery';
   rawValue: string;
-  reason: 'NOT_FOUND' | 'INVALID_FORMAT' | 'INVALID_RANGE' | 'UNSUPPORTED' | 'UNRESOLVED' | 'AMBIGUOUS';
+  reason: FilterErrorReasonValue;
   message: string;
   candidates?: string[];
   subType?: 'bank_account' | 'name' | 'operator_prefix' | 'calendar_date' | 'start_after_end' | 'unsupported_upstream_search';
@@ -195,7 +200,7 @@ export interface WalletRecordItem {
   amount: number;
   currency: string;
   recordDate: string;
-  recordType: 'expense' | 'income' | 'transfer';
+  recordType: WalletMcpRecordTypeValue;
   category?: {
     id: string;
     name: string;

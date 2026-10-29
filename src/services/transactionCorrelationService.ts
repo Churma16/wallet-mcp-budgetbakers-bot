@@ -13,6 +13,7 @@ import {
 import { isGenericNote } from './correlation/noteClassifier.js';
 import { evaluateComplementarySources } from './correlation/complementarySourceEvaluator.js';
 import { fuseCandidateWithEvidence } from './correlation/transactionFuser.js';
+import { INTERNAL_TRANSACTION_TYPES, WALLET_MCP_RECORD_TYPES } from '../constants/index.js';
 
 export interface TransactionCorrelationOptions {
   /**
@@ -110,12 +111,12 @@ export class TransactionCorrelationService {
     }
 
     const evidenceAmount = Math.abs(evidence.amount);
-    const isTransferEvidence = evidence.transactionType === 'TRANSFER';
+    const isTransferEvidence = evidence.transactionType === INTERNAL_TRANSACTION_TYPES.TRANSFER;
     const evidenceSign = isTransferEvidence
-      ? 'transfer'
+      ? WALLET_MCP_RECORD_TYPES.TRANSFER
       : evidence.amount < 0
-      ? 'expense'
-      : 'income';
+      ? WALLET_MCP_RECORD_TYPES.EXPENSE
+      : WALLET_MCP_RECORD_TYPES.INCOME;
     const evidenceTime = new Date(evidence.occurredAt).getTime();
     const evidenceCurrency = (evidence.currency || 'IDR').toUpperCase();
     const evidenceRefs = (evidence.referenceNumbers || []).map(ref => ref.toUpperCase());
@@ -126,7 +127,7 @@ export class TransactionCorrelationService {
       if (recordCurrency !== evidenceCurrency) {
         continue;
       }
-      const isRecordTransfer = record.recordType === 'transfer' || Boolean(record.transfer);
+      const isRecordTransfer = record.recordType === WALLET_MCP_RECORD_TYPES.TRANSFER || Boolean(record.transfer);
       if (isTransferEvidence) {
         if (!isRecordTransfer) {
           continue;
@@ -239,7 +240,7 @@ export class TransactionCorrelationService {
     pendingItems: PendingTransactionItem[]
   ): CorrelationResult {
     const evidenceAmount = Math.abs(evidence.amount);
-    const evidenceIsExpense = evidence.amount < 0 || evidence.transactionType === 'EXPENSE';
+    const evidenceIsExpense = evidence.amount < 0 || evidence.transactionType === INTERNAL_TRANSACTION_TYPES.EXPENSE;
     const evidenceCurrency = (evidence.currency || 'IDR').toUpperCase();
     const evidenceTime = new Date(evidence.occurredAt).getTime();
     const evidenceRefs = (evidence.referenceNumbers || []).map(ref => ref.toUpperCase());
@@ -257,7 +258,7 @@ export class TransactionCorrelationService {
       }
 
       // 2. Transaction sign / direction check - expense and income NEVER merge
-      const candidateIsExpense = candidate.amount < 0 || candidate.transactionType === 'EXPENSE';
+      const candidateIsExpense = candidate.amount < 0 || candidate.transactionType === INTERNAL_TRANSACTION_TYPES.EXPENSE;
       if (candidateIsExpense !== evidenceIsExpense) {
         continue;
       }

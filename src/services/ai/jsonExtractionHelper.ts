@@ -1,5 +1,6 @@
 import { applicationLogger } from '../../utils/logger.js';
 import { parseFinancialAmount } from '../../utils/financialAmountParser.js';
+import { FINANCIAL_ACTION_TYPES } from '../../constants/index.js';
 import type {
   ExtractedFinancialIntent,
   ExtractedFinancialRecordItem,
@@ -125,7 +126,7 @@ export function validateReceiptFinancialIntentEnvelope(
 
   const rawRecord = rawParsedObject as Record<string, unknown>;
   const allowedActions = new Set<string>([
-    'CREATE_RECORD',
+    FINANCIAL_ACTION_TYPES.CREATE_RECORD,
     'GENERAL_REPLY',
   ]);
 
@@ -139,7 +140,7 @@ export function validateReceiptFinancialIntentEnvelope(
 
   const validatedAction = rawAction as 'CREATE_RECORD' | 'GENERAL_REPLY';
 
-  if (validatedAction === 'CREATE_RECORD') {
+  if (validatedAction === FINANCIAL_ACTION_TYPES.CREATE_RECORD) {
     if (!('records' in rawRecord) || !Array.isArray(rawRecord.records)) {
       throw new AiResponseParseError(
         'Receipt Vision CREATE_RECORD intent requires records to be an array',

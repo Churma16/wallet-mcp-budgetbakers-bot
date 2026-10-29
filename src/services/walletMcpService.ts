@@ -41,6 +41,7 @@ import {
   type WalletMcpResponseMetadata,
 } from '../types/walletCapabilityTypes.js';
 import { normalizeWalletClientProfile } from './walletProfileNormalizer.js';
+import { WALLET_MCP_TOOL_NAMES } from '../constants/index.js';
 
 export const DEFAULT_TRANSACTION_HISTORY_LIMIT = 10;
 export const MAX_TRANSACTION_HISTORY_LIMIT = 50;
@@ -659,7 +660,7 @@ export class WalletMcpClientService {
       return this.cachedAccountList;
     }
 
-    const fetchedAccountData = await this.callMcpTool<any>('get_accounts');
+    const fetchedAccountData = await this.callMcpTool<any>(WALLET_MCP_TOOL_NAMES.GET_ACCOUNTS);
 
     const rawAccountArray: any[] = Array.isArray(fetchedAccountData)
       ? fetchedAccountData
@@ -714,7 +715,7 @@ export class WalletMcpClientService {
       return this.cachedCategoryList;
     }
 
-    const fetchedCategoryData = await this.callMcpTool<any>('get_categories');
+    const fetchedCategoryData = await this.callMcpTool<any>(WALLET_MCP_TOOL_NAMES.GET_CATEGORIES);
 
     const rawCategoryArray: any[] = Array.isArray(fetchedCategoryData)
       ? fetchedCategoryData
@@ -1047,7 +1048,7 @@ export class WalletMcpClientService {
         },
       });
 
-      return await this.callMcpTool<any>('get_records', payload);
+      return await this.callMcpTool<any>(WALLET_MCP_TOOL_NAMES.GET_RECORDS, payload);
     };
 
     // Upstream Wallet MCP get_records has no cross-field `query` parameter (verified via live
@@ -1325,7 +1326,7 @@ export class WalletMcpClientService {
     });
 
     const rawResponse = await this.callMcpTool<unknown>(
-      'get_records_aggregation',
+      WALLET_MCP_TOOL_NAMES.GET_RECORDS_AGGREGATION,
       queryPayload as Record<string, unknown>
     );
 
@@ -1503,7 +1504,7 @@ export class WalletMcpClientService {
 
     let createRecordsResult: unknown;
     try {
-      createRecordsResult = await this.callMcpTool<unknown>('create_records', {
+      createRecordsResult = await this.callMcpTool<unknown>(WALLET_MCP_TOOL_NAMES.CREATE_RECORDS, {
         records: sanitizedRecordPayloadList,
       });
     } catch (error) {

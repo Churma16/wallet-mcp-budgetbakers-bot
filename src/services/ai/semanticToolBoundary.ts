@@ -1,4 +1,5 @@
 import { FinancialActionContext } from '../../actions/types.js';
+import { FINANCIAL_ACTION_TYPES, ROUTING_SOURCES } from '../../constants/index.js';
 import { TransactionHistoryQueryOptions, WalletAccountItem, WalletCategoryItem } from '../../types/walletTypes.js';
 import { IncomingUserMessageEvent } from '../messaging/index.js';
 import {
@@ -638,13 +639,13 @@ export function createSemanticToolProposalFromFinancialIntent(
   intent: ExtractedFinancialIntent
 ): SemanticToolProposal | null {
   switch (intent.action) {
-    case 'CHECK_BALANCE':
+    case FINANCIAL_ACTION_TYPES.CHECK_BALANCE:
       return { tool: 'get_balance', arguments: {} };
-    case 'CHECK_BUDGET':
+    case FINANCIAL_ACTION_TYPES.CHECK_BUDGET:
       return { tool: 'get_budgets', arguments: {} };
-    case 'TRANSACTION_HISTORY':
+    case FINANCIAL_ACTION_TYPES.TRANSACTION_HISTORY:
       return { tool: 'get_transaction_history', arguments: intent.queryOptions };
-    case 'CREATE_RECORD':
+    case FINANCIAL_ACTION_TYPES.CREATE_RECORD:
       if (!Array.isArray(intent.records) || intent.records.length === 0) {
         return null;
       }
@@ -688,10 +689,10 @@ export class SemanticToolBoundary {
         tool,
         access,
         context: {
-          action: 'CHECK_BALANCE',
+          action: FINANCIAL_ACTION_TYPES.CHECK_BALANCE,
           event: request.event,
           processingStartTimestamp: request.processingStartTimestamp,
-          routingSource: 'ai',
+          routingSource: ROUTING_SOURCES.AI,
         },
       };
     }
@@ -706,10 +707,10 @@ export class SemanticToolBoundary {
         tool,
         access,
         context: {
-          action: 'CHECK_BUDGET',
+          action: FINANCIAL_ACTION_TYPES.CHECK_BUDGET,
           event: request.event,
           processingStartTimestamp: request.processingStartTimestamp,
-          routingSource: 'ai',
+          routingSource: ROUTING_SOURCES.AI,
         },
       };
     }
@@ -729,8 +730,8 @@ export class SemanticToolBoundary {
       return {
         accepted: true, tool, access,
         context: {
-          action: 'TRANSACTION_HISTORY', event: request.event, queryOptions,
-          processingStartTimestamp: request.processingStartTimestamp, routingSource: 'ai',
+          action: FINANCIAL_ACTION_TYPES.TRANSACTION_HISTORY, event: request.event, queryOptions,
+          processingStartTimestamp: request.processingStartTimestamp, routingSource: ROUTING_SOURCES.AI,
         },
       };
     }
@@ -750,11 +751,11 @@ export class SemanticToolBoundary {
       tool,
       access,
       context: {
-        action: 'CREATE_RECORD',
+        action: FINANCIAL_ACTION_TYPES.CREATE_RECORD,
         event: request.event,
         records: validatedRecords,
         processingStartTimestamp: request.processingStartTimestamp,
-        routingSource: 'ai',
+        routingSource: ROUTING_SOURCES.AI,
         requestReferenceInstant: request.requestReferenceInstant,
       },
     };
