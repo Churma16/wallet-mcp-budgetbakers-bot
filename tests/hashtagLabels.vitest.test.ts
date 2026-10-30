@@ -90,7 +90,7 @@ test('2. Record Validator Sanitization & Note Cleaning', () => {
   assert.equal(validationResult.isValid, true);
   assert.equal(validationResult.sanitizedRecords.length, 1);
   const sanitized = validationResult.sanitizedRecords[0];
-  assert.equal(sanitized.note, 'Makan sate');
+  assert.equal(sanitized.note, 'Makan Sate');
   assert.deepEqual(sanitized.labels, ['kuliner', 'bandung']);
 
   const onlyTagRecord: CreateRecordInputPayload = {
@@ -161,7 +161,7 @@ test('2. Record Validator Sanitization & Note Cleaning', () => {
     'makan di Bandung 50rb'
   );
   assert.equal(hallucinatedNoteValidation.isValid, true);
-  assert.equal(hallucinatedNoteValidation.sanitizedRecords[0].note, 'makan di Bandung');
+  assert.equal(hallucinatedNoteValidation.sanitizedRecords[0].note, 'Makan di Bandung');
   assert.equal(
     hallucinatedNoteValidation.sanitizedRecords[0].labels,
     undefined,
@@ -339,7 +339,7 @@ test('5. End-to-End Record Payload Generation with labelIds', async () => {
   const validation = validateAndSanitizeFinancialRecords([rawRecord], mockAccounts, mockCategories);
   assert.equal(validation.isValid, true);
   const validatedRecord = validation.sanitizedRecords[0];
-  assert.equal(validatedRecord.note, 'Kopi kenangan 28rb');
+  assert.equal(validatedRecord.note, 'Kopi Kenangan 28rb');
   assert.deepEqual(validatedRecord.labels, ['reimburse', 'kantor']);
 
   const { resolvedLabelIds, resolvedLabelNames } = await resolveAndEnsureLabels(validatedRecord.labels!, cache, mockClient);
@@ -351,7 +351,7 @@ test('5. End-to-End Record Payload Generation with labelIds', async () => {
   await mockClient.createRecords([validatedRecord]);
   assert.equal(dispatchedRecordsPayload.length, 1);
   assert.deepEqual(dispatchedRecordsPayload[0].labelIds, ['lbl-reimburse', 'lbl-kantor']);
-  assert.equal(dispatchedRecordsPayload[0].note, 'Kopi kenangan 28rb');
+  assert.equal(dispatchedRecordsPayload[0].note, 'Kopi Kenangan 28rb');
 });
 
 test('6. WalletMcpClientService & WalletCacheService Label Integration', async () => {
@@ -577,7 +577,7 @@ test('7. UserMessageHandler Hashtag Fallback & Label Resolution', async () => {
   await handler.handleIncomingUserMessage(noHashEvent);
   assert.equal(createLabelCallsCount, 0);
   assert.equal(dispatchedMcpRecords.length, 1);
-  assert.equal(dispatchedMcpRecords[0][0].note, 'makan di Bandung');
+  assert.equal(dispatchedMcpRecords[0][0].note, 'Makan di Bandung');
   assert.equal(dispatchedMcpRecords[0][0].labels, undefined);
   assert.equal(dispatchedMcpRecords[0][0].labelIds, undefined);
   assert.ok(!sentMessages[0].includes('🔖'));
