@@ -370,7 +370,7 @@ describe('AI Provider Workflow (Issue #108)', () => {
       expect(parsed.tokenUsage).toEqual(validEmailResult.tokenUsage);
     });
 
-    it('builds failed email fallback with provider attribution on unparseable response', () => {
+    it('throws AiResponseParseError with provider attribution on unparseable response', () => {
       const mockGateResult: GateEvaluationResult = {
         passed: true,
         candidateAmount: 75000,
@@ -381,20 +381,17 @@ describe('AI Provider Workflow (Issue #108)', () => {
         tokenUsage: { promptTokens: 100, candidatesTokens: 15, totalTokens: 115 },
       };
 
-      const fallback = postProcessEmailTransactionResponse(
-        unparseableResult,
-        mockGateResult,
-        'Notifikasi Transaksi QRIS',
-        fixedReferenceInstant,
-        mockAccountList,
-        mockCategoryList,
-        'OpenAI'
-      );
-
-      expect(fallback.isTransaction).toBe(false);
-      expect(fallback.amount).toBe(75000);
-      expect(fallback.explanation).toContain('OpenAI');
-      expect(fallback.tokenUsage).toEqual(unparseableResult.tokenUsage);
+      expect(() => {
+        postProcessEmailTransactionResponse(
+          unparseableResult,
+          mockGateResult,
+          'Notifikasi Transaksi QRIS',
+          fixedReferenceInstant,
+          mockAccountList,
+          mockCategoryList,
+          'OpenAI'
+        );
+      }).toThrowError(AiResponseParseError);
     });
   });
 

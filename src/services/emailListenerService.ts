@@ -55,9 +55,22 @@ export interface EmailTransactionDetectedEvent {
 
 export type EmailTransactionCallback = (event: EmailTransactionDetectedEvent) => Promise<void>;
 
+export interface DeadLetterQueueItem {
+  messageId: string;
+  subject: string;
+  sender: string;
+  date: string;
+  attempts: number;
+  lastError: string;
+  failedAt: string;
+}
+
+export type DeadLetterCallback = (dlqItem: DeadLetterQueueItem) => Promise<void> | void;
+
 interface PersistentTransactionCacheStructure {
   processedMessageIds: string[];
   processedReferenceNumbers: string[];
+  deadLetterQueue?: DeadLetterQueueItem[];
 }
 
 export class EmailListenerService {
@@ -75,6 +88,8 @@ export class EmailListenerService {
   private readonly processedMessageIdSet: Set<string> = new Set<string>();
   private readonly processedReferenceNumberSet: Set<string> = new Set<string>();
   private readonly inFlightMessageIdSet: Set<string> = new Set<string>();
+  private readonly failedAttemptMap: Map<string, { attempts: number; lastAttemptAt: number; lastError: string }> = new Map();
+  private deadLetterQueue: DeadLetterQueueItem[] = [];
   private readonly cacheFilePath: string;
   private readonly maxCachedItemsCount: number = 2000;
 
@@ -87,7 +102,9 @@ export class EmailListenerService {
     private readonly onTransactionDetected: EmailTransactionCallback,
     customCacheDirectoryPath?: string,
     private readonly imapClientFactory?: (options: ConstructorParameters<typeof ImapFlow>[0]) => ImapFlow,
-    private readonly fallbackPollIntervalMs: number = 5 * 60 * 1000
+    private readonly fallbackPollIntervalMs: number = 5 * 60 * 1000,
+    private readonly maxRetryAttempts: number = 3,
+    private readonly onDeadLetterRecorded?: DeadLetterCallback
   ) {
     // Only accept emails after startup cutoff (with lookback window)
     const lookbackMilliseconds = this.lookbackMinutes * 60 * 1000;
@@ -111,14 +128,22 @@ export class EmailListenerService {
         const parsedCache: PersistentTransactionCacheStructure = JSON.parse(fileContent);
 
         if (Array.isArray(parsedCache.processedMessageIds)) {
-          parsedCache.processedMessageIds.forEach(id => this.processedMessageIdSet.add(id));
+          parsedCache.processedMessageIds.forEach(id => {
+            const cleanId = id.replace(/^<|>$/g, '');
+            this.processedMessageIdSet.add(id);
+            this.processedMessageIdSet.add(cleanId);
+            this.processedMessageIdSet.add(`<${cleanId}>`);
+          });
         }
         if (Array.isArray(parsedCache.processedReferenceNumbers)) {
           parsedCache.processedReferenceNumbers.forEach(ref => this.processedReferenceNumberSet.add(ref));
         }
+        if (Array.isArray(parsedCache.deadLetterQueue)) {
+          this.deadLetterQueue = [...parsedCache.deadLetterQueue];
+        }
 
         applicationLogger.info(
-          `Loaded transaction cache: ${this.processedMessageIdSet.size} message IDs, ${this.processedReferenceNumberSet.size} reference numbers.`
+          `Loaded transaction cache: ${this.processedMessageIdSet.size} message IDs, ${this.processedReferenceNumberSet.size} reference numbers, ${this.deadLetterQueue.length} DLQ records.`
         );
       }
     } catch (cacheError) {
@@ -137,10 +162,12 @@ export class EmailListenerService {
 
       const trimmedMessageIds = messageIdArray.slice(-this.maxCachedItemsCount);
       const trimmedReferenceNumbers = referenceNumberArray.slice(-this.maxCachedItemsCount);
+      const trimmedDlq = this.deadLetterQueue.slice(-this.maxCachedItemsCount);
 
       const cachePayload: PersistentTransactionCacheStructure = {
         processedMessageIds: trimmedMessageIds,
         processedReferenceNumbers: trimmedReferenceNumbers,
+        deadLetterQueue: trimmedDlq,
       };
 
       fs.writeFileSync(this.cacheFilePath, JSON.stringify(cachePayload, null, 2), 'utf8');
@@ -150,11 +177,91 @@ export class EmailListenerService {
   }
 
   /**
+   * Checks whether a message ID has already been marked as processed or terminally failed
+   */
+  public isMessageAlreadyProcessed(messageId: string): boolean {
+    const cleanId = messageId.replace(/^<|>$/g, '');
+    return (
+      this.processedMessageIdSet.has(messageId) ||
+      this.processedMessageIdSet.has(cleanId) ||
+      this.processedMessageIdSet.has(`<${cleanId}>`)
+    );
+  }
+
+  /**
+   * Checks whether a message ID is currently in-flight
+   */
+  public isMessageInFlight(messageId: string): boolean {
+    const cleanId = messageId.replace(/^<|>$/g, '');
+    return (
+      this.inFlightMessageIdSet.has(messageId) ||
+      this.inFlightMessageIdSet.has(cleanId) ||
+      this.inFlightMessageIdSet.has(`<${cleanId}>`)
+    );
+  }
+
+  /**
+   * Marks a message ID as processed across all formats and removes any failure records
+   */
+  public markMessageAsProcessed(messageId: string): void {
+    const cleanId = messageId.replace(/^<|>$/g, '');
+    this.processedMessageIdSet.add(messageId);
+    this.failedAttemptMap.delete(messageId);
+    this.failedAttemptMap.delete(cleanId);
+    this.failedAttemptMap.delete(`<${cleanId}>`);
+  }
+
+  /**
+   * Claims a message ID in the in-flight set
+   */
+  private claimMessageInFlight(messageId: string): void {
+    this.inFlightMessageIdSet.add(messageId);
+  }
+
+  /**
+   * Releases a message ID from the in-flight set across all formats
+   */
+  private releaseMessageInFlight(messageId: string): void {
+    const cleanId = messageId.replace(/^<|>$/g, '');
+    this.inFlightMessageIdSet.delete(messageId);
+    this.inFlightMessageIdSet.delete(cleanId);
+    this.inFlightMessageIdSet.delete(`<${cleanId}>`);
+  }
+
+  /**
+   * Returns current Dead Letter Queue records
+   */
+  public getDeadLetterQueue(): DeadLetterQueueItem[] {
+    return [...this.deadLetterQueue];
+  }
+
+  /**
+   * Returns recorded failed attempts for a message ID
+   */
+  public getFailedAttemptCount(messageId: string): number {
+    const cleanId = messageId.replace(/^<|>$/g, '');
+    return (
+      this.failedAttemptMap.get(messageId)?.attempts ||
+      this.failedAttemptMap.get(`<${cleanId}>`)?.attempts ||
+      this.failedAttemptMap.get(cleanId)?.attempts ||
+      0
+    );
+  }
+
+  /**
+   * Clears Dead Letter Queue records
+   */
+  public clearDeadLetterQueue(): void {
+    this.deadLetterQueue = [];
+    this.savePersistentCache();
+  }
+
+  /**
    * Marks a reference number and message ID as processed in cache
    */
   public recordProcessedTransaction(messageId?: string, referenceNumber?: string): void {
     if (messageId) {
-      this.processedMessageIdSet.add(messageId);
+      this.markMessageAsProcessed(messageId);
     }
     if (referenceNumber) {
       this.processedReferenceNumberSet.add(referenceNumber);
@@ -458,6 +565,11 @@ export class EmailListenerService {
 
       // Fetch message sources for the matching UIDs
       for (const messageUid of searchResultUids) {
+        let currentMessageId: string = String(messageUid);
+        let currentSubject: string = '';
+        let currentSender: string = '';
+        let currentDate: Date = new Date();
+
         try {
           const fetchResult = await this.imapClient.fetchOne(
             String(messageUid),
@@ -471,14 +583,12 @@ export class EmailListenerService {
 
           // Fast deduplication pre-check from envelope before parsing MIME source
           const envelopeMessageId = fetchResult.envelope?.messageId;
-          const cleanEnvelopeId = envelopeMessageId ? envelopeMessageId.replace(/^<|>$/g, '') : undefined;
+          if (envelopeMessageId) {
+            currentMessageId = envelopeMessageId;
+          }
           const isEnvelopeAlreadyProcessed = Boolean(
             envelopeMessageId &&
-              (this.processedMessageIdSet.has(envelopeMessageId) ||
-                (cleanEnvelopeId && this.processedMessageIdSet.has(cleanEnvelopeId)) ||
-                (cleanEnvelopeId && this.processedMessageIdSet.has(`<${cleanEnvelopeId}>`)) ||
-                this.inFlightMessageIdSet.has(envelopeMessageId) ||
-                (cleanEnvelopeId && this.inFlightMessageIdSet.has(cleanEnvelopeId)))
+              (this.isMessageAlreadyProcessed(envelopeMessageId) || this.isMessageInFlight(envelopeMessageId))
           );
 
           if (isEnvelopeAlreadyProcessed) {
@@ -501,12 +611,13 @@ export class EmailListenerService {
             fetchResult.envelope?.from?.[0]?.address ||
             '';
           const rawMessageId = parsedMime.messageId || envelopeMessageId || String(messageUid);
+          currentMessageId = rawMessageId;
+          currentSubject = emailSubject;
+          currentSender = senderAddress;
+          currentDate = emailDate;
 
           // Fast deduplication check: Has this email message ID already been processed or claimed by another scan?
-          if (
-            this.processedMessageIdSet.has(rawMessageId) ||
-            this.inFlightMessageIdSet.has(rawMessageId)
-          ) {
+          if (this.isMessageAlreadyProcessed(rawMessageId) || this.isMessageInFlight(rawMessageId)) {
             continue;
           }
 
@@ -525,7 +636,7 @@ export class EmailListenerService {
 
           if (!gateResult.passed) {
             // Gate 1 rejection is terminal for this message, so cache immediately to avoid redundant evaluation.
-            this.processedMessageIdSet.add(rawMessageId);
+            this.markMessageAsProcessed(rawMessageId);
             this.savePersistentCache();
 
             applicationLogger.info('[Gate 1 Skip] Email rejected by initial transaction gate.');
@@ -547,7 +658,7 @@ export class EmailListenerService {
           });
 
           // Claim the candidate in memory while downstream Gate 2 / pending transaction handling is active.
-          this.inFlightMessageIdSet.add(rawMessageId);
+          this.claimMessageInFlight(rawMessageId);
           try {
             await this.onTransactionDetected({
               gateResult,
@@ -559,18 +670,64 @@ export class EmailListenerService {
             });
 
             // Only persist a transaction candidate after downstream handling succeeds.
-            this.processedMessageIdSet.add(rawMessageId);
+            this.markMessageAsProcessed(rawMessageId);
             this.savePersistentCache();
           } finally {
-            // A rejected callback must leave the candidate retryable on a later scan.
-            this.inFlightMessageIdSet.delete(rawMessageId);
+            // Release the in-flight claim. If rejected by downstream error, remains retryable on next scan.
+            this.releaseMessageInFlight(rawMessageId);
           }
         } catch (individualMessageError) {
           const errorName = individualMessageError instanceof Error ? individualMessageError.name : 'UnknownError';
-          applicationLogger.error(`Failed to process email UID ${messageUid} (${errorName}).`);
+          const errorMessage = individualMessageError instanceof Error ? individualMessageError.message : String(individualMessageError);
+
+          const previousAttempts = this.getFailedAttemptCount(currentMessageId);
+          const currentAttempts = previousAttempts + 1;
+          const cleanId = currentMessageId.replace(/^<|>$/g, '');
+          const attemptDetails = {
+            attempts: currentAttempts,
+            lastAttemptAt: Date.now(),
+            lastError: `${errorName}: ${errorMessage}`,
+          };
+          this.failedAttemptMap.set(currentMessageId, attemptDetails);
+          this.failedAttemptMap.set(cleanId, attemptDetails);
+          this.failedAttemptMap.set(`<${cleanId}>`, attemptDetails);
+
+          if (currentAttempts >= this.maxRetryAttempts) {
+            applicationLogger.error(
+              `[DLQ] Email UID ${messageUid} (${currentMessageId}) exceeded maximum retry attempts (${currentAttempts}/${this.maxRetryAttempts}). Moving to Dead Letter Queue.`
+            );
+            const dlqItem: DeadLetterQueueItem = {
+              messageId: currentMessageId,
+              subject: currentSubject,
+              sender: currentSender,
+              date: currentDate.toISOString(),
+              attempts: currentAttempts,
+              lastError: `${errorName}: ${errorMessage}`,
+              failedAt: new Date().toISOString(),
+            };
+            this.deadLetterQueue.push(dlqItem);
+            this.markMessageAsProcessed(currentMessageId);
+            this.savePersistentCache();
+
+            if (this.onDeadLetterRecorded) {
+              try {
+                await this.onDeadLetterRecorded(dlqItem);
+              } catch (dlqNotifyError) {
+                applicationLogger.warn(`Failed to dispatch DLQ notification for ${currentMessageId}: ${dlqNotifyError}`);
+              }
+            }
+          } else {
+            applicationLogger.warn(
+              `[Retryable Failure] Email UID ${messageUid} (${currentMessageId}) failed attempt ${currentAttempts}/${this.maxRetryAttempts} (${errorName}: ${errorMessage}). Will retry on subsequent scan.`
+            );
+          }
+
           applicationLogger.fileDetail('error', 'Email Transaction Processing Failure', {
             messageUid,
             error: individualMessageError,
+            attempts: currentAttempts,
+            maxRetryAttempts: this.maxRetryAttempts,
+            movedToDlq: currentAttempts >= this.maxRetryAttempts,
           });
         }
       }

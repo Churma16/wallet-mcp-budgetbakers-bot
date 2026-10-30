@@ -112,9 +112,11 @@ export class TransactionCorrelationService {
 
     const evidenceAmount = Math.abs(evidence.amount);
     const isTransferEvidence = evidence.transactionType === INTERNAL_TRANSACTION_TYPES.TRANSFER;
+    const isExpenseEvidence =
+      evidence.amount < 0 || evidence.transactionType === INTERNAL_TRANSACTION_TYPES.EXPENSE;
     const evidenceSign = isTransferEvidence
       ? WALLET_MCP_RECORD_TYPES.TRANSFER
-      : evidence.amount < 0
+      : isExpenseEvidence
       ? WALLET_MCP_RECORD_TYPES.EXPENSE
       : WALLET_MCP_RECORD_TYPES.INCOME;
     const evidenceTime = new Date(evidence.occurredAt).getTime();

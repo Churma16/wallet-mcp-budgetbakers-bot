@@ -262,7 +262,7 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
           { role: 'system', content: prepared.systemInstruction },
           { role: 'user', content: prepared.promptText },
         ];
-        return this.executeChatCompletionWithFallback(messages, prepared.requestContextDescription);
+        return this.executeChatCompletionWithFallback(messages, prepared.requestContextDescription, true);
       }
     );
   }
@@ -307,7 +307,7 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
               ],
             },
           ];
-          return this.executeChatCompletionWithFallback(messages, prepared.requestContextDescription);
+          return this.executeChatCompletionWithFallback(messages, prepared.requestContextDescription, true);
         }
       );
     } catch (visionError: any) {
@@ -363,7 +363,7 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
           { role: 'system', content: prepared.systemInstruction },
           { role: 'user', content: prepared.promptText },
         ];
-        return this.executeChatCompletionWithFallback(messages, prepared.requestContextDescription);
+        return this.executeChatCompletionWithFallback(messages, prepared.requestContextDescription, true);
       }
     );
   }

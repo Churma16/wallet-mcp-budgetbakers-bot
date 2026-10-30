@@ -9,6 +9,8 @@ import {
 import {
   extractAndParseJsonObject,
   validateReceiptFinancialIntentEnvelope,
+  AiResponseParseError,
+  isAiResponseParseError,
 } from './jsonExtractionHelper.js';
 import { getActiveLanguage } from '../../i18n/index.js';
 import { getApplicationTimezone } from '../../config/applicationConfig.js';
@@ -245,7 +247,8 @@ export function postProcessReceiptVisionResponse(
 
 /**
  * Post-processes an AI response for email transaction parsing.
- * Extracts JSON data, resolves account/category entities, and builds a fallback item on parse errors.
+ * Extracts JSON data, validates output structure, and resolves account/category entities.
+ * Throws AiResponseParseError if AI fails to return valid JSON or missing boolean isTransaction.
  */
 export function postProcessEmailTransactionResponse(
   executionResult: AiExecutionResult,
@@ -256,27 +259,35 @@ export function postProcessEmailTransactionResponse(
   availableCategoryList: WalletCategoryItem[],
   providerLabel: string
 ): ExtractedEmailTransactionData {
+  let parsedData: ExtractedEmailTransactionData;
   try {
-    const parsedData = extractAndParseJsonObject<ExtractedEmailTransactionData>(executionResult.responseText);
-    parsedData.tokenUsage = executionResult.tokenUsage;
-
-    return resolveEmailExtractedEntities(
-      parsedData,
-      gateResult,
-      emailSubject,
-      emailDate,
-      availableAccountList,
-      availableCategoryList
-    );
-  } catch {
-    return buildFailedEmailTransactionFallback(
-      gateResult,
-      emailSubject,
-      emailDate,
-      `Failed to parse JSON response from ${providerLabel} for email transaction`,
-      executionResult.tokenUsage
+    parsedData = extractAndParseJsonObject<ExtractedEmailTransactionData>(executionResult.responseText);
+  } catch (parseError) {
+    throw new AiResponseParseError(
+      `Failed to parse JSON response from ${providerLabel} for email transaction: ${
+        parseError instanceof Error ? parseError.message : String(parseError)
+      }`,
+      executionResult.responseText
     );
   }
+
+  if (!parsedData || typeof parsedData !== 'object' || typeof parsedData.isTransaction !== 'boolean') {
+    throw new AiResponseParseError(
+      `AI response from ${providerLabel} is missing required 'isTransaction' boolean field`,
+      executionResult.responseText
+    );
+  }
+
+  parsedData.tokenUsage = executionResult.tokenUsage;
+
+  return resolveEmailExtractedEntities(
+    parsedData,
+    gateResult,
+    emailSubject,
+    emailDate,
+    availableAccountList,
+    availableCategoryList
+  );
 }
 
 /**
@@ -285,6 +296,10 @@ export function postProcessEmailTransactionResponse(
 export function isRecoverableModelExecutionError(error: unknown): boolean {
   if (!error) {
     return false;
+  }
+
+  if (isAiResponseParseError(error)) {
+    return true;
   }
 
   const rawErrorMessage = error instanceof Error
