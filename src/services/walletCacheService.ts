@@ -2,31 +2,77 @@ import { WalletAccountItem, WalletCategoryItem, WalletLabelItem } from '../types
 import { WalletMcpClientService } from './walletMcpService.js';
 import { applicationLogger } from '../utils/logger.js';
 
+export interface WalletCacheOptions {
+  readonly cacheDurationMilliseconds?: number;
+}
+
+export const DEFAULT_METADATA_CACHE_DURATION_MS = 1000 * 60 * 30; // 30 minutes
+
 export class WalletCacheService {
   private cachedAccountList: WalletAccountItem[] = [];
   private cachedCategoryList: WalletCategoryItem[] = [];
   private cachedLabelList: WalletLabelItem[] = [];
   private labelsLoadedSuccessfully: boolean = false;
 
-  constructor(private readonly walletMcpClient: WalletMcpClientService) {}
+  private accountsLastUpdatedTimestamp: number = 0;
+  private categoriesLastUpdatedTimestamp: number = 0;
+  private labelsLastUpdatedTimestamp: number = 0;
+  private readonly cacheDurationMilliseconds: number;
+
+  constructor(
+    private readonly walletMcpClient: WalletMcpClientService,
+    options?: WalletCacheOptions
+  ) {
+    this.cacheDurationMilliseconds =
+      options?.cacheDurationMilliseconds ?? DEFAULT_METADATA_CACHE_DURATION_MS;
+  }
 
   /**
    * Initializes cache by fetching initial accounts, categories, and labels from Wallet MCP
    */
   public async initialize(): Promise<void> {
-    this.cachedAccountList = await this.walletMcpClient.fetchAccounts(true).catch(fetchError => {
-      applicationLogger.error(`Failed to fetch accounts during cache initialization: ${fetchError.message}`);
-      return [];
-    });
+    const fetchStartTimestamp = Date.now();
+    let accountsSuccess = false;
+    let categoriesSuccess = false;
 
-    this.cachedCategoryList = await this.walletMcpClient.fetchCategories(true).catch(fetchError => {
-      applicationLogger.error(`Failed to fetch categories during cache initialization: ${fetchError.message}`);
-      return [];
-    });
+    this.cachedAccountList = await this.walletMcpClient
+      .fetchAccounts(true)
+      .then(accounts => {
+        accountsSuccess = true;
+        return accounts;
+      })
+      .catch(fetchError => {
+        applicationLogger.error(
+          `Failed to fetch accounts during cache initialization: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`
+        );
+        return [];
+      });
+
+    if (accountsSuccess) {
+      this.accountsLastUpdatedTimestamp = fetchStartTimestamp;
+    }
+
+    this.cachedCategoryList = await this.walletMcpClient
+      .fetchCategories(true)
+      .then(categories => {
+        categoriesSuccess = true;
+        return categories;
+      })
+      .catch(fetchError => {
+        applicationLogger.error(
+          `Failed to fetch categories during cache initialization: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`
+        );
+        return [];
+      });
+
+    if (categoriesSuccess) {
+      this.categoriesLastUpdatedTimestamp = fetchStartTimestamp;
+    }
 
     try {
       this.cachedLabelList = await this.walletMcpClient.fetchLabels(true);
       this.labelsLoadedSuccessfully = true;
+      this.labelsLastUpdatedTimestamp = fetchStartTimestamp;
     } catch (fetchError) {
       this.labelsLoadedSuccessfully = false;
       applicationLogger.warn(
@@ -62,10 +108,93 @@ export class WalletCacheService {
   }
 
   /**
+   * Checks whether the cached accounts data is fresh within the configured TTL
+   */
+  public isAccountsFresh(currentTime: number = Date.now()): boolean {
+    return (
+      this.accountsLastUpdatedTimestamp > 0 &&
+      currentTime - this.accountsLastUpdatedTimestamp <= this.cacheDurationMilliseconds
+    );
+  }
+
+  /**
+   * Checks whether the cached categories data is fresh within the configured TTL
+   */
+  public isCategoriesFresh(currentTime: number = Date.now()): boolean {
+    return (
+      this.categoriesLastUpdatedTimestamp > 0 &&
+      currentTime - this.categoriesLastUpdatedTimestamp <= this.cacheDurationMilliseconds
+    );
+  }
+
+  /**
+   * Checks whether the cached labels data is fresh within the configured TTL
+   */
+  public isLabelsFresh(currentTime: number = Date.now()): boolean {
+    return (
+      this.labelsLoadedSuccessfully &&
+      this.labelsLastUpdatedTimestamp > 0 &&
+      currentTime - this.labelsLastUpdatedTimestamp <= this.cacheDurationMilliseconds
+    );
+  }
+
+  /**
+   * Returns the timestamp when accounts were last successfully fetched
+   */
+  public getAccountsTimestamp(): number {
+    return this.accountsLastUpdatedTimestamp;
+  }
+
+  /**
+   * Returns the timestamp when categories were last successfully fetched
+   */
+  public getCategoriesTimestamp(): number {
+    return this.categoriesLastUpdatedTimestamp;
+  }
+
+  /**
+   * Returns the timestamp when labels were last successfully fetched
+   */
+  public getLabelsTimestamp(): number {
+    return this.labelsLastUpdatedTimestamp;
+  }
+
+  /**
+   * Invalidates accounts cache freshness
+   */
+  public invalidateAccounts(): void {
+    this.accountsLastUpdatedTimestamp = 0;
+  }
+
+  /**
+   * Invalidates categories cache freshness
+   */
+  public invalidateCategories(): void {
+    this.categoriesLastUpdatedTimestamp = 0;
+  }
+
+  /**
+   * Invalidates labels cache freshness
+   */
+  public invalidateLabels(): void {
+    this.labelsLastUpdatedTimestamp = 0;
+  }
+
+  /**
+   * Invalidates all metadata cache freshness
+   */
+  public invalidateAll(): void {
+    this.invalidateAccounts();
+    this.invalidateCategories();
+    this.invalidateLabels();
+  }
+
+  /**
    * Forces a fresh fetch of accounts from Wallet MCP and updates cache
    */
   public async refreshAccounts(): Promise<WalletAccountItem[]> {
     this.cachedAccountList = await this.walletMcpClient.fetchAccounts(true);
+    this.accountsLastUpdatedTimestamp = Date.now();
     return this.cachedAccountList;
   }
 
@@ -74,6 +203,7 @@ export class WalletCacheService {
    */
   public async refreshCategories(): Promise<WalletCategoryItem[]> {
     this.cachedCategoryList = await this.walletMcpClient.fetchCategories(true);
+    this.categoriesLastUpdatedTimestamp = Date.now();
     return this.cachedCategoryList;
   }
 
@@ -84,11 +214,46 @@ export class WalletCacheService {
     try {
       this.cachedLabelList = await this.walletMcpClient.fetchLabels(true);
       this.labelsLoadedSuccessfully = true;
+      this.labelsLastUpdatedTimestamp = Date.now();
       return this.cachedLabelList;
     } catch (error) {
       this.labelsLoadedSuccessfully = false;
       throw error;
     }
+  }
+
+  /**
+   * Returns cached accounts if fresh, or fetches fresh accounts from Wallet MCP
+   */
+  public async getOrFetchAccounts(forceRefresh: boolean = false): Promise<WalletAccountItem[]> {
+    if (forceRefresh || !this.isAccountsFresh() || this.cachedAccountList.length === 0) {
+      return await this.refreshAccounts();
+    }
+    return this.cachedAccountList;
+  }
+
+  /**
+   * Returns cached categories if fresh, or fetches fresh categories from Wallet MCP
+   */
+  public async getOrFetchCategories(forceRefresh: boolean = false): Promise<WalletCategoryItem[]> {
+    if (forceRefresh || !this.isCategoriesFresh() || this.cachedCategoryList.length === 0) {
+      return await this.refreshCategories();
+    }
+    return this.cachedCategoryList;
+  }
+
+  /**
+   * Returns cached labels if fresh, or fetches fresh labels from Wallet MCP
+   */
+  public async getOrFetchLabels(forceRefresh: boolean = false): Promise<WalletLabelItem[]> {
+    if (
+      forceRefresh ||
+      !this.isLabelsFresh() ||
+      (!this.labelsLoadedSuccessfully && this.cachedLabelList.length === 0)
+    ) {
+      return await this.refreshLabels();
+    }
+    return this.cachedLabelList;
   }
 
   /**
@@ -117,7 +282,9 @@ export class WalletCacheService {
    */
   public findAccountByName(nameHint: string): WalletAccountItem | undefined {
     const normalizedNameHint = nameHint.toLowerCase();
-    return this.cachedAccountList.find(account => account.name.toLowerCase().includes(normalizedNameHint));
+    return this.cachedAccountList.find(account =>
+      account.name.toLowerCase().includes(normalizedNameHint)
+    );
   }
 
   /**
@@ -147,5 +314,7 @@ export class WalletCacheService {
     } else {
       this.cachedLabelList.push(label);
     }
+    this.labelsLoadedSuccessfully = true;
+    this.labelsLastUpdatedTimestamp = Date.now();
   }
 }

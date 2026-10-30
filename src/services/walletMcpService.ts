@@ -353,11 +353,8 @@ function sanitizeMcpErrorMessage(error: unknown, accessToken: string): string {
 export class WalletMcpClientService {
   private readonly mcpTransport: WalletMcpTransport;
   private readonly responseMetadataByOperation = new Map<WalletMcpOperationName, WalletMcpResponseMetadata>();
-  private cachedAccountList: WalletAccountItem[] = [];
-  private cachedCategoryList: WalletCategoryItem[] = [];
-  private cachedLabelList: WalletLabelItem[] = [];
-  private cacheLastUpdatedTimestamp: number = 0;
-  private readonly cacheDurationMilliseconds: number = 1000 * 60 * 30; // 30 minutes
+  // Application-level metadata caching (accounts, categories, labels) is solely owned by WalletCacheService.
+  // Retained caches below are strictly protocol- or transport-specific (profile probe state & cursor search shim).
   private cachedClientProfile?: WalletClientProfile;
   private profileCacheTimestamp: number = 0;
   private readonly profileCacheDurationMilliseconds: number = 1000 * 60 * 5; // 5 minutes
@@ -651,22 +648,18 @@ export class WalletMcpClientService {
   }
 
   /**
-   * Retrieve all bank accounts and wallets.
+   * Retrieve all bank accounts and wallets directly from Wallet MCP.
+   * Normalizes upstream payload into WalletAccountItem[].
+   * Application-level caching and freshness is solely owned by WalletCacheService.
    */
-  public async fetchAccounts(forceRefresh: boolean = false): Promise<WalletAccountItem[]> {
-    const isCacheExpired = Date.now() - this.cacheLastUpdatedTimestamp > this.cacheDurationMilliseconds;
-
-    if (!forceRefresh && this.cachedAccountList.length > 0 && !isCacheExpired) {
-      return this.cachedAccountList;
-    }
-
+  public async fetchAccounts(_forceRefresh: boolean = false): Promise<WalletAccountItem[]> {
     const fetchedAccountData = await this.callMcpTool<any>(WALLET_MCP_TOOL_NAMES.GET_ACCOUNTS);
 
     const rawAccountArray: any[] = Array.isArray(fetchedAccountData)
       ? fetchedAccountData
       : (fetchedAccountData?.accounts || fetchedAccountData?.items || []);
 
-    this.cachedAccountList = rawAccountArray.map(item => {
+    return rawAccountArray.map(item => {
       let resolvedBalance: number | undefined = undefined;
       let resolvedCurrency: string | undefined = item.currency || item.currencyCode;
 
@@ -700,28 +693,21 @@ export class WalletMcpClientService {
         ),
       };
     });
-
-    this.cacheLastUpdatedTimestamp = Date.now();
-    return this.cachedAccountList;
   }
 
   /**
-   * Retrieve all expense and income categories.
+   * Retrieve all expense and income categories directly from Wallet MCP.
+   * Normalizes upstream payload into WalletCategoryItem[].
+   * Application-level caching and freshness is solely owned by WalletCacheService.
    */
-  public async fetchCategories(forceRefresh: boolean = false): Promise<WalletCategoryItem[]> {
-    const isCacheExpired = Date.now() - this.cacheLastUpdatedTimestamp > this.cacheDurationMilliseconds;
-
-    if (!forceRefresh && this.cachedCategoryList.length > 0 && !isCacheExpired) {
-      return this.cachedCategoryList;
-    }
-
+  public async fetchCategories(_forceRefresh: boolean = false): Promise<WalletCategoryItem[]> {
     const fetchedCategoryData = await this.callMcpTool<any>(WALLET_MCP_TOOL_NAMES.GET_CATEGORIES);
 
     const rawCategoryArray: any[] = Array.isArray(fetchedCategoryData)
       ? fetchedCategoryData
       : (fetchedCategoryData?.categories || fetchedCategoryData?.items || []);
 
-    this.cachedCategoryList = rawCategoryArray.map(item => ({
+    return rawCategoryArray.map(item => ({
       id: item.id || item.categoryId,
       name: item.name || item.categoryName || 'Unnamed Category',
       parentCategoryId: item.parentId || item.parentCategoryId,
@@ -743,20 +729,14 @@ export class WalletMcpClientService {
           ? item.assignable
           : item.enabled !== false && item.archived !== true && item.group?.id !== 'system_categories',
     }));
-
-    return this.cachedCategoryList;
   }
 
   /**
-   * Retrieve all user-defined labels/tags.
+   * Retrieve all user-defined labels/tags directly from Wallet MCP.
+   * Normalizes upstream payload into WalletLabelItem[].
+   * Application-level caching and freshness is solely owned by WalletCacheService.
    */
-  public async fetchLabels(forceRefresh: boolean = false): Promise<WalletLabelItem[]> {
-    const isCacheExpired = Date.now() - this.cacheLastUpdatedTimestamp > this.cacheDurationMilliseconds;
-
-    if (!forceRefresh && this.cachedLabelList.length > 0 && !isCacheExpired) {
-      return this.cachedLabelList;
-    }
-
+  public async fetchLabels(_forceRefresh: boolean = false): Promise<WalletLabelItem[]> {
     try {
       const fetchedLabelData = await this.callMcpTool<any>('get_labels');
 
@@ -764,15 +744,12 @@ export class WalletMcpClientService {
         ? fetchedLabelData
         : (fetchedLabelData?.labels || fetchedLabelData?.items || []);
 
-      this.cachedLabelList = rawLabelArray.map(item => ({
+      return rawLabelArray.map(item => ({
         id: String(item.id || item.labelId || ''),
         name: String(item.name || item.labelName || item.title || '').trim(),
         color: item.color,
         icon: item.icon,
       })).filter(item => item.id.length > 0 && item.name.length > 0);
-
-      this.cacheLastUpdatedTimestamp = Date.now();
-      return this.cachedLabelList;
     } catch (error) {
       applicationLogger.fileDetail('warn', 'Failed to fetch labels from Wallet MCP', {
         error: error instanceof Error ? error.message : String(error),
@@ -783,6 +760,8 @@ export class WalletMcpClientService {
 
   /**
    * Creates a new label in Wallet if the MCP server supports it.
+   * Normalizes and returns the created label.
+   * Application-level cache additions are solely owned by WalletCacheService.
    */
   public async createLabel(labelName: string): Promise<WalletLabelItem | null> {
     const sanitizedLabelName = labelName.replace(/^#/, '').trim();
@@ -797,21 +776,12 @@ export class WalletMcpClientService {
 
       const labelPayload = toolCallResult?.label || toolCallResult;
       if (labelPayload && (labelPayload.id || labelPayload.labelId)) {
-        const createdLabel: WalletLabelItem = {
+        return {
           id: String(labelPayload.id || labelPayload.labelId),
           name: String(labelPayload.name || sanitizedLabelName),
           color: labelPayload.color,
           icon: labelPayload.icon,
         };
-
-        const existingLabelIndex = this.cachedLabelList.findIndex(item => item.id === createdLabel.id);
-        if (existingLabelIndex >= 0) {
-          this.cachedLabelList[existingLabelIndex] = createdLabel;
-        } else {
-          this.cachedLabelList.push(createdLabel);
-        }
-
-        return createdLabel;
       }
       return null;
     } catch (error) {
@@ -821,6 +791,7 @@ export class WalletMcpClientService {
       return null;
     }
   }
+
 
   /**
    * Retrieve all budgets.
