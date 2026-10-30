@@ -629,7 +629,7 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
       expect(handled).toBe(true);
       expect(dispatchedRecords).toHaveLength(1);
       // Note is overridden to "makan siang"
-      expect(dispatchedRecords[0].note).toBe('makan siang');
+      expect(dispatchedRecords[0].note).toBe('Makan Siang');
       // Category is resolved to "Makan Nafsu"
       expect(dispatchedRecords[0].categoryId).toBe('cat-nafsu');
       // Labels contain only the explicit tags

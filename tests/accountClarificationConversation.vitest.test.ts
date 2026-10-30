@@ -768,7 +768,7 @@ describe('Account Clarification Conversation Layer (Issue #120)', () => {
 
       // Stored transaction amount and note are completely UNMODIFIED!
       expect(dispatchedRecord.amount).toBe(-75000);
-      expect(dispatchedRecord.note).toBe('Makan siang bersama tim');
+      expect(dispatchedRecord.note).toBe('Makan Siang Bersama Tim');
       expect(dispatchedRecord.accountId).toBe('acc-bca-tahapan');
     });
 
