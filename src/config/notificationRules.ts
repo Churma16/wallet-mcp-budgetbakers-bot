@@ -10,109 +10,38 @@ export interface NotificationPackageDefinition {
   readonly category: 'BANK' | 'E_WALLET' | 'MERCHANT';
 }
 
-export const NOTIFICATION_PACKAGE_RULES: readonly NotificationPackageDefinition[] = [
-  // Bank Jago
-  {
-    packageName: 'com.jago',
-    displayName: 'Bank Jago',
-    accountNameHint: 'Jago',
-    bankKey: 'jago',
-    category: 'BANK',
-  },
-  // Bank Mandiri (Livin)
-  {
-    packageName: 'com.bankmandiri.livin',
-    displayName: 'Bank Mandiri (Livin)',
-    accountNameHint: 'Mandiri',
-    bankKey: 'mandiri',
-    category: 'BANK',
-  },
-  // BCA (myBCA, BCA Mobile, BCA)
-  {
-    packageName: 'com.bca',
-    displayName: 'BCA',
-    accountNameHint: 'BCA',
-    bankKey: 'bca',
-    category: 'BANK',
-  },
-  {
-    packageName: 'com.bca.mobile',
-    displayName: 'BCA',
-    accountNameHint: 'BCA',
-    bankKey: 'bca',
-    category: 'BANK',
-  },
-  {
-    packageName: 'com.bca.mybca',
-    displayName: 'BCA',
-    accountNameHint: 'BCA',
-    bankKey: 'bca',
-    category: 'BANK',
-  },
-  // GoPay / Gojek
-  {
-    packageName: 'com.gojek.app',
-    displayName: 'GoPay / Gojek',
-    accountNameHint: 'GoPay',
-    bankKey: 'gopay',
-    category: 'E_WALLET',
-  },
-  // Shopee / ShopeePay
-  {
-    packageName: 'com.shopee.id',
-    displayName: 'ShopeePay',
-    accountNameHint: 'ShopeePay',
-    bankKey: 'shopeepay',
-    category: 'E_WALLET',
-  },
-  // DANA
-  {
-    packageName: 'id.dana',
-    displayName: 'DANA',
-    accountNameHint: 'DANA',
-    bankKey: 'dana',
-    category: 'E_WALLET',
-  },
-  // OVO
-  {
-    packageName: 'ovo.id',
-    displayName: 'OVO',
-    accountNameHint: 'OVO',
-    bankKey: 'ovo',
-    category: 'E_WALLET',
-  },
-  // Flip
-  {
-    packageName: 'id.co.flip',
-    displayName: 'Flip',
-    accountNameHint: 'Flip',
-    bankKey: 'flip',
-    category: 'BANK',
-  },
-  // TikTok / TikTok Shop
-  {
-    packageName: 'com.zhiliaoapp.musically',
-    displayName: 'TikTok Shop',
-    accountNameHint: 'TikTok',
-    bankKey: 'tiktok',
-    category: 'MERCHANT',
-  },
-  {
-    packageName: 'com.ss.android.ugc.trill',
-    displayName: 'TikTok Shop',
-    accountNameHint: 'TikTok',
-    bankKey: 'tiktok',
-    category: 'MERCHANT',
-  },
-  // Grab
-  {
-    packageName: 'com.grabtaxi.passenger',
-    displayName: 'Grab',
-    accountNameHint: 'OVO',
-    bankKey: 'grab',
-    category: 'MERCHANT',
-  },
+type PackageRuleTuple = [
+  packageName: string,
+  displayName: string,
+  accountNameHint: string,
+  bankKey: string,
+  category: 'BANK' | 'E_WALLET' | 'MERCHANT'
 ];
+
+const RAW_PACKAGE_RULES: readonly PackageRuleTuple[] = [
+  ['com.jago', 'Bank Jago', 'Jago', 'jago', 'BANK'],
+  ['com.bankmandiri.livin', 'Bank Mandiri (Livin)', 'Mandiri', 'mandiri', 'BANK'],
+  ['com.bca', 'BCA', 'BCA', 'bca', 'BANK'],
+  ['com.bca.mobile', 'BCA', 'BCA', 'bca', 'BANK'],
+  ['com.bca.mybca', 'BCA', 'BCA', 'bca', 'BANK'],
+  ['com.gojek.app', 'GoPay / Gojek', 'GoPay', 'gopay', 'E_WALLET'],
+  ['com.shopee.id', 'ShopeePay', 'ShopeePay', 'shopeepay', 'E_WALLET'],
+  ['id.dana', 'DANA', 'DANA', 'dana', 'E_WALLET'],
+  ['ovo.id', 'OVO', 'OVO', 'ovo', 'E_WALLET'],
+  ['id.co.flip', 'Flip', 'Flip', 'flip', 'BANK'],
+  ['com.zhiliaoapp.musically', 'TikTok Shop', 'TikTok', 'tiktok', 'MERCHANT'],
+  ['com.ss.android.ugc.trill', 'TikTok Shop', 'TikTok', 'tiktok', 'MERCHANT'],
+  ['com.grabtaxi.passenger', 'Grab', 'OVO', 'grab', 'MERCHANT'],
+];
+
+export const NOTIFICATION_PACKAGE_RULES: readonly NotificationPackageDefinition[] =
+  RAW_PACKAGE_RULES.map(([packageName, displayName, accountNameHint, bankKey, category]) => ({
+    packageName,
+    displayName,
+    accountNameHint,
+    bankKey,
+    category,
+  }));
 
 const DEFAULT_BLACKLIST_KEYWORDS = [
   'otp',
