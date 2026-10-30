@@ -187,4 +187,23 @@ describe('NotificationWebhookServer', () => {
     const notFound = await makeRequest('GET', '/unknown-route');
     expect(notFound.status).toBe(404);
   });
+
+  it('rejects oversized payloads with 413 Payload Too Large', async () => {
+    server = new NotificationWebhookServer({
+      port: testPort,
+      host: '127.0.0.1',
+      maxPayloadBytes: 50, // very small limit for testing
+      onNotificationReceived: async () => {},
+    });
+    await server.start();
+
+    const largeData = {
+      packageName: 'com.jago',
+      title: 'This is a very long title that exceeds fifty bytes easily',
+      text: 'And lots more content to push it well beyond limits',
+    };
+
+    const response = await makeRequest('POST', '/api/webhook/notification', largeData);
+    expect([413, 0]).toContain(response.status);
+  });
 });

@@ -173,4 +173,91 @@ describe('NotificationTransactionHandler', () => {
       expect.stringContaining('Transaksi Diperkaya')
     );
   });
+
+  it('skips duplicate and attaches when matching existing Wallet record is found', async () => {
+    const aiProvider = createMockAiProvider(true, -15799);
+    const walletCache = createMockWalletCache();
+    const pendingManager = new PendingTransactionService();
+    const messaging = createMockMessaging();
+
+    const mockWalletMcpClient = {
+      fetchRecords: vi.fn().mockResolvedValue({
+        records: [
+          {
+            id: 'rec-existing-1',
+            accountId: 'acc-jago',
+            amount: -15799,
+            recordType: 'expense',
+            currency: 'IDR',
+            recordDate: '2026-10-31T00:54:00.000Z',
+            counterParty: 'Tabucci Snack',
+          },
+        ],
+      }),
+    };
+
+    const handler = new NotificationTransactionHandler(
+      aiProvider as any,
+      walletCache as any,
+      pendingManager,
+      messaging as any,
+      'IDR',
+      undefined,
+      mockWalletMcpClient as any
+    );
+
+    await handler.handleNotificationReceived({
+      packageName: 'com.jago',
+      title: 'Transaksi Berhasil',
+      text: 'Pembayaran Rp 15.799 di Tabucci Snack berhasil',
+      timestamp: new Date('2026-10-31T00:54:30.000Z').getTime(),
+    });
+
+    expect(mockWalletMcpClient.fetchRecords).toHaveBeenCalled();
+    expect(pendingManager.getAllPendingTransactions().length).toBe(0);
+    expect(messaging.broadcastNotification).toHaveBeenCalledWith(
+      expect.stringContaining('Tabucci Snack')
+    );
+  });
+
+  it('resolves destination account for transfer notification', async () => {
+    const aiProvider = {
+      providerName: 'mock-ai',
+      processEmailTransactionMessage: vi.fn().mockResolvedValue({
+        isTransaction: true,
+        transactionType: 'TRANSFER',
+        amount: -50000,
+        counterParty: '',
+        accountNameHint: 'Jago',
+        matchedAccountId: 'acc-jago',
+        destinationAccountNameHint: 'Cash',
+        note: 'Pindah ke Cash',
+        recordDate: '2026-10-31T00:54:00.000Z',
+        explanation: 'Transfer',
+      }),
+      processTextMessage: vi.fn(),
+      processImageMessage: vi.fn(),
+    };
+    const walletCache = createMockWalletCache();
+    const pendingManager = new PendingTransactionService();
+    const messaging = createMockMessaging();
+
+    const handler = new NotificationTransactionHandler(
+      aiProvider as any,
+      walletCache as any,
+      pendingManager,
+      messaging as any
+    );
+
+    await handler.handleNotificationReceived({
+      packageName: 'com.jago',
+      title: 'Pindah Kantong',
+      text: 'Pindah saldo Rp 50.000 ke Cash berhasil',
+    });
+
+    const pending = pendingManager.getAllPendingTransactions();
+    expect(pending.length).toBe(1);
+    expect(pending[0].matchedDestinationAccountId).toBe('acc-cash');
+    expect(pending[0].destinationAccountNameHint).toBe('Cash');
+  });
 });
