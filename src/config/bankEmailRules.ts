@@ -16,6 +16,25 @@ export interface BankEmailRuleDefinition {
   ruleCategory?: BankEmailRuleCategory;
 }
 
+export const COMMON_BANK_BLACKLIST_KEYWORDS = [
+  'otp',
+  'kode verifikasi',
+  'login',
+  'perangkat baru',
+  'promo',
+  'diskon',
+  'newsletter',
+];
+
+export const COMMON_TRANSFER_TOPUP_KEYWORDS = [
+  'top up',
+  'gopay',
+  'ovo',
+  'dana',
+  'shopeepay',
+  'transfer',
+];
+
 export const BANK_DEBIT_AND_GATEWAY_RULES: BankEmailRuleDefinition[] = [
   // 1. Bank Mandiri (Livin' by Mandiri)
   {
@@ -138,15 +157,7 @@ export const BANK_DEBIT_AND_GATEWAY_RULES: BankEmailRuleDefinition[] = [
       'pembayaran',
       'payment',
     ],
-    blacklistKeywords: [
-      'otp',
-      'kode verifikasi',
-      'login',
-      'perangkat baru',
-      'promo',
-      'diskon',
-      'newsletter',
-    ],
+    blacklistKeywords: COMMON_BANK_BLACKLIST_KEYWORDS,
     bodyRequiredPatterns: [
       /(?:transaksi|debet|kredit|berhasil|nominal|rekening|qris|pembayaran)/i,
     ],
@@ -157,14 +168,7 @@ export const BANK_DEBIT_AND_GATEWAY_RULES: BankEmailRuleDefinition[] = [
     referencePatterns: [
       /(?:No\.?\s*Referensi|Nomor\s*Referensi|Ref)[:\s]*([A-Za-z0-9]+)/i,
     ],
-    transferOrTopupKeywords: [
-      'top up',
-      'gopay',
-      'ovo',
-      'dana',
-      'shopeepay',
-      'transfer',
-    ],
+    transferOrTopupKeywords: COMMON_TRANSFER_TOPUP_KEYWORDS,
     ruleCategory: 'BANK',
   },
 

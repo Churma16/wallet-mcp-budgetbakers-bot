@@ -152,7 +152,7 @@ const TRANSACTION_KEYWORDS = [
 export function extractAmountFromText(text: string): number | undefined {
   const patterns = [
     /(?:Rp|IDR)\s*([0-9.,]+)/i,
-    /(?:sebesar|sejumlah|nominal|total|amount)[:\s]*(?:Rp|IDR)?\s*([0-9.,]+)/i,
+    /(?:sebesar|sejumlah|nominal|total|amount)[:\s]+(?:(?:Rp|IDR)\s*)?([0-9.,]+)/i,
   ];
 
   for (const pattern of patterns) {
