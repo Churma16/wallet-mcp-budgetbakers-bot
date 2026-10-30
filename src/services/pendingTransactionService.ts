@@ -7,7 +7,7 @@ import {
 
 export interface PendingTransactionItem {
   ticketId: number;
-  sourceType: 'EMAIL' | 'WHATSAPP';
+  sourceType: 'EMAIL' | 'WHATSAPP' | 'PUSH_NOTIFICATION';
   bankDisplayName: string;
   accountNameHint: string;
   counterParty: string;

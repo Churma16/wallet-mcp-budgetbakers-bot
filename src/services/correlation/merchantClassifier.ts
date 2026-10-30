@@ -42,6 +42,17 @@ export function isGenericMerchant(merchant: string | undefined | null): boolean 
     'transfer',
     'transaksi',
     'merchant',
+    'mandiri',
+    'jago',
+    'bca',
+    'bni',
+    'bri',
+    'cimb',
+    'dana',
+    'gopay',
+    'ovo',
+    'shopeepay',
+    'flip',
   ]);
 
   return words.some(word => genericWords.has(word));

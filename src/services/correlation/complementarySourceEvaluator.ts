@@ -27,16 +27,43 @@ export function evaluateComplementarySources(
   const { platformRegistry, tightWindowMilliseconds } = options;
 
   const isCandidateBank = isBankSource(candidate);
-  const isEvidenceBank = evidence.sourceType === 'EMAIL_BANK';
+  const isEvidenceBank =
+    evidence.sourceType === 'EMAIL_BANK' ||
+    (evidence.sourceType === 'PUSH_NOTIFICATION' &&
+      isBankSource({
+        bankDisplayName: evidence.accountHint,
+        accountNameHint: evidence.accountHint,
+        evidenceSources: [evidence.sourceType],
+      }));
 
   const isCandidatePayment = isPaymentOrReceiptSource(candidate, platformRegistry);
   const isEvidencePayment =
-    evidence.sourceType === 'EMAIL_PAYMENT' || evidence.sourceType === 'RECEIPT';
+    evidence.sourceType === 'EMAIL_PAYMENT' ||
+    evidence.sourceType === 'RECEIPT' ||
+    (evidence.sourceType === 'PUSH_NOTIFICATION' && !isEvidenceBank);
 
   const isCrossSource =
     (isCandidateBank && isEvidencePayment) || (isCandidatePayment && isEvidenceBank);
 
   if (!isCrossSource) {
+    // Check if both are bank debits for the same transaction across channels (e.g. Push Notification + Email Bank)
+    const isDualChannelBank =
+      isCandidateBank &&
+      isEvidenceBank &&
+      (candidate.evidenceSources?.includes('PUSH_NOTIFICATION') ||
+        evidence.sourceType === 'PUSH_NOTIFICATION');
+
+    if (isDualChannelBank && timeDiffMs <= tightWindowMilliseconds) {
+      return {
+        isHighConfidence: true,
+        reasons: [
+          `Identical bank transaction across push notification and email channels within tight window (${Math.round(
+            timeDiffMs / 1000
+          )}s)`,
+        ],
+      };
+    }
+
     // Check if both are same merchant within tight window
     const candidateMerchant = (candidate.counterParty || '').toLowerCase();
     const evidenceMerchant = (evidence.merchant || '').toLowerCase();

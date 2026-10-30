@@ -31,10 +31,12 @@ import { PendingTransactionService } from './services/pendingTransactionService.
 import { TransactionCorrelationService } from './services/transactionCorrelationService.js';
 import {
   EmailTransactionHandler,
+  NotificationTransactionHandler,
   PendingActionHandler,
   FastPathHandler,
   UserMessageHandler,
 } from './handlers/index.js';
+import { NotificationWebhookServer } from './services/webhook/index.js';
 
 
 
@@ -59,6 +61,8 @@ export class Application {
   private readonly messagingGateway: MessagingGatewayService;
   private emailListenerService: EmailListenerService | null = null;
   private readonly emailTransactionHandler: EmailTransactionHandler;
+  private notificationWebhookServer: NotificationWebhookServer | null = null;
+  private readonly notificationTransactionHandler: NotificationTransactionHandler;
   private readonly pendingActionHandler: PendingActionHandler;
   private readonly fastPathHandler: FastPathHandler;
   private readonly userMessageHandler: UserMessageHandler;
@@ -97,6 +101,16 @@ export class Application {
       this.environmentConfig.defaultCurrency,
       transactionCorrelationService,
       () => this.emailListenerService,
+      this.walletMcpClient
+    );
+
+    this.notificationTransactionHandler = new NotificationTransactionHandler(
+      this.financialAiProvider,
+      this.walletCacheService,
+      this.pendingTransactionManager,
+      this.messagingGateway,
+      this.environmentConfig.defaultCurrency,
+      transactionCorrelationService,
       this.walletMcpClient
     );
 
@@ -327,6 +341,23 @@ export class Application {
       applicationLogger.info('Email sync is disabled (EMAIL_SYNC_ENABLED=false).');
     }
 
+    // 5. Initialize & Start Notification Webhook Receiver (if toggled on in .env)
+    if (this.environmentConfig.notificationWebhookEnabled) {
+      this.notificationWebhookServer = new NotificationWebhookServer({
+        port: this.environmentConfig.notificationWebhookPort,
+        host: this.environmentConfig.notificationWebhookHost,
+        secret: this.environmentConfig.notificationWebhookSecret,
+        onNotificationReceived: payload =>
+          this.notificationTransactionHandler.handleNotificationReceived(payload),
+      });
+
+      await this.notificationWebhookServer.start().catch(webhookStartError => {
+        applicationLogger.error(
+          `Failed to start notification webhook server: ${webhookStartError.message}`
+        );
+      });
+    }
+
     this.isRunning = true;
   }
 
@@ -344,11 +375,22 @@ export class Application {
       await this.emailListenerService.stop();
     }
 
+    if (this.notificationWebhookServer) {
+      await this.notificationWebhookServer.stop();
+    }
+
     await this.messagingGateway.stopAll();
     await this.walletMcpClient.close();
 
     this.isRunning = false;
     applicationLogger.info('All services stopped gracefully.');
+  }
+
+  /**
+   * Returns the active notification webhook server instance, or null if disabled.
+   */
+  public getNotificationWebhookServer(): NotificationWebhookServer | null {
+    return this.notificationWebhookServer;
   }
 
   /**

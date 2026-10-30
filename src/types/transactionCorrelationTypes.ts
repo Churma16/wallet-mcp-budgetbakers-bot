@@ -14,6 +14,7 @@ export type TransactionEvidenceSource =
   | 'RECEIPT'
   | 'USER'
   | 'WALLET_RECORD'
+  | 'PUSH_NOTIFICATION'
   | 'OTHER';
 
 

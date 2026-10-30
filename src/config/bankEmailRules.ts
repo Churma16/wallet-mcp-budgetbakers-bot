@@ -121,6 +121,53 @@ export const BANK_DEBIT_AND_GATEWAY_RULES: BankEmailRuleDefinition[] = [
     ],
   },
 
+  // 3. Bank Central Asia (BCA)
+  {
+    bankKey: 'bca',
+    displayName: 'BCA',
+    accountNameHint: 'BCA',
+    senderDomains: ['bca.co.id', 'klikbca.com'],
+    subjectKeywords: [
+      'transaksi',
+      'debet',
+      'kredit',
+      'transfer',
+      'qris',
+      'm-bca',
+      'mybca',
+      'pembayaran',
+      'payment',
+    ],
+    blacklistKeywords: [
+      'otp',
+      'kode verifikasi',
+      'login',
+      'perangkat baru',
+      'promo',
+      'diskon',
+      'newsletter',
+    ],
+    bodyRequiredPatterns: [
+      /(?:transaksi|debet|kredit|berhasil|nominal|rekening|qris|pembayaran)/i,
+    ],
+    amountPriorityPatterns: [
+      /(?:Nominal|Jumlah|Total|Sebesar)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
+      /(?:Rp|IDR)\s*([\d.,]+)/i,
+    ],
+    referencePatterns: [
+      /(?:No\.?\s*Referensi|Nomor\s*Referensi|Ref)[:\s]*([A-Za-z0-9]+)/i,
+    ],
+    transferOrTopupKeywords: [
+      'top up',
+      'gopay',
+      'ovo',
+      'dana',
+      'shopeepay',
+      'transfer',
+    ],
+    ruleCategory: 'BANK',
+  },
+
   // 3. GoPay / Gojek
   {
     bankKey: 'gopay',
