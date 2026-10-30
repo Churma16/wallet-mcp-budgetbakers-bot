@@ -2,9 +2,9 @@ import assert from 'node:assert';
 import { test } from 'vitest';
 import { extractHashtags, normalizeTagName, deduplicateTags } from '../src/utils/hashtagParser.js';
 import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
-import { resolveAndEnsureLabels } from '../src/services/walletLabelResolver.js';
-import { WalletCacheService } from '../src/services/walletCacheService.js';
-import { WalletMcpClientService } from '../src/services/walletMcpService.js';
+import { resolveAndEnsureLabels } from '../src/wallet/index.js';
+import { WalletCacheService } from '../src/wallet/index.js';
+import { WalletMcpClientService } from '../src/wallet/index.js';
 import { formatRecordSuccessMessage } from '../src/utils/humanResponseFormatter.js';
 import {
   WalletAccountItem,

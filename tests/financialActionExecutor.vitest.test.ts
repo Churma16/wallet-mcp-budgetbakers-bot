@@ -3,8 +3,8 @@ import { FinancialActionExecutor } from '../src/services/financialActionExecutor
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
-import { TransactionHistoryService } from '../src/services/transactionHistoryService.js';
-import { TransactionSummaryService } from '../src/services/transactionSummaryService.js';
+import { TransactionHistoryService } from '../src/wallet/index.js';
+import { TransactionSummaryService } from '../src/wallet/index.js';
 import {
   WalletAccountItem,
   WalletBudgetProgressItem,

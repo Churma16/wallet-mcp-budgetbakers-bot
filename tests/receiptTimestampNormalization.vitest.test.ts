@@ -14,7 +14,7 @@ import {
   postProcessReceiptVisionResponse,
 } from '../src/services/ai/aiProviderWorkflow.js';
 import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload } from '../src/types/walletTypes.js';
-import { WalletMcpClientService } from '../src/services/walletMcpService.js';
+import { WalletMcpClientService } from '../src/wallet/index.js';
 
 describe('Receipt Timestamp Normalization & Timezone Preservation (Issue #147)', () => {
   const referenceInstantUtc = new Date('2026-09-13T08:26:18.209Z');

@@ -1,31 +1,41 @@
-import { WalletAccountItem, WalletCategoryItem, WalletLabelItem } from '../types/walletTypes.js';
-import { WalletMcpClientService } from './walletMcpService.js';
+import type {
+  WalletAccountItem,
+  WalletCategoryItem,
+  WalletLabelItem,
+} from './types.js';
 import { applicationLogger } from '../utils/logger.js';
 
-export class WalletCacheService {
+export interface WalletEntityFetcher {
+  fetchAccounts(forceRefresh?: boolean): Promise<WalletAccountItem[]>;
+  fetchCategories(forceRefresh?: boolean): Promise<WalletCategoryItem[]>;
+  fetchLabels(forceRefresh?: boolean): Promise<WalletLabelItem[]>;
+}
+
+/**
+ * In-memory TTL cache for bank accounts, categories, and labels.
+ * Provides fast synchronous lookups and controlled asynchronous refresh via the Wallet MCP client.
+ */
+export class WalletCache {
   private cachedAccountList: WalletAccountItem[] = [];
   private cachedCategoryList: WalletCategoryItem[] = [];
   private cachedLabelList: WalletLabelItem[] = [];
   private labelsLoadedSuccessfully: boolean = false;
 
-  constructor(private readonly walletMcpClient: WalletMcpClientService) {}
+  constructor(private readonly client: WalletEntityFetcher) {}
 
-  /**
-   * Initializes cache by fetching initial accounts, categories, and labels from Wallet MCP
-   */
   public async initialize(): Promise<void> {
-    this.cachedAccountList = await this.walletMcpClient.fetchAccounts(true).catch(fetchError => {
+    this.cachedAccountList = await this.client.fetchAccounts(true).catch(fetchError => {
       applicationLogger.error(`Failed to fetch accounts during cache initialization: ${fetchError.message}`);
       return [];
     });
 
-    this.cachedCategoryList = await this.walletMcpClient.fetchCategories(true).catch(fetchError => {
+    this.cachedCategoryList = await this.client.fetchCategories(true).catch(fetchError => {
       applicationLogger.error(`Failed to fetch categories during cache initialization: ${fetchError.message}`);
       return [];
     });
 
     try {
-      this.cachedLabelList = await this.walletMcpClient.fetchLabels(true);
+      this.cachedLabelList = await this.client.fetchLabels(true);
       this.labelsLoadedSuccessfully = true;
     } catch (fetchError) {
       this.labelsLoadedSuccessfully = false;
@@ -40,49 +50,31 @@ export class WalletCacheService {
     );
   }
 
-  /**
-   * Returns current cached accounts list
-   */
   public getAccounts(): WalletAccountItem[] {
     return this.cachedAccountList;
   }
 
-  /**
-   * Returns current cached categories list
-   */
   public getCategories(): WalletCategoryItem[] {
     return this.cachedCategoryList;
   }
 
-  /**
-   * Returns current cached labels list
-   */
   public getLabels(): WalletLabelItem[] {
     return this.cachedLabelList;
   }
 
-  /**
-   * Forces a fresh fetch of accounts from Wallet MCP and updates cache
-   */
   public async refreshAccounts(): Promise<WalletAccountItem[]> {
-    this.cachedAccountList = await this.walletMcpClient.fetchAccounts(true);
+    this.cachedAccountList = await this.client.fetchAccounts(true);
     return this.cachedAccountList;
   }
 
-  /**
-   * Forces a fresh fetch of categories from Wallet MCP and updates cache
-   */
   public async refreshCategories(): Promise<WalletCategoryItem[]> {
-    this.cachedCategoryList = await this.walletMcpClient.fetchCategories(true);
+    this.cachedCategoryList = await this.client.fetchCategories(true);
     return this.cachedCategoryList;
   }
 
-  /**
-   * Forces a fresh fetch of labels from Wallet MCP and updates cache
-   */
   public async refreshLabels(): Promise<WalletLabelItem[]> {
     try {
-      this.cachedLabelList = await this.walletMcpClient.fetchLabels(true);
+      this.cachedLabelList = await this.client.fetchLabels(true);
       this.labelsLoadedSuccessfully = true;
       return this.cachedLabelList;
     } catch (error) {
@@ -91,45 +83,36 @@ export class WalletCacheService {
     }
   }
 
-  /**
-   * Indicates whether labels were successfully loaded from Wallet MCP at least once
-   */
   public isLabelsLoaded(): boolean {
     return this.labelsLoadedSuccessfully;
   }
 
-  /**
-   * Explicitly sets the labels loaded status (useful for seeded caches or tests)
-   */
   public setLabelsLoaded(isLoaded: boolean): void {
     this.labelsLoadedSuccessfully = isLoaded;
   }
 
-  /**
-   * Searches cached accounts by unique identifier
-   */
   public findAccountById(accountId: string): WalletAccountItem | undefined {
     return this.cachedAccountList.find(account => account.id === accountId);
   }
 
-  /**
-   * Searches cached accounts by partial or case-insensitive name match
-   */
   public findAccountByName(nameHint: string): WalletAccountItem | undefined {
     const normalizedNameHint = nameHint.toLowerCase();
     return this.cachedAccountList.find(account => account.name.toLowerCase().includes(normalizedNameHint));
   }
 
-  /**
-   * Searches cached labels by unique identifier
-   */
+  public findCategoryById(categoryId: string): WalletCategoryItem | undefined {
+    return this.cachedCategoryList.find(category => category.id === categoryId);
+  }
+
+  public findCategoryByName(nameHint: string): WalletCategoryItem | undefined {
+    const normalizedNameHint = nameHint.toLowerCase();
+    return this.cachedCategoryList.find(category => category.name.toLowerCase().includes(normalizedNameHint));
+  }
+
   public findLabelById(labelId: string): WalletLabelItem | undefined {
     return this.cachedLabelList.find(label => label.id === labelId);
   }
 
-  /**
-   * Searches cached labels by exact or normalized case-insensitive name match
-   */
   public findLabelByName(nameHint: string): WalletLabelItem | undefined {
     const normalizedNameHint = nameHint.replace(/^#/, '').trim().toLowerCase();
     return this.cachedLabelList.find(
@@ -137,9 +120,6 @@ export class WalletCacheService {
     );
   }
 
-  /**
-   * Appends or updates a label in the cache
-   */
   public addLabelToCache(label: WalletLabelItem): void {
     const existingIndex = this.cachedLabelList.findIndex(item => item.id === label.id);
     if (existingIndex >= 0) {
@@ -149,3 +129,6 @@ export class WalletCacheService {
     }
   }
 }
+
+export const WalletCacheService = WalletCache;
+export type WalletCacheService = WalletCache;

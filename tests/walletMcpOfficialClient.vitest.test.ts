@@ -16,12 +16,12 @@ import {
   WalletMcpClientService,
   WalletMcpRequestError,
   isWalletMcpCapabilityRejection,
-} from '../src/services/walletMcpService.js';
+} from '../src/wallet/index.js';
 import type {
   WalletMcpSdkClient,
   WalletMcpTransportDependencies,
-} from '../src/services/walletMcpTransport.js';
-import { WalletMcpTransport } from '../src/services/walletMcpTransport.js';
+} from '../src/wallet/index.js';
+import { WalletMcpTransport } from '../src/wallet/index.js';
 
 interface HarnessOptions {
   readonly callToolResult?: unknown;

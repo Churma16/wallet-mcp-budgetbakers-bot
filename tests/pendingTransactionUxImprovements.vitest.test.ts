@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
 import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
 import { MessagingGatewayService, IncomingUserMessageEvent } from '../src/services/messaging/index.js';
-import { WalletMcpClientService } from '../src/services/walletMcpService.js';
+import { WalletMcpClientService } from '../src/wallet/index.js';
 import { indonesianDictionary, englishDictionary } from '../src/i18n/index.js';
 
 function createMockEvent(text: string): IncomingUserMessageEvent {

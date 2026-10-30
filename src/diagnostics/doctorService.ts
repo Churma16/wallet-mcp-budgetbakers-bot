@@ -9,14 +9,14 @@ import {
   SupportedAiProviderType,
   validateApplicationConfiguration,
 } from '../config/environmentConfig.js';
-import { WalletMcpClientService } from '../services/walletMcpService.js';
 import {
+  WalletMcpClientService,
   WalletClientProfile,
   WalletMcpCapabilityQuery,
   WalletMcpToolCapability,
-} from '../types/walletCapabilityTypes.js';
-import { WalletMcpCapabilityService } from '../services/walletMcpCapabilityService.js';
-import { normalizeWalletClientProfile } from '../services/walletProfileNormalizer.js';
+  WalletMcpCapabilityService,
+  normalizeWalletClientProfile,
+} from '../wallet/index.js';
 import { DiagnosticStatus } from '../constants/index.js';
 
 export type DoctorStatus = 'SUCCESS' | 'WARN' | 'ERROR';

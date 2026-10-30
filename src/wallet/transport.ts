@@ -10,9 +10,10 @@ import {
   type StreamableHTTPClientTransportOptions,
   type Transport,
 } from '@modelcontextprotocol/client';
-
-export const WALLET_MCP_REQUEST_TIMEOUT_MILLISECONDS = 15_000;
-export const WALLET_MCP_LIST_MAX_PAGES = 8;
+import {
+  WALLET_MCP_LIST_MAX_PAGES,
+  WALLET_MCP_REQUEST_TIMEOUT_MILLISECONDS,
+} from './constants.js';
 
 export type WalletMcpSdkClient = Pick<
   Client,
@@ -38,7 +39,7 @@ const WALLET_MCP_CLIENT_INFO: Implementation = {
 /**
  * Owns only official MCP client lifecycle and transport mechanics. Wallet-specific
  * tool policy, response normalization, and mutation outcome classification remain
- * in WalletMcpClientService.
+ * in WalletMcpClient.
  */
 export class WalletMcpTransport {
   private readonly endpoint: URL;

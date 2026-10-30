@@ -25,8 +25,8 @@ import {
 import { setActiveLanguage } from '../src/i18n/index.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
 import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
-import { WalletCacheService } from '../src/services/walletCacheService.js';
-import { WalletMcpClientService } from '../src/services/walletMcpService.js';
+import { WalletCacheService } from '../src/wallet/index.js';
+import { WalletMcpClientService } from '../src/wallet/index.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/types.js';
 
 const fixedReferenceUtc = new Date('2026-09-11T07:15:00.000Z');

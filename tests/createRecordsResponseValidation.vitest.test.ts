@@ -4,7 +4,7 @@ import {
   WalletMcpRequestError,
   isWalletMcpDefinitiveFailure,
   isWalletMcpDispatchOutcomeUnknown,
-} from '../src/services/walletMcpService.js';
+} from '../src/wallet/index.js';
 import { CreateRecordInputPayload, WalletCreateRecordsResponse } from '../src/types/walletTypes.js';
 
 describe('Wallet MCP create_records Response Validation (Issue #146)', () => {

@@ -11,8 +11,8 @@ import {
 } from '../src/utils/transactionHistoryFilterNormalizer.js';
 import { validateSemanticHistoryQueryOptions } from '../src/services/ai/semanticToolBoundary.js';
 import { WalletAccountItem, WalletCategoryItem, WalletRecordItem } from '../src/types/walletTypes.js';
-import { WalletMcpClientService } from '../src/services/walletMcpService.js';
-import { TransactionHistoryService } from '../src/services/transactionHistoryService.js';
+import { WalletMcpClientService } from '../src/wallet/index.js';
+import { TransactionHistoryService } from '../src/wallet/index.js';
 import { FinancialActionExecutor } from '../src/services/financialActionExecutor.js';
 import { FinancialActionRegistry } from '../src/actions/financialActionRegistry.js';
 import { TransactionHistoryActionHandler } from '../src/actions/readActionHandlers.js';

@@ -1,12 +1,10 @@
 import { EmailTransactionDetectedEvent, EmailListenerService } from '../services/emailListenerService.js';
 import { FinancialAiProvider } from '../services/ai/index.js';
-import { WalletCacheService } from '../services/walletCacheService.js';
 import { PendingTransactionService } from '../services/pendingTransactionService.js';
 import { MessagingGatewayService } from '../services/messaging/index.js';
 import { TransactionCorrelationService } from '../services/transactionCorrelationService.js';
-import { WalletMcpClientService } from '../services/walletMcpService.js';
 import { TransactionEvidence } from '../types/transactionCorrelationTypes.js';
-import { WalletRecordItem } from '../types/walletTypes.js';
+import { WalletCacheService, WalletMcpClientService, WalletRecordItem } from '../wallet/index.js';
 import {
   formatPendingEmailTransactionNotification,
   formatEnrichedPendingEmailTransactionNotification,

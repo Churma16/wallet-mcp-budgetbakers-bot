@@ -1,5 +1,5 @@
 import { loadEnvironmentConfiguration } from '../src/config/environmentConfig.js';
-import { WalletMcpClientService } from '../src/services/walletMcpService.js';
+import { WalletMcpClientService } from '../src/wallet/index.js';
 import { GeminiAiProvider } from '../src/services/ai/geminiAiProvider.js';
 import { applicationLogger } from '../src/utils/logger.js';
 

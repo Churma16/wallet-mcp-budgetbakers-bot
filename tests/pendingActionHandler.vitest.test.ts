@@ -4,7 +4,7 @@ import {
   WalletMcpClientService,
   WalletMcpRequestError,
   isWalletMcpDispatchOutcomeUnknown,
-} from '../src/services/walletMcpService.js';
+} from '../src/wallet/index.js';
 import { CreateRecordInputPayload, WalletCreateRecordsResponse } from '../src/types/walletTypes.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
 import { PendingConfirmationIntent } from '../src/utils/fastPathIntentDetector.js';

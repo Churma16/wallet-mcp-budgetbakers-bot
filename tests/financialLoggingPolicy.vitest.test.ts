@@ -5,7 +5,7 @@ import { applicationLogger } from '../src/utils/logger.js';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
 import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
-import { WalletMcpRequestError } from '../src/services/walletMcpService.js';
+import { WalletMcpRequestError } from '../src/wallet/index.js';
 import {
   installFinancialLoggingPolicy,
   isCredentialPropertyKey,

@@ -4,9 +4,9 @@ import {
   WalletMcpRequestError,
   MAX_TRANSACTION_HISTORY_LIMIT,
   MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST,
-} from '../src/services/walletMcpService.js';
-import { TransactionHistoryService } from '../src/services/transactionHistoryService.js';
-import { WalletCacheService } from '../src/services/walletCacheService.js';
+} from '../src/wallet/index.js';
+import { TransactionHistoryService } from '../src/wallet/index.js';
+import { WalletCacheService } from '../src/wallet/index.js';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
 import { detectFastPathAction } from '../src/utils/fastPathIntentDetector.js';
 import { formatTransactionHistoryMessage } from '../src/utils/humanResponseFormatter.js';
@@ -782,7 +782,7 @@ describe('native Wallet MCP text search and compatibility shim (Issue #162)', ()
   // ==========================================================================
   // 6. Live Server Verification (Guarded by WALLET_MCP_ACCESS_TOKEN; skipped in CI)
   // ==========================================================================
-  describe.runIf(Boolean(process.env.WALLET_MCP_ACCESS_TOKEN))(
+  describe.runIf(Boolean(process.env.RUN_LIVE_WALLET_TESTS && process.env.WALLET_MCP_ACCESS_TOKEN))(
     'Live Wallet MCP Server Verification (explicit / non-CI)',
     () => {
       it('confirms live get_records tool schema lacks query but includes counterParty and note', async () => {

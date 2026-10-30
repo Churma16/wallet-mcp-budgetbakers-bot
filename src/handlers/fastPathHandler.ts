@@ -1,8 +1,4 @@
 import { FastPathAction } from '../utils/fastPathIntentDetector.js';
-import { WalletMcpClientService } from '../services/walletMcpService.js';
-import { WalletCacheService } from '../services/walletCacheService.js';
-import { TransactionHistoryService } from '../services/transactionHistoryService.js';
-import { TransactionSummaryService } from '../services/transactionSummaryService.js';
 import { MessagingGatewayService, IncomingUserMessageEvent } from '../services/messaging/index.js';
 import { FinancialActionExecutor } from '../services/financialActionExecutor.js';
 import { PendingTransactionService } from '../services/pendingTransactionService.js';
@@ -16,9 +12,13 @@ import {
   TransactionSummaryActionHandler,
 } from '../actions/index.js';
 import {
+  WalletMcpClientService,
+  WalletCacheService,
+  TransactionHistoryService,
+  TransactionSummaryService,
   TransactionHistoryQueryOptions,
   TransactionSummaryQueryOptions,
-} from '../types/walletTypes.js';
+} from '../wallet/index.js';
 import { applicationLogger } from '../utils/logger.js';
 
 export class FastPathHandler {

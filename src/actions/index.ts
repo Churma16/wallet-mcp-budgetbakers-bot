@@ -1,8 +1,12 @@
 import { FinancialActionExecutor } from '../services/financialActionExecutor.js';
-import { WalletMcpClientService } from '../services/walletMcpService.js';
-import { WalletCacheService } from '../services/walletCacheService.js';
+import {
+  WalletMcpClientService,
+  WalletCacheService,
+  WalletRecordPreparationService,
+} from '../wallet/index.js';
+
 import { MessagingGatewayService } from '../services/messaging/index.js';
-import { WalletRecordPreparationService } from '../services/walletRecordPreparationService.js';
+
 import { AccountClarificationHandler } from '../handlers/accountClarificationHandler.js';
 import { CategoryClarificationHandler } from '../handlers/categoryClarificationHandler.js';
 import { CategoryClarificationConversationService } from '../services/ai/categoryClarificationConversationService.js';

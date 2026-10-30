@@ -32,7 +32,7 @@ import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
 import {
   WalletMcpRequestError,
-} from '../src/services/walletMcpService.js';
+} from '../src/wallet/index.js';
 import {
   CreateRecordInputPayload,
   WalletCreateRecordsResponse,

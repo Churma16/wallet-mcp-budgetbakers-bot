@@ -4,8 +4,15 @@ import {
   ApplicationEnvironmentConfiguration,
   setRuntimeApplicationConfig,
 } from './config/index.js';
-import { WalletMcpClientService } from './services/walletMcpService.js';
-import { WalletCacheService } from './services/walletCacheService.js';
+import {
+  WalletMcpClientService,
+  WalletCacheService,
+  TransactionHistoryService,
+  TransactionSummaryService,
+  WalletMcpCapabilityService,
+  WalletRecordPreparationService,
+} from './wallet/index.js';
+
 import { CategoryContextService } from './services/categoryContextService.js';
 import { CategoryContextValidationResult } from './types/categoryContextTypes.js';
 import {
@@ -28,12 +35,12 @@ import {
   FastPathHandler,
   UserMessageHandler,
 } from './handlers/index.js';
-import { TransactionHistoryService } from './services/transactionHistoryService.js';
-import { TransactionSummaryService } from './services/transactionSummaryService.js';
-import { WalletMcpCapabilityService } from './services/walletMcpCapabilityService.js';
+
+
+
 import { FinancialActionExecutor } from './services/financialActionExecutor.js';
 import { FinancialActionRegistry, createDefaultFinancialActionRegistry } from './actions/index.js';
-import { WalletRecordPreparationService } from './services/walletRecordPreparationService.js';
+
 import { AccountClarificationHandler } from './handlers/accountClarificationHandler.js';
 import { applicationLogger, installConsoleInterceptors, purgeExpiredLogFiles } from './utils/logger.js';
 import { setActiveLanguage } from './i18n/index.js';
