@@ -4,43 +4,47 @@ import {
   TransactionSummaryQueryOptions,
 } from '../types/walletTypes.js';
 import { ExtractedFinancialRecordItem } from '../services/ai/index.js';
+import {
+  FINANCIAL_ACTION_TYPES,
+  RoutingSourceValue,
+} from '../constants/index.js';
 
 export interface BaseFinancialActionContext {
   readonly event: IncomingUserMessageEvent;
   readonly processingStartTimestamp?: number;
-  readonly routingSource?: 'fast-path' | 'ai' | 'direct';
+  readonly routingSource?: RoutingSourceValue;
 }
 
 export interface CheckBalanceActionContext extends BaseFinancialActionContext {
-  readonly action: 'CHECK_BALANCE';
+  readonly action: typeof FINANCIAL_ACTION_TYPES.CHECK_BALANCE;
 }
 
 export interface CheckBudgetActionContext extends BaseFinancialActionContext {
-  readonly action: 'CHECK_BUDGET';
+  readonly action: typeof FINANCIAL_ACTION_TYPES.CHECK_BUDGET;
 }
 
 export interface HelpMenuActionContext extends BaseFinancialActionContext {
-  readonly action: 'HELP_MENU';
+  readonly action: typeof FINANCIAL_ACTION_TYPES.HELP_MENU;
 }
 
 export interface TransactionHistoryActionContext extends BaseFinancialActionContext {
-  readonly action: 'TRANSACTION_HISTORY';
+  readonly action: typeof FINANCIAL_ACTION_TYPES.TRANSACTION_HISTORY;
   readonly queryOptions?: TransactionHistoryQueryOptions;
 }
 
 export interface TransactionSummaryActionContext extends BaseFinancialActionContext {
-  readonly action: 'TRANSACTION_SUMMARY';
+  readonly action: typeof FINANCIAL_ACTION_TYPES.TRANSACTION_SUMMARY;
   readonly summaryOptions: TransactionSummaryQueryOptions;
 }
 
 export interface CreateRecordActionContext extends BaseFinancialActionContext {
-  readonly action: 'CREATE_RECORD';
+  readonly action: typeof FINANCIAL_ACTION_TYPES.CREATE_RECORD;
   readonly records: ExtractedFinancialRecordItem[];
   readonly requestReferenceInstant?: Date;
 }
 
 export interface CheckQueueActionContext extends BaseFinancialActionContext {
-  readonly action: 'CHECK_QUEUE';
+  readonly action: typeof FINANCIAL_ACTION_TYPES.CHECK_QUEUE;
 }
 
 export type FinancialActionContext =

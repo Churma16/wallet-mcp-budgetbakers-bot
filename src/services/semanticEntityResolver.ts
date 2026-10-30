@@ -1,8 +1,11 @@
 import { CategoryContextRule } from '../types/categoryContextTypes.js';
 import { WalletAccountItem, WalletCategoryItem } from '../types/walletTypes.js';
 import { isGenericParentCategory } from './ai/aiPromptBuilder.js';
+import { FILTER_ERROR_REASONS } from '../constants/index.js';
 
-export type SemanticEntityResolutionReason = 'AMBIGUOUS' | 'UNRESOLVED';
+export type SemanticEntityResolutionReason =
+  | typeof FILTER_ERROR_REASONS.AMBIGUOUS
+  | typeof FILTER_ERROR_REASONS.UNRESOLVED;
 
 export interface SemanticEntityCandidate {
   readonly id: string;
@@ -34,7 +37,7 @@ function unique<T extends { id: string }>(items: T[]): T[] {
 function unresolved(hint: string, candidates: SemanticEntityCandidate[] = []): SemanticEntityResolution {
   return {
     status: 'CLARIFICATION_REQUIRED',
-    reason: candidates.length > 1 ? 'AMBIGUOUS' : 'UNRESOLVED',
+    reason: candidates.length > 1 ? FILTER_ERROR_REASONS.AMBIGUOUS : FILTER_ERROR_REASONS.UNRESOLVED,
     hint,
     candidates: candidates.map(candidate => ({ id: candidate.id, name: candidate.name })),
   };

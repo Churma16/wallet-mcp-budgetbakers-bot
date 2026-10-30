@@ -3,22 +3,23 @@ import {
   TransactionSummaryQueryOptions,
 } from '../types/walletTypes.js';
 import { extractHashtags } from './hashtagParser.js';
+import { FINANCIAL_ACTION_TYPES } from '../constants/index.js';
 
 export interface FastPathTransactionHistoryAction {
-  type: 'TRANSACTION_HISTORY';
+  type: typeof FINANCIAL_ACTION_TYPES.TRANSACTION_HISTORY;
   options: TransactionHistoryQueryOptions;
 }
 
 export interface FastPathTransactionSummaryAction {
-  type: 'TRANSACTION_SUMMARY';
+  type: typeof FINANCIAL_ACTION_TYPES.TRANSACTION_SUMMARY;
   options: TransactionSummaryQueryOptions;
 }
 
 export type FastPathAction =
-  | 'CHECK_BALANCE'
-  | 'CHECK_BUDGET'
-  | 'HELP_MENU'
-  | 'CHECK_QUEUE'
+  | typeof FINANCIAL_ACTION_TYPES.CHECK_BALANCE
+  | typeof FINANCIAL_ACTION_TYPES.CHECK_BUDGET
+  | typeof FINANCIAL_ACTION_TYPES.HELP_MENU
+  | typeof FINANCIAL_ACTION_TYPES.CHECK_QUEUE
   | FastPathTransactionHistoryAction
   | FastPathTransactionSummaryAction
   | null;
@@ -410,7 +411,7 @@ function parseTransactionHistoryIntent(userMessageText: string): FastPathTransac
     }
 
     return {
-      type: 'TRANSACTION_HISTORY',
+      type: FINANCIAL_ACTION_TYPES.TRANSACTION_HISTORY,
       options: {
         limit: parsedLimit,
         page: resolvedPage,
@@ -425,7 +426,7 @@ function parseTransactionHistoryIntent(userMessageText: string): FastPathTransac
   if (historyMatch) {
     const rawRemainderLower = historyMatch[1];
     if (!rawRemainderLower || !rawRemainderLower.trim()) {
-      return { type: 'TRANSACTION_HISTORY', options: { sort: 'newest' } };
+      return { type: FINANCIAL_ACTION_TYPES.TRANSACTION_HISTORY, options: { sort: 'newest' } };
     }
 
     const matchPrefixLength = trimmedText.length - rawRemainderLower.length;
@@ -439,7 +440,7 @@ function parseTransactionHistoryIntent(userMessageText: string): FastPathTransac
       hasLeadingScopeWord
     );
     if (parsedOptions) {
-      return { type: 'TRANSACTION_HISTORY', options: parsedOptions };
+      return { type: FINANCIAL_ACTION_TYPES.TRANSACTION_HISTORY, options: parsedOptions };
     }
   }
 
@@ -455,7 +456,7 @@ function parseTransactionHistoryIntent(userMessageText: string): FastPathTransac
         true
       );
       if (parsedSearchOptions) {
-        return { type: 'TRANSACTION_HISTORY', options: parsedSearchOptions };
+        return { type: FINANCIAL_ACTION_TYPES.TRANSACTION_HISTORY, options: parsedSearchOptions };
       }
     }
   }
@@ -623,7 +624,7 @@ function parseTransactionSummaryIntent(userMessageText: string): FastPathTransac
   }
 
   return {
-    type: 'TRANSACTION_SUMMARY',
+    type: FINANCIAL_ACTION_TYPES.TRANSACTION_SUMMARY,
     options: {
       ...summaryFilters,
       groupBy,
@@ -658,23 +659,23 @@ export function detectFastPathAction(userMessageText: string): FastPathAction {
 
   const balancePattern = /^(?:cek|lihat|info|total|check|view|show|my)?\s*(?:saldo|balance|balances|rekening|total\s+saldo|account\s+balance|account\s+balances)(?:\s+(?:saya|rekening|accounts))?$/i;
   if (balancePattern.test(trimmedLowerText)) {
-    return 'CHECK_BALANCE';
+    return FINANCIAL_ACTION_TYPES.CHECK_BALANCE;
   }
 
   const budgetPattern = /^(?:cek|lihat|info|status|check|view|show|my)?\s*(?:budget|budgets|anggaran|sisa\s+budget|status\s+budget|status\s+anggaran|budget\s+status)(?:\s+(?:saya|aktif|active))?$/i;
   if (budgetPattern.test(trimmedLowerText)) {
-    return 'CHECK_BUDGET';
+    return FINANCIAL_ACTION_TYPES.CHECK_BUDGET;
   }
 
   const helpPattern = /^(?:halo|hello|hi|hai|menu|help|bantuan|ping|p|panduan|guide|mulai|start|commands)$/i;
   if (helpPattern.test(trimmedLowerText)) {
-    return 'HELP_MENU';
+    return FINANCIAL_ACTION_TYPES.HELP_MENU;
   }
 
   const queuePattern =
     /^(?:cek|check|lihat|view|status)?\s*(?:antrean|antrian|queue|pending)(?:\s+transaksi)?$|^(?:cek|check|lihat|view)?\s*status(?:\s+(?:transaksi|antrean|antrian|queue))?$/i;
   if (queuePattern.test(trimmedLowerText)) {
-    return 'CHECK_QUEUE';
+    return FINANCIAL_ACTION_TYPES.CHECK_QUEUE;
   }
 
   return null;

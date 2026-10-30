@@ -37,6 +37,7 @@ import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../utils/logger.js';
 import { WalletRecordPreparationService } from '../services/walletRecordPreparationService.js';
 import { TransactionHistoryQueryOptions } from '../types/walletTypes.js';
+import { FINANCIAL_ACTION_TYPES } from '../constants/index.js';
 
 export type SemanticToolAuthorizationResolver = (
   event: IncomingUserMessageEvent
@@ -88,7 +89,7 @@ export function shouldDeferHistoryCategoryToSemanticResolver(
   if (
     !fastPathAction ||
     typeof fastPathAction !== 'object' ||
-    fastPathAction.type !== 'TRANSACTION_HISTORY'
+    fastPathAction.type !== FINANCIAL_ACTION_TYPES.TRANSACTION_HISTORY
   ) {
     return false;
   }
@@ -453,7 +454,7 @@ export class UserMessageHandler {
 
       if (
         event.messageType === 'image' &&
-        extractedIntent.action === 'CREATE_RECORD' &&
+        extractedIntent.action === FINANCIAL_ACTION_TYPES.CREATE_RECORD &&
         (!extractedIntent.records || extractedIntent.records.length === 0)
       ) {
         applicationLogger.warn('Receipt extraction returned CREATE_RECORD with 0 records.');
@@ -486,7 +487,7 @@ export class UserMessageHandler {
           }
 
           if (deferredHistoryFastPathOptions) {
-            if (boundaryDecision.context.action !== 'TRANSACTION_HISTORY') {
+            if (boundaryDecision.context.action !== FINANCIAL_ACTION_TYPES.TRANSACTION_HISTORY) {
               // Deterministic parsing has already established a history
               // request. Semantic fallback may resolve its category only; it
               // cannot broaden authority into a different financial action.

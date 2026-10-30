@@ -16,6 +16,7 @@ import {
   resolveLocalCalendarRange,
 } from './relativeTimeParser.js';
 import { MAX_SEARCH_QUERY_LENGTH } from './transactionSearchMatcher.js';
+import { FILTER_ERROR_REASONS } from '../constants/index.js';
 
 export const SUPPORTED_BUDGETBAKERS_CATEGORY_GROUPS: readonly string[] = [
   'communication_pc',
@@ -692,7 +693,7 @@ function resolveCategoryGroupFilter(
       unresolvedFilterIssues.push({
         filterKey: 'category',
         rawValue: rawCategoryHint,
-        reason: 'UNSUPPORTED',
+        reason: FILTER_ERROR_REASONS.UNSUPPORTED,
         message: `Grup kategori "${matchedGroup.name}" memiliki ${matchedGroup.categoryIds.length} kategori, melebihi batas maksimal ${MAX_GROUP_CATEGORIES_LIMIT} kategori per permintaan.`,
       });
       return {};
@@ -716,7 +717,7 @@ function resolveCategoryGroupFilter(
     unresolvedFilterIssues.push({
       filterKey: 'category',
       rawValue: rawCategoryHint,
-      reason: 'UNRESOLVED',
+      reason: FILTER_ERROR_REASONS.UNRESOLVED,
       candidates: candidateNames,
       subType: 'name',
       message: `Grup kategori "${rawCategoryHint}" ambigu. Kandidat: ${candidateNames.join(', ')}.`,
@@ -755,7 +756,7 @@ function resolveCategoryGroupFilter(
         unresolvedFilterIssues.push({
           filterKey: 'category',
           rawValue: rawCategoryHint,
-          reason: 'UNSUPPORTED',
+          reason: FILTER_ERROR_REASONS.UNSUPPORTED,
           message: `Kategori yang cocok melebihi batas maksimal ${MAX_GROUP_CATEGORIES_LIMIT} kategori per permintaan.`,
         });
         return {};
@@ -774,7 +775,7 @@ function resolveCategoryGroupFilter(
   unresolvedFilterIssues.push({
     filterKey: 'category',
     rawValue: rawCategoryHint,
-    reason: 'NOT_FOUND',
+    reason: FILTER_ERROR_REASONS.NOT_FOUND,
     message: isExplicitGroup
       ? `Grup kategori "${rawCategoryHint}" tidak ditemukan dalam daftar kategori Wallet Anda.`
       : `Kategori "${rawCategoryHint}" tidak ditemukan dalam daftar kategori Wallet Anda.`,
@@ -856,7 +857,7 @@ export function normalizeTransactionHistoryFilters(
         unresolvedFilterIssues.push({
           filterKey: 'account',
           rawValue: trimmedAccountHint,
-          reason: 'UNRESOLVED',
+          reason: FILTER_ERROR_REASONS.UNRESOLVED,
           subType: 'name',
           message: `Akun "${trimmedAccountHint}" ambigu. Ditemukan beberapa akun dengan nama yang sama.`,
         });
@@ -880,7 +881,7 @@ export function normalizeTransactionHistoryFilters(
           unresolvedFilterIssues.push({
             filterKey: 'account',
             rawValue: trimmedAccountHint,
-            reason: 'UNRESOLVED',
+            reason: FILTER_ERROR_REASONS.UNRESOLVED,
             candidates: candidateNames,
             subType: 'name',
             message: `Akun "${trimmedAccountHint}" ambigu. Kandidat: ${candidateNames.join(', ')}.`,
@@ -911,7 +912,7 @@ export function normalizeTransactionHistoryFilters(
             unresolvedFilterIssues.push({
               filterKey: 'account',
               rawValue: trimmedAccountHint,
-              reason: 'UNRESOLVED',
+              reason: FILTER_ERROR_REASONS.UNRESOLVED,
               candidates: candidateNames,
               subType: 'bank_account',
               message: `Nomor rekening "${trimmedAccountHint}" ambigu. Kandidat: ${candidateNames.join(', ')}.`,
@@ -920,7 +921,7 @@ export function normalizeTransactionHistoryFilters(
             unresolvedFilterIssues.push({
               filterKey: 'account',
               rawValue: trimmedAccountHint,
-              reason: 'NOT_FOUND',
+              reason: FILTER_ERROR_REASONS.NOT_FOUND,
               message: `Akun "${trimmedAccountHint}" tidak ditemukan dalam daftar akun Wallet Anda.`,
             });
           }
@@ -956,7 +957,7 @@ export function normalizeTransactionHistoryFilters(
         unresolvedFilterIssues.push({
           filterKey: 'category',
           rawValue: `${rawCategoryId.length} kategori`,
-          reason: 'UNSUPPORTED',
+          reason: FILTER_ERROR_REASONS.UNSUPPORTED,
           message: `Daftar kategori melebihi batas maksimal ${MAX_GROUP_CATEGORIES_LIMIT} kategori.`,
         });
       } else {
@@ -1025,7 +1026,7 @@ export function normalizeTransactionHistoryFilters(
           unresolvedFilterIssues.push({
             filterKey: 'category',
             rawValue: trimmedCategoryHint,
-            reason: 'UNRESOLVED',
+            reason: FILTER_ERROR_REASONS.UNRESOLVED,
             candidates: candidateNames,
             subType: 'name',
             message: `Kategori "${trimmedCategoryHint}" ambigu. Ditemukan beberapa kategori dengan nama yang sama: ${candidateNames.join(', ')}.`,
@@ -1062,7 +1063,7 @@ export function normalizeTransactionHistoryFilters(
             unresolvedFilterIssues.push({
               filterKey: 'category',
               rawValue: trimmedCategoryHint,
-              reason: 'UNRESOLVED',
+              reason: FILTER_ERROR_REASONS.UNRESOLVED,
               candidates: candidateNames,
               subType: 'name',
               message: `Kategori "${trimmedCategoryHint}" ambigu. Kandidat: ${candidateNames.join(', ')}.`,
@@ -1088,7 +1089,7 @@ export function normalizeTransactionHistoryFilters(
                 unresolvedFilterIssues.push({
                   filterKey: 'category',
                   rawValue: trimmedCategoryHint,
-                  reason: 'UNRESOLVED',
+                  reason: FILTER_ERROR_REASONS.UNRESOLVED,
                   candidates: candidateNames,
                   subType: 'name',
                   message: `Kategori "${trimmedCategoryHint}" ambigu. Kandidat: ${candidateNames.join(', ')}.`,
@@ -1099,7 +1100,7 @@ export function normalizeTransactionHistoryFilters(
               unresolvedFilterIssues.push({
                 filterKey: 'category',
                 rawValue: trimmedCategoryHint,
-                reason: 'UNRESOLVED',
+                reason: FILTER_ERROR_REASONS.UNRESOLVED,
                 candidates: candidateNames,
                 subType: 'name',
                 message: `Grup kategori "${trimmedCategoryHint}" ambigu. Kandidat: ${candidateNames.join(', ')}.`,
@@ -1127,7 +1128,7 @@ export function normalizeTransactionHistoryFilters(
                 unresolvedFilterIssues.push({
                   filterKey: 'category',
                   rawValue: trimmedCategoryHint,
-                  reason: 'NOT_FOUND',
+                  reason: FILTER_ERROR_REASONS.NOT_FOUND,
                   message: `Kategori "${trimmedCategoryHint}" tidak ditemukan dalam daftar kategori Wallet Anda.`,
                 });
               }
@@ -1135,7 +1136,7 @@ export function normalizeTransactionHistoryFilters(
               unresolvedFilterIssues.push({
                 filterKey: 'category',
                 rawValue: trimmedCategoryHint,
-                reason: 'NOT_FOUND',
+                reason: FILTER_ERROR_REASONS.NOT_FOUND,
                 message: `Kategori "${trimmedCategoryHint}" tidak ditemukan dalam daftar kategori Wallet Anda.`,
               });
             }
@@ -1174,7 +1175,7 @@ export function normalizeTransactionHistoryFilters(
       unresolvedFilterIssues.push({
         filterKey: 'recordType',
         rawValue: rawRecordType,
-        reason: 'INVALID_FORMAT',
+        reason: FILTER_ERROR_REASONS.INVALID_FORMAT,
         message: `Tipe transaksi "${rawRecordType}" tidak valid. Gunakan 'expense' (pengeluaran) atau 'income' (pemasukan).`,
       });
     }
@@ -1213,7 +1214,7 @@ export function normalizeTransactionHistoryFilters(
         unresolvedFilterIssues.push({
           filterKey: 'dateRange',
           rawValue: token,
-          reason: 'INVALID_FORMAT',
+          reason: FILTER_ERROR_REASONS.INVALID_FORMAT,
           subType: 'operator_prefix',
           message: `Format filter tanggal "${token}" tidak valid. Gunakan prefix operator: eq., gt., gte., lt., atau lte.`,
         });
@@ -1224,7 +1225,7 @@ export function normalizeTransactionHistoryFilters(
         unresolvedFilterIssues.push({
           filterKey: 'dateRange',
           rawValue: token,
-          reason: 'INVALID_FORMAT',
+          reason: FILTER_ERROR_REASONS.INVALID_FORMAT,
           subType: 'calendar_date',
           message: `Tanggal "${rawDatePortion}" tidak valid atau bukan tanggal kalender yang valid.`,
         });
@@ -1369,7 +1370,7 @@ export function normalizeTransactionHistoryFilters(
         unresolvedFilterIssues.push({
           filterKey: 'dateRange',
           rawValue: rawArray.join(' '),
-          reason: 'INVALID_RANGE',
+          reason: FILTER_ERROR_REASONS.INVALID_RANGE,
           subType: 'start_after_end',
           message: `Rentang tanggal tidak valid: batas awal tidak boleh lebih besar dari batas akhir.`,
         });
@@ -1469,7 +1470,7 @@ export function normalizeTransactionHistoryFilters(
         unresolvedFilterIssues.push({
           filterKey: 'dateRange',
           rawValue: trimmedFrom,
-          reason: 'INVALID_FORMAT',
+          reason: FILTER_ERROR_REASONS.INVALID_FORMAT,
           subType: 'calendar_date',
           message: `Tanggal mulai "${trimmedFrom}" tidak valid atau bukan tanggal kalender yang valid.`,
         });
@@ -1479,7 +1480,7 @@ export function normalizeTransactionHistoryFilters(
         unresolvedFilterIssues.push({
           filterKey: 'dateRange',
           rawValue: trimmedTo,
-          reason: 'INVALID_FORMAT',
+          reason: FILTER_ERROR_REASONS.INVALID_FORMAT,
           subType: 'calendar_date',
           message: `Tanggal akhir "${trimmedTo}" tidak valid atau bukan tanggal kalender yang valid.`,
         });
@@ -1510,7 +1511,7 @@ export function normalizeTransactionHistoryFilters(
             unresolvedFilterIssues.push({
               filterKey: 'dateRange',
               rawValue: `${trimmedFrom} - ${trimmedTo}`,
-              reason: 'INVALID_RANGE',
+              reason: FILTER_ERROR_REASONS.INVALID_RANGE,
               subType: 'start_after_end',
               message: `Rentang tanggal tidak valid: tanggal mulai (${trimmedFrom}) tidak boleh lebih besar dari tanggal akhir (${trimmedTo}).`,
             });
@@ -1567,7 +1568,7 @@ export function normalizeTransactionHistoryFilters(
       unresolvedFilterIssues.push({
         filterKey: 'searchQuery',
         rawValue: String(queryOptions.searchQuery),
-        reason: 'INVALID_FORMAT',
+        reason: FILTER_ERROR_REASONS.INVALID_FORMAT,
         message: 'Kata kunci pencarian harus berupa teks.',
       });
     } else {
@@ -1576,14 +1577,14 @@ export function normalizeTransactionHistoryFilters(
         unresolvedFilterIssues.push({
           filterKey: 'searchQuery',
           rawValue: queryOptions.searchQuery,
-          reason: 'INVALID_FORMAT',
+          reason: FILTER_ERROR_REASONS.INVALID_FORMAT,
           message: 'Kata kunci pencarian tidak boleh kosong.',
         });
       } else if (trimmedSearchQuery.length > MAX_SEARCH_QUERY_LENGTH) {
         unresolvedFilterIssues.push({
           filterKey: 'searchQuery',
           rawValue: queryOptions.searchQuery,
-          reason: 'INVALID_FORMAT',
+          reason: FILTER_ERROR_REASONS.INVALID_FORMAT,
           message: `Kata kunci pencarian terlalu panjang (maksimal ${MAX_SEARCH_QUERY_LENGTH} karakter).`,
         });
       } else {

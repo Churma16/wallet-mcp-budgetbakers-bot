@@ -18,6 +18,7 @@ import {
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../utils/logger.js';
 import { CategoryContextService } from '../services/categoryContextService.js';
+import { FINANCIAL_ACTION_TYPES } from '../constants/index.js';
 
 function formatAccountResolutionIssueMessage(issue: AccountResolutionIssue): string {
   const dictionary = getDictionary();
@@ -37,8 +38,8 @@ function formatAccountResolutionIssueMessage(issue: AccountResolutionIssue): str
  * account clarification drafting, hashtag association, label resolution,
  * Wallet MCP dispatch, and user confirmation response.
  */
-export class CreateRecordActionHandler implements FinancialActionHandler<'CREATE_RECORD'> {
-  public readonly action = 'CREATE_RECORD' as const;
+export class CreateRecordActionHandler implements FinancialActionHandler<typeof FINANCIAL_ACTION_TYPES.CREATE_RECORD> {
+  public readonly action = FINANCIAL_ACTION_TYPES.CREATE_RECORD;
 
   private readonly categoryClarificationConversationService: CategoryClarificationConversationService;
 

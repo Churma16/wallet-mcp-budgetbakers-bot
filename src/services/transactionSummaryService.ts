@@ -20,6 +20,7 @@ import {
 } from '../types/walletTypes.js';
 import { normalizeTransactionHistoryFilters } from '../utils/transactionHistoryFilterNormalizer.js';
 import { applicationLogger } from '../utils/logger.js';
+import { WALLET_MCP_TOOL_NAMES } from '../constants/index.js';
 
 const SUMMARY_PAGE_SIZE = 50;
 const MAX_SUMMARY_PAGES = 200;
@@ -210,7 +211,7 @@ export class TransactionSummaryService {
   ): Promise<TransactionSummaryResult> {
     const hasProvenSearchGap = Boolean(queryOptions.searchQuery);
     const isAggregationSupported = this.capabilityService
-      ? this.capabilityService.supportsTool('get_records_aggregation') !== false
+      ? this.capabilityService.supportsTool(WALLET_MCP_TOOL_NAMES.GET_RECORDS_AGGREGATION) !== false
       : true;
 
     if (this.walletMcpClient && !hasProvenSearchGap && isAggregationSupported) {
@@ -219,7 +220,7 @@ export class TransactionSummaryService {
       } catch (aggregationError) {
         if (this.capabilityService && isWalletMcpCapabilityRejection(aggregationError)) {
           this.capabilityService.markToolRejection(
-            'get_records_aggregation',
+            WALLET_MCP_TOOL_NAMES.GET_RECORDS_AGGREGATION,
             aggregationError instanceof Error ? aggregationError.message : String(aggregationError)
           );
         }

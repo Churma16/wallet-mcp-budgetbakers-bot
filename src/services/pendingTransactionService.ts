@@ -1,5 +1,9 @@
 import type { SupportedMessengerChannel } from './messaging/types.js';
 import type { CreateRecordInputPayload } from '../types/walletTypes.js';
+import {
+  TicketDispatchState,
+  type InternalTransactionTypeValue,
+} from '../constants/index.js';
 
 export interface PendingTransactionItem {
   ticketId: number;
@@ -8,7 +12,7 @@ export interface PendingTransactionItem {
   accountNameHint: string;
   counterParty: string;
   amount: number; // negative for expense, positive for income
-  transactionType: 'EXPENSE' | 'INCOME' | 'TRANSFER';
+  transactionType: InternalTransactionTypeValue;
   destinationAccountNameHint?: string;
   matchedAccountId: string;
   matchedDestinationAccountId?: string;
@@ -51,7 +55,10 @@ export interface PendingAccountSelectionDraft {
   expiresAt: Date;
 }
 
-export type PendingTransactionDispatchState = 'PENDING' | 'PROCESSING' | 'UNKNOWN';
+export type PendingTransactionDispatchState =
+  | TicketDispatchState.Pending
+  | TicketDispatchState.Processing
+  | TicketDispatchState.Unknown;
 
 type AccountSelectionDraftUpdate = Partial<Pick<
   PendingAccountSelectionDraft,
@@ -119,7 +126,7 @@ export class PendingTransactionService {
     };
 
     this.pendingTransactionMap.set(ticketId, pendingItem);
-    this.dispatchStateMap.set(ticketId, 'PENDING');
+    this.dispatchStateMap.set(ticketId, TicketDispatchState.Pending);
     return pendingItem;
   }
 
@@ -152,7 +159,7 @@ export class PendingTransactionService {
     };
 
     this.pendingAccountSelectionDraftMap.set(ticketId, pendingDraft);
-    this.dispatchStateMap.set(ticketId, 'PENDING');
+    this.dispatchStateMap.set(ticketId, TicketDispatchState.Pending);
     return pendingDraft;
   }
 
@@ -182,7 +189,7 @@ export class PendingTransactionService {
     };
 
     this.pendingCategorySelectionDraftMap.set(ticketId, pendingDraft);
-    this.dispatchStateMap.set(ticketId, 'PENDING');
+    this.dispatchStateMap.set(ticketId, TicketDispatchState.Pending);
     return pendingDraft;
   }
 
@@ -221,20 +228,20 @@ export class PendingTransactionService {
   public claimPendingCategorySelectionDraft(ticketId: number): PendingCategorySelectionDraft | undefined {
     this.purgeExpiredTransactions();
     const draft = this.pendingCategorySelectionDraftMap.get(ticketId);
-    if (!draft || this.dispatchStateMap.get(ticketId) !== 'PENDING') {
+    if (!draft || this.dispatchStateMap.get(ticketId) !== TicketDispatchState.Pending) {
       return undefined;
     }
 
-    this.dispatchStateMap.set(ticketId, 'PROCESSING');
+    this.dispatchStateMap.set(ticketId, TicketDispatchState.Processing);
     return draft;
   }
 
   public releaseProcessingCategorySelectionDraft(ticketId: number): void {
     if (
       this.pendingCategorySelectionDraftMap.has(ticketId) &&
-      this.dispatchStateMap.get(ticketId) === 'PROCESSING'
+      this.dispatchStateMap.get(ticketId) === TicketDispatchState.Processing
     ) {
-      this.dispatchStateMap.set(ticketId, 'PENDING');
+      this.dispatchStateMap.set(ticketId, TicketDispatchState.Pending);
     }
   }
 
@@ -264,7 +271,7 @@ export class PendingTransactionService {
 
   public markPendingCategorySelectionDraftUnknown(ticketId: number): void {
     if (this.pendingCategorySelectionDraftMap.has(ticketId)) {
-      this.dispatchStateMap.set(ticketId, 'UNKNOWN');
+      this.dispatchStateMap.set(ticketId, TicketDispatchState.Unknown);
     }
   }
 
@@ -310,7 +317,7 @@ export class PendingTransactionService {
     ticketId: number
   ): PendingCategorySelectionDraft | undefined {
     const draft = this.pendingCategorySelectionDraftMap.get(ticketId);
-    if (!draft || this.dispatchStateMap.get(ticketId) !== 'PENDING') {
+    if (!draft || this.dispatchStateMap.get(ticketId) !== TicketDispatchState.Pending) {
       return undefined;
     }
 
@@ -363,7 +370,7 @@ export class PendingTransactionService {
   public getOldestPendingTransaction(): PendingTransactionItem | undefined {
     this.purgeExpiredTransactions();
     for (const [ticketId, item] of this.pendingTransactionMap.entries()) {
-      if (this.dispatchStateMap.get(ticketId) === 'PENDING') {
+      if (this.dispatchStateMap.get(ticketId) === TicketDispatchState.Pending) {
         return item;
       }
     }
@@ -399,22 +406,22 @@ export class PendingTransactionService {
   public claimPendingTransaction(ticketId: number): PendingTransactionItem | undefined {
     this.purgeExpiredTransactions();
     const item = this.pendingTransactionMap.get(ticketId);
-    if (!item || this.dispatchStateMap.get(ticketId) !== 'PENDING') {
+    if (!item || this.dispatchStateMap.get(ticketId) !== TicketDispatchState.Pending) {
       return undefined;
     }
 
-    this.dispatchStateMap.set(ticketId, 'PROCESSING');
+    this.dispatchStateMap.set(ticketId, TicketDispatchState.Processing);
     return item;
   }
 
   public claimPendingAccountSelectionDraft(ticketId: number): PendingAccountSelectionDraft | undefined {
     this.purgeExpiredTransactions();
     const draft = this.pendingAccountSelectionDraftMap.get(ticketId);
-    if (!draft || this.dispatchStateMap.get(ticketId) !== 'PENDING') {
+    if (!draft || this.dispatchStateMap.get(ticketId) !== TicketDispatchState.Pending) {
       return undefined;
     }
 
-    this.dispatchStateMap.set(ticketId, 'PROCESSING');
+    this.dispatchStateMap.set(ticketId, TicketDispatchState.Processing);
     return draft;
   }
 
@@ -426,8 +433,8 @@ export class PendingTransactionService {
     const claimedItems: PendingTransactionItem[] = [];
 
     for (const [ticketId, item] of this.pendingTransactionMap.entries()) {
-      if (this.dispatchStateMap.get(ticketId) === 'PENDING') {
-        this.dispatchStateMap.set(ticketId, 'PROCESSING');
+      if (this.dispatchStateMap.get(ticketId) === TicketDispatchState.Pending) {
+        this.dispatchStateMap.set(ticketId, TicketDispatchState.Processing);
         claimedItems.push(item);
       }
     }
@@ -444,8 +451,8 @@ export class PendingTransactionService {
 
     for (let index = entries.length - 1; index >= 0; index--) {
       const [ticketId, item] = entries[index];
-      if (this.dispatchStateMap.get(ticketId) === 'PENDING') {
-        this.dispatchStateMap.set(ticketId, 'PROCESSING');
+      if (this.dispatchStateMap.get(ticketId) === TicketDispatchState.Pending) {
+        this.dispatchStateMap.set(ticketId, TicketDispatchState.Processing);
         return item;
       }
     }
@@ -461,8 +468,8 @@ export class PendingTransactionService {
   public claimOldestPendingTransaction(): PendingTransactionItem | undefined {
     this.purgeExpiredTransactions();
     for (const [ticketId, item] of this.pendingTransactionMap.entries()) {
-      if (this.dispatchStateMap.get(ticketId) === 'PENDING') {
-        this.dispatchStateMap.set(ticketId, 'PROCESSING');
+      if (this.dispatchStateMap.get(ticketId) === TicketDispatchState.Pending) {
+        this.dispatchStateMap.set(ticketId, TicketDispatchState.Processing);
         return item;
       }
     }
@@ -476,18 +483,18 @@ export class PendingTransactionService {
   public releaseProcessingTransaction(ticketId: number): void {
     if (
       this.pendingTransactionMap.has(ticketId) &&
-      this.dispatchStateMap.get(ticketId) === 'PROCESSING'
+      this.dispatchStateMap.get(ticketId) === TicketDispatchState.Processing
     ) {
-      this.dispatchStateMap.set(ticketId, 'PENDING');
+      this.dispatchStateMap.set(ticketId, TicketDispatchState.Pending);
     }
   }
 
   public releaseProcessingAccountSelectionDraft(ticketId: number): void {
     if (
       this.pendingAccountSelectionDraftMap.has(ticketId) &&
-      this.dispatchStateMap.get(ticketId) === 'PROCESSING'
+      this.dispatchStateMap.get(ticketId) === TicketDispatchState.Processing
     ) {
-      this.dispatchStateMap.set(ticketId, 'PENDING');
+      this.dispatchStateMap.set(ticketId, TicketDispatchState.Pending);
     }
   }
 
@@ -524,7 +531,7 @@ export class PendingTransactionService {
     update: Partial<PendingTransactionItem>
   ): PendingTransactionItem | undefined {
     const existingItem = this.pendingTransactionMap.get(ticketId);
-    if (!existingItem || this.dispatchStateMap.get(ticketId) !== 'PENDING') {
+    if (!existingItem || this.dispatchStateMap.get(ticketId) !== TicketDispatchState.Pending) {
       return undefined;
     }
 
@@ -568,13 +575,13 @@ export class PendingTransactionService {
    */
   public markPendingTransactionUnknown(ticketId: number): void {
     if (this.pendingTransactionMap.has(ticketId)) {
-      this.dispatchStateMap.set(ticketId, 'UNKNOWN');
+      this.dispatchStateMap.set(ticketId, TicketDispatchState.Unknown);
     }
   }
 
   public markPendingAccountSelectionDraftUnknown(ticketId: number): void {
     if (this.pendingAccountSelectionDraftMap.has(ticketId)) {
-      this.dispatchStateMap.set(ticketId, 'UNKNOWN');
+      this.dispatchStateMap.set(ticketId, TicketDispatchState.Unknown);
     }
   }
 
@@ -585,24 +592,24 @@ export class PendingTransactionService {
   public reopenUnknownTransactionAsPending(ticketId: number): boolean {
     if (
       this.pendingTransactionMap.has(ticketId) &&
-      this.dispatchStateMap.get(ticketId) === 'UNKNOWN'
+      this.dispatchStateMap.get(ticketId) === TicketDispatchState.Unknown
     ) {
-      this.dispatchStateMap.set(ticketId, 'PENDING');
+      this.dispatchStateMap.set(ticketId, TicketDispatchState.Pending);
       return true;
     }
 
     if (
       this.pendingAccountSelectionDraftMap.has(ticketId) &&
-      this.dispatchStateMap.get(ticketId) === 'UNKNOWN'
+      this.dispatchStateMap.get(ticketId) === TicketDispatchState.Unknown
     ) {
-      this.dispatchStateMap.set(ticketId, 'PENDING');
+      this.dispatchStateMap.set(ticketId, TicketDispatchState.Pending);
       return true;
     }
     if (
       this.pendingCategorySelectionDraftMap.has(ticketId) &&
-      this.dispatchStateMap.get(ticketId) === 'UNKNOWN'
+      this.dispatchStateMap.get(ticketId) === TicketDispatchState.Unknown
     ) {
-      this.dispatchStateMap.set(ticketId, 'PENDING');
+      this.dispatchStateMap.set(ticketId, TicketDispatchState.Pending);
       return true;
     }
 
@@ -612,14 +619,14 @@ export class PendingTransactionService {
   public getUncertainTransactions(): PendingTransactionItem[] {
     this.purgeExpiredTransactions();
     return Array.from(this.pendingTransactionMap.values()).filter(
-      item => this.dispatchStateMap.get(item.ticketId) === 'UNKNOWN'
+      item => this.dispatchStateMap.get(item.ticketId) === TicketDispatchState.Unknown
     );
   }
 
   public getUncertainAccountSelectionDrafts(): PendingAccountSelectionDraft[] {
     this.purgeExpiredTransactions();
     return Array.from(this.pendingAccountSelectionDraftMap.values()).filter(
-      draft => this.dispatchStateMap.get(draft.ticketId) === 'UNKNOWN'
+      draft => this.dispatchStateMap.get(draft.ticketId) === TicketDispatchState.Unknown
     );
   }
 
@@ -715,7 +722,7 @@ export class PendingTransactionService {
    */
   public rejectPendingTransaction(ticketId: number): PendingTransactionItem | undefined {
     const item = this.pendingTransactionMap.get(ticketId);
-    if (!item || this.dispatchStateMap.get(ticketId) !== 'PENDING') {
+    if (!item || this.dispatchStateMap.get(ticketId) !== TicketDispatchState.Pending) {
       return undefined;
     }
 
@@ -727,7 +734,7 @@ export class PendingTransactionService {
     ticketId: number
   ): PendingAccountSelectionDraft | undefined {
     const draft = this.pendingAccountSelectionDraftMap.get(ticketId);
-    if (!draft || this.dispatchStateMap.get(ticketId) !== 'PENDING') {
+    if (!draft || this.dispatchStateMap.get(ticketId) !== TicketDispatchState.Pending) {
       return undefined;
     }
 
@@ -742,7 +749,7 @@ export class PendingTransactionService {
     const rejectedItems: PendingTransactionItem[] = [];
 
     for (const [ticketId, item] of Array.from(this.pendingTransactionMap.entries())) {
-      if (this.dispatchStateMap.get(ticketId) === 'PENDING') {
+      if (this.dispatchStateMap.get(ticketId) === TicketDispatchState.Pending) {
         rejectedItems.push(item);
         this.removeTicketMetadata(ticketId);
       }
@@ -760,7 +767,7 @@ export class PendingTransactionService {
     for (const [ticketId, item] of this.pendingTransactionMap.entries()) {
       if (
         item.expiresAt.getTime() < currentTime &&
-        this.dispatchStateMap.get(ticketId) === 'PENDING'
+        this.dispatchStateMap.get(ticketId) === TicketDispatchState.Pending
       ) {
         this.removeTicketMetadata(ticketId);
       }
@@ -769,7 +776,7 @@ export class PendingTransactionService {
     for (const [ticketId, draft] of this.pendingAccountSelectionDraftMap.entries()) {
       if (
         draft.expiresAt.getTime() < currentTime &&
-        this.dispatchStateMap.get(ticketId) === 'PENDING'
+        this.dispatchStateMap.get(ticketId) === TicketDispatchState.Pending
       ) {
         this.removeTicketMetadata(ticketId);
       }
@@ -777,7 +784,7 @@ export class PendingTransactionService {
     for (const [ticketId, draft] of this.pendingCategorySelectionDraftMap.entries()) {
       if (
         draft.expiresAt.getTime() < currentTime &&
-        this.dispatchStateMap.get(ticketId) === 'PENDING'
+        this.dispatchStateMap.get(ticketId) === TicketDispatchState.Pending
       ) {
         this.removeTicketMetadata(ticketId);
       }
@@ -791,7 +798,7 @@ export class PendingTransactionService {
   }
 
   public isTicketProcessing(ticketId: number): boolean {
-    return this.dispatchStateMap.get(ticketId) === 'PROCESSING';
+    return this.dispatchStateMap.get(ticketId) === TicketDispatchState.Processing;
   }
 
   public wasTicketRecentlyResolved(ticketId: number): boolean {

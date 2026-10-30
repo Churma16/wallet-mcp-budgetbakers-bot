@@ -5,6 +5,10 @@ import {
   WalletCategoryItem,
 } from '../../types/walletTypes.js';
 import { GateEvaluationResult } from '../../utils/emailGateEvaluator.js';
+import {
+  FinancialActionTypeValue,
+  InternalTransactionTypeValue,
+} from '../../constants/index.js';
 import { PendingAccountSelectionCandidate } from '../pendingTransactionService.js';
 
 export interface AccountClarificationQuestionContext {
@@ -57,7 +61,7 @@ export interface ExtractedFinancialRecordItem {
 }
 
 export interface ExtractedFinancialIntent {
-  action: 'CREATE_RECORD' | 'CHECK_BUDGET' | 'CHECK_BALANCE' | 'TRANSACTION_HISTORY' | 'GENERAL_REPLY' | 'RECORD_EXPENSE' | 'RECORD_INCOME' | 'RECORD_TRANSFER';
+  action: FinancialActionTypeValue | 'GENERAL_REPLY' | 'RECORD_EXPENSE' | 'RECORD_INCOME' | 'RECORD_TRANSFER';
   records?: ExtractedFinancialRecordItem[];
   queryOptions?: TransactionHistoryQueryOptions;
   explanation?: string;
@@ -66,7 +70,7 @@ export interface ExtractedFinancialIntent {
 
 export interface ExtractedEmailTransactionData {
   isTransaction: boolean;
-  transactionType: 'EXPENSE' | 'INCOME' | 'TRANSFER';
+  transactionType: InternalTransactionTypeValue;
   amount: number;
   counterParty: string;
   accountNameHint: string;
