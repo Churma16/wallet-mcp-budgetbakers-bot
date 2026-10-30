@@ -39,6 +39,12 @@ function extractMarkdownCodeFenceContent(rawText: string): string | null {
 
 /**
  * Dedicated error class for AI response extraction and parsing failures.
+ *
+ * Core Purpose & Responsibility:
+ * Represents unrecoverable or malformed JSON extraction failures from AI provider responses.
+ *
+ * Architectural Role:
+ * Thrown by jsonExtraction helpers and handled by providerWorkflow and humanResponseFormatter.
  */
 export class AiResponseParseError extends Error {
   constructor(
