@@ -1,6 +1,6 @@
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
 import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
-import { AccountClarificationConversationService } from '../src/services/ai/accountClarificationConversationService.js';
+import { AccountClarificationConversationService } from '../src/brain/index.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
@@ -13,21 +13,21 @@ import {
   AccountClarificationProposal,
   AccountClarificationQuestionContext,
   FinancialAiProvider,
-} from '../src/services/ai/financialAiProvider.js';
+} from '../src/brain/index.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { applicationLogger } from '../src/utils/logger.js';
-import { GeminiAiProvider } from '../src/services/ai/geminiAiProvider.js';
-import { OpenAiCompatibleAiProvider } from '../src/services/ai/openAiCompatibleAiProvider.js';
-import { FallbackAiProvider } from '../src/services/ai/fallbackAiProvider.js';
+import { GeminiAiProvider } from '../src/brain/index.js';
+import { OpenAiCompatibleAiProvider } from '../src/brain/index.js';
+import { FallbackAiProvider } from '../src/brain/index.js';
 import {
   parseClarificationQuestionResponse,
   parseClarificationProposalResponse,
-} from '../src/services/ai/jsonExtractionHelper.js';
+} from '../src/brain/index.js';
 import {
   buildAccountClarificationQuestionPrompt,
   buildAccountClarificationReplyPrompt,
-} from '../src/services/ai/aiPromptBuilder.js';
+} from '../src/brain/index.js';
 import {
   composeClarificationMessage,
   formatDeterministicCandidateSection,

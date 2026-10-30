@@ -42,7 +42,7 @@ import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
 import {
   detectFastPathAction,
   detectReconciliationAction,
-} from '../src/utils/fastPathIntentDetector.js';
+} from '../src/brain/index.js';
 import { CheckQueueActionHandler } from '../src/actions/readActionHandlers.js';
 import {
   formatAccountSelectionPrompt,

@@ -14,7 +14,7 @@ import {
   getPreviousLocalDateString,
   resolveLocalCalendarDayRange,
   resolveLocalCalendarRange,
-} from './relativeTimeParser.js';
+} from '../brain/index.js';
 import { MAX_SEARCH_QUERY_LENGTH } from './transactionSearchMatcher.js';
 import { FILTER_ERROR_REASONS } from '../constants/index.js';
 

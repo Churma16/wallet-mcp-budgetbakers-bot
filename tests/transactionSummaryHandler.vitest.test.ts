@@ -4,7 +4,7 @@ import { TransactionHistoryService } from '../src/wallet/index.js';
 import { TransactionSummaryService } from '../src/wallet/index.js';
 import { WalletMcpClientService } from '../src/wallet/index.js';
 import { WalletCacheService } from '../src/wallet/index.js';
-import { detectFastPathAction } from '../src/utils/fastPathIntentDetector.js';
+import { detectFastPathAction } from '../src/brain/index.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import type {
   TransactionSummaryQueryOptions,

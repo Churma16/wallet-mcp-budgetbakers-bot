@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { detectFastPathAction } from '../src/utils/fastPathIntentDetector.js';
+import { detectFastPathAction } from '../src/brain/index.js';
 import { formatTransactionSummaryMessage } from '../src/utils/transactionSummaryFormatter.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import type {

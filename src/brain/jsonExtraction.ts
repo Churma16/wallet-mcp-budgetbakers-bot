@@ -1,16 +1,15 @@
-import { applicationLogger } from '../../utils/logger.js';
-import { parseFinancialAmount } from '../../utils/financialAmountParser.js';
-import { FINANCIAL_ACTION_TYPES } from '../../constants/index.js';
+import { applicationLogger } from '../utils/logger.js';
+import { parseFinancialAmount } from './parsers/amountParser.js';
+import { FINANCIAL_ACTION_TYPES } from './constants.js';
 import type {
   ExtractedFinancialIntent,
   ExtractedFinancialRecordItem,
   AccountClarificationProposal,
   TokenUsageStatistics,
-} from './financialAiProvider.js';
+} from './types.js';
 
 /**
- * Extracts the content of the first triple-backtick code fence using linear index scanning
- * (avoids `[\s\S]`-style quantifier backtracking). Returns null when no closing fence exists.
+ * Extracts the content of the first triple-backtick code fence using linear index scanning.
  */
 function extractMarkdownCodeFenceContent(rawText: string): string | null {
   const fenceMarker = '```';
@@ -62,25 +61,19 @@ export function isAiResponseParseError(error: unknown): error is AiResponseParse
 
 /**
  * Robustly extracts and parses a JSON object from arbitrary LLM response text.
- * Strips reasoning tokens (<think>...</think>), markdown code blocks, and extraneous chatter.
  */
 export function extractAndParseJsonObject<T>(rawResponseText: string): T {
   let sanitizedText = rawResponseText.trim();
-
-  // Strip DeepSeek / reasoning thoughts block if present: <think>...</think>
   sanitizedText = sanitizedText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 
-  // Check if enclosed inside markdown code block
   const extractedFenceContent = extractMarkdownCodeFenceContent(sanitizedText);
   if (extractedFenceContent !== null) {
     sanitizedText = extractedFenceContent;
   }
 
-  // Fast path direct JSON parse
   try {
     return JSON.parse(sanitizedText) as T;
   } catch {
-    // Fallback: extract the first contiguous JSON object matching { ... }
     const firstBraceIndex = sanitizedText.indexOf('{');
     const lastBraceIndex = sanitizedText.lastIndexOf('}');
 
@@ -110,8 +103,6 @@ export function extractAndParseJsonObject<T>(rawResponseText: string): T {
 
 /**
  * Validates the runtime envelope of parsed Receipt Vision model output.
- * Ensures that action is valid, records are an array of non-null objects for CREATE_RECORD,
- * and preserves observable fields without letting unvalidated structures leak into downstream handlers.
  */
 export function validateReceiptFinancialIntentEnvelope(
   rawParsedObject: unknown,
@@ -159,7 +150,6 @@ export function validateReceiptFinancialIntentEnvelope(
       }
       const rawItem = item as Record<string, unknown>;
 
-      // 1. Amount: restrict to supported shapes (finite number or non-empty string; reject object/boolean/null/undefined/NaN)
       const rawAmount = rawItem.amount;
       const isValidNumberAmount = typeof rawAmount === 'number' && Number.isFinite(rawAmount);
       const isValidStringAmount = typeof rawAmount === 'string' && rawAmount.trim().length > 0;
@@ -170,9 +160,6 @@ export function validateReceiptFinancialIntentEnvelope(
         );
       }
 
-      // 2. RecordDate: optional for receipt vision. When no date/time is printed on the receipt,
-      // the model omits recordDate or passes null/empty string, allowing downstream normalization
-      // to apply the request reference instant. When provided, it must be a parseable string.
       const rawRecordDate = rawItem.recordDate;
       let resolvedRecordDate: string | undefined = undefined;
       if (rawRecordDate !== undefined && rawRecordDate !== null) {
@@ -194,8 +181,6 @@ export function validateReceiptFinancialIntentEnvelope(
         }
       }
 
-      // 3. Currency: require deterministic currency evidence for receipt CREATE_RECORD records before write.
-      // Must have an explicit ISO 4217 code (e.g. IDR, USD) or explicit currency hint parsed from amount string.
       let resolvedCurrency: string | undefined = undefined;
       if (typeof rawItem.currency === 'string' && /^[A-Za-z]{3}$/.test(rawItem.currency.trim())) {
         resolvedCurrency = rawItem.currency.trim().toUpperCase();
@@ -213,8 +198,6 @@ export function validateReceiptFinancialIntentEnvelope(
         );
       }
 
-      // 4. Preserve semantic hints for deterministic cache-owned resolution while
-      // retaining legacy ID/name fields for backward-compatible provider output.
       const resolvedAccountId = typeof rawItem.accountId === 'string' ? rawItem.accountId.trim() : '';
       const resolvedAccountHint = typeof rawItem.accountHint === 'string'
         ? rawItem.accountHint.trim()
@@ -257,7 +240,7 @@ export function validateReceiptFinancialIntentEnvelope(
 }
 
 /**
- * Parses and normalizes LLM response for account clarification question generation
+ * Parses and normalizes LLM response for account clarification question generation.
  */
 export function parseClarificationQuestionResponse(
   rawResponseText: string,
@@ -278,7 +261,7 @@ export function parseClarificationQuestionResponse(
 }
 
 /**
- * Parses and normalizes LLM response for account clarification reply interpretation
+ * Parses and normalizes LLM response for account clarification reply interpretation.
  */
 export function parseClarificationProposalResponse(
   rawResponseText: string,

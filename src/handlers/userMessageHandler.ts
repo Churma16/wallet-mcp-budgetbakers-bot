@@ -7,12 +7,12 @@ import {
   SemanticToolAuthorizationContext,
   createSemanticToolProposalFromFinancialIntent,
   AccountClarificationConversationService,
-} from '../services/ai/index.js';
-import { validateReceiptFinancialIntentEnvelope } from '../services/ai/jsonExtractionHelper.js';
+} from '../brain/index.js';
+import { validateReceiptFinancialIntentEnvelope } from '../brain/index.js';
 import { WalletMcpClientService, WalletCacheService, WalletRecordPreparationService } from '../wallet/index.js';
 import { AccountClarificationHandler } from './accountClarificationHandler.js';
 import { CategoryClarificationHandler } from './categoryClarificationHandler.js';
-import { CategoryClarificationConversationService } from '../services/ai/categoryClarificationConversationService.js';
+import { CategoryClarificationConversationService } from '../brain/index.js';
 import { CategoryContextService } from '../services/categoryContextService.js';
 import { PendingActionHandler } from './pendingActionHandler.js';
 import { FastPathHandler } from './fastPathHandler.js';
@@ -26,7 +26,7 @@ import {
   FastPathTransactionHistoryAction,
   detectPendingConfirmationAction,
   detectReconciliationAction,
-} from '../utils/fastPathIntentDetector.js';
+} from '../brain/index.js';
 import { normalizeTransactionHistoryFilters } from '../utils/transactionHistoryFilterNormalizer.js';
 import {
   formatErrorMessageForHuman,

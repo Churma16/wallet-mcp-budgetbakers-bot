@@ -12,12 +12,12 @@ import {
   executeReceiptWorkflow,
   executeEmailTransactionWorkflow,
   type AiExecutionResult,
-} from '../src/services/ai/aiProviderWorkflow.js';
-import { AiResponseParseError } from '../src/services/ai/jsonExtractionHelper.js';
+} from '../src/brain/index.js';
+import { AiResponseParseError } from '../src/brain/index.js';
 import { WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 import { GateEvaluationResult } from '../src/utils/emailGateEvaluator.js';
-import { GeminiAiProvider } from '../src/services/ai/geminiAiProvider.js';
-import { OpenAiCompatibleAiProvider } from '../src/services/ai/openAiCompatibleAiProvider.js';
+import { GeminiAiProvider } from '../src/brain/index.js';
+import { OpenAiCompatibleAiProvider } from '../src/brain/index.js';
 
 describe('AI Provider Workflow (Issue #108)', () => {
   const mockAccountList: WalletAccountItem[] = [

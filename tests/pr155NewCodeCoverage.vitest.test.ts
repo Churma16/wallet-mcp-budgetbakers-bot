@@ -11,7 +11,7 @@ import {
   formatTransactionAttentionSummary,
   formatUncertainOutcomeResponse,
 } from '../src/utils/transactionStatusFormatter.js';
-import { detectReconciliationAction } from '../src/utils/fastPathIntentDetector.js';
+import { detectReconciliationAction } from '../src/brain/index.js';
 import {
   englishDictionary,
   indonesianDictionary,

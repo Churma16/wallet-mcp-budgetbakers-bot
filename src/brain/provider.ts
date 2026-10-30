@@ -2,16 +2,21 @@ import {
   ApplicationEnvironmentConfiguration,
   SupportedAiProviderType,
   PROVIDER_CONFIG_STRATEGIES,
-} from '../../config/environmentConfig.js';
-import { applicationLogger } from '../../utils/logger.js';
-import { FinancialAiProvider } from './financialAiProvider.js';
-import { GeminiAiProvider } from './geminiAiProvider.js';
-import { OpenAiCompatibleAiProvider } from './openAiCompatibleAiProvider.js';
-import { FallbackAiProvider } from './fallbackAiProvider.js';
-import { CategoryContextService } from '../categoryContextService.js';
+} from '../config/environmentConfig.js';
+import { applicationLogger } from '../utils/logger.js';
+import { FinancialAiProvider } from './types.js';
+import { GeminiAiProvider } from './geminiProvider.js';
+import { OpenAiCompatibleAiProvider } from './openAiProvider.js';
+import { FallbackAiProvider } from './fallbackProvider.js';
+import { CategoryContextService } from '../services/categoryContextService.js';
+
+export * from './geminiProvider.js';
+export * from './openAiProvider.js';
+export * from './fallbackProvider.js';
+export * from './providerWorkflow.js';
 
 /**
- * Instantiates a single FinancialAiProvider based on provider type and environment configuration
+ * Instantiates a single FinancialAiProvider based on provider type and environment configuration.
  */
 export function createSingleFinancialAiProvider(
   providerType: SupportedAiProviderType,
@@ -83,8 +88,8 @@ export function createFinancialAiProvider(
     `Initializing Multi-Provider AI Fallback Chain (${providerList.map(item => item.toUpperCase()).join(' -> ')})...`
   );
 
-  const instantiatedProviders = providerList.map(providerType =>
-    createSingleFinancialAiProvider(providerType, environmentConfig, categoryContextService)
+  const instantiatedProviders = providerList.map(type =>
+    createSingleFinancialAiProvider(type, environmentConfig, categoryContextService)
   );
 
   return new FallbackAiProvider(instantiatedProviders);

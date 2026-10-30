@@ -1,5 +1,5 @@
 import { EmailTransactionDetectedEvent, EmailListenerService } from '../services/emailListenerService.js';
-import { FinancialAiProvider } from '../services/ai/index.js';
+import { FinancialAiProvider } from '../brain/index.js';
 import { PendingTransactionService } from '../services/pendingTransactionService.js';
 import { MessagingGatewayService } from '../services/messaging/index.js';
 import { TransactionCorrelationService } from '../services/transactionCorrelationService.js';

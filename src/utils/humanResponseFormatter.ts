@@ -8,7 +8,7 @@ import {
 } from '../types/walletTypes.js';
 import { PendingTransactionItem } from '../services/pendingTransactionService.js';
 import { getDictionary, getActiveLanguage, SupportedLanguage } from '../i18n/index.js';
-import { isAiResponseParseError } from '../services/ai/jsonExtractionHelper.js';
+import { isAiResponseParseError } from '../brain/index.js';
 import {
   getApplicationTimezone,
   getDefaultCurrency,

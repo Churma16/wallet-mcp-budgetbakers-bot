@@ -7,7 +7,7 @@ import {
 } from '../src/wallet/index.js';
 import { CreateRecordInputPayload, WalletCreateRecordsResponse } from '../src/types/walletTypes.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
-import { PendingConfirmationIntent } from '../src/utils/fastPathIntentDetector.js';
+import { PendingConfirmationIntent } from '../src/brain/index.js';
 import { describe, expect, it, vi } from 'vitest';
 
 function assertCondition(testName: string, condition: boolean, extraDetail?: string): void {

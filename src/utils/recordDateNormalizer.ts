@@ -1,7 +1,7 @@
 import {
   getLocalTimeParts,
   resolveTargetLocalToUtcIso,
-} from './relativeTimeParser.js';
+} from '../brain/index.js';
 
 const EXPLICIT_OFFSET_REGEX =
   /^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?\s*(Z|[+-]\d{2}:?\d{2})$/i;

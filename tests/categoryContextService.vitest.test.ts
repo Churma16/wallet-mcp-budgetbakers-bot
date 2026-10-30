@@ -7,9 +7,9 @@ import {
   buildCompactSystemInstruction,
   buildReceiptSystemInstruction,
   buildEmailSystemInstruction,
-} from '../src/services/ai/aiPromptBuilder.js';
-import { GeminiAiProvider } from '../src/services/ai/geminiAiProvider.js';
-import { OpenAiCompatibleAiProvider } from '../src/services/ai/openAiCompatibleAiProvider.js';
+} from '../src/brain/index.js';
+import { GeminiAiProvider } from '../src/brain/index.js';
+import { OpenAiCompatibleAiProvider } from '../src/brain/index.js';
 import { WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 import { Application } from '../src/app.js';
 import { GateEvaluationResult } from '../src/utils/emailGateEvaluator.js';

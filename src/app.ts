@@ -19,7 +19,7 @@ import {
   createFinancialAiProvider,
   FinancialAiProvider,
   AccountClarificationConversationService,
-} from './services/ai/index.js';
+} from './brain/index.js';
 import {
   MessagingGatewayService,
   WhatsappMessagingAdapter,

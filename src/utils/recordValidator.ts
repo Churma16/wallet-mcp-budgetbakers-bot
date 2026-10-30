@@ -4,10 +4,10 @@ import {
   getTimezoneOffsetDetails,
   parseRelativeTime,
   ParsedRelativeTimeResult,
-} from './relativeTimeParser.js';
+} from '../brain/index.js';
 import { normalizeTransactionRecordDate } from './recordDateNormalizer.js';
-import { extractHashtags, deduplicateTags, normalizeTagName } from './hashtagParser.js';
-import { parseFinancialAmount, parseFinancialAmountString } from './financialAmountParser.js';
+import { extractHashtags, deduplicateTags, normalizeTagName } from '../brain/index.js';
+import { parseFinancialAmount, parseFinancialAmountString } from '../brain/index.js';
 import { normalizeTransactionText } from './textCasingNormalizer.js';
 import { CategoryContextRule } from '../types/categoryContextTypes.js';
 import {

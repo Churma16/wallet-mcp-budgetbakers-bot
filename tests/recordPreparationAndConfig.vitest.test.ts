@@ -36,7 +36,7 @@ import { AccountClarificationHandler } from '../src/handlers/accountClarificatio
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
 import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
-import { FinancialAiProvider } from '../src/services/ai/financialAiProvider.js';
+import { FinancialAiProvider } from '../src/brain/index.js';
 import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem, WalletLabelItem } from '../src/types/walletTypes.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/types.js';
 

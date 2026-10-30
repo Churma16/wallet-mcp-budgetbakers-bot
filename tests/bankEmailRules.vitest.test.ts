@@ -3,7 +3,7 @@ import {
   evaluateEmailThroughGateOne,
   parseCurrencyAmountStringToNumber,
 } from '../src/utils/emailGateEvaluator.js';
-import { detectPendingConfirmationAction } from '../src/utils/fastPathIntentDetector.js';
+import { detectPendingConfirmationAction } from '../src/brain/index.js';
 
 const NOW = new Date('2026-09-13T06:00:00.000Z');
 const STARTUP_CUTOFF = new Date(NOW.getTime() - 10 * 60 * 1000);

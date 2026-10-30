@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   detectFastPathAction,
   FastPathTransactionHistoryAction,
-} from '../src/utils/fastPathIntentDetector.js';
+} from '../src/brain/index.js';
 import { normalizeTransactionHistoryFilters } from '../src/utils/transactionHistoryFilterNormalizer.js';
 import { WalletCategoryItem } from '../src/types/walletTypes.js';
 

@@ -1,5 +1,5 @@
 import type { WalletLabelItem } from './types.js';
-import { deduplicateTags } from '../utils/hashtagParser.js';
+import { deduplicateTags } from '../brain/index.js';
 import { applicationLogger } from '../utils/logger.js';
 
 export interface LabelResolverCache {

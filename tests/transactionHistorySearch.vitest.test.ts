@@ -3,7 +3,7 @@ import {
   MAX_TRANSACTION_HISTORY_LIMIT,
 } from '../src/wallet/index.js';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
-import { detectFastPathAction } from '../src/utils/fastPathIntentDetector.js';
+import { detectFastPathAction } from '../src/brain/index.js';
 import {
   matchesTransactionRecordSearch,
   MAX_SEARCH_QUERY_LENGTH,

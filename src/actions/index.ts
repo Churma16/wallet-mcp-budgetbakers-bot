@@ -9,7 +9,7 @@ import { MessagingGatewayService } from '../services/messaging/index.js';
 
 import { AccountClarificationHandler } from '../handlers/accountClarificationHandler.js';
 import { CategoryClarificationHandler } from '../handlers/categoryClarificationHandler.js';
-import { CategoryClarificationConversationService } from '../services/ai/categoryClarificationConversationService.js';
+import { CategoryClarificationConversationService } from '../brain/index.js';
 import { FinancialActionRegistry } from './financialActionRegistry.js';
 import {
   CheckBalanceActionHandler,

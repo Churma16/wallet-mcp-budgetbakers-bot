@@ -5,7 +5,7 @@ import {
   buildEmailSystemInstruction,
   buildReceiptSystemInstruction,
   resolveEmailExtractedEntities,
-} from '../src/services/ai/aiPromptBuilder.js';
+} from '../src/brain/index.js';
 import { resolveSemanticCategoryHint } from '../src/services/semanticEntityResolver.js';
 import { TransactionCorrelationService } from '../src/services/transactionCorrelationService.js';
 import { WalletCategoryItem, WalletAccountItem } from '../src/types/walletTypes.js';

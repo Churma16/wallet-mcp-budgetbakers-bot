@@ -6,11 +6,11 @@ import {
   buildEmailSystemInstruction,
   buildEmailEvaluationPrompt,
   wrapUntrustedPromptText,
-} from '../src/services/ai/aiPromptBuilder.js';
+} from '../src/brain/index.js';
 import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
 import { WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
-import { validateReceiptFinancialIntentEnvelope } from '../src/services/ai/jsonExtractionHelper.js';
+import { validateReceiptFinancialIntentEnvelope } from '../src/brain/index.js';
 
 const mockAccounts: WalletAccountItem[] = [
   {

@@ -5,16 +5,16 @@ import {
   TokenUsageStatistics,
   AccountClarificationQuestionContext,
   AccountClarificationProposal,
-} from './financialAiProvider.js';
-import { PendingAccountSelectionCandidate } from '../pendingTransactionService.js';
-import { WalletAccountItem, WalletCategoryItem } from '../../types/walletTypes.js';
-import { GateEvaluationResult } from '../../utils/emailGateEvaluator.js';
-import { applicationLogger, formatConciseErrorMessage } from '../../utils/logger.js';
-import { isAiResponseParseError } from './jsonExtractionHelper.js';
+  UnifiedClarificationCandidate,
+} from './types.js';
+import { WalletAccountItem, WalletCategoryItem } from '../wallet/index.js';
+import { GateEvaluationResult } from '../utils/emailGateEvaluator.js';
+import { applicationLogger, formatConciseErrorMessage } from '../utils/logger.js';
+import { isAiResponseParseError } from './jsonExtraction.js';
 
 /**
  * Checks whether an error is a recoverable provider-level failure eligible for failover
- * (e.g. rate limit, quota exhaustion, service outage, temporary gateway errors)
+ * (e.g. rate limit, quota exhaustion, service outage, temporary gateway errors).
  */
 export function isRecoverableProviderError(error: unknown): boolean {
   if (!error) {
@@ -56,9 +56,15 @@ export function isRecoverableProviderError(error: unknown): boolean {
 }
 
 /**
- * FallbackAiProvider coordinates multiple FinancialAiProvider instances in priority order.
+ * Coordinates multiple FinancialAiProvider instances in priority order.
+ *
+ * Core Purpose & Responsibility:
  * If a provider encounters a recoverable error (rate limit, outage, quota exhaustion),
  * it seamlessly cascades execution to the next configured provider in line.
+ *
+ * Architectural Role:
+ * Implements FinancialAiProvider composite pattern, wrapping child providers (e.g. Gemini,
+ * OpenAI-compatible) and logging fallback transitions while keeping execution transparent to callers.
  */
 export class FallbackAiProvider implements FinancialAiProvider {
   public readonly providerName: string;
@@ -76,9 +82,6 @@ export class FallbackAiProvider implements FinancialAiProvider {
     return this.orderedProviderList;
   }
 
-  /**
-   * Processes a natural language text message with cross-provider fallback
-   */
   public async processTextMessage(
     userMessageText: string,
     availableAccountList: WalletAccountItem[],
@@ -97,9 +100,6 @@ export class FallbackAiProvider implements FinancialAiProvider {
     );
   }
 
-  /**
-   * Processes a receipt or invoice image with cross-provider fallback
-   */
   public async processImageMessage(
     imageBuffer: Buffer,
     mimeType: string,
@@ -122,9 +122,6 @@ export class FallbackAiProvider implements FinancialAiProvider {
     );
   }
 
-  /**
-   * Processes an email transaction message with cross-provider fallback
-   */
   public async processEmailTransactionMessage(
     gateResult: GateEvaluationResult,
     emailSubject: string,
@@ -149,9 +146,6 @@ export class FallbackAiProvider implements FinancialAiProvider {
     );
   }
 
-  /**
-   * Generates natural language question wording for account clarification using fallback chain
-   */
   public async generateAccountClarificationQuestion(
     context: AccountClarificationQuestionContext
   ): Promise<{ question: string; tokenUsage?: TokenUsageStatistics }> {
@@ -168,12 +162,9 @@ export class FallbackAiProvider implements FinancialAiProvider {
     );
   }
 
-  /**
-   * Interprets free-form clarification reply to propose candidate selection using fallback chain
-   */
   public async interpretAccountClarificationReply(
     userReplyText: string,
-    candidates: PendingAccountSelectionCandidate[],
+    candidates: UnifiedClarificationCandidate[],
     context?: Partial<AccountClarificationQuestionContext>
   ): Promise<AccountClarificationProposal> {
     return this.executeWithFallback(
@@ -189,9 +180,6 @@ export class FallbackAiProvider implements FinancialAiProvider {
     );
   }
 
-  /**
-   * Generic execution wrapper iterating through providers in priority sequence
-   */
   private async executeWithFallback<T>(
     operationName: string,
     operationHandler: (provider: FinancialAiProvider) => Promise<T>
@@ -208,7 +196,6 @@ export class FallbackAiProvider implements FinancialAiProvider {
         lastEncounteredError = error;
         const errorMessage = error instanceof Error ? error.message : String(error);
         const conciseErrorMessage = formatConciseErrorMessage(errorMessage);
-
         const isRecoverable = isRecoverableProviderError(error);
 
         applicationLogger.fileDetail('error', `Provider '${currentProvider.providerName}' failed during '${operationName}'`, {

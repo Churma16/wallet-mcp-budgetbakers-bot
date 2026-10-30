@@ -1,6 +1,6 @@
 import { CategoryContextRule } from '../types/categoryContextTypes.js';
 import { WalletAccountItem, WalletCategoryItem } from '../types/walletTypes.js';
-import { isGenericParentCategory } from './ai/aiPromptBuilder.js';
+import { isGenericParentCategory } from '../brain/index.js';
 import { FILTER_ERROR_REASONS } from '../constants/index.js';
 
 export type SemanticEntityResolutionReason =

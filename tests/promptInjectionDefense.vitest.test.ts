@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildEmailEvaluationPrompt,
   buildEmailSystemInstruction,
-} from '../src/services/ai/aiPromptBuilder.js';
+} from '../src/brain/index.js';
 
 function getUntrustedEmailRegionBounds(promptText: string): {
   startIndex: number;
