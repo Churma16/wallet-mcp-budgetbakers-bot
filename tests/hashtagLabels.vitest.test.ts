@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { test } from 'vitest';
-import { extractHashtags, normalizeTagName, deduplicateTags } from '../src/utils/hashtagParser.js';
+import { extractHashtags, normalizeTagName, deduplicateTags } from '../src/brain/index.js';
 import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
 import { resolveAndEnsureLabels } from '../src/wallet/index.js';
 import { WalletCacheService } from '../src/wallet/index.js';

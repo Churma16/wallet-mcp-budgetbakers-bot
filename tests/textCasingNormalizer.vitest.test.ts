@@ -6,7 +6,7 @@ import {
 import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
 import {
   buildCompactSystemInstruction,
-} from '../src/services/ai/aiPromptBuilder.js';
+} from '../src/brain/index.js';
 import { CreateRecordInputPayload, WalletAccountItem } from '../src/types/walletTypes.js';
 
 describe('textCasingNormalizer unit tests', () => {

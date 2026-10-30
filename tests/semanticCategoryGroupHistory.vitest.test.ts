@@ -7,7 +7,7 @@ import { WalletCacheService } from '../src/wallet/index.js';
 import {
   detectFastPathAction,
   FastPathTransactionHistoryAction,
-} from '../src/utils/fastPathIntentDetector.js';
+} from '../src/brain/index.js';
 import {
   normalizeTransactionHistoryFilters,
   extractDynamicCategoryGroups,
@@ -15,10 +15,10 @@ import {
 } from '../src/utils/transactionHistoryFilterNormalizer.js';
 import {
   validateSemanticHistoryQueryOptions,
-} from '../src/services/ai/semanticToolBoundary.js';
+} from '../src/brain/index.js';
 import {
   buildCompactSystemInstruction,
-} from '../src/services/ai/aiPromptBuilder.js';
+} from '../src/brain/index.js';
 import {
   WalletAccountItem,
   WalletCategoryItem,

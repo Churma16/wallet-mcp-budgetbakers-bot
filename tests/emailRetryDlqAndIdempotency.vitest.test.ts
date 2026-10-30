@@ -4,9 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   postProcessEmailTransactionResponse,
-} from '../src/services/ai/aiProviderWorkflow.js';
-import { AiResponseParseError } from '../src/services/ai/jsonExtractionHelper.js';
-import { FallbackAiProvider } from '../src/services/ai/fallbackAiProvider.js';
+} from '../src/brain/index.js';
+import { AiResponseParseError } from '../src/brain/index.js';
+import { FallbackAiProvider } from '../src/brain/index.js';
 import { EmailListenerService, DeadLetterQueueItem } from '../src/services/emailListenerService.js';
 import { EmailTransactionHandler } from '../src/handlers/emailTransactionHandler.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';

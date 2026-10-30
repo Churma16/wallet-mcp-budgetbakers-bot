@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   detectPendingConfirmationAction,
   PendingConfirmationIntent,
-} from '../src/utils/fastPathIntentDetector.js';
+} from '../src/brain/index.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
 import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
 import { MessagingGatewayService, IncomingUserMessageEvent } from '../src/services/messaging/index.js';

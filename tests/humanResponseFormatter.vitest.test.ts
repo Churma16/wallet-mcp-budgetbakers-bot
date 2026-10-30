@@ -12,7 +12,7 @@ import {
   MAX_TRANSACTION_HISTORY_TITLE_LENGTH,
 } from '../src/utils/humanResponseFormatter.js';
 import { formatConciseErrorMessage } from '../src/utils/logger.js';
-import { AiResponseParseError } from '../src/services/ai/jsonExtractionHelper.js';
+import { AiResponseParseError } from '../src/brain/index.js';
 
 describe('human response formatter', () => {
   beforeAll(() => {

@@ -3,13 +3,13 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
-import { detectFastPathAction } from '../src/utils/fastPathIntentDetector.js';
+import { detectFastPathAction } from '../src/brain/index.js';
 import {
   normalizeTransactionHistoryFilters,
   matchDynamicCategoryGroup,
   extractDynamicCategoryGroups,
 } from '../src/utils/transactionHistoryFilterNormalizer.js';
-import { validateSemanticHistoryQueryOptions } from '../src/services/ai/semanticToolBoundary.js';
+import { validateSemanticHistoryQueryOptions } from '../src/brain/index.js';
 import { WalletAccountItem, WalletCategoryItem, WalletRecordItem } from '../src/types/walletTypes.js';
 import { WalletMcpClientService } from '../src/wallet/index.js';
 import { TransactionHistoryService } from '../src/wallet/index.js';
@@ -1048,7 +1048,7 @@ describe('Issue #160 comment checklist regression corpus', () => {
 
     it('verifies synthetic keywords (spotify, github, netflix) do not exist in production routing code', () => {
       const fastPathSource = fs.readFileSync(
-        path.resolve(process.cwd(), 'src/utils/fastPathIntentDetector.ts'),
+        path.resolve(process.cwd(), 'src/brain/fastPath.ts'),
         'utf-8'
       );
       const userHandlerSource = fs.readFileSync(

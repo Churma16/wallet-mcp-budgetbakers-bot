@@ -8,11 +8,11 @@ import {
 } from '../src/config/applicationConfig.js';
 import {
   buildReceiptSystemInstruction,
-} from '../src/services/ai/aiPromptBuilder.js';
+} from '../src/brain/index.js';
 import {
   prepareReceiptPrompt,
   postProcessReceiptVisionResponse,
-} from '../src/services/ai/aiProviderWorkflow.js';
+} from '../src/brain/index.js';
 import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload } from '../src/types/walletTypes.js';
 import { WalletMcpClientService } from '../src/wallet/index.js';
 

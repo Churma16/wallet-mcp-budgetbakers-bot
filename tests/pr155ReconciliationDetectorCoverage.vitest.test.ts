@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   detectFastPathAction,
   detectReconciliationAction,
-} from '../src/utils/fastPathIntentDetector.js';
+} from '../src/brain/index.js';
 
 describe('PR #155 reconciliation detector coverage', () => {
   it.each([

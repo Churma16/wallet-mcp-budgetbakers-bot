@@ -22,7 +22,7 @@ import {
   validateAndSanitizeFinancialRecords,
 } from '../utils/recordValidator.js';
 import { formatRecordSuccessMessage } from '../utils/humanResponseFormatter.js';
-import { detectPendingConfirmationAction } from '../utils/fastPathIntentDetector.js';
+import { detectPendingConfirmationAction } from '../brain/index.js';
 import {
   formatCategorySelectionCancellation,
   formatCategorySelectionProcessing,
@@ -33,7 +33,7 @@ import {
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger, formatConciseErrorMessage } from '../utils/logger.js';
 import { CategoryContextService } from '../services/categoryContextService.js';
-import { CategoryClarificationConversationService } from '../services/ai/categoryClarificationConversationService.js';
+import { CategoryClarificationConversationService } from '../brain/index.js';
 
 export class CategoryClarificationHandler {
   private readonly recordPreparationService: WalletRecordPreparationService;

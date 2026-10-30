@@ -8,7 +8,7 @@ import {
 import { TransactionHistoryService } from '../src/wallet/index.js';
 import { WalletCacheService } from '../src/wallet/index.js';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
-import { detectFastPathAction } from '../src/utils/fastPathIntentDetector.js';
+import { detectFastPathAction } from '../src/brain/index.js';
 import { formatTransactionHistoryMessage } from '../src/utils/humanResponseFormatter.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import {

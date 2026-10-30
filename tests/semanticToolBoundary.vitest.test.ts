@@ -7,7 +7,7 @@ import {
   SemanticToolProposal,
   createSemanticToolProposalFromFinancialIntent,
   markSemanticToolResultUntrusted,
-} from '../src/services/ai/semanticToolBoundary.js';
+} from '../src/brain/index.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
 import { WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 

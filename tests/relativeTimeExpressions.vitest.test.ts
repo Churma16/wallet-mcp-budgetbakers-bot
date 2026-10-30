@@ -9,12 +9,12 @@ import {
   resolveTargetLocalToUtcIso,
   resolveLocalCalendarDayRange,
   resolveLocalCalendarRange,
-} from '../src/utils/relativeTimeParser.js';
+} from '../src/brain/index.js';
 import {
   buildCompactSystemInstruction,
   buildTextMessagePrompt,
-} from '../src/services/ai/aiPromptBuilder.js';
-import { GeminiAiProvider } from '../src/services/ai/geminiAiProvider.js';
+} from '../src/brain/index.js';
+import { GeminiAiProvider } from '../src/brain/index.js';
 import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
 import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 import {

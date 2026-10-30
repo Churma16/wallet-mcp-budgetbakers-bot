@@ -3,18 +3,18 @@ import { describe, it } from 'vitest';
 import {
   FallbackAiProvider,
   isRecoverableProviderError,
-} from '../src/services/ai/fallbackAiProvider.js';
+} from '../src/brain/index.js';
 import {
   FinancialAiProvider,
   ExtractedFinancialIntent,
   ExtractedEmailTransactionData,
-} from '../src/services/ai/financialAiProvider.js';
+} from '../src/brain/index.js';
 import {
   createFinancialAiProvider,
   createSingleFinancialAiProvider,
-} from '../src/services/ai/aiProviderFactory.js';
-import { OpenAiCompatibleAiProvider } from '../src/services/ai/openAiCompatibleAiProvider.js';
-import { extractAndParseJsonObject } from '../src/services/ai/jsonExtractionHelper.js';
+} from '../src/brain/index.js';
+import { OpenAiCompatibleAiProvider } from '../src/brain/index.js';
+import { extractAndParseJsonObject } from '../src/brain/index.js';
 import { ApplicationEnvironmentConfiguration } from '../src/config/environmentConfig.js';
 import { WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 

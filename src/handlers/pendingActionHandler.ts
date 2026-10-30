@@ -11,7 +11,7 @@ import { EmailListenerService } from '../services/emailListenerService.js';
 import {
   PendingConfirmationIntent,
   ReconciliationIntent,
-} from '../utils/fastPathIntentDetector.js';
+} from '../brain/index.js';
 import type { CreateRecordInputPayload } from '../wallet/index.js';
 import {
   formatPendingConfirmationSuccess,

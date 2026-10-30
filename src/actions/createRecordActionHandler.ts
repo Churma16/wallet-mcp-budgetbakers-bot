@@ -8,13 +8,13 @@ import { MessagingGatewayService } from '../services/messaging/index.js';
 
 import { AccountClarificationHandler } from '../handlers/accountClarificationHandler.js';
 import { CategoryClarificationHandler } from '../handlers/categoryClarificationHandler.js';
-import { CategoryClarificationConversationService } from '../services/ai/categoryClarificationConversationService.js';
+import { CategoryClarificationConversationService } from '../brain/index.js';
 import { CreateRecordActionContext, FinancialActionHandler } from './types.js';
 import {
   AccountResolutionIssue,
   validateAndSanitizeFinancialRecords,
 } from '../utils/recordValidator.js';
-import { extractHashtags } from '../utils/hashtagParser.js';
+import { extractHashtags } from '../brain/index.js';
 import {
   formatRecordSuccessMessage,
   getHumanReadableTimestamp,

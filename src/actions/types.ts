@@ -3,7 +3,7 @@ import {
   TransactionHistoryQueryOptions,
   TransactionSummaryQueryOptions,
 } from '../types/walletTypes.js';
-import { ExtractedFinancialRecordItem } from '../services/ai/index.js';
+import { ExtractedFinancialRecordItem } from '../brain/index.js';
 import {
   FINANCIAL_ACTION_TYPES,
   RoutingSourceValue,

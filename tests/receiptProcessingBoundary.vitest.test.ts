@@ -7,13 +7,13 @@ import { WalletMcpRequestError } from '../src/wallet/index.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
 import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
-import { AiResponseParseError } from '../src/services/ai/jsonExtractionHelper.js';
-import { ExtractedFinancialIntent, FinancialAiProvider } from '../src/services/ai/financialAiProvider.js';
-import { parseFinancialAmount, parseFinancialAmountString } from '../src/utils/financialAmountParser.js';
+import { AiResponseParseError } from '../src/brain/index.js';
+import { ExtractedFinancialIntent, FinancialAiProvider } from '../src/brain/index.js';
+import { parseFinancialAmount, parseFinancialAmountString } from '../src/brain/index.js';
 import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
-import { validateReceiptFinancialIntentEnvelope } from '../src/services/ai/jsonExtractionHelper.js';
-import { OpenAiCompatibleAiProvider } from '../src/services/ai/openAiCompatibleAiProvider.js';
-import { FallbackAiProvider } from '../src/services/ai/fallbackAiProvider.js';
+import { validateReceiptFinancialIntentEnvelope } from '../src/brain/index.js';
+import { OpenAiCompatibleAiProvider } from '../src/brain/index.js';
+import { FallbackAiProvider } from '../src/brain/index.js';
 
 afterEach(() => setActiveLanguage('id'));
 

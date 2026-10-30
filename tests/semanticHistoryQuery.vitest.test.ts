@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { shouldDeferHistoryCategoryToSemanticResolver, UserMessageHandler } from '../src/handlers/userMessageHandler.js';
-import { buildCompactSystemInstruction, buildTextMessagePrompt } from '../src/services/ai/aiPromptBuilder.js';
-import { postProcessFinancialIntentResponse } from '../src/services/ai/aiProviderWorkflow.js';
+import { buildCompactSystemInstruction, buildTextMessagePrompt } from '../src/brain/index.js';
+import { postProcessFinancialIntentResponse } from '../src/brain/index.js';
 import {
   hasTransactionRecordingShape,
   SemanticToolBoundary,
   validateSemanticHistoryQueryOptions,
-} from '../src/services/ai/semanticToolBoundary.js';
+} from '../src/brain/index.js';
 
 function createHandler(ai: any, fastPathHandled = false, categories: any[] = []) {
   const gateway = { sendTypingPresence: vi.fn(), clearTypingPresence: vi.fn(), sendMessage: vi.fn() };
