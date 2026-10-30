@@ -15,7 +15,10 @@ import {
   TransactionSearchScanStore,
   executeSearchScanCompatibilityShim,
 } from './searchScan.js';
-import { normalizeRawRecords } from './recordNormalizer.js';
+import {
+  normalizeRawRecords,
+  enrichHistoryRecords,
+} from './recordNormalizer.js';
 import { normalizeTransactionHistoryFilters } from '../utils/transactionHistoryFilterNormalizer.js';
 
 export interface HistoryClient {
@@ -239,35 +242,11 @@ export async function getTransactionHistory(
     throw upstreamError;
   }
 
-  const enrichedRecordList: WalletRecordItem[] = historyPageResult.records.map(recordItem => {
-    let enrichedAccountName = recordItem.accountName;
-    if (!enrichedAccountName && recordItem.accountId && cachedAccounts.length > 0) {
-      const matched = cachedAccounts.find(account => account.id === recordItem.accountId);
-      if (matched) enrichedAccountName = matched.name;
-    }
-
-    let enrichedCategory = recordItem.category;
-    const categoryId = recordItem.category?.id;
-    if ((!enrichedCategory?.name || enrichedCategory.name === 'Unknown') && categoryId && cachedCategories.length > 0) {
-      const matchedCat = cachedCategories.find(cat => cat.id === categoryId);
-      if (matchedCat) {
-        enrichedCategory = {
-          id: matchedCat.id,
-          name: matchedCat.name,
-          color: enrichedCategory?.color,
-          group: enrichedCategory?.group,
-        };
-      } else if (!enrichedCategory?.name) {
-        enrichedCategory = { id: categoryId, name: 'Unknown' };
-      }
-    }
-
-    return {
-      ...recordItem,
-      accountName: enrichedAccountName,
-      category: enrichedCategory,
-    };
-  });
+  const enrichedRecordList = enrichHistoryRecords(
+    historyPageResult.records,
+    cachedAccounts,
+    cachedCategories
+  );
 
   return {
     ...historyPageResult,

@@ -1,5 +1,5 @@
 import type { FilterErrorReasonValue } from './constants.js';
-import type { WalletRecordItem } from './types.js';
+import type { WalletAccountItem, WalletCategoryItem, WalletRecordItem } from './types.js';
 
 export type TransactionSortOrder = 'newest' | 'oldest';
 export type TransactionRecordTypeFilter = 'expense' | 'income';
@@ -130,4 +130,16 @@ export interface TransactionSummaryResult {
   isComplete: boolean;
   appliedFilters?: AppliedTransactionHistoryFilters;
   unresolvedFilters?: UnresolvedFilterIssue[];
+}
+
+export interface SummaryCache {
+  getAccounts(): WalletAccountItem[];
+  getCategories(): WalletCategoryItem[];
+}
+
+export interface SummaryHistoryProvider {
+  getTransactionHistory(
+    queryOptions?: any,
+    referenceDate?: Date
+  ): Promise<{ records: WalletRecordItem[]; nextOffset: number | null; hasMore: boolean }>;
 }

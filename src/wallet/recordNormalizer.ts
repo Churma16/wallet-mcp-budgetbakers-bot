@@ -1,4 +1,8 @@
-import type { WalletRecordItem } from './types.js';
+import type {
+  WalletRecordItem,
+  WalletAccountItem,
+  WalletCategoryItem,
+} from './types.js';
 
 export function normalizeRawRecord(item: any): WalletRecordItem {
   let resolvedAmount = 0;
@@ -67,4 +71,44 @@ export function normalizeRawRecord(item: any): WalletRecordItem {
 
 export function normalizeRawRecords(rawRecordArray: any[]): WalletRecordItem[] {
   return rawRecordArray.map(normalizeRawRecord);
+}
+
+/**
+ * Enriches a list of normalized wallet records with account names and category details
+ * from cached entities when upstream records have incomplete entity information.
+ */
+export function enrichHistoryRecords(
+  records: WalletRecordItem[],
+  cachedAccounts: WalletAccountItem[] = [],
+  cachedCategories: WalletCategoryItem[] = []
+): WalletRecordItem[] {
+  return records.map(recordItem => {
+    let enrichedAccountName = recordItem.accountName;
+    if (!enrichedAccountName && recordItem.accountId && cachedAccounts.length > 0) {
+      const matched = cachedAccounts.find(account => account.id === recordItem.accountId);
+      if (matched) enrichedAccountName = matched.name;
+    }
+
+    let enrichedCategory = recordItem.category;
+    const categoryId = recordItem.category?.id;
+    if ((!enrichedCategory?.name || enrichedCategory.name === 'Unknown') && categoryId && cachedCategories.length > 0) {
+      const matchedCat = cachedCategories.find(cat => cat.id === categoryId);
+      if (matchedCat) {
+        enrichedCategory = {
+          id: matchedCat.id,
+          name: matchedCat.name,
+          color: enrichedCategory?.color,
+          group: enrichedCategory?.group,
+        };
+      } else if (!enrichedCategory?.name) {
+        enrichedCategory = { id: categoryId, name: 'Unknown' };
+      }
+    }
+
+    return {
+      ...recordItem,
+      accountName: enrichedAccountName,
+      category: enrichedCategory,
+    };
+  });
 }

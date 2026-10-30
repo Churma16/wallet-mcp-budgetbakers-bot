@@ -22,6 +22,7 @@ export * from './records.js';
 export * from './searchScan.js';
 export * from './history.js';
 export * from './summaryHelpers.js';
+export * from './summaryFallback.js';
 export * from './aggregation.js';
 export * from './summary.js';
 export * from './capabilities.js';
