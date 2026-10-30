@@ -897,10 +897,10 @@ test('Case 1: Jago receipt + explicit caption override reaches CREATE_RECORD', a
   const createdRecord = harness.mockMcpClient.calls[0][0];
   assert.strictEqual(createdRecord.accountId, 'acc-jago', 'Account resolved to Jago ID acc-jago');
   assert.strictEqual(createdRecord.amount, -10079, 'Amount is -10079');
-  assert.strictEqual(createdRecord.counterParty, 'trakteer', 'CounterParty is preserved');
+  assert.strictEqual(createdRecord.counterParty, 'Trakteer', 'CounterParty is preserved');
 
   const reply = harness.mockGateway.lastMessage || '';
-  assert.ok(reply.includes('Donate trakteer ke bang al'), 'Success reply contains note');
+  assert.ok(reply.includes('Donate Trakteer ke Bang Al'), 'Success reply contains note');
   assert.ok(reply.includes('Jago'), 'Success reply contains account name');
   assert.ok(!reply.includes('format datanya kurang pas'), 'Does not return format error');
   assert.strictEqual(harness.pendingTransactionService.getAllPendingAccountSelectionDrafts().length, 0, 'No pending drafts created');
@@ -1003,11 +1003,11 @@ test('Case 4: Interactive resolution of partial receipt draft', async () => {
   const finalRecord = harness.mockMcpClient.calls[0][0];
   assert.strictEqual(finalRecord.accountId, 'acc-jago', 'Account assigned to Jago');
   assert.strictEqual(finalRecord.amount, -10079, 'Amount preserved');
-  assert.strictEqual(finalRecord.note, 'Donate trakteer ke bang al', 'Note preserved');
+  assert.strictEqual(finalRecord.note, 'Donate Trakteer ke Bang Al', 'Note preserved');
   assert.strictEqual(harness.pendingTransactionService.getAllPendingAccountSelectionDrafts().length, 0, 'Draft resolved and removed');
 
   const finalReply = harness.mockGateway.lastMessage || '';
-  assert.ok(finalReply.includes('Donate trakteer ke bang al'), 'Success reply contains note');
+  assert.ok(finalReply.includes('Donate Trakteer ke Bang Al'), 'Success reply contains note');
 });
 
 // =========================================================================

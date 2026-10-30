@@ -8,6 +8,7 @@ import {
 import { normalizeTransactionRecordDate } from './recordDateNormalizer.js';
 import { extractHashtags, deduplicateTags, normalizeTagName } from './hashtagParser.js';
 import { parseFinancialAmount, parseFinancialAmountString } from './financialAmountParser.js';
+import { normalizeTransactionText } from './textCasingNormalizer.js';
 import { CategoryContextRule } from '../types/categoryContextTypes.js';
 import {
   resolveSemanticAccountHint,
@@ -430,7 +431,13 @@ export function validateAndSanitizeFinancialRecords(
     if (currentRecord.note) {
       const rawNoteString = String(currentRecord.note).slice(0, 500);
       const hashtagResult = extractHashtags(rawNoteString);
-      cleanedNote = hashtagResult.cleanedText.length > 0 ? hashtagResult.cleanedText : undefined;
+      const noteWithoutTags = hashtagResult.cleanedText.length > 0 ? hashtagResult.cleanedText : undefined;
+      cleanedNote = noteWithoutTags
+        ? normalizeTransactionText(noteWithoutTags, {
+            accountHint: currentRecord.accountHint,
+            accountName: resolvedAccount.name,
+          })
+        : undefined;
       // AI note hashtags are cleaned from note, but only accepted as labels if they also exist
       // in the authorized explicit hashtag set derived from raw user input
       extractedTagsFromNote = hashtagResult.tags.filter(tag =>
@@ -458,8 +465,11 @@ export function validateAndSanitizeFinancialRecords(
       ...fallbackSourceTags,
     ]);
 
-    const sanitizedCounterParty = currentRecord.counterParty
+    const rawCounterParty = currentRecord.counterParty
       ? String(currentRecord.counterParty).slice(0, 100).trim()
+      : undefined;
+    const sanitizedCounterParty = rawCounterParty
+      ? normalizeTransactionText(rawCounterParty)
       : undefined;
 
     const sanitizedRecordItem: CreateRecordInputPayload = {

@@ -17,6 +17,7 @@ import {
   formatBulkPendingConfirmationSuccess,
   formatPendingCancellationMessage,
 } from '../utils/humanResponseFormatter.js';
+import { normalizeTransactionText } from '../utils/textCasingNormalizer.js';
 import { getDictionary } from '../i18n/index.js';
 import { SupportedLanguage } from '../i18n/types.js';
 import {
@@ -193,8 +194,9 @@ export class PendingActionHandler {
     }
 
     if (effectiveCustomNote) {
+      const normalizedCustomNote = normalizeTransactionText(effectiveCustomNote) || effectiveCustomNote;
       for (const item of itemsToRecord) {
-        item.note = effectiveCustomNote;
+        item.note = normalizedCustomNote;
       }
     }
 
