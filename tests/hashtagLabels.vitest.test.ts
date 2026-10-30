@@ -383,9 +383,10 @@ test('6. WalletMcpClientService & WalletCacheService Label Integration', async (
     callToolInvoked = true;
     return originalCallMcp(toolName, args);
   };
-  const cachedLabels = await realMcpClient.fetchLabels(false);
-  assert.equal(callToolInvoked, false);
-  assert.equal(cachedLabels.length, 2);
+  // In the consolidated architecture (Issue #182), WalletMcpClientService is a pure transport client
+  const directLabels = await realMcpClient.fetchLabels(false);
+  assert.equal(callToolInvoked, true);
+  assert.equal(directLabels.length, 2);
   realMcpClient.callMcpTool = originalCallMcp;
 
   mockToolResponse = { labels: [{ id: 'lbl-3', title: 'proyek' }] };
