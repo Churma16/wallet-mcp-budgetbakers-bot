@@ -145,3 +145,14 @@ To maintain codebase maintainability without premature fragmentation or unnecess
 - **Separate Dedicated Files for Complex Workflows**: Extract a handler/class into its own dedicated file ONLY when it is non-trivial (e.g., > ~50 lines, has multi-step validation, manages clarification/draft states, calls preparation/side-effect services, or possesses unique heavy dependencies like `createRecordActionHandler.ts`).
 - **Pragmatic Evolution**: Keep read-only actions consolidated until an individual action grows substantial independent logic (e.g., advanced filtering, pagination UI, or export capabilities), at which point it may be extracted into its own file.
 
+## Remote Container & Production Log Inspection
+When asked to inspect, stream, debug, or analyze remote logs, errors, AI decisions, or container activity for Wallet MCP running on the VPS:
+- **Mandatory Skill**: Use the `churma-wallet-mcp-logs` skill.
+- **Execution Mechanism**: Run commands via the local SSH alias `vps`:
+  `ssh vps "sudo -n /usr/local/sbin/wallet-mcp-logs <since> <lines>"`
+- **Allowed Parameters**:
+  - `<since>`: `5m`, `15m`, `30m`, `1h`, `2h`, `6h`, `12h`, `24h`
+  - `<lines>`: integer between `1` and `5000` (default: 50, max recommended: 200)
+- **Strict Permissions Guardrail**: Do not attempt direct `docker logs`, Docker socket access, or connecting as `root`. The VPS uses a hardened, least-privilege setup where only the `codex-observer` user executes the dedicated `/usr/local/sbin/wallet-mcp-logs` helper script via passwordless sudo.
+- **Read-Only Invariant**: Log inspection is strictly read-only. Never run `docker restart`, `systemctl`, or container mutation commands unless explicitly commanded by the user.
+
