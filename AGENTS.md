@@ -156,3 +156,23 @@ When asked to inspect, stream, debug, or analyze remote logs, errors, AI decisio
 - **Strict Permissions Guardrail**: Do not attempt direct `docker logs`, Docker socket access, or connecting as `root`. The VPS uses a hardened, least-privilege setup where only the `codex-observer` user executes the dedicated `/usr/local/sbin/wallet-mcp-logs` helper script via passwordless sudo.
 - **Read-Only Invariant**: Log inspection is strictly read-only. Never run `docker restart`, `systemctl`, or container mutation commands unless explicitly commanded by the user.
 
+## Mandatory Class Documentation (TSDoc)
+All classes (services, handlers, adapters, controllers, clients, and utilities) in this repository must have a top-level TSDoc comment block (`/** ... */`) immediately preceding the class declaration:
+- **Core Purpose & Responsibility**: Briefly summarize what the class does and the specific problem/domain it manages.
+- **Architectural Role**: Note key collaborators or dependencies (e.g. MCP client, repository, state store) when relevant.
+- **Formatting Standard**: Follow standard TSDoc/JSDoc format (`/** ... */`).
+- **Emoji Boundary Compliance**: In accordance with the project's strict emoji rule, TSDoc comments must NOT contain raw emojis (use descriptive text placeholders like `[INFO]`, `[WARN]`, or `[ERROR]` if necessary).
+- **Public Methods**: Recommended (optional for self-explanatory methods, required for complex business workflows or public API interfaces).
+
+### Example:
+```typescript
+/**
+ * Coordinates transaction record creation workflows, performing multi-step validation,
+ * draft resolution, and delegation to the upstream Wallet MCP client.
+ */
+export class CreateRecordActionHandler {
+  // ...
+}
+```
+
+

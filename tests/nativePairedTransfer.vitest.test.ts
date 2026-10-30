@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { WalletMcpClientService } from '../src/services/walletMcpService.js';
+import { WalletMcpClientService } from '../src/wallet/index.js';
 import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
 import type { WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 

@@ -11,7 +11,7 @@ import {
   renderDoctorResult,
   runDoctorDiagnostics,
 } from '../src/diagnostics/doctorService.js';
-import { WalletMcpClientService } from '../src/services/walletMcpService.js';
+import { WalletMcpClientService } from '../src/wallet/index.js';
 
 function createConfiguration(): ApplicationEnvironmentConfiguration {
   return {

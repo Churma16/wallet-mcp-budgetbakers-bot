@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   prepareRecordsForWalletDispatch,
   WalletRecordPreparationService,
-} from '../src/services/walletRecordPreparationService.js';
+} from '../src/wallet/index.js';
 import {
   getApplicationTimezone,
   getDefaultCurrency,
@@ -25,11 +25,11 @@ import {
   formatBalanceSummaryMessage,
   formatRecordSuccessMessage,
 } from '../src/utils/humanResponseFormatter.js';
-import { WalletCacheService } from '../src/services/walletCacheService.js';
+import { WalletCacheService } from '../src/wallet/index.js';
 import {
   WalletMcpClientService,
   WalletMcpRequestError,
-} from '../src/services/walletMcpService.js';
+} from '../src/wallet/index.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
 import { MessagingGatewayService } from '../src/services/messaging/messagingGatewayService.js';
 import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';

@@ -4,7 +4,7 @@ import os from 'node:os';
 import { CategoryContextService } from '../src/services/categoryContextService.js';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
-import { WalletMcpRequestError } from '../src/services/walletMcpService.js';
+import { WalletMcpRequestError } from '../src/wallet/index.js';
 import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
 import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 import { setActiveLanguage } from '../src/i18n/index.js';

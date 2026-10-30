@@ -2,8 +2,8 @@ import {
   WalletClientProfile,
   WalletClientBudgetSettings,
   WalletMcpRateLimitMetadata,
-} from '../types/walletCapabilityTypes.js';
-import { WalletAgentHint } from '../types/walletTypes.js';
+} from './types.js';
+import { WalletAgentHint } from './types.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -66,8 +66,6 @@ function normalizeRateLimit(rawMeta: unknown): WalletMcpRateLimitMetadata | unde
 
 /**
  * Normalizes raw get_client_profile MCP response into a bounded, typed WalletClientProfile.
- * Preserves missing optional fields as undefined (e.g. grantedScopes = undefined if property
- * was omitted) so that tri-state capability queries can accurately report 'unknown'.
  */
 export function normalizeWalletClientProfile(
   rawResponse: unknown,
@@ -92,7 +90,7 @@ export function normalizeWalletClientProfile(
     };
   }
 
-  // 1. Granted Scopes: undefined if property absent or not an array; Set<string> if present
+  // 1. Granted Scopes
   let grantedScopes: Set<string> | undefined;
   if (Array.isArray(rawResponse.grantedScopes)) {
     const validScopes = rawResponse.grantedScopes

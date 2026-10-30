@@ -9,8 +9,7 @@ import {
   AccountClarificationConversationService,
 } from '../services/ai/index.js';
 import { validateReceiptFinancialIntentEnvelope } from '../services/ai/jsonExtractionHelper.js';
-import { WalletMcpClientService } from '../services/walletMcpService.js';
-import { WalletCacheService } from '../services/walletCacheService.js';
+import { WalletMcpClientService, WalletCacheService, WalletRecordPreparationService } from '../wallet/index.js';
 import { AccountClarificationHandler } from './accountClarificationHandler.js';
 import { CategoryClarificationHandler } from './categoryClarificationHandler.js';
 import { CategoryClarificationConversationService } from '../services/ai/categoryClarificationConversationService.js';
@@ -35,8 +34,7 @@ import {
 } from '../utils/humanResponseFormatter.js';
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../utils/logger.js';
-import { WalletRecordPreparationService } from '../services/walletRecordPreparationService.js';
-import { TransactionHistoryQueryOptions } from '../types/walletTypes.js';
+import type { TransactionHistoryQueryOptions } from '../wallet/index.js';
 import { FINANCIAL_ACTION_TYPES } from '../constants/index.js';
 
 export type SemanticToolAuthorizationResolver = (

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
-import { WalletMcpRequestError } from '../src/services/walletMcpService.js';
+import { WalletMcpRequestError } from '../src/wallet/index.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import { formatUncertainOutcomeResponse } from '../src/utils/transactionStatusFormatter.js';
 import { formatAccountSelectionUnknownOutcome } from '../src/utils/accountClarificationFormatter.js';

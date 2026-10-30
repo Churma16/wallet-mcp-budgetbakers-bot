@@ -1,8 +1,8 @@
 import { vi } from 'vitest';
-import { WalletMcpClientService } from '../../src/services/walletMcpService.js';
-import { WalletCacheService } from '../../src/services/walletCacheService.js';
-import { TransactionHistoryService } from '../../src/services/transactionHistoryService.js';
-import { TransactionSummaryService } from '../../src/services/transactionSummaryService.js';
+import { WalletMcpClientService } from '../../src/wallet/index.js';
+import { WalletCacheService } from '../../src/wallet/index.js';
+import { TransactionHistoryService } from '../../src/wallet/index.js';
+import { TransactionSummaryService } from '../../src/wallet/index.js';
 import type {
   WalletAccountItem,
   WalletCategoryItem,

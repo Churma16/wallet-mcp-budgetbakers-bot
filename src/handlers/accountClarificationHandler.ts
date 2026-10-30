@@ -6,14 +6,17 @@ import {
 import {
   WalletMcpClientService,
   isWalletMcpDefinitiveFailure,
-} from '../services/walletMcpService.js';
-import { WalletCacheService } from '../services/walletCacheService.js';
+  WalletCacheService,
+  WalletRecordPreparationService,
+  CreateRecordInputPayload,
+  WalletAccountItem,
+  WalletCategoryItem,
+} from '../wallet/index.js';
 import {
   IncomingUserMessageEvent,
   MessagingGatewayService,
   SupportedMessengerChannel,
 } from '../services/messaging/index.js';
-import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../types/walletTypes.js';
 import {
   AccountResolutionIssue,
   validateAndSanitizeFinancialRecords,
@@ -29,7 +32,6 @@ import {
 } from '../utils/accountClarificationFormatter.js';
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger, formatConciseErrorMessage } from '../utils/logger.js';
-import { WalletRecordPreparationService } from '../services/walletRecordPreparationService.js';
 import { CategoryContextService } from '../services/categoryContextService.js';
 import { AccountClarificationConversationService } from '../services/ai/index.js';
 

@@ -3,9 +3,9 @@ import { describe, it, beforeEach, afterEach } from 'vitest';
 import {
   WalletMcpClientService,
   DEFAULT_TRANSACTION_HISTORY_LIMIT,
-} from '../src/services/walletMcpService.js';
-import { TransactionHistoryService } from '../src/services/transactionHistoryService.js';
-import { WalletCacheService } from '../src/services/walletCacheService.js';
+} from '../src/wallet/index.js';
+import { TransactionHistoryService } from '../src/wallet/index.js';
+import { WalletCacheService } from '../src/wallet/index.js';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
 import { detectFastPathAction } from '../src/utils/fastPathIntentDetector.js';
 import {

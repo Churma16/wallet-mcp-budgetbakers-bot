@@ -1,18 +1,21 @@
-import { WalletMcpClientService } from './walletMcpService.js';
-import { WalletCacheService } from './walletCacheService.js';
+import {
+  WalletMcpClientService,
+  WalletCacheService,
+  TransactionHistoryService,
+  TransactionSummaryService,
+  TransactionHistoryQueryOptions,
+  TransactionSummaryQueryOptions,
+} from '../wallet/index.js';
+
 import { MessagingGatewayService, IncomingUserMessageEvent } from './messaging/index.js';
-import { TransactionHistoryService } from './transactionHistoryService.js';
-import { TransactionSummaryService } from './transactionSummaryService.js';
+
+
 import {
   formatBalanceSummaryMessage,
   formatBudgetSummaryMessage,
   formatTransactionHistoryMessage,
 } from '../utils/humanResponseFormatter.js';
 import { formatTransactionSummaryMessage } from '../utils/transactionSummaryFormatter.js';
-import {
-  TransactionHistoryQueryOptions,
-  TransactionSummaryQueryOptions,
-} from '../types/walletTypes.js';
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../utils/logger.js';
 

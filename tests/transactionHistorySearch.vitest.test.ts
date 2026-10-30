@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   MAX_TRANSACTION_HISTORY_LIMIT,
-} from '../src/services/walletMcpService.js';
+} from '../src/wallet/index.js';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
 import { detectFastPathAction } from '../src/utils/fastPathIntentDetector.js';
 import {

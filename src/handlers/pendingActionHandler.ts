@@ -1,17 +1,18 @@
 import { PendingTransactionService, PendingTransactionItem } from '../services/pendingTransactionService.js';
 import {
   WalletMcpClientService,
+  WalletCacheService,
   WalletMcpRequestError,
   isWalletMcpDefinitiveFailure,
   isWalletMcpDispatchOutcomeUnknown,
-} from '../services/walletMcpService.js';
+} from '../wallet/index.js';
 import { MessagingGatewayService, IncomingUserMessageEvent } from '../services/messaging/index.js';
 import { EmailListenerService } from '../services/emailListenerService.js';
 import {
   PendingConfirmationIntent,
   ReconciliationIntent,
 } from '../utils/fastPathIntentDetector.js';
-import { CreateRecordInputPayload } from '../types/walletTypes.js';
+import type { CreateRecordInputPayload } from '../wallet/index.js';
 import {
   formatPendingConfirmationSuccess,
   formatBulkPendingConfirmationSuccess,
@@ -32,7 +33,6 @@ import {
   formatReconciliationAmbiguousResponse,
 } from '../utils/transactionStatusFormatter.js';
 import { formatAccountSelectionPrompt } from '../utils/accountClarificationFormatter.js';
-import { WalletCacheService } from '../services/walletCacheService.js';
 import { applicationLogger } from '../utils/logger.js';
 
 export class PendingActionHandler {

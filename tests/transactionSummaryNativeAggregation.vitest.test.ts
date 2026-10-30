@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Application } from '../src/app.js';
-import { WalletMcpCapabilityService } from '../src/services/walletMcpCapabilityService.js';
-import { WalletMcpClientService, WalletMcpRequestError } from '../src/services/walletMcpService.js';
-import { WalletCacheService } from '../src/services/walletCacheService.js';
-import { TransactionSummaryService } from '../src/services/transactionSummaryService.js';
-import { TransactionHistoryService } from '../src/services/transactionHistoryService.js';
+import { WalletMcpCapabilityService } from '../src/wallet/index.js';
+import { WalletMcpClientService, WalletMcpRequestError } from '../src/wallet/index.js';
+import { WalletCacheService } from '../src/wallet/index.js';
+import { TransactionSummaryService } from '../src/wallet/index.js';
+import { TransactionHistoryService } from '../src/wallet/index.js';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
 import { FinancialActionExecutor } from '../src/services/financialActionExecutor.js';
 import {
@@ -21,7 +21,7 @@ import { formatTransactionSummaryMessage } from '../src/utils/transactionSummary
 import type {
   WalletMcpSdkClient,
   WalletMcpTransportDependencies,
-} from '../src/services/walletMcpTransport.js';
+} from '../src/wallet/index.js';
 
 describe('native Wallet MCP summary aggregation (Issue #161)', () => {
   const cachedAccounts: WalletAccountItem[] = [

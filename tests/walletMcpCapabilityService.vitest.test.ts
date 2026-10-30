@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   WalletMcpCapabilityService,
   DEFAULT_CAPABILITY_CACHE_DURATION_MS,
-} from '../src/services/walletMcpCapabilityService.js';
-import { normalizeWalletClientProfile } from '../src/services/walletProfileNormalizer.js';
+} from '../src/wallet/index.js';
+import { normalizeWalletClientProfile } from '../src/wallet/index.js';
 import {
   WalletMcpClientService,
   WalletMcpRequestError,
   WALLET_MCP_ALLOWED_TOOL_NAMES,
-} from '../src/services/walletMcpService.js';
+} from '../src/wallet/index.js';
 import {
   WalletClientProfile,
   WalletMcpToolCapability,
