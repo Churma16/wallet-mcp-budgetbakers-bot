@@ -243,6 +243,61 @@ export function formatCurrencyAmount(
 }
 
 /**
+ * Formats a single transfer transaction using dedicated clean route and cycle indicator
+ */
+function formatSingleTransferRecordSuccess(
+  recordItem: CreateRecordInputPayload,
+  accountName: string,
+  destinationAccountName: string | undefined,
+  languageCode?: SupportedLanguage,
+  accountCurrency?: string
+): string {
+  const dictionary = getDictionary(languageCode);
+  const resolvedCurrency = accountCurrency || getDefaultCurrency();
+  const formattedAmount = formatCurrencyAmount(recordItem.amount, resolvedCurrency, languageCode);
+  const route = destinationAccountName ? `${accountName} ➔ ${destinationAccountName}` : accountName;
+  const rawNote = recordItem.note || recordItem.counterParty;
+  const hasCustomNote = rawNote && rawNote.trim().length > 0 && rawNote.trim().toLowerCase() !== 'transfer';
+  const recordTimestampDisplay = formatTransactionDate(recordItem.recordDate, languageCode);
+  const notePart = hasCustomNote
+    ? `\n📝 ${rawNote.trim()}  •  ⏰ ${recordTimestampDisplay}`
+    : `\n⏰ ${recordTimestampDisplay}`;
+  const labelLine = recordItem.labels && recordItem.labels.length > 0
+    ? `\n🔖 ${recordItem.labels.map(label => `#${label}`).join(' ')}`
+    : '';
+
+  return [
+    `✅ *${dictionary.labels.transferSuccess}*`,
+    '',
+    `🔁 ${formattedAmount}`,
+    `💳 ${route}${notePart}${labelLine}`,
+  ].join('\n');
+}
+
+/**
+ * Formats a transfer entry inside a multiple-record confirmation list
+ */
+function formatMultipleRecordTransferItem(
+  itemIndex: number,
+  recordItem: CreateRecordInputPayload,
+  accountName: string,
+  destinationAccountName: string | undefined,
+  formattedAmount: string,
+  recordTimestampDisplay: string
+): string {
+  const route = destinationAccountName ? `${accountName} ➔ ${destinationAccountName}` : accountName;
+  const description = recordItem.note || recordItem.counterParty || 'Transfer';
+  const labelSuffix = recordItem.labels && recordItem.labels.length > 0
+    ? `  •  🔖 ${recordItem.labels.map(label => `#${label}`).join(' ')}`
+    : '';
+
+  return [
+    `${itemIndex + 1}. 🔁 ${description} — *${formattedAmount}*`,
+    `   💳 ${route}  •  ⏰ ${recordTimestampDisplay}${labelSuffix}`,
+  ].join('\n');
+}
+
+/**
  * Formats a single transaction record using Context-First psychological hierarchy
  */
 function formatSingleRecordSuccess(
@@ -250,20 +305,14 @@ function formatSingleRecordSuccess(
   accountName: string,
   categoryName: string,
   languageCode?: SupportedLanguage,
-  accountCurrency?: string,
-  destinationAccountName?: string
+  accountCurrency?: string
 ): string {
   const dictionary = getDictionary(languageCode);
-  const isTransfer = Boolean(recordItem.transfer);
   const isExpense = recordItem.amount < 0;
-  const transactionTypeIcon = isTransfer ? '🔁' : isExpense ? '💸' : '💰';
+  const transactionTypeIcon = isExpense ? '💸' : '💰';
   const resolvedCurrency = accountCurrency || getDefaultCurrency();
   const formattedAmount = formatCurrencyAmount(recordItem.amount, resolvedCurrency, languageCode);
-  const defaultTitle = isTransfer
-    ? 'Transfer'
-    : isExpense
-      ? dictionary.labels.expense
-      : dictionary.labels.income;
+  const defaultTitle = isExpense ? dictionary.labels.expense : dictionary.labels.income;
   const transactionTitle = recordItem.note || recordItem.counterParty || defaultTitle;
   const recordTimestampDisplay = formatTransactionDate(recordItem.recordDate, languageCode);
 
@@ -275,9 +324,6 @@ function formatSingleRecordSuccess(
     recordTimestampDisplay,
     transactionTypeIcon,
     labels: recordItem.labels,
-    isTransfer,
-    destinationAccountName,
-    note: recordItem.note,
   });
 }
 
@@ -296,25 +342,32 @@ function formatMultipleRecordsSuccess(
   const headerMessage = dictionary.records.multipleSuccessHeader(totalRecordsCount, currentTimestamp);
 
   const recordEntries = recordList.map((recordItem, recordIndex) => {
-    const isTransfer = Boolean(recordItem.transfer);
-    const isExpense = recordItem.amount < 0;
-    const transactionTypeIcon = isTransfer ? '🔁' : isExpense ? '💸' : '💰';
     const targetAccount = availableAccounts.find(account => account.id === recordItem.accountId);
-    const destinationAccount = recordItem.transfer?.accountId
-      ? availableAccounts.find(account => account.id === recordItem.transfer?.accountId)
-      : undefined;
-    const destinationAccountName = destinationAccount?.name || recordItem.transfer?.accountHint;
     const resolvedCurrency = targetAccount?.currency || getDefaultCurrency();
     const formattedAmount = formatCurrencyAmount(recordItem.amount, resolvedCurrency, languageCode);
     const accountName = targetAccount?.name || dictionary.labels.defaultAccount;
-    const categoryName = availableCategories.find(category => category.id === recordItem.categoryId)?.name || dictionary.labels.defaultCategory;
-    const defaultDescription = isTransfer
-      ? 'Transfer'
-      : isExpense
-        ? dictionary.labels.expense
-        : dictionary.labels.income;
-    const transactionDescription = recordItem.note || recordItem.counterParty || defaultDescription;
     const recordTimestampDisplay = formatTransactionDate(recordItem.recordDate, languageCode);
+
+    if (recordItem.transfer) {
+      const destinationAccount = recordItem.transfer.accountId
+        ? availableAccounts.find(account => account.id === recordItem.transfer?.accountId)
+        : undefined;
+      const destinationAccountName = destinationAccount?.name || recordItem.transfer.accountHint;
+      return formatMultipleRecordTransferItem(
+        recordIndex,
+        recordItem,
+        accountName,
+        destinationAccountName,
+        formattedAmount,
+        recordTimestampDisplay
+      );
+    }
+
+    const isExpense = recordItem.amount < 0;
+    const transactionTypeIcon = isExpense ? '💸' : '💰';
+    const categoryName = availableCategories.find(category => category.id === recordItem.categoryId)?.name || dictionary.labels.defaultCategory;
+    const defaultDescription = isExpense ? dictionary.labels.expense : dictionary.labels.income;
+    const transactionDescription = recordItem.note || recordItem.counterParty || defaultDescription;
 
     return dictionary.records.multipleRecordItem({
       itemIndex: recordIndex,
@@ -325,8 +378,6 @@ function formatMultipleRecordsSuccess(
       categoryName,
       recordTimestampDisplay,
       labels: recordItem.labels,
-      isTransfer,
-      destinationAccountName,
     });
   });
 
@@ -351,20 +402,23 @@ export function formatRecordSuccessMessage(
     const singleRecord = recordList[0];
     const targetAccount = availableAccounts.find(account => account.id === singleRecord.accountId);
     const accountName = targetAccount?.name || dictionary.labels.defaultAccount;
-    const categoryName = availableCategories.find(category => category.id === singleRecord.categoryId)?.name || dictionary.labels.defaultCategory;
-    const destinationAccount = singleRecord.transfer?.accountId
-      ? availableAccounts.find(account => account.id === singleRecord.transfer?.accountId)
-      : undefined;
-    const destinationAccountName = destinationAccount?.name || singleRecord.transfer?.accountHint;
 
-    return formatSingleRecordSuccess(
-      singleRecord,
-      accountName,
-      categoryName,
-      languageCode,
-      targetAccount?.currency,
-      destinationAccountName
-    );
+    if (singleRecord.transfer) {
+      const destinationAccount = singleRecord.transfer.accountId
+        ? availableAccounts.find(account => account.id === singleRecord.transfer?.accountId)
+        : undefined;
+      const destinationAccountName = destinationAccount?.name || singleRecord.transfer.accountHint;
+      return formatSingleTransferRecordSuccess(
+        singleRecord,
+        accountName,
+        destinationAccountName,
+        languageCode,
+        targetAccount?.currency
+      );
+    }
+
+    const categoryName = availableCategories.find(category => category.id === singleRecord.categoryId)?.name || dictionary.labels.defaultCategory;
+    return formatSingleRecordSuccess(singleRecord, accountName, categoryName, languageCode, targetAccount?.currency);
   }
 
   return formatMultipleRecordsSuccess(recordList, availableAccounts, availableCategories, languageCode);

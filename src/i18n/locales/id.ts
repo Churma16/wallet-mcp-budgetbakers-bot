@@ -43,6 +43,7 @@ export const indonesianDictionary: ResponseDictionary = {
     remaining: 'sisa',
     from: 'Dari',
     to: 'Tujuan',
+    transferSuccess: 'Transfer berhasil dicatat!',
   },
 
   records: {
@@ -50,24 +51,6 @@ export const indonesianDictionary: ResponseDictionary = {
       const labelLine = params.labels && params.labels.length > 0
         ? `\n🔖 ${params.labels.map(label => `#${label}`).join(' ')}`
         : '';
-
-      if (params.isTransfer) {
-        const route = params.destinationAccountName
-          ? `${params.accountName} ➔ ${params.destinationAccountName}`
-          : params.accountName;
-        const rawNote = params.note || params.transactionTitle;
-        const hasCustomNote = rawNote && rawNote.trim().length > 0 && rawNote.trim().toLowerCase() !== 'transfer';
-        const notePart = hasCustomNote
-          ? `\n📝 ${rawNote.trim()}  •  ⏰ ${params.recordTimestampDisplay}`
-          : `\n⏰ ${params.recordTimestampDisplay}`;
-
-        return [
-          `✅ *Transfer berhasil dicatat!*`,
-          '',
-          `🔁 ${params.formattedAmount}`,
-          `💳 ${route}${notePart}${labelLine}`,
-        ].join('\n');
-      }
 
       return [
         `✅ *${params.transactionTitle}* berhasil dicatat!`,
@@ -85,16 +68,6 @@ export const indonesianDictionary: ResponseDictionary = {
       const labelSuffix = params.labels && params.labels.length > 0
         ? `  •  🔖 ${params.labels.map(label => `#${label}`).join(' ')}`
         : '';
-
-      if (params.isTransfer) {
-        const route = params.destinationAccountName
-          ? `${params.accountName} ➔ ${params.destinationAccountName}`
-          : params.accountName;
-        return [
-          `${params.itemIndex + 1}. 🔁 ${params.transactionDescription} — *${params.formattedAmount}*`,
-          `   💳 ${route}  •  ⏰ ${params.recordTimestampDisplay}${labelSuffix}`,
-        ].join('\n');
-      }
 
       return [
         `${params.itemIndex + 1}. ${params.transactionTypeIcon} ${params.transactionDescription} — *${params.formattedAmount}* dari ${params.accountName}`,
