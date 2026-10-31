@@ -102,34 +102,33 @@ export async function fetchCategories(
   const rawCategoryArray = extractRawArray<RawCategoryItem>(fetchedCategoryData, 'categories', 'items');
 
   const categories = rawCategoryArray.map(item => {
-    const rawGroup = item.group as unknown;
+    const rawGroup = item.group;
     const categoryGroupObject = typeof rawGroup === 'object' && rawGroup !== null
       ? {
-          id: String((rawGroup as { id?: string; name?: string }).id || (rawGroup as { id?: string; name?: string }).name || '').trim(),
-          name: String((rawGroup as { id?: string; name?: string }).name || (rawGroup as { id?: string; name?: string }).id || '').trim(),
+          id: String(rawGroup.id || rawGroup.name || '').trim(),
+          name: String(rawGroup.name || rawGroup.id || '').trim(),
         }
       : undefined;
 
-    const groupRecord = item.group as unknown as { id?: string } | undefined;
+    const groupRecord = typeof rawGroup === 'object' && rawGroup !== null ? rawGroup : undefined;
 
     return {
       id: item.id || item.categoryId || '',
       name: item.name || item.categoryName || 'Unnamed Category',
       parentCategoryId: item.parentId || item.parentCategoryId,
-      parentCategoryName: (item as { parentName?: string; parentCategoryName?: string }).parentName ||
-        (item as { parentName?: string; parentCategoryName?: string }).parentCategoryName,
+      parentCategoryName: item.parentName || item.parentCategoryName,
       group: categoryGroupObject,
-      systemId: (item as { systemId?: string }).systemId,
-      cardinality: (item as { cardinality?: string }).cardinality,
-      customCategory: (item as { customCategory?: boolean }).customCategory,
-      archived: (item as { archived?: boolean }).archived,
-      enabled: (item as { enabled?: boolean }).enabled,
-      isAssignable: typeof (item as { isAssignable?: boolean }).isAssignable === 'boolean'
-        ? (item as { isAssignable?: boolean }).isAssignable
-        : typeof (item as { assignable?: boolean }).assignable === 'boolean'
-          ? (item as { assignable?: boolean }).assignable
-          : (item as { enabled?: boolean }).enabled !== false &&
-            (item as { archived?: boolean }).archived !== true &&
+      systemId: item.systemId,
+      cardinality: item.cardinality,
+      customCategory: item.customCategory,
+      archived: item.archived,
+      enabled: item.enabled,
+      isAssignable: typeof item.isAssignable === 'boolean'
+        ? item.isAssignable
+        : typeof item.assignable === 'boolean'
+          ? item.assignable
+          : item.enabled !== false &&
+            item.archived !== true &&
             groupRecord?.id !== 'system_categories',
     };
   });
@@ -158,7 +157,7 @@ export async function fetchLabels(
 
   const labels = rawLabelArray.map(item => ({
     id: String(item.id || item.labelId || ''),
-    name: String(item.name || item.labelName || (item as { title?: string }).title || '').trim(),
+    name: String(item.name || item.labelName || item.title || '').trim(),
     color: item.color,
     icon: item.icon,
   })).filter(item => item.id.length > 0 && item.name.length > 0);

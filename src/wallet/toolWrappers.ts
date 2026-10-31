@@ -91,6 +91,11 @@ export type RawAccountsResponse = readonly RawAccountItem[] | RawAccountsEnvelop
 // 3. get_categories types
 // ---------------------------------------------------------------------------
 
+export interface RawCategoryGroupObject {
+  readonly id?: string;
+  readonly name?: string;
+}
+
 export interface RawCategoryItem {
   readonly id?: string;
   readonly categoryId?: string;
@@ -100,8 +105,17 @@ export interface RawCategoryItem {
   readonly color?: string;
   readonly parentId?: string;
   readonly parentCategoryId?: string;
+  readonly parentName?: string;
+  readonly parentCategoryName?: string;
   readonly categoryGroup?: string;
-  readonly group?: string;
+  readonly group?: string | RawCategoryGroupObject;
+  readonly systemId?: string;
+  readonly cardinality?: string;
+  readonly customCategory?: boolean;
+  readonly archived?: boolean;
+  readonly enabled?: boolean;
+  readonly isAssignable?: boolean;
+  readonly assignable?: boolean;
   readonly isTransfer?: boolean;
   readonly transfer?: boolean;
 }
@@ -122,6 +136,7 @@ export interface RawLabelItem {
   readonly labelId?: string;
   readonly name?: string;
   readonly labelName?: string;
+  readonly title?: string;
   readonly color?: string;
   readonly icon?: string;
 }
