@@ -137,27 +137,34 @@ export class NotificationWebhookServer {
         return;
       }
 
+      let parsedPayload: Partial<PushNotificationPayload>;
       try {
-        const parsedPayload = JSON.parse(bodyBuffer) as Partial<PushNotificationPayload>;
+        parsedPayload = JSON.parse(bodyBuffer) as Partial<PushNotificationPayload>;
+      } catch (parseError: any) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: `Malformed JSON: ${parseError.message}` }));
+        return;
+      }
 
-        if (!parsedPayload.packageName || (!parsedPayload.title && !parsedPayload.text)) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(
-            JSON.stringify({
-              error: 'Invalid payload: packageName and at least title or text are required',
-            })
-          );
-          return;
-        }
+      if (!parsedPayload.packageName || (!parsedPayload.title && !parsedPayload.text)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            error: 'Invalid payload: packageName and at least title or text are required',
+          })
+        );
+        return;
+      }
 
-        const validPayload: PushNotificationPayload = {
-          packageName: String(parsedPayload.packageName).trim(),
-          title: String(parsedPayload.title || '').trim(),
-          text: String(parsedPayload.text || '').trim(),
-          timestamp: typeof parsedPayload.timestamp === 'number' ? parsedPayload.timestamp : Date.now(),
-        };
+      const validPayload: PushNotificationPayload = {
+        packageName: String(parsedPayload.packageName).trim(),
+        title: String(parsedPayload.title || '').trim(),
+        text: String(parsedPayload.text || '').trim(),
+        timestamp: typeof parsedPayload.timestamp === 'number' ? parsedPayload.timestamp : Date.now(),
+      };
 
-        // Delegate to handler
+      // Delegate to handler
+      try {
         await this.onNotificationReceived(validPayload);
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -167,9 +174,12 @@ export class NotificationWebhookServer {
             message: 'Notification received and processed',
           })
         );
-      } catch (parseError: any) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: `Malformed JSON: ${parseError.message}` }));
+      } catch (handlerError: any) {
+        applicationLogger.error(
+          `[NotificationWebhook] Handler execution error: ${handlerError.message}`
+        );
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Internal server error processing notification' }));
       }
     });
 

@@ -206,4 +206,24 @@ describe('NotificationWebhookServer', () => {
     const response = await makeRequest('POST', '/api/webhook/notification', largeData);
     expect([413, 0]).toContain(response.status);
   });
+
+  it('returns 500 when handler callback throws an unexpected error', async () => {
+    server = new NotificationWebhookServer({
+      port: testPort,
+      host: '127.0.0.1',
+      onNotificationReceived: async () => {
+        throw new Error('Database connection failed');
+      },
+    });
+    await server.start();
+
+    const response = await makeRequest('POST', '/webhook/notification', {
+      packageName: 'com.jago',
+      title: 'Valid title',
+      text: 'Valid text',
+    });
+
+    expect(response.status).toBe(500);
+    expect(response.body.error).toContain('Internal server error');
+  });
 });
