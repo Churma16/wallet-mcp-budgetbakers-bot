@@ -16,7 +16,7 @@ import {
   callGetLabels,
   callCreateLabel,
   callGetBudgets,
-} from './toolWrappers.js';
+} from './mcp/toolWrappers.js';
 import { applicationLogger } from '../lib/logger.js';
 
 export type ToolInvoker = WalletToolCaller;
@@ -261,3 +261,4 @@ export async function fetchBudgets(
     };
   });
 }
+

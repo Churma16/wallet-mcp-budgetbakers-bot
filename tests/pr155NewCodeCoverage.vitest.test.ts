@@ -6,18 +6,18 @@ import {
   buildItemViewModelFromPendingItem,
   buildTransactionAttentionSummary,
   TransactionAttentionItemViewModel,
-} from '../src/wallet/transactionStatusViewModel.js';
+} from '../src/wallet/formatters/transactionStatusViewModel.js';
 import {
   formatTransactionAttentionSummary,
   formatUncertainOutcomeResponse,
-} from '../src/wallet/transactionStatusFormatter.js';
+} from '../src/wallet/formatters/transactionStatusFormatter.js';
 import { detectReconciliationAction } from '../src/brain/index.js';
 import {
   englishDictionary,
   indonesianDictionary,
   setActiveLanguage,
 } from '../src/i18n/index.js';
-import { formatAccountSelectionUnknownOutcome } from '../src/brain/accountClarificationFormatter.js';
+import { formatAccountSelectionUnknownOutcome } from '../src/brain/clarification/accountClarificationFormatter.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 
 function event(text = 'status'): IncomingUserMessageEvent {

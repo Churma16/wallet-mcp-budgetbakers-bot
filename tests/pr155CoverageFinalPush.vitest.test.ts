@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { FastPathHandler } from '../src/core/fastPathHandler.js';
-import { PendingActionHandler } from '../src/core/pendingHandler.js';
+import { FastPathHandler } from '../src/core/handlers/fastPathHandler.js';
+import { PendingActionHandler } from '../src/core/handlers/pendingHandler.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import {
   buildItemViewModelFromClarificationDraft,
   buildItemViewModelFromPendingItem,
   buildTransactionAttentionSummary,
   type TransactionAttentionItemViewModel,
-} from '../src/wallet/transactionStatusViewModel.js';
+} from '../src/wallet/formatters/transactionStatusViewModel.js';
 import {
   formatReconciliationAbsentResponse,
   formatReconciliationAmbiguousResponse,
@@ -15,7 +15,7 @@ import {
   formatReconciliationRecordedResponse,
   formatTransactionAttentionSummary,
   formatUncertainOutcomeResponse,
-} from '../src/wallet/transactionStatusFormatter.js';
+} from '../src/wallet/formatters/transactionStatusFormatter.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 
 const event = {

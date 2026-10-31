@@ -192,5 +192,5 @@ export interface WalletRecordAggregationResponse {
   };
 }
 
-export * from './queryTypes.js';
-export * from './capabilityTypes.js';
+export * from './history/queryTypes.js';
+export * from './mcp/capabilityTypes.js';

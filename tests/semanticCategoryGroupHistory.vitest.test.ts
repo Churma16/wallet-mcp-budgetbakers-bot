@@ -12,7 +12,7 @@ import {
   normalizeTransactionHistoryFilters,
   extractDynamicCategoryGroups,
   findMatchingDynamicCategoryGroup,
-} from '../src/wallet/transactionHistoryFilterNormalizer.js';
+} from '../src/wallet/history/transactionHistoryFilterNormalizer.js';
 import {
   validateSemanticHistoryQueryOptions,
 } from '../src/brain/index.js';

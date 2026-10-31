@@ -1,4 +1,4 @@
-import { AccountClarificationHandler } from '../src/core/accountClarificationHandler.js';
+import { AccountClarificationHandler } from '../src/core/handlers/accountClarificationHandler.js';
 import { UserMessageHandler } from '../src/core/dispatcher.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';

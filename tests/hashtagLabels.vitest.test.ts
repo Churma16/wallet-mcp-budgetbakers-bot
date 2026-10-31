@@ -1,11 +1,11 @@
 import assert from 'node:assert';
 import { test } from 'vitest';
 import { extractHashtags, normalizeTagName, deduplicateTags } from '../src/brain/index.js';
-import { validateAndSanitizeFinancialRecords } from '../src/wallet/recordValidator.js';
+import { validateAndSanitizeFinancialRecords } from '../src/wallet/records/recordValidator.js';
 import { resolveAndEnsureLabels } from '../src/wallet/index.js';
 import { WalletCacheService } from '../src/wallet/index.js';
 import { WalletMcpClientService } from '../src/wallet/index.js';
-import { formatRecordSuccessMessage } from '../src/wallet/humanResponseFormatter.js';
+import { formatRecordSuccessMessage } from '../src/wallet/formatters/humanResponseFormatter.js';
 import {
   WalletAccountItem,
   WalletCategoryItem,
@@ -13,7 +13,7 @@ import {
   CreateRecordInputPayload,
 } from '../src/types/walletTypes.js';
 import { UserMessageHandler } from '../src/core/dispatcher.js';
-import { AccountClarificationHandler } from '../src/core/accountClarificationHandler.js';
+import { AccountClarificationHandler } from '../src/core/handlers/accountClarificationHandler.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 

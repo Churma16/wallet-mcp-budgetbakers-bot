@@ -5,7 +5,7 @@ import {
   formatCompactTransactionAmount,
   formatCompactTransactionDate,
   MAX_TRANSACTION_HISTORY_TITLE_LENGTH,
-} from '../src/wallet/humanResponseFormatter.js';
+} from '../src/wallet/formatters/humanResponseFormatter.js';
 import type { TransactionHistoryPage } from '../src/types/walletTypes.js';
 
 describe('Transaction History Formatting (Issue #115)', () => {

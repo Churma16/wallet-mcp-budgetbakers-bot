@@ -17,15 +17,15 @@ import {
 } from '../brain/index.js';
 import { FINANCIAL_ACTION_TYPES } from '../brain/constants.js';
 import { PendingTransactionService } from './pending.js';
-import { PendingActionHandler } from './pendingHandler.js';
-import { FastPathHandler } from './fastPathHandler.js';
+import { PendingActionHandler } from './handlers/pendingHandler.js';
+import { FastPathHandler } from './handlers/fastPathHandler.js';
 import { FinancialActionExecutor } from './executor.js';
-import { AccountClarificationHandler } from './accountClarificationHandler.js';
-import { CategoryClarificationHandler } from './categoryClarificationHandler.js';
-import { CreateRecordActionHandler } from './createRecordHandler.js';
+import { AccountClarificationHandler } from './handlers/accountClarificationHandler.js';
+import { CategoryClarificationHandler } from './handlers/categoryClarificationHandler.js';
+import { CreateRecordActionHandler } from './handlers/createRecordHandler.js';
 import {
   FinancialActionRegistry,
-} from './financialActionRegistry.js';
+} from './handlers/financialActionRegistry.js';
 import {
   CheckBalanceActionHandler,
   CheckBudgetActionHandler,
@@ -33,7 +33,7 @@ import {
   HelpMenuActionHandler,
   TransactionHistoryActionHandler,
   TransactionSummaryActionHandler,
-} from './readActionHandlers.js';
+} from './handlers/readActionHandlers.js';
 import { coordinateInboundTransactionCandidate } from './inboundCoordinator.js';
 import { evaluateNotificationThroughGate } from '../config/notificationRules.js';
 import {

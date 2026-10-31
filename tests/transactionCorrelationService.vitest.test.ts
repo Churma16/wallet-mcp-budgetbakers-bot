@@ -6,7 +6,7 @@ import { WalletRecordItem } from '../src/types/walletTypes.js';
 import {
   formatEnrichedPendingEmailTransactionNotification,
   formatCorrelatedWalletRecordNotification,
-} from '../src/wallet/humanResponseFormatter.js';
+} from '../src/wallet/formatters/humanResponseFormatter.js';
 
 describe('TransactionCorrelationService (Issue #153)', () => {
   const service = new TransactionCorrelationService();

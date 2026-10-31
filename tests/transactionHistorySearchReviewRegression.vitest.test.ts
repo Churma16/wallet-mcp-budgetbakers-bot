@@ -4,7 +4,7 @@ import {
   MAX_TRANSACTION_SEARCH_SCAN_CALLS_PER_REQUEST,
 } from '../src/wallet/index.js';
 import { detectFastPathAction } from '../src/brain/index.js';
-import { formatTransactionHistoryMessage } from '../src/wallet/humanResponseFormatter.js';
+import { formatTransactionHistoryMessage } from '../src/wallet/formatters/humanResponseFormatter.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 
 describe('PR #114 transaction search review regression tests', () => {

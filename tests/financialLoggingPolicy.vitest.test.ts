@@ -3,7 +3,7 @@ import path from 'path';
 import { afterEach, beforeEach, describe, it } from 'vitest';
 import { applicationLogger } from '../src/lib/logger.js';
 import { UserMessageHandler } from '../src/core/dispatcher.js';
-import { PendingActionHandler } from '../src/core/pendingHandler.js';
+import { PendingActionHandler } from '../src/core/handlers/pendingHandler.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';
 import {

@@ -13,7 +13,7 @@ import {
   CheckBalanceActionContext,
 } from '../src/core/index.js';
 import { FinancialActionExecutor } from '../src/core/executor.js';
-import { FastPathHandler } from '../src/core/fastPathHandler.js';
+import { FastPathHandler } from '../src/core/handlers/fastPathHandler.js';
 import { UserMessageHandler } from '../src/core/dispatcher.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { WalletAccountItem, WalletCategoryItem, WalletBudgetProgressItem } from '../src/types/walletTypes.js';

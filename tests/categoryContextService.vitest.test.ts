@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CategoryContextService } from '../src/brain/categoryContext.js';
+import { CategoryContextService } from '../src/brain/category/categoryContext.js';
 import {
   buildCompactSystemInstruction,
   buildReceiptSystemInstruction,

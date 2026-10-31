@@ -2,14 +2,14 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   MAX_TRANSACTION_HISTORY_LIMIT,
 } from '../src/wallet/index.js';
-import { FastPathHandler } from '../src/core/fastPathHandler.js';
+import { FastPathHandler } from '../src/core/handlers/fastPathHandler.js';
 import { detectFastPathAction } from '../src/brain/index.js';
 import {
   matchesTransactionRecordSearch,
   MAX_SEARCH_QUERY_LENGTH,
-} from '../src/wallet/transactionSearchMatcher.js';
-import { normalizeTransactionHistoryFilters } from '../src/wallet/transactionHistoryFilterNormalizer.js';
-import { formatTransactionHistoryMessage } from '../src/wallet/humanResponseFormatter.js';
+} from '../src/wallet/history/transactionSearchMatcher.js';
+import { normalizeTransactionHistoryFilters } from '../src/wallet/history/transactionHistoryFilterNormalizer.js';
+import { formatTransactionHistoryMessage } from '../src/wallet/formatters/humanResponseFormatter.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import type { TransactionHistoryPage } from '../src/types/walletTypes.js';
 import {

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { normalizeTransactionRecordDate } from '../src/wallet/recordDateNormalizer.js';
-import { validateAndSanitizeFinancialRecords } from '../src/wallet/recordValidator.js';
+import { normalizeTransactionRecordDate } from '../src/wallet/records/recordDateNormalizer.js';
+import { validateAndSanitizeFinancialRecords } from '../src/wallet/records/recordValidator.js';
 import {
   setRuntimeApplicationConfig,
   resetRuntimeApplicationConfig,
