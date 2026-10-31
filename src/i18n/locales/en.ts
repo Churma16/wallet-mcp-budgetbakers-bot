@@ -43,6 +43,7 @@ export const englishDictionary: ResponseDictionary = {
     remaining: 'remaining',
     from: 'From',
     to: 'To',
+    transferSuccess: 'Transfer recorded successfully!',
   },
 
   records: {
@@ -50,6 +51,7 @@ export const englishDictionary: ResponseDictionary = {
       const labelLine = params.labels && params.labels.length > 0
         ? `\n🔖 ${params.labels.map(label => `#${label}`).join(' ')}`
         : '';
+
       return [
         `✅ *${params.transactionTitle}* recorded successfully!`,
         '',
@@ -66,6 +68,7 @@ export const englishDictionary: ResponseDictionary = {
       const labelSuffix = params.labels && params.labels.length > 0
         ? `  •  🔖 ${params.labels.map(label => `#${label}`).join(' ')}`
         : '';
+
       return [
         `${params.itemIndex + 1}. ${params.transactionTypeIcon} ${params.transactionDescription} — *${params.formattedAmount}* from ${params.accountName}`,
         `   🏷️ ${params.categoryName}  •  ${params.recordTimestampDisplay}${labelSuffix}`,

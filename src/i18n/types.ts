@@ -88,6 +88,7 @@ export interface ResponseDictionary {
     remaining: string;
     from: string;
     to: string;
+    transferSuccess: string;
   };
 
   records: {

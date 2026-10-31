@@ -43,6 +43,7 @@ export const indonesianDictionary: ResponseDictionary = {
     remaining: 'sisa',
     from: 'Dari',
     to: 'Tujuan',
+    transferSuccess: 'Transfer berhasil dicatat!',
   },
 
   records: {
@@ -50,6 +51,7 @@ export const indonesianDictionary: ResponseDictionary = {
       const labelLine = params.labels && params.labels.length > 0
         ? `\n🔖 ${params.labels.map(label => `#${label}`).join(' ')}`
         : '';
+
       return [
         `✅ *${params.transactionTitle}* berhasil dicatat!`,
         '',
@@ -66,6 +68,7 @@ export const indonesianDictionary: ResponseDictionary = {
       const labelSuffix = params.labels && params.labels.length > 0
         ? `  •  🔖 ${params.labels.map(label => `#${label}`).join(' ')}`
         : '';
+
       return [
         `${params.itemIndex + 1}. ${params.transactionTypeIcon} ${params.transactionDescription} — *${params.formattedAmount}* dari ${params.accountName}`,
         `   🏷️ ${params.categoryName}  •  ${params.recordTimestampDisplay}${labelSuffix}`,
