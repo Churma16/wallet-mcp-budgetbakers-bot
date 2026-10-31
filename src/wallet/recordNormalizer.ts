@@ -3,8 +3,9 @@ import type {
   WalletAccountItem,
   WalletCategoryItem,
 } from './types.js';
+import type { RawRecordItem } from './toolWrappers.js';
 
-export function normalizeRawRecord(item: any): WalletRecordItem {
+export function normalizeRawRecord(item: RawRecordItem | any): WalletRecordItem {
   let resolvedAmount = 0;
   let resolvedCurrency = 'IDR';
 
@@ -69,7 +70,7 @@ export function normalizeRawRecord(item: any): WalletRecordItem {
   };
 }
 
-export function normalizeRawRecords(rawRecordArray: any[]): WalletRecordItem[] {
+export function normalizeRawRecords(rawRecordArray: readonly RawRecordItem[] | any[]): WalletRecordItem[] {
   return rawRecordArray.map(normalizeRawRecord);
 }
 

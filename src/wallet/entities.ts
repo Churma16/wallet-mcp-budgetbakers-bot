@@ -1,17 +1,25 @@
-import {
-  WALLET_MCP_TOOL_NAMES,
-} from './constants.js';
 import type {
   WalletAccountItem,
   WalletCategoryItem,
   WalletLabelItem,
   WalletBudgetItem,
 } from './types.js';
+import {
+  type WalletToolCaller,
+  type RawAccountItem,
+  type RawCategoryItem,
+  type RawLabelItem,
+  type RawBudgetItem,
+  extractRawArray,
+  callGetAccounts,
+  callGetCategories,
+  callGetLabels,
+  callCreateLabel,
+  callGetBudgets,
+} from './toolWrappers.js';
 import { applicationLogger } from '../lib/logger.js';
 
-export interface ToolInvoker {
-  callMcpTool<T>(toolName: string, args?: Record<string, unknown>): Promise<T>;
-}
+export type ToolInvoker = WalletToolCaller;
 
 export interface EntityCacheStore {
   cachedAccountList?: WalletAccountItem[];
@@ -33,10 +41,8 @@ export async function fetchAccounts(
     return cacheStore!.cachedAccountList!;
   }
 
-  const fetchedAccountData = await client.callMcpTool<any>(WALLET_MCP_TOOL_NAMES.GET_ACCOUNTS);
-  const rawAccountArray: any[] = Array.isArray(fetchedAccountData)
-    ? fetchedAccountData
-    : (fetchedAccountData?.accounts || fetchedAccountData?.items || []);
+  const fetchedAccountData = await callGetAccounts(client);
+  const rawAccountArray = extractRawArray<RawAccountItem>(fetchedAccountData, 'accounts', 'items');
 
   const accounts = rawAccountArray.map(item => {
     let resolvedBalance: number | undefined = undefined;
@@ -55,7 +61,7 @@ export async function fetchAccounts(
     }
 
     return {
-      id: item.id || item.accountId,
+      id: item.id || item.accountId || '',
       name: item.name || item.accountName || 'Unnamed Account',
       currency: resolvedCurrency || 'IDR',
       balance: resolvedBalance,
@@ -92,33 +98,41 @@ export async function fetchCategories(
     return cacheStore!.cachedCategoryList!;
   }
 
-  const fetchedCategoryData = await client.callMcpTool<any>(WALLET_MCP_TOOL_NAMES.GET_CATEGORIES);
-  const rawCategoryArray: any[] = Array.isArray(fetchedCategoryData)
-    ? fetchedCategoryData
-    : (fetchedCategoryData?.categories || fetchedCategoryData?.items || []);
+  const fetchedCategoryData = await callGetCategories(client);
+  const rawCategoryArray = extractRawArray<RawCategoryItem>(fetchedCategoryData, 'categories', 'items');
 
-  const categories = rawCategoryArray.map(item => ({
-    id: item.id || item.categoryId,
-    name: item.name || item.categoryName || 'Unnamed Category',
-    parentCategoryId: item.parentId || item.parentCategoryId,
-    parentCategoryName: item.parentName || item.parentCategoryName,
-    group: item.group && typeof item.group === 'object'
+  const categories = rawCategoryArray.map(item => {
+    const rawGroup = item.group as unknown;
+    const categoryGroupObject = typeof rawGroup === 'object' && rawGroup !== null
       ? {
-          id: String(item.group.id || item.group.name || '').trim(),
-          name: String(item.group.name || item.group.id || '').trim(),
+          id: String((rawGroup as { id?: string; name?: string }).id || (rawGroup as { id?: string; name?: string }).name || '').trim(),
+          name: String((rawGroup as { id?: string; name?: string }).name || (rawGroup as { id?: string; name?: string }).id || '').trim(),
         }
-      : undefined,
-    systemId: item.systemId,
-    cardinality: item.cardinality,
-    customCategory: item.customCategory,
-    archived: item.archived,
-    enabled: item.enabled,
-    isAssignable: typeof item.isAssignable === 'boolean'
-      ? item.isAssignable
-      : typeof item.assignable === 'boolean'
-        ? item.assignable
-        : item.enabled !== false && item.archived !== true && item.group?.id !== 'system_categories',
-  }));
+      : undefined;
+
+    const groupRecord = item.group as unknown as { id?: string } | undefined;
+
+    return {
+      id: item.id || item.categoryId || '',
+      name: item.name || item.categoryName || 'Unnamed Category',
+      parentCategoryId: item.parentId || item.parentCategoryId,
+      parentCategoryName: (item as { parentName?: string; parentCategoryName?: string }).parentName ||
+        (item as { parentName?: string; parentCategoryName?: string }).parentCategoryName,
+      group: categoryGroupObject,
+      systemId: (item as { systemId?: string }).systemId,
+      cardinality: (item as { cardinality?: string }).cardinality,
+      customCategory: (item as { customCategory?: boolean }).customCategory,
+      archived: (item as { archived?: boolean }).archived,
+      enabled: (item as { enabled?: boolean }).enabled,
+      isAssignable: typeof (item as { isAssignable?: boolean }).isAssignable === 'boolean'
+        ? (item as { isAssignable?: boolean }).isAssignable
+        : typeof (item as { assignable?: boolean }).assignable === 'boolean'
+          ? (item as { assignable?: boolean }).assignable
+          : (item as { enabled?: boolean }).enabled !== false &&
+            (item as { archived?: boolean }).archived !== true &&
+            groupRecord?.id !== 'system_categories',
+    };
+  });
 
   if (cacheStore) {
     cacheStore.cachedCategoryList = categories;
@@ -139,14 +153,12 @@ export async function fetchLabels(
     return cacheStore!.cachedLabelList!;
   }
 
-  const fetchedLabelData = await client.callMcpTool<any>(WALLET_MCP_TOOL_NAMES.GET_LABELS);
-  const rawLabelArray: any[] = Array.isArray(fetchedLabelData)
-    ? fetchedLabelData
-    : (fetchedLabelData?.labels || fetchedLabelData?.items || []);
+  const fetchedLabelData = await callGetLabels(client);
+  const rawLabelArray = extractRawArray<RawLabelItem>(fetchedLabelData, 'labels', 'items');
 
   const labels = rawLabelArray.map(item => ({
     id: String(item.id || item.labelId || ''),
-    name: String(item.name || item.labelName || item.title || '').trim(),
+    name: String(item.name || item.labelName || (item as { title?: string }).title || '').trim(),
     color: item.color,
     icon: item.icon,
   })).filter(item => item.id.length > 0 && item.name.length > 0);
@@ -167,10 +179,15 @@ export async function createLabel(
   if (!sanitizedLabelName) return null;
 
   try {
-    const toolCallResult = await client.callMcpTool<any>(WALLET_MCP_TOOL_NAMES.CREATE_LABEL, {
+    const toolCallResult = await callCreateLabel(client, {
       name: sanitizedLabelName,
     });
-    const labelPayload = toolCallResult?.label || toolCallResult;
+    const labelPayload = (
+      toolCallResult && typeof toolCallResult === 'object' && 'label' in toolCallResult && toolCallResult.label
+        ? toolCallResult.label
+        : toolCallResult
+    ) as RawLabelItem | undefined;
+
     if (labelPayload && (labelPayload.id || labelPayload.labelId)) {
       const createdLabel: WalletLabelItem = {
         id: String(labelPayload.id || labelPayload.labelId),
@@ -201,10 +218,8 @@ export async function fetchBudgets(
   client: ToolInvoker,
   includeClosed: boolean = false
 ): Promise<WalletBudgetItem[]> {
-  const fetchedBudgetData = await client.callMcpTool<any>(WALLET_MCP_TOOL_NAMES.GET_BUDGETS);
-  const rawBudgetArray: any[] = Array.isArray(fetchedBudgetData)
-    ? fetchedBudgetData
-    : (fetchedBudgetData?.budgets || fetchedBudgetData?.items || []);
+  const fetchedBudgetData = await callGetBudgets(client);
+  const rawBudgetArray = extractRawArray<RawBudgetItem>(fetchedBudgetData, 'budgets', 'items');
   const targetBudgetArray = includeClosed
     ? rawBudgetArray
     : rawBudgetArray.filter(item => !item.closed);
@@ -234,7 +249,7 @@ export async function fetchBudgets(
     );
 
     return {
-      id: item.id || item.budgetId,
+      id: item.id || item.budgetId || '',
       name: item.name || item.budgetName || 'Unnamed Budget',
       spentAmount,
       limitAmount,
