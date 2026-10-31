@@ -260,4 +260,63 @@ describe('NotificationTransactionHandler', () => {
     expect(pending[0].matchedDestinationAccountId).toBe('acc-cash');
     expect(pending[0].destinationAccountNameHint).toBe('Cash');
   });
+
+  it('broadcasts explicit test ping notification and bypasses AI when isTest is true', async () => {
+    const aiProvider = createMockAiProvider();
+    const walletCache = createMockWalletCache();
+    const pendingManager = new PendingTransactionService();
+    const messaging = createMockMessaging();
+
+    const handler = new NotificationTransactionHandler(
+      aiProvider as any,
+      walletCache as any,
+      pendingManager,
+      messaging as any
+    );
+
+    await handler.handleNotificationReceived({
+      packageName: 'com.jago',
+      title: 'Test Ping (Wallet Forwarder)',
+      text: 'Uji coba koneksi push notification',
+      timestamp: 1730375400000,
+      isTest: true,
+    });
+
+    expect(messaging.broadcastNotification).toHaveBeenCalledTimes(1);
+    const broadcastArg = vi.mocked(messaging.broadcastNotification).mock.calls[0][0];
+    expect(broadcastArg).toContain('🧪 *[TEST PING] Wallet Forwarder*');
+    expect(broadcastArg).toContain('Koneksi Webhook Berhasil!');
+    expect(broadcastArg).toContain('Tidak ada transaksi yang dicatat ke Wallet.');
+
+    expect(aiProvider.processEmailTransactionMessage).not.toHaveBeenCalled();
+    expect(pendingManager.getAllPendingTransactions().length).toBe(0);
+  });
+
+  it('broadcasts explicit test ping notification when package is codes.churma.walletforwarder', async () => {
+    const aiProvider = createMockAiProvider();
+    const walletCache = createMockWalletCache();
+    const pendingManager = new PendingTransactionService();
+    const messaging = createMockMessaging();
+
+    const handler = new NotificationTransactionHandler(
+      aiProvider as any,
+      walletCache as any,
+      pendingManager,
+      messaging as any
+    );
+
+    await handler.handleNotificationReceived({
+      packageName: 'codes.churma.walletforwarder',
+      title: 'Pixel 8 Pro (Forwarder)',
+      text: 'Connectivity check',
+    });
+
+    expect(messaging.broadcastNotification).toHaveBeenCalledTimes(1);
+    const broadcastArg = vi.mocked(messaging.broadcastNotification).mock.calls[0][0];
+    expect(broadcastArg).toContain('🧪 *[TEST PING] Wallet Forwarder*');
+    expect(broadcastArg).toContain('Pixel 8 Pro (Forwarder)');
+
+    expect(aiProvider.processEmailTransactionMessage).not.toHaveBeenCalled();
+    expect(pendingManager.getAllPendingTransactions().length).toBe(0);
+  });
 });

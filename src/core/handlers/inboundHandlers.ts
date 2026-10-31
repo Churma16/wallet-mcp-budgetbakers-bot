@@ -131,6 +131,35 @@ export class NotificationTransactionHandler {
       timestamp: payload.timestamp,
     });
 
+    // 0. Explicit Test Ping Handler (Companion App connectivity test)
+    if (payload.isTest || payload.packageName === 'codes.churma.walletforwarder') {
+      applicationLogger.info('[NotificationWebhook] Test ping notification received from companion app.');
+      const testTimestamp = payload.timestamp ? new Date(payload.timestamp) : new Date();
+      const formattedDate = testTimestamp.toLocaleString('id-ID', {
+        timeZone: 'Asia/Jakarta',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      const pingMessage = [
+        '🧪 *[TEST PING] Wallet Forwarder*',
+        '',
+        '✅ *Koneksi Webhook Berhasil!*',
+        `• *Status*: Terhubung (Bearer Auth Valid)`,
+        `• *Perangkat*: ${payload.title || 'Android Companion App'}`,
+        `• *Waktu*: ${formattedDate} WIB`,
+        '',
+        '_Ini adalah pesan uji coba konektivitas. Tidak ada transaksi yang dicatat ke Wallet._',
+      ].join('\n');
+
+      await this.messagingGateway.broadcastNotification(pingMessage);
+      applicationLogger.info('[NotificationWebhook] Test ping broadcasted successfully to messaging channels.');
+      return;
+    }
+
     const gateResult = evaluateNotificationThroughGate(payload);
     if (!gateResult.passed) {
       applicationLogger.info(`[Gate 1 Skip] Push notification rejected: ${gateResult.reason}`);
