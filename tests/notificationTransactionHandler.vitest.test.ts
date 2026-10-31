@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NotificationTransactionHandler } from '../src/core/index.js';
+import { MessageDispatcher } from '../src/core/dispatcher.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { TransactionCorrelationService } from '../src/email/index.js';
 
@@ -318,5 +319,33 @@ describe('NotificationTransactionHandler', () => {
 
     expect(aiProvider.processEmailTransactionMessage).not.toHaveBeenCalled();
     expect(pendingManager.getAllPendingTransactions().length).toBe(0);
+  });
+
+  it('delegates handleNotificationReceived in MessageDispatcher seamlessly', async () => {
+    const aiProvider = createMockAiProvider();
+    const walletCache = createMockWalletCache();
+    const pendingManager = new PendingTransactionService();
+    const messaging = createMockMessaging();
+
+    const mockContext = {
+      config: { defaultCurrency: 'IDR' },
+      brain: { provider: aiProvider, categoryContext: undefined, semanticBoundary: undefined },
+      wallet: { cache: walletCache, client: undefined, recordPreparation: undefined, history: undefined, summary: undefined },
+      pending: pendingManager,
+      gateway: messaging,
+      email: { correlation: new TransactionCorrelationService(), listener: null },
+      webhook: null,
+    };
+
+    const dispatcher = new MessageDispatcher(mockContext as any);
+    await dispatcher.handleNotificationReceived({
+      packageName: 'codes.churma.walletforwarder',
+      title: 'Dispatcher Test',
+      text: 'Ping from dispatcher',
+      isTest: true,
+    });
+
+    expect(messaging.broadcastNotification).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(messaging.broadcastNotification).mock.calls[0][0]).toContain('Dispatcher Test');
   });
 });
