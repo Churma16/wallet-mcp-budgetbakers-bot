@@ -25,7 +25,7 @@ import {
   WhatsappMessagingAdapter,
   TelegramMessagingAdapter,
   ConsoleMessagingAdapter,
-} from './services/messaging/index.js';
+} from './gateway/index.js';
 import { EmailListenerService, TransactionCorrelationService } from './email/index.js';
 import { PendingTransactionService } from './services/pendingTransactionService.js';
 

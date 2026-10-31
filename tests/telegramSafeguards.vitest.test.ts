@@ -1,6 +1,6 @@
 import { Context, GrammyError, HttpError } from 'grammy';
 import { beforeEach, describe, it, vi } from 'vitest';
-import { TelegramMessagingAdapter } from '../src/services/messaging/telegramAdapter.js';
+import { TelegramMessagingAdapter } from '../src/gateway/telegram.js';
 
 interface AssertionStatistics {
   totalCount: number;

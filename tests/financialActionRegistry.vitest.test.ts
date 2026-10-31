@@ -15,7 +15,7 @@ import {
 import { FinancialActionExecutor } from '../src/services/financialActionExecutor.js';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
-import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
+import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { WalletAccountItem, WalletCategoryItem, WalletBudgetProgressItem } from '../src/types/walletTypes.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 

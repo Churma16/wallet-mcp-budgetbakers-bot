@@ -1,4 +1,4 @@
-import type { SupportedMessengerChannel } from './messaging/types.js';
+import type { SupportedMessengerChannel } from '../gateway/index.js';
 import type { CreateRecordInputPayload } from '../types/walletTypes.js';
 import {
   TicketDispatchState,

@@ -1,29 +1,68 @@
 import { Bot, Context, GrammyError, HttpError } from 'grammy';
 import axios from 'axios';
-import { applicationLogger } from '../../utils/logger.js';
-import { calculateExponentialBackoff } from '../../utils/exponentialBackoff.js';
+import { applicationLogger } from '../utils/logger.js';
+import { calculateExponentialBackoff } from '../utils/exponentialBackoff.js';
 import {
   AdapterConnectionState,
+  MediaRejectionStage,
   MessagingAdapter,
   SupportedMessengerChannel,
+  TelegramSafeguardConfiguration,
   UserMessageCallback,
 } from './types.js';
-import { convertWhatsAppMarkupToTelegramHtml } from './messageFormatHelper.js';
 import {
-  isMediaSizeExceeded,
-  isMediaPayloadSizeLimitExceeded,
-  rejectOversizedMedia,
   handleMediaDownloadFailure,
-  MediaRejectionStage,
+  isMediaPayloadSizeLimitExceeded,
+  isMediaSizeExceeded,
+  rejectOversizedMedia,
 } from './mediaPolicy.js';
 
-export interface TelegramSafeguardConfiguration {
-  maxStartupAttempts?: number;
-  startupRetryBaseDelayMs?: number;
-  startupRetryMaxDelayMs?: number;
-  maxMediaDownloadBytes?: number;
+export type { TelegramSafeguardConfiguration };
+
+/**
+ * Helper to escape HTML reserved characters to prevent parsing errors in Telegram HTML parse mode.
+ */
+function escapeHtmlEntities(rawText: string): string {
+  return rawText
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
+/**
+ * Converts WhatsApp-style markdown formatted text (*bold*, _italic_, ~strike~, `code`)
+ * into valid, safe Telegram HTML formatted string.
+ */
+export function convertWhatsAppMarkupToTelegramHtml(sourceText: string): string {
+  if (!sourceText) {
+    return '';
+  }
+
+  // 1. First escape HTML special entities
+  let transformedText = escapeHtmlEntities(sourceText);
+
+  // 2. Multi-line code block: ```code``` -> <pre>code</pre>
+  transformedText = transformedText.replace(/```([\s\S]*?)```/g, '<pre>$1</pre>');
+
+  // 3. Single-line inline code: `code` -> <code>code</code>
+  transformedText = transformedText.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+
+  // 4. Bold: *text* -> <b>text</b> (ensures not matching across lines unnecessarily)
+  transformedText = transformedText.replace(/(?<=^|[\s(])\*([^*\n]+)\*(?=$|[\s),.!?])/gm, '<b>$1</b>');
+
+  // 5. Italic: _text_ -> <i>text</i>
+  transformedText = transformedText.replace(/(?<=^|[\s(])_([^_\n]+)_(?=$|[\s),.!?])/gm, '<i>$1</i>');
+
+  // 6. Strikethrough: ~text~ -> <s>text</s>
+  transformedText = transformedText.replace(/(?<=^|[\s(])~([^~\n]+)~(?=$|[\s),.!?])/gm, '<s>$1</s>');
+
+  return transformedText;
+}
+
+/**
+ * Messaging adapter integrating the Telegram Bot API via Grammy, enforcing fail-closed
+ * user authorization, long-polling resilience, and media download protections.
+ */
 export class TelegramMessagingAdapter implements MessagingAdapter {
   public readonly channelName: SupportedMessengerChannel = 'telegram';
   private botInstance: Bot | null = null;
@@ -90,7 +129,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     this.botInstance = new Bot(this.botToken);
     this.setupBotHandlers(this.botInstance);
 
-    // 4. Verify Bot Credentials & Start Long Polling
+    // Verify Bot Credentials & Start Long Polling
     try {
       const botProfile = await this.executeWithStartupRetry(
         () => this.botInstance!.api.getMe(),
@@ -114,9 +153,15 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       const onPollingStarted = (): void => {
         applicationLogger.info('Telegram Bot polling loop is running and listening for messages.');
       };
-      this.botInstance.start({
-        onStart: onPollingStarted,
-      });
+      void this.botInstance
+        .start({
+          onStart: onPollingStarted,
+        })
+        .catch((pollingError: unknown) => {
+          applicationLogger.error(
+            `Telegram Bot polling error: ${pollingError instanceof Error ? pollingError.message : String(pollingError)}`
+          );
+        });
     } catch (startError: unknown) {
       this.isRunning = false;
       const rawStartErrorMessage = startError instanceof Error ? startError.message : String(startError);
@@ -248,7 +293,6 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
   public getConnectionState(): AdapterConnectionState {
     return this.isRunning ? 'connected' : 'idle';
   }
-
 
   public async sendTextMessage(targetChatIdentifier: string, messageText: string): Promise<void> {
     if (!this.botInstance) {

@@ -11,10 +11,10 @@ import {
   formatMediaDownloadFailedMessage,
   rejectOversizedMedia,
   handleMediaDownloadFailure,
-} from '../src/services/messaging/mediaPolicy.js';
-import { TelegramMessagingAdapter } from '../src/services/messaging/telegramAdapter.js';
-import { WhatsappInboundMessageProcessor } from '../src/services/messaging/whatsapp/inboundMessageProcessor.js';
-import { MessageIdTracker } from '../src/services/messaging/whatsapp/messageIdTracker.js';
+} from '../src/gateway/mediaPolicy.js';
+import { TelegramMessagingAdapter } from '../src/gateway/telegram.js';
+import { WhatsappInboundMessageProcessor } from '../src/gateway/whatsapp.js';
+import { MessageIdTracker } from '../src/gateway/whatsapp.js';
 import { setActiveLanguage, getActiveLanguage, SupportedLanguage } from '../src/i18n/index.js';
 import { applicationLogger } from '../src/utils/logger.js';
 

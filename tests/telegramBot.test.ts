@@ -1,7 +1,7 @@
 import { Bot } from 'grammy';
 import { loadEnvironmentConfiguration } from '../src/config/environmentConfig.js';
 import { applicationLogger } from '../src/utils/logger.js';
-import { convertWhatsAppMarkupToTelegramHtml } from '../src/services/messaging/messageFormatHelper.js';
+import { convertWhatsAppMarkupToTelegramHtml } from '../src/gateway/telegram.js';
 
 async function runTelegramBotVerification(): Promise<void> {
   console.log('====================================================');

@@ -5,7 +5,7 @@ import {
 } from '../src/brain/index.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
 import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
-import { MessagingGatewayService, IncomingUserMessageEvent } from '../src/services/messaging/index.js';
+import { MessagingGatewayService, IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { WalletMcpClientService } from '../src/wallet/index.js';
 import { WalletCacheService } from '../src/wallet/index.js';
 import { indonesianDictionary, englishDictionary } from '../src/i18n/index.js';

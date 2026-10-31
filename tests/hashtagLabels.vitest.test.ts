@@ -15,7 +15,7 @@ import {
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
 import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
-import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
+import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 
 const mockAccounts: WalletAccountItem[] = [
   { id: 'acc-bca', name: 'BCA', currency: 'IDR' },

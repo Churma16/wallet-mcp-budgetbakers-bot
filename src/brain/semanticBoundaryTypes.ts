@@ -1,5 +1,5 @@
 import { FinancialActionContext } from '../actions/types.js';
-import { IncomingUserMessageEvent } from '../services/messaging/index.js';
+import { IncomingUserMessageEvent } from '../gateway/index.js';
 import { WalletAccountItem, WalletCategoryItem } from '../types/walletTypes.js';
 
 export const SEMANTIC_TOOL_ALLOWLIST = {

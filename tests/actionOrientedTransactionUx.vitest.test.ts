@@ -38,7 +38,7 @@ import {
   WalletCreateRecordsResponse,
   WalletAccountItem,
 } from '../src/types/walletTypes.js';
-import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
+import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import {
   detectFastPathAction,
   detectReconciliationAction,

@@ -1,8 +1,8 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'vitest';
-import { WhatsappMessagingAdapter } from '../src/services/messaging/whatsappAdapter.js';
-import { MessageIdTracker } from '../src/services/messaging/whatsapp/messageIdTracker.js';
-import { WhatsappOutboundMessageQueue } from '../src/services/messaging/whatsapp/outboundMessageQueue.js';
+import { WhatsappMessagingAdapter } from '../src/gateway/whatsapp.js';
+import { MessageIdTracker } from '../src/gateway/whatsapp.js';
+import { WhatsappOutboundMessageQueue } from '../src/gateway/whatsapp.js';
 
 describe('WhatsApp component boundaries', () => {
   it('evicts only the oldest tracked message identifier', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SemanticToolBoundary } from '../src/brain/index.js';
-import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
+import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 
 const event: IncomingUserMessageEvent = {
   channel: 'console',

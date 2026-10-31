@@ -1,9 +1,9 @@
 import assert from 'node:assert';
 import { PassThrough } from 'node:stream';
 import { it as test } from 'vitest';
-import { ConsoleMessagingAdapter } from '../src/services/messaging/consoleAdapter.js';
-import { MessagingGatewayService } from '../src/services/messaging/messagingGatewayService.js';
-import { IncomingUserMessageEvent } from '../src/services/messaging/types.js';
+import { ConsoleMessagingAdapter } from '../src/gateway/console.js';
+import { MessagingGatewayService } from '../src/gateway/coordinator.js';
+import { IncomingUserMessageEvent } from '../src/gateway/types.js';
 import {
   validateApplicationConfiguration,
   ApplicationEnvironmentConfiguration,

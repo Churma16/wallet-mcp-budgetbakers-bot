@@ -4,7 +4,7 @@ import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
 import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
-import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
+import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { formatAccountSelectionUnknownOutcome } from '../src/utils/accountClarificationFormatter.js';
 
 class MockMessagingGateway {

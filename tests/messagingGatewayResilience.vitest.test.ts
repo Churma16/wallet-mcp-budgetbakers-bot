@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MessagingGatewayService } from '../src/services/messaging/messagingGatewayService.js';
+import { MessagingGatewayService } from '../src/gateway/coordinator.js';
 
 describe('MessagingGatewayService.calculateReconnectDelay', () => {
   it('preserves exponential scaling and the configured dynamic jitter bounds', () => {

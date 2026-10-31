@@ -29,6 +29,7 @@ describe('NotificationWebhookServer', () => {
       const payloadString = body ? JSON.stringify(body) : undefined;
       const reqHeaders: Record<string, string> = {
         'Content-Type': 'application/json',
+        Connection: 'close',
         ...headers,
       };
       if (payloadString) {

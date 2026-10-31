@@ -27,7 +27,7 @@ import { PendingTransactionService } from '../src/services/pendingTransactionSer
 import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
 import { WalletCacheService } from '../src/wallet/index.js';
 import { WalletMcpClientService } from '../src/wallet/index.js';
-import { IncomingUserMessageEvent } from '../src/services/messaging/types.js';
+import { IncomingUserMessageEvent } from '../src/gateway/types.js';
 
 const fixedReferenceUtc = new Date('2026-09-11T07:15:00.000Z');
 const defaultTimezone = 'Asia/Jakarta';

@@ -1,7 +1,7 @@
 import fs from 'fs';
 import { beforeEach, describe, it } from 'vitest';
 import path from 'path';
-import { WhatsappMessagingAdapter } from '../src/services/messaging/whatsappAdapter.js';
+import { WhatsappMessagingAdapter } from '../src/gateway/whatsapp.js';
 
 interface AssertionStatistics {
   totalCount: number;
@@ -40,7 +40,7 @@ async function runTestGroup(testGroup: number): Promise<void> {
   // ----------------------------------------------------
   console.log('[TEST GROUP 1] Baileys makeWASocket Hardened Configuration');
   if (testGroup === 1) {
-    const adapterSourceFilePath = path.resolve('src/services/messaging/whatsappAdapter.ts');
+    const adapterSourceFilePath = path.resolve('src/gateway/whatsapp.ts');
     const adapterFileContent = fs.readFileSync(adapterSourceFilePath, 'utf-8');
 
     assertCondition(

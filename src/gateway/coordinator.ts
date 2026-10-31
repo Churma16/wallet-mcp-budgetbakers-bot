@@ -1,17 +1,18 @@
-import { applicationLogger } from '../../utils/logger.js';
-import { calculateExponentialBackoff } from '../../utils/exponentialBackoff.js';
+import { applicationLogger } from '../utils/logger.js';
+import { calculateExponentialBackoff } from '../utils/exponentialBackoff.js';
 import {
   AdapterConnectionState,
   MessagingAdapter,
+  MessagingGatewayConfiguration,
   SupportedMessengerChannel,
 } from './types.js';
 
-export interface MessagingGatewayConfiguration {
-  maxBackgroundReconnectAttempts?: number;
-  backgroundReconnectBaseDelayMs?: number;
-  backgroundReconnectMaxDelayMs?: number;
-}
+export type { MessagingGatewayConfiguration };
 
+/**
+ * Coordinates multi-channel messaging lifecycle, background reconnection with bounded
+ * exponential backoff, typing presence management, and cross-channel broadcast dispatching.
+ */
 export class MessagingGatewayService {
   private readonly adapterMap: Map<SupportedMessengerChannel, MessagingAdapter> = new Map();
   private readonly adapterStateMap: Map<SupportedMessengerChannel, AdapterConnectionState> = new Map();
@@ -47,6 +48,7 @@ export class MessagingGatewayService {
 
   public isChannelConnected(channel: SupportedMessengerChannel): boolean {
     const channelState = this.getAdapterState(channel);
+    // State 'stopping' is treated as connected to allow in-flight broadcast notifications to drain during shutdown
     return channelState === 'connected' || channelState === 'stopping';
   }
 
@@ -308,3 +310,5 @@ export class MessagingGatewayService {
     await Promise.allSettled(broadcastPromises);
   }
 }
+
+export { MessagingGatewayService as GatewayCoordinator };

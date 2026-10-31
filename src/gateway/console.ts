@@ -1,21 +1,19 @@
 import readline from 'node:readline';
-import { applicationLogger } from '../../utils/logger.js';
+import { applicationLogger } from '../utils/logger.js';
 import {
   AdapterConnectionState,
+  ConsoleAdapterConfiguration,
   MessagingAdapter,
   SupportedMessengerChannel,
   UserMessageCallback,
 } from './types.js';
 
-export interface ConsoleAdapterConfiguration {
-  readonly inputStream?: NodeJS.ReadableStream;
-  readonly outputStream?: NodeJS.WritableStream;
-  readonly promptPrefix?: string;
-  readonly senderIdentifier?: string;
-  readonly chatIdentifier?: string;
-  readonly onExitRequested?: () => void | Promise<void>;
-}
+export type { ConsoleAdapterConfiguration };
 
+/**
+ * Adapter enabling interactive console I/O for offline development, local debugging,
+ * and testing without live messaging networks.
+ */
 export class ConsoleMessagingAdapter implements MessagingAdapter {
   public readonly channelName: SupportedMessengerChannel = 'console';
   private readlineInterface: readline.Interface | null = null;

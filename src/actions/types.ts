@@ -1,4 +1,4 @@
-import { IncomingUserMessageEvent } from '../services/messaging/index.js';
+import { IncomingUserMessageEvent } from '../gateway/index.js';
 import {
   TransactionHistoryQueryOptions,
   TransactionSummaryQueryOptions,

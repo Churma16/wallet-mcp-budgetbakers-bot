@@ -8,7 +8,7 @@ import {
   createSemanticToolProposalFromFinancialIntent,
   markSemanticToolResultUntrusted,
 } from '../src/brain/index.js';
-import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
+import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 
 const event: IncomingUserMessageEvent = {

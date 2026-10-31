@@ -1,4 +1,4 @@
-import { MessagingGatewayService, IncomingUserMessageEvent } from '../services/messaging/index.js';
+import { MessagingGatewayService, IncomingUserMessageEvent } from '../gateway/index.js';
 import { PendingTransactionService } from '../services/pendingTransactionService.js';
 import {
   FinancialAiProvider,

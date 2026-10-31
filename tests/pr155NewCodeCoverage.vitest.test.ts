@@ -18,7 +18,7 @@ import {
   setActiveLanguage,
 } from '../src/i18n/index.js';
 import { formatAccountSelectionUnknownOutcome } from '../src/utils/accountClarificationFormatter.js';
-import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
+import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 
 function event(text = 'status'): IncomingUserMessageEvent {
   return {

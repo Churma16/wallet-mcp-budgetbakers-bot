@@ -1,5 +1,5 @@
 import { FastPathAction } from '../brain/index.js';
-import { MessagingGatewayService, IncomingUserMessageEvent } from '../services/messaging/index.js';
+import { MessagingGatewayService, IncomingUserMessageEvent } from '../gateway/index.js';
 import { FinancialActionExecutor } from '../services/financialActionExecutor.js';
 import { PendingTransactionService } from '../services/pendingTransactionService.js';
 import {

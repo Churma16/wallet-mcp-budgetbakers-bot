@@ -1,9 +1,9 @@
-import { MessagingGatewayService } from '../src/services/messaging/messagingGatewayService.js';
+import { MessagingGatewayService } from '../src/gateway/coordinator.js';
 import { beforeEach, describe, it } from 'vitest';
 import {
   MessagingAdapter,
   SupportedMessengerChannel,
-} from '../src/services/messaging/types.js';
+} from '../src/gateway/types.js';
 
 interface AssertionStatistics {
   totalCount: number;

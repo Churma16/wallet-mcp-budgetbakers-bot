@@ -16,7 +16,7 @@ import {
   IncomingUserMessageEvent,
   MessagingGatewayService,
   SupportedMessengerChannel,
-} from '../services/messaging/index.js';
+} from '../gateway/index.js';
 import {
   AccountResolutionIssue,
   validateAndSanitizeFinancialRecords,

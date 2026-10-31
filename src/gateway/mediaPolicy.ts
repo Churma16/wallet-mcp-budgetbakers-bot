@@ -1,30 +1,14 @@
 import axios from 'axios';
-import { applicationLogger } from '../../utils/logger.js';
-import { getDictionary, SupportedLanguage } from '../../i18n/index.js';
-import { SupportedMessengerChannel } from './types.js';
+import { applicationLogger } from '../utils/logger.js';
+import { getDictionary, SupportedLanguage } from '../i18n/index.js';
+import {
+  HandleMediaDownloadFailureParameters,
+  MediaRejectionStage,
+  RejectOversizedMediaParameters,
+  SupportedMessengerChannel,
+} from './types.js';
 
-export type MediaRejectionStage = 'declared_size' | 'metadata' | 'download_stream' | 'buffer';
-
-export interface RejectOversizedMediaParameters {
-  channel: SupportedMessengerChannel;
-  chatIdentifier: string;
-  senderIdentifier: string;
-  maxMediaDownloadBytes: number;
-  actualBytes?: number;
-  rejectionStage: MediaRejectionStage;
-  sendTextMessage: (chatIdentifier: string, messageText: string) => Promise<void>;
-  additionalMetadata?: Record<string, unknown>;
-}
-
-export interface HandleMediaDownloadFailureParameters {
-  channel: SupportedMessengerChannel;
-  chatIdentifier: string;
-  senderIdentifier: string;
-  downloadError: unknown;
-  sendTextMessage: (chatIdentifier: string, messageText: string) => Promise<void>;
-  redactToken?: string;
-  additionalMetadata?: Record<string, unknown>;
-}
+export type { MediaRejectionStage, RejectOversizedMediaParameters, HandleMediaDownloadFailureParameters };
 
 /**
  * Converts a byte count into rounded megabytes (MB)
