@@ -11,6 +11,13 @@ import type {
   TransactionHistoryPage,
 } from './types.js';
 import { WalletMcpRequestError } from './errors.js';
+import {
+  type GetRecordsToolArgs,
+  type RawRecordsResponse,
+  type RawRecordsEnvelope,
+  type RawRecordItem,
+  extractRawArray,
+} from './toolWrappers.js';
 import { matchesTransactionRecordSearch } from './transactionSearchMatcher.js';
 
 export interface TransactionSearchScanCacheEntry {
@@ -71,13 +78,13 @@ export class TransactionSearchScanStore {
 
 export async function executeSearchScanCompatibilityShim(
   queryOptions: TransactionHistoryQueryOptions & { searchQuery: string },
-  mcpCallPayload: Record<string, unknown>,
+  mcpCallPayload: GetRecordsToolArgs,
   resolvedLimit: number,
   resolvedOffset: number,
   resolvedSort: TransactionSortOrder,
   upstreamSortBy: string[],
-  normalizeRawRecords: (rawRecordArray: any[]) => WalletRecordItem[],
-  callGetRecords: (payload: Record<string, unknown>) => Promise<any>,
+  normalizeRawRecords: (rawRecordArray: readonly RawRecordItem[]) => WalletRecordItem[],
+  callGetRecords: (payload: GetRecordsToolArgs) => Promise<RawRecordsResponse>,
   scanStore: TransactionSearchScanStore
 ): Promise<TransactionHistoryPage> {
   const searchCacheKey = JSON.stringify({
@@ -107,7 +114,7 @@ export async function executeSearchScanCompatibilityShim(
     const scanOffset = searchCacheEntry.nextOffset ?? 0;
     const isFreshScan = scanOffset === 0 && searchCacheEntry.matchedRecords.length === 0;
     const scanLimit = isFreshScan ? resolvedLimit : MAX_TRANSACTION_HISTORY_LIMIT;
-    const scanPayload: Record<string, unknown> = {
+    const scanPayload: GetRecordsToolArgs = {
       ...mcpCallPayload,
       limit: scanLimit,
       offset: scanOffset,
@@ -115,9 +122,11 @@ export async function executeSearchScanCompatibilityShim(
 
     scanCallCount += 1;
     const rawResponse = await callGetRecords(scanPayload);
-    const rawRecordArray: any[] = Array.isArray(rawResponse)
-      ? rawResponse
-      : (rawResponse?.records || rawResponse?.items || []);
+    const rawRecordArray = extractRawArray<RawRecordItem>(rawResponse, 'records', 'items');
+    const rawEnvelope = !Array.isArray(rawResponse) && typeof rawResponse === 'object' && rawResponse !== null
+      ? (rawResponse as RawRecordsEnvelope)
+      : undefined;
+
 
     if (rawRecordArray.length === 0) {
       searchCacheEntry.exhausted = true;
@@ -140,14 +149,14 @@ export async function executeSearchScanCompatibilityShim(
       searchCacheEntry.matchedRecords.push(recordItem);
     }
 
-    const hasExplicitTotal = typeof rawResponse?.total === 'number' && Number.isFinite(rawResponse.total);
-    const upstreamTotal = hasExplicitTotal ? Math.max(0, rawResponse.total) : undefined;
-    const hasExplicitNextOffset = typeof rawResponse?.nextOffset === 'number' && Number.isFinite(rawResponse.nextOffset);
+    const hasExplicitTotal = typeof rawEnvelope?.total === 'number' && Number.isFinite(rawEnvelope.total);
+    const upstreamTotal = hasExplicitTotal && rawEnvelope?.total !== undefined ? Math.max(0, rawEnvelope.total) : undefined;
+    const hasExplicitNextOffset = typeof rawEnvelope?.nextOffset === 'number' && Number.isFinite(rawEnvelope.nextOffset);
 
     let nextScanOffset: number | null = null;
     if (hasExplicitNextOffset) {
-      nextScanOffset = rawResponse.nextOffset;
-    } else if (rawResponse?.nextOffset === null) {
+      nextScanOffset = rawEnvelope?.nextOffset ?? null;
+    } else if (rawEnvelope?.nextOffset === null) {
       nextScanOffset = null;
     } else if (typeof upstreamTotal === 'number' && scanOffset + rawRecordArray.length < upstreamTotal) {
       nextScanOffset = scanOffset + rawRecordArray.length;

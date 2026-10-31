@@ -1,15 +1,17 @@
-import { WALLET_MCP_TOOL_NAMES } from './constants.js';
 import type {
   WalletRecordAggregationQueryPayload,
   WalletRecordAggregationResponse,
   WalletRecordAggregationResultItem,
 } from './types.js';
+import {
+  type WalletToolCaller,
+  type RawRecordAggregationResponse,
+  callGetRecordsAggregation,
+} from './toolWrappers.js';
 import { WalletMcpRequestError } from './errors.js';
 import { applicationLogger } from '../lib/logger.js';
 
-export interface AggregationInvoker {
-  callMcpTool<T>(toolName: string, args?: Record<string, unknown>): Promise<T>;
-}
+export type AggregationInvoker = WalletToolCaller;
 
 export function validateRecordAggregationResponse(
   rawResponse: unknown,
@@ -108,9 +110,9 @@ export async function fetchRecordsAggregation(
     isTransfer: queryPayload.isTransfer,
   });
 
-  const rawResponse = await client.callMcpTool<unknown>(
-    WALLET_MCP_TOOL_NAMES.GET_RECORDS_AGGREGATION,
-    queryPayload as Record<string, unknown>
+  const rawResponse: RawRecordAggregationResponse = await callGetRecordsAggregation(
+    client,
+    queryPayload
   );
 
   return validateRecordAggregationResponse(rawResponse, queryPayload);

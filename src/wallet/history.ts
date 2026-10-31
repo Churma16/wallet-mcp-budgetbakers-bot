@@ -1,7 +1,6 @@
 import {
   DEFAULT_TRANSACTION_HISTORY_LIMIT,
   MAX_TRANSACTION_HISTORY_LIMIT,
-  WALLET_MCP_TOOL_NAMES,
 } from './constants.js';
 import type {
   TransactionHistoryQueryOptions,
@@ -12,6 +11,15 @@ import type {
   WalletCategoryItem,
 } from './types.js';
 import {
+  type WalletToolCaller,
+  type GetRecordsToolArgs,
+  type RawRecordsResponse,
+  type RawRecordsEnvelope,
+  type RawRecordItem,
+  extractRawArray,
+  callGetRecords,
+} from './toolWrappers.js';
+import {
   TransactionSearchScanStore,
   executeSearchScanCompatibilityShim,
 } from './searchScan.js';
@@ -21,9 +29,7 @@ import {
 } from './recordNormalizer.js';
 import { normalizeTransactionHistoryFilters } from './transactionHistoryFilterNormalizer.js';
 
-export interface HistoryClient {
-  callMcpTool<T>(toolName: string, args?: Record<string, unknown>): Promise<T>;
-}
+export type HistoryClient = WalletToolCaller;
 
 export interface HistoryCache {
   getAccounts(): WalletAccountItem[];
@@ -52,51 +58,61 @@ export async function fetchRecords(
     ? ['+recordDate', '+createdAt']
     : ['-recordDate', '-createdAt'];
 
-  const mcpCallPayload: Record<string, unknown> = {
+  const mcpCallPayload: GetRecordsToolArgs = {
     limit: resolvedLimit,
     offset: resolvedOffset,
     sortBy: upstreamSortBy,
+    ...(queryOptions?.accountId
+      ? {
+          accountId: Array.isArray(queryOptions.accountId)
+            ? queryOptions.accountId.join(',')
+            : queryOptions.accountId,
+        }
+      : {}),
+    ...(queryOptions?.categoryId
+      ? {
+          categoryId: Array.isArray(queryOptions.categoryId)
+            ? queryOptions.categoryId
+            : [queryOptions.categoryId],
+        }
+      : {}),
+    ...(queryOptions?.categoryGroup &&
+    (!Array.isArray(queryOptions?.categoryId) || queryOptions.categoryId.length <= 1)
+      ? { categoryGroup: queryOptions.categoryGroup }
+      : {}),
+    ...(queryOptions?.recordType ? { recordType: queryOptions.recordType } : {}),
+    ...(Array.isArray(queryOptions?.dateRange) ? { recordDate: queryOptions.dateRange } : {}),
+    ...(queryOptions?.counterParty
+      ? {
+          counterParty: (() => {
+            const rawCounterParty = String(queryOptions.counterParty).trim();
+            return rawCounterParty.startsWith('contains-i.') ||
+              rawCounterParty.startsWith('eq.') ||
+              rawCounterParty.startsWith('contains.')
+              ? rawCounterParty
+              : `contains-i.${rawCounterParty}`;
+          })(),
+        }
+      : {}),
+    ...(queryOptions?.note
+      ? {
+          note: (() => {
+            const rawNote = String(queryOptions.note).trim();
+            return rawNote.startsWith('contains-i.') ||
+              rawNote.startsWith('eq.') ||
+              rawNote.startsWith('contains.')
+              ? rawNote
+              : `contains-i.${rawNote}`;
+          })(),
+        }
+      : {}),
+    ...(queryOptions?.searchQuery && queryOptions?.searchScanFallback === false
+      ? { query: queryOptions.searchQuery }
+      : {}),
   };
 
-  if (queryOptions?.accountId) {
-    mcpCallPayload.accountId = Array.isArray(queryOptions.accountId)
-      ? queryOptions.accountId.join(',')
-      : queryOptions.accountId;
-  }
-  if (queryOptions?.categoryId) {
-    mcpCallPayload.categoryId = Array.isArray(queryOptions.categoryId)
-      ? queryOptions.categoryId
-      : [queryOptions.categoryId];
-  }
-  if (queryOptions?.categoryGroup && (!Array.isArray(queryOptions?.categoryId) || queryOptions.categoryId.length <= 1)) {
-    mcpCallPayload.categoryGroup = queryOptions.categoryGroup;
-  }
-  if (queryOptions?.recordType) {
-    mcpCallPayload.recordType = queryOptions.recordType;
-  }
-  if (Array.isArray(queryOptions?.dateRange)) {
-    mcpCallPayload.recordDate = queryOptions.dateRange;
-  }
-  if (queryOptions?.counterParty) {
-    const rawCounterParty = String(queryOptions.counterParty).trim();
-    mcpCallPayload.counterParty =
-      rawCounterParty.startsWith('contains-i.') || rawCounterParty.startsWith('eq.') || rawCounterParty.startsWith('contains.')
-        ? rawCounterParty
-        : `contains-i.${rawCounterParty}`;
-  }
-  if (queryOptions?.note) {
-    const rawNote = String(queryOptions.note).trim();
-    mcpCallPayload.note =
-      rawNote.startsWith('contains-i.') || rawNote.startsWith('eq.') || rawNote.startsWith('contains.')
-        ? rawNote
-        : `contains-i.${rawNote}`;
-  }
-  if (queryOptions?.searchQuery && queryOptions?.searchScanFallback === false) {
-    mcpCallPayload.query = queryOptions.searchQuery;
-  }
-
-  const callGetRecords = (payload: Record<string, unknown>) =>
-    client.callMcpTool<any>(WALLET_MCP_TOOL_NAMES.GET_RECORDS, payload);
+  const callRecordsTool = (payload: GetRecordsToolArgs): Promise<RawRecordsResponse> =>
+    callGetRecords(client, payload);
 
   if (queryOptions?.searchQuery && queryOptions?.searchScanFallback !== false) {
     return executeSearchScanCompatibilityShim(
@@ -107,26 +123,27 @@ export async function fetchRecords(
       resolvedSort,
       upstreamSortBy,
       normalizeRawRecords,
-      callGetRecords,
+      callRecordsTool,
       scanStore
     );
   }
 
-  const rawResponse = await callGetRecords(mcpCallPayload);
-  const rawRecordArray: any[] = Array.isArray(rawResponse)
-    ? rawResponse
-    : (rawResponse?.records || rawResponse?.items || []);
+  const rawResponse = await callRecordsTool(mcpCallPayload);
+  const rawRecordArray = extractRawArray<RawRecordItem>(rawResponse, 'records', 'items');
+  const rawEnvelope = !Array.isArray(rawResponse) && typeof rawResponse === 'object' && rawResponse !== null
+    ? (rawResponse as RawRecordsEnvelope)
+    : undefined;
 
   const pageRecords = normalizeRawRecords(rawRecordArray);
-  const totalCount = typeof rawResponse?.total === 'number' && Number.isFinite(rawResponse.total)
-    ? rawResponse.total
+  const totalCount = typeof rawEnvelope?.total === 'number' && Number.isFinite(rawEnvelope.total)
+    ? rawEnvelope.total
     : undefined;
-  const hasMore = typeof rawResponse?.hasMore === 'boolean'
-    ? rawResponse.hasMore
+  const hasMore = typeof rawEnvelope?.hasMore === 'boolean'
+    ? rawEnvelope.hasMore
     : (typeof totalCount === 'number' ? resolvedOffset + pageRecords.length < totalCount : pageRecords.length === resolvedLimit);
 
-  const nextOffset = typeof rawResponse?.nextOffset === 'number'
-    ? rawResponse.nextOffset
+  const nextOffset = typeof rawEnvelope?.nextOffset === 'number'
+    ? rawEnvelope.nextOffset
     : (hasMore ? resolvedOffset + pageRecords.length : null);
 
   const totalPages = typeof totalCount === 'number'

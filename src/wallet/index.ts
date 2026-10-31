@@ -26,6 +26,7 @@ export * from './summaryFallback.js';
 export * from './aggregation.js';
 export * from './summary.js';
 export * from './capabilities.js';
+export * from './toolWrappers.js';
 export * from './recordDateNormalizer.js';
 export * from './recordValidator.js';
 export * from './humanResponseFormatter.js';

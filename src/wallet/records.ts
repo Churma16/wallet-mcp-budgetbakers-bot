@@ -1,8 +1,13 @@
-import { WALLET_MCP_TOOL_NAMES } from './constants.js';
 import type {
   CreateRecordInputPayload,
   WalletCreateRecordsResponse,
 } from './types.js';
+import {
+  type WalletToolCaller,
+  type SanitizedRecordPayloadItem,
+  type SanitizedRecordTransferPayload,
+  callCreateRecords,
+} from './toolWrappers.js';
 import { WalletMcpRequestError } from './errors.js';
 import { validateCreateRecordsResponse } from './recordValidation.js';
 import {
@@ -13,9 +18,7 @@ import {
 import { normalizeTransactionRecordDate } from './recordDateNormalizer.js';
 import { applicationLogger } from '../lib/logger.js';
 
-export interface RecordsClient extends LabelCreatorClient {
-  callMcpTool<T>(toolName: string, args?: Record<string, unknown>): Promise<T>;
-}
+export type RecordsClient = WalletToolCaller & LabelCreatorClient;
 
 export interface RecordsCache extends LabelResolverCache {}
 
@@ -25,41 +28,33 @@ export function normalizeRecordDate(recordDateString?: string): string {
 
 export function sanitizeRecordPayload(
   recordsPayload: CreateRecordInputPayload[]
-): Record<string, unknown>[] {
+): SanitizedRecordPayloadItem[] {
   return recordsPayload.map(recordItem => {
-    const sanitizedRecordItem: Record<string, unknown> = {
+    let sanitizedTransfer: SanitizedRecordTransferPayload | undefined = undefined;
+
+    if (recordItem.transfer) {
+      sanitizedTransfer = {
+        pairingMode: recordItem.transfer.pairingMode,
+        ...(recordItem.transfer.accountId ? { accountId: recordItem.transfer.accountId } : {}),
+        ...(recordItem.transfer.recordId ? { recordId: recordItem.transfer.recordId } : {}),
+        ...(recordItem.transfer.counterAmount !== undefined
+          ? { counterAmount: recordItem.transfer.counterAmount }
+          : {}),
+      };
+    }
+
+    const sanitizedRecordItem: SanitizedRecordPayloadItem = {
       accountId: recordItem.accountId,
       amount: recordItem.amount,
       recordDate: normalizeRecordDate(recordItem.recordDate),
+      ...(recordItem.categoryId ? { categoryId: recordItem.categoryId } : {}),
+      ...(recordItem.note ? { note: recordItem.note } : {}),
+      ...(recordItem.counterParty ? { counterParty: recordItem.counterParty } : {}),
+      ...(Array.isArray(recordItem.labelIds) && recordItem.labelIds.length > 0
+        ? { labelIds: recordItem.labelIds }
+        : {}),
+      ...(sanitizedTransfer ? { transfer: sanitizedTransfer } : {}),
     };
-
-    if (recordItem.categoryId) {
-      sanitizedRecordItem.categoryId = recordItem.categoryId;
-    }
-    if (recordItem.note) {
-      sanitizedRecordItem.note = recordItem.note;
-    }
-    if (recordItem.counterParty) {
-      sanitizedRecordItem.counterParty = recordItem.counterParty;
-    }
-    if (Array.isArray(recordItem.labelIds) && recordItem.labelIds.length > 0) {
-      sanitizedRecordItem.labelIds = recordItem.labelIds;
-    }
-    if (recordItem.transfer) {
-      const transfer: Record<string, unknown> = {
-        pairingMode: recordItem.transfer.pairingMode,
-      };
-      if (recordItem.transfer.accountId) {
-        transfer.accountId = recordItem.transfer.accountId;
-      }
-      if (recordItem.transfer.recordId) {
-        transfer.recordId = recordItem.transfer.recordId;
-      }
-      if (recordItem.transfer.counterAmount) {
-        transfer.counterAmount = recordItem.transfer.counterAmount;
-      }
-      sanitizedRecordItem.transfer = transfer;
-    }
 
     return sanitizedRecordItem;
   });
@@ -97,7 +92,7 @@ export async function createRecords(
 
   let createRecordsResult: unknown;
   try {
-    createRecordsResult = await client.callMcpTool<unknown>(WALLET_MCP_TOOL_NAMES.CREATE_RECORDS, {
+    createRecordsResult = await callCreateRecords(client, {
       records: sanitizedRecordPayloadList,
     });
   } catch (error) {

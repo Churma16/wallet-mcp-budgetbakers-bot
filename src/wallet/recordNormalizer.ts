@@ -3,8 +3,10 @@ import type {
   WalletAccountItem,
   WalletCategoryItem,
 } from './types.js';
+import type { WalletMcpRecordTypeValue } from './constants.js';
+import type { RawRecordItem } from './toolWrappers.js';
 
-export function normalizeRawRecord(item: any): WalletRecordItem {
+export function normalizeRawRecord(item: RawRecordItem): WalletRecordItem {
   let resolvedAmount = 0;
   let resolvedCurrency = 'IDR';
 
@@ -52,13 +54,13 @@ export function normalizeRawRecord(item: any): WalletRecordItem {
   }
 
   return {
-    id: item.id || item.recordId,
-    accountId: item.accountId,
+    id: item.id || item.recordId || '',
+    accountId: item.accountId || '',
     accountName: item.accountName,
     amount: resolvedAmount,
     currency: resolvedCurrency,
-    recordDate: item.recordDate,
-    recordType: item.recordType || item.type,
+    recordDate: item.recordDate || '',
+    recordType: (item.recordType || item.type || 'expense') as WalletMcpRecordTypeValue,
     category: categoryObject,
     note: item.note,
     counterParty: item.counterParty,
@@ -69,7 +71,7 @@ export function normalizeRawRecord(item: any): WalletRecordItem {
   };
 }
 
-export function normalizeRawRecords(rawRecordArray: any[]): WalletRecordItem[] {
+export function normalizeRawRecords(rawRecordArray: readonly RawRecordItem[]): WalletRecordItem[] {
   return rawRecordArray.map(normalizeRawRecord);
 }
 

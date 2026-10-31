@@ -59,6 +59,29 @@ import {
 } from './searchScan.js';
 import { normalizeTransactionRecordDate } from './recordDateNormalizer.js';
 import { applicationLogger } from '../lib/logger.js';
+import {
+  type RawWalletClientProfileResponse,
+  type RawAccountsResponse,
+  type RawCategoriesResponse,
+  type RawLabelsResponse,
+  type CreateLabelToolArgs,
+  type RawCreateLabelResponse,
+  type RawBudgetsResponse,
+  type GetRecordsToolArgs,
+  type RawRecordsResponse,
+  type CreateRecordsToolArgs,
+  type RawCreateRecordsResponse,
+  type RawRecordAggregationResponse,
+  callGetClientProfile,
+  callGetAccounts,
+  callGetCategories,
+  callGetLabels,
+  callCreateLabel,
+  callGetBudgets,
+  callGetRecords,
+  callCreateRecords,
+  callGetRecordsAggregation,
+} from './toolWrappers.js';
 
 export interface WalletMcpClientOptions {
   readonly transportDependencies?: WalletMcpTransportDependencies;
@@ -219,11 +242,49 @@ export class WalletMcpClient {
   }
 
   public async verifyClientProfile(): Promise<unknown> {
-    const rawProfile = await this.callMcpTool<unknown>(WALLET_MCP_TOOL_NAMES.GET_CLIENT_PROFILE);
+    const rawProfile = await callGetClientProfile(this);
     const normalizedProfile = normalizeWalletClientProfile(rawProfile);
     this.cachedClientProfile = normalizedProfile;
     this.profileCacheTimestamp = normalizedProfile.fetchedAt;
     return rawProfile;
+  }
+
+  public callGetClientProfile(): Promise<RawWalletClientProfileResponse> {
+    return callGetClientProfile(this);
+  }
+
+  public callGetAccounts(): Promise<RawAccountsResponse> {
+    return callGetAccounts(this);
+  }
+
+  public callGetCategories(): Promise<RawCategoriesResponse> {
+    return callGetCategories(this);
+  }
+
+  public callGetLabels(): Promise<RawLabelsResponse> {
+    return callGetLabels(this);
+  }
+
+  public callCreateLabel(args: CreateLabelToolArgs): Promise<RawCreateLabelResponse> {
+    return callCreateLabel(this, args);
+  }
+
+  public callGetBudgets(): Promise<RawBudgetsResponse> {
+    return callGetBudgets(this);
+  }
+
+  public callGetRecords(args: GetRecordsToolArgs): Promise<RawRecordsResponse> {
+    return callGetRecords(this, args);
+  }
+
+  public callCreateRecords(args: CreateRecordsToolArgs): Promise<RawCreateRecordsResponse> {
+    return callCreateRecords(this, args);
+  }
+
+  public callGetRecordsAggregation(
+    args: WalletRecordAggregationQueryPayload
+  ): Promise<RawRecordAggregationResponse> {
+    return callGetRecordsAggregation(this, args);
   }
 
   public fetchAccounts(forceRefresh: boolean = false): Promise<WalletAccountItem[]> {
