@@ -82,6 +82,38 @@ describe('notificationRules', () => {
       expect(result.candidateAmount).toBe(89000);
     });
 
+    it('accepts and correctly maps Bank Jago digital notification', () => {
+      const result = evaluateNotificationThroughGate({
+        packageName: 'com.jago.digital',
+        title: 'Transaksi Berhasil',
+        text: 'Pembayaran Rp 25.000 ke Gopay berhasil',
+      });
+      expect(result.passed).toBe(true);
+      expect(result.matchedBankRule?.displayName).toBe('Bank Jago');
+      expect(result.candidateAmount).toBe(25000);
+    });
+
+    it('accepts and correctly maps Tokopedia payment notification', () => {
+      const result = evaluateNotificationThroughGate({
+        packageName: 'com.tokopedia.tkpd',
+        title: 'Pembayaran Berhasil',
+        text: 'Pembayaran untuk pesanan batagor sebesar Rp 50.000 telah diverifikasi',
+      });
+      expect(result.passed).toBe(true);
+      expect(result.matchedBankRule?.displayName).toBe('Tokopedia');
+      expect(result.candidateAmount).toBe(50000);
+    });
+
+    it('rejects shipping status and chatter from recognized apps with NO_FINANCIAL_OR_TRANSACTION_INDICATOR', () => {
+      const result = evaluateNotificationThroughGate({
+        packageName: 'com.tokopedia.tkpd',
+        title: 'Pesanan Sedang Dikirim',
+        text: 'Kurir Anteraja sedang menuju ke alamat pengiriman Anda',
+      });
+      expect(result.passed).toBe(false);
+      expect(result.reason).toBe('NO_FINANCIAL_OR_TRANSACTION_INDICATOR');
+    });
+
     it('rejects unrecognized non-financial apps without transaction keywords', () => {
       const result = evaluateNotificationThroughGate({
         packageName: 'com.spotify.music',
