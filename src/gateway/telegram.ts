@@ -153,9 +153,15 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       const onPollingStarted = (): void => {
         applicationLogger.info('Telegram Bot polling loop is running and listening for messages.');
       };
-      this.botInstance.start({
-        onStart: onPollingStarted,
-      });
+      void this.botInstance
+        .start({
+          onStart: onPollingStarted,
+        })
+        .catch((pollingError: unknown) => {
+          applicationLogger.error(
+            `Telegram Bot polling error: ${pollingError instanceof Error ? pollingError.message : String(pollingError)}`
+          );
+        });
     } catch (startError: unknown) {
       this.isRunning = false;
       const rawStartErrorMessage = startError instanceof Error ? startError.message : String(startError);

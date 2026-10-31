@@ -48,6 +48,7 @@ export class MessagingGatewayService {
 
   public isChannelConnected(channel: SupportedMessengerChannel): boolean {
     const channelState = this.getAdapterState(channel);
+    // State 'stopping' is treated as connected to allow in-flight broadcast notifications to drain during shutdown
     return channelState === 'connected' || channelState === 'stopping';
   }
 
