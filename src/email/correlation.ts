@@ -1,4 +1,4 @@
-import type { PendingTransactionItem } from '../services/pendingTransactionService.js';
+import type { PendingTransactionItem } from '../core/pending.js';
 import type { WalletRecordItem } from '../wallet/types.js';
 import type {
   TransactionEvidence,
@@ -12,7 +12,7 @@ import type {
   TransactionCorrelationOptions,
 } from './types.js';
 import { CommercePlatformRegistry } from '../config/commercePlatforms.js';
-import { INTERNAL_TRANSACTION_TYPES, WALLET_MCP_RECORD_TYPES } from '../constants/index.js';
+import { INTERNAL_TRANSACTION_TYPES, WALLET_MCP_RECORD_TYPES } from '../wallet/constants.js';
 
 export type {
   BankSourceCandidate,

@@ -3,7 +3,7 @@ import {
   PendingAccountSelectionDraft,
   PendingCategorySelectionCandidate,
   PendingCategorySelectionDraft,
-} from '../services/pendingTransactionService.js';
+} from '../core/pending.js';
 import { WalletCategoryItem } from '../wallet/index.js';
 import {
   FinancialAiProvider,
@@ -14,10 +14,10 @@ import {
   formatAccountSelectionPrompt,
   formatDraftAmount,
   resolveCategoryName,
-} from '../utils/accountClarificationFormatter.js';
-import { formatCategorySelectionPrompt } from '../utils/categoryClarificationFormatter.js';
+} from './accountClarificationFormatter.js';
+import { formatCategorySelectionPrompt } from './categoryClarificationFormatter.js';
 import { getDictionary } from '../i18n/index.js';
-import { applicationLogger, formatConciseErrorMessage } from '../utils/logger.js';
+import { applicationLogger, formatConciseErrorMessage } from '../lib/logger.js';
 
 export async function generateAccountClarificationQuestion(
   draft: PendingAccountSelectionDraft,

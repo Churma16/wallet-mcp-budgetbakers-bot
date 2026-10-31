@@ -5,7 +5,7 @@ import {
   CommercePlatformDefinition,
 } from '../src/config/commercePlatforms.js';
 import { TransactionCorrelationService } from '../src/email/index.js';
-import type { PendingTransactionItem } from '../src/services/pendingTransactionService.js';
+import type { PendingTransactionItem } from '../src/core/pending.js';
 import type { TransactionEvidence } from '../src/email/index.js';
 
 describe('CommercePlatformRegistry', () => {

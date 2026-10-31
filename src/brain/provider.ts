@@ -3,12 +3,12 @@ import {
   SupportedAiProviderType,
   PROVIDER_CONFIG_STRATEGIES,
 } from '../config/environmentConfig.js';
-import { applicationLogger } from '../utils/logger.js';
+import { applicationLogger } from '../lib/logger.js';
 import { FinancialAiProvider } from './types.js';
 import { GeminiAiProvider } from './geminiProvider.js';
 import { OpenAiCompatibleAiProvider } from './openAiProvider.js';
 import { FallbackAiProvider } from './fallbackProvider.js';
-import { CategoryContextService } from '../services/categoryContextService.js';
+import { CategoryContextService } from './categoryContext.js';
 
 export * from './geminiProvider.js';
 export * from './openAiProvider.js';

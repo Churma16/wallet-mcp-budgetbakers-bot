@@ -1,4 +1,4 @@
-import { PendingCategorySelectionCandidate } from '../services/pendingTransactionService.js';
+import { PendingCategorySelectionCandidate } from '../core/pending.js';
 import { WalletCategoryItem } from '../wallet/index.js';
 
 const SEMANTIC_SYNONYM_MAP: Record<string, string[]> = {

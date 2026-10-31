@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
-import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
+import { UserMessageHandler } from '../src/core/dispatcher.js';
+import { PendingTransactionService } from '../src/core/pending.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 
 function event(text: string) {

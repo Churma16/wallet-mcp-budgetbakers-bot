@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { FinancialActionRegistry } from '../src/actions/financialActionRegistry.js';
-import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
+import { FinancialActionRegistry } from '../src/core/financialActionRegistry.js';
+import { FastPathHandler } from '../src/core/fastPathHandler.js';
 
 describe('PR #155 queue fast-path guard', () => {
   it('falls through safely when CHECK_QUEUE has no registered handler', async () => {

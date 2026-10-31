@@ -12,8 +12,8 @@ import type {
   DeadLetterCallback,
   PersistentTransactionCacheStructure,
 } from './types.js';
-import { calculateExponentialBackoff } from '../utils/exponentialBackoff.js';
-import { applicationLogger } from '../utils/logger.js';
+import { calculateExponentialBackoff } from '../lib/resilience.js';
+import { applicationLogger } from '../lib/logger.js';
 
 export type {
   GateEvaluationResult,

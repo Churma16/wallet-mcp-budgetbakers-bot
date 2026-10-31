@@ -10,8 +10,8 @@ import {
   formatCompactTransactionDate,
   formatCompactTransactionAmount,
   MAX_TRANSACTION_HISTORY_TITLE_LENGTH,
-} from '../src/utils/humanResponseFormatter.js';
-import { formatConciseErrorMessage } from '../src/utils/logger.js';
+} from '../src/wallet/humanResponseFormatter.js';
+import { formatConciseErrorMessage } from '../src/lib/logger.js';
 import { AiResponseParseError } from '../src/brain/index.js';
 
 describe('human response formatter', () => {

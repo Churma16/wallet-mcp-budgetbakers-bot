@@ -1,20 +1,20 @@
 import assert from 'node:assert';
 import { test } from 'vitest';
 import { extractHashtags, normalizeTagName, deduplicateTags } from '../src/brain/index.js';
-import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
+import { validateAndSanitizeFinancialRecords } from '../src/wallet/recordValidator.js';
 import { resolveAndEnsureLabels } from '../src/wallet/index.js';
 import { WalletCacheService } from '../src/wallet/index.js';
 import { WalletMcpClientService } from '../src/wallet/index.js';
-import { formatRecordSuccessMessage } from '../src/utils/humanResponseFormatter.js';
+import { formatRecordSuccessMessage } from '../src/wallet/humanResponseFormatter.js';
 import {
   WalletAccountItem,
   WalletCategoryItem,
   WalletLabelItem,
   CreateRecordInputPayload,
 } from '../src/types/walletTypes.js';
-import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
-import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
-import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
+import { UserMessageHandler } from '../src/core/dispatcher.js';
+import { AccountClarificationHandler } from '../src/core/accountClarificationHandler.js';
+import { PendingTransactionService } from '../src/core/pending.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 
 const mockAccounts: WalletAccountItem[] = [

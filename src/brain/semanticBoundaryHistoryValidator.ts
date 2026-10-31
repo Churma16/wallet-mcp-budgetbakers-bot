@@ -1,12 +1,12 @@
 import { FINANCIAL_ACTION_TYPES } from './constants.js';
 import { ExtractedFinancialIntent } from './types.js';
-import { TransactionHistoryQueryOptions, WalletCategoryItem } from '../types/walletTypes.js';
+import { TransactionHistoryQueryOptions, WalletCategoryItem } from '../wallet/types.js';
 import {
   extractDynamicCategoryGroups,
   matchDynamicCategoryGroup,
   MAX_GROUP_CATEGORIES_LIMIT,
   DynamicCategoryGroupInfo,
-} from '../utils/transactionHistoryFilterNormalizer.js';
+} from '../wallet/transactionHistoryFilterNormalizer.js';
 import {
   ALLOWED_HISTORY_ARGUMENT_KEYS,
   MONETARY_AMOUNT_PATTERN,

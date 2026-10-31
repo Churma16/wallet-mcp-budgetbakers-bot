@@ -1,6 +1,6 @@
 import type { WalletLabelItem } from './types.js';
 import { deduplicateTags } from '../brain/index.js';
-import { applicationLogger } from '../utils/logger.js';
+import { applicationLogger } from '../lib/logger.js';
 
 export interface LabelResolverCache {
   findLabelByName(nameHint: string): WalletLabelItem | undefined;

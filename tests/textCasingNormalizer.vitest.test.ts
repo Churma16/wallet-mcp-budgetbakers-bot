@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   normalizeTransactionText,
   formatSmartTitleCase,
-} from '../src/utils/textCasingNormalizer.js';
-import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
+} from '../src/lib/textCasing.js';
+import { validateAndSanitizeFinancialRecords } from '../src/wallet/recordValidator.js';
 import {
   buildCompactSystemInstruction,
 } from '../src/brain/index.js';

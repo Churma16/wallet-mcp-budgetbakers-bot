@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
+import { PendingTransactionService } from '../src/core/pending.js';
 
 function addTransaction(service: PendingTransactionService, suffix = '1') {
   return service.addPendingTransaction({

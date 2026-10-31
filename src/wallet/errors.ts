@@ -8,7 +8,7 @@ import type {
   WalletMcpDispatchOutcome,
   WalletMcpFailureClassification,
 } from './capabilityTypes.js';
-import { redactSensitiveData } from '../utils/logger.js';
+import { redactSensitiveData } from '../lib/logger.js';
 
 export interface FailureOutcome {
   readonly dispatchOutcome: WalletMcpDispatchOutcome;

@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
-import { applicationLogger } from '../utils/logger.js';
-import { digitsOnly } from '../utils/digitNormalization.js';
+import { applicationLogger } from '../lib/logger.js';
+import { digitsOnly } from '../lib/digits.js';
 
 dotenv.config();
 

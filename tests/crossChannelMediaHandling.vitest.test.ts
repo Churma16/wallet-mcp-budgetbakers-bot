@@ -16,7 +16,7 @@ import { TelegramMessagingAdapter } from '../src/gateway/telegram.js';
 import { WhatsappInboundMessageProcessor } from '../src/gateway/whatsapp.js';
 import { MessageIdTracker } from '../src/gateway/whatsapp.js';
 import { setActiveLanguage, getActiveLanguage, SupportedLanguage } from '../src/i18n/index.js';
-import { applicationLogger } from '../src/utils/logger.js';
+import { applicationLogger } from '../src/lib/logger.js';
 
 describe('Cross-Channel Media Handling (Issue #109)', () => {
   let originalLanguage: SupportedLanguage;

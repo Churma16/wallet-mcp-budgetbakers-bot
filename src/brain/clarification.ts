@@ -3,7 +3,7 @@ import {
   PendingAccountSelectionDraft,
   PendingCategorySelectionCandidate,
   PendingCategorySelectionDraft,
-} from '../services/pendingTransactionService.js';
+} from '../core/pending.js';
 import { WalletCategoryItem } from '../wallet/index.js';
 import { FinancialAiProvider } from './types.js';
 import { selectBestCategory } from './categoryScorer.js';

@@ -19,7 +19,7 @@ import {
   normalizeRawRecords,
   enrichHistoryRecords,
 } from './recordNormalizer.js';
-import { normalizeTransactionHistoryFilters } from '../utils/transactionHistoryFilterNormalizer.js';
+import { normalizeTransactionHistoryFilters } from './transactionHistoryFilterNormalizer.js';
 
 export interface HistoryClient {
   callMcpTool<T>(toolName: string, args?: Record<string, unknown>): Promise<T>;

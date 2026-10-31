@@ -1,6 +1,6 @@
 import { WalletAccountItem, WalletCategoryItem } from '../wallet/index.js';
 import { GateEvaluationResult } from '../email/index.js';
-import { applicationLogger } from '../utils/logger.js';
+import { applicationLogger } from '../lib/logger.js';
 import {
   ExtractedFinancialIntent,
   ExtractedEmailTransactionData,
@@ -18,7 +18,7 @@ import {
 import {
   resolveEmailExtractedEntities,
 } from './prompts.js';
-import { CategoryContextService } from '../services/categoryContextService.js';
+import { CategoryContextService } from './categoryContext.js';
 import {
   SystemInstructionCache,
   prepareTextMessagePrompt,

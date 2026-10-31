@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { applicationLogger, formatConciseErrorMessage } from '../utils/logger.js';
+import { applicationLogger, formatConciseErrorMessage } from '../lib/logger.js';
 import { TokenUsageStatistics } from './types.js';
 import { isRecoverableModelExecutionError } from './providerWorkflow.js';
 

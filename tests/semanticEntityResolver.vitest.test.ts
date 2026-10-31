@@ -2,11 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   resolveSemanticAccountHint,
   resolveSemanticCategoryHint,
-} from '../src/services/semanticEntityResolver.js';
-import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
-import { CreateRecordActionHandler } from '../src/actions/createRecordActionHandler.js';
-import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
-import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
+} from '../src/brain/semanticEntityResolver.js';
+import { validateAndSanitizeFinancialRecords } from '../src/wallet/recordValidator.js';
+import { CreateRecordActionHandler } from '../src/core/createRecordHandler.js';
+import { AccountClarificationHandler } from '../src/core/accountClarificationHandler.js';
+import { PendingTransactionService } from '../src/core/pending.js';
 
 const accounts = [
   { id: 'acc-bca-main', name: 'BCA Utama', currency: 'IDR', bankAccountNumber: '1234567890' },

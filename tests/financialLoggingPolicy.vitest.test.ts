@@ -1,10 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import { afterEach, beforeEach, describe, it } from 'vitest';
-import { applicationLogger } from '../src/utils/logger.js';
-import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
-import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
-import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
+import { applicationLogger } from '../src/lib/logger.js';
+import { UserMessageHandler } from '../src/core/dispatcher.js';
+import { PendingActionHandler } from '../src/core/pendingHandler.js';
+import { PendingTransactionService } from '../src/core/pending.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';
 import {
   installFinancialLoggingPolicy,
@@ -12,7 +12,7 @@ import {
   isFinancialPayloadDebugEnabled,
   sanitizeFinancialDebugPayload,
   summarizeFinancialLogPayload,
-} from '../src/utils/financialLoggingPolicy.js';
+} from '../src/lib/financialLoggingPolicy.js';
 
 let allTestsPassed = true;
 let originalDebugFlag: string | undefined;

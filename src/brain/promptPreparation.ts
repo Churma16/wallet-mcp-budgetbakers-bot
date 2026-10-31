@@ -17,7 +17,7 @@ import {
   buildReceiptExtractionPrompt,
   buildEmailEvaluationPrompt,
 } from './prompts.js';
-import { CategoryContextService } from '../services/categoryContextService.js';
+import { CategoryContextService } from './categoryContext.js';
 import {
   PreparedTextMessagePrompt,
   PreparedReceiptPrompt,

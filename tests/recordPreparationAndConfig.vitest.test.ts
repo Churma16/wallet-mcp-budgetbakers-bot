@@ -24,18 +24,18 @@ import {
   formatCurrencyAmount,
   formatBalanceSummaryMessage,
   formatRecordSuccessMessage,
-} from '../src/utils/humanResponseFormatter.js';
+} from '../src/wallet/humanResponseFormatter.js';
 import { WalletCacheService } from '../src/wallet/index.js';
 import {
   WalletMcpClientService,
   WalletMcpRequestError,
 } from '../src/wallet/index.js';
-import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
+import { PendingTransactionService } from '../src/core/pending.js';
 import { MessagingGatewayService } from '../src/gateway/coordinator.js';
-import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
-import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
-import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
-import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
+import { AccountClarificationHandler } from '../src/core/accountClarificationHandler.js';
+import { UserMessageHandler } from '../src/core/dispatcher.js';
+import { FastPathHandler } from '../src/core/fastPathHandler.js';
+import { PendingActionHandler } from '../src/core/pendingHandler.js';
 import { FinancialAiProvider } from '../src/brain/index.js';
 import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem, WalletLabelItem } from '../src/types/walletTypes.js';
 import { IncomingUserMessageEvent } from '../src/gateway/types.js';

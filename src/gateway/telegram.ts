@@ -1,7 +1,7 @@
 import { Bot, Context, GrammyError, HttpError } from 'grammy';
 import axios from 'axios';
-import { applicationLogger } from '../utils/logger.js';
-import { calculateExponentialBackoff } from '../utils/exponentialBackoff.js';
+import { applicationLogger } from '../lib/logger.js';
+import { calculateExponentialBackoff } from '../lib/resilience.js';
 import {
   AdapterConnectionState,
   MediaRejectionStage,

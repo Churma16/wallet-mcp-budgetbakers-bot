@@ -10,9 +10,9 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import qrcodeTerminal from 'qrcode-terminal';
-import { applicationLogger } from '../utils/logger.js';
-import { digitsOnly } from '../utils/digitNormalization.js';
-import { calculateExponentialBackoff } from '../utils/exponentialBackoff.js';
+import { applicationLogger } from '../lib/logger.js';
+import { digitsOnly } from '../lib/digits.js';
+import { calculateExponentialBackoff } from '../lib/resilience.js';
 import {
   MediaRejectionStage,
   MessagingAdapter,

@@ -1,5 +1,5 @@
-import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
-import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
+import { UserMessageHandler } from '../src/core/dispatcher.js';
+import { PendingTransactionService } from '../src/core/pending.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 import { expect, it } from 'vitest';

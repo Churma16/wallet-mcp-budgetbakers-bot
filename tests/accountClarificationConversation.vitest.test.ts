@@ -1,7 +1,7 @@
-import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
-import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
+import { UserMessageHandler } from '../src/core/dispatcher.js';
+import { AccountClarificationHandler } from '../src/core/accountClarificationHandler.js';
 import { AccountClarificationConversationService } from '../src/brain/index.js';
-import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
+import { PendingTransactionService } from '../src/core/pending.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import {
@@ -16,7 +16,7 @@ import {
 } from '../src/brain/index.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
-import { applicationLogger } from '../src/utils/logger.js';
+import { applicationLogger } from '../src/lib/logger.js';
 import { GeminiAiProvider } from '../src/brain/index.js';
 import { OpenAiCompatibleAiProvider } from '../src/brain/index.js';
 import { FallbackAiProvider } from '../src/brain/index.js';
@@ -32,7 +32,7 @@ import {
   composeClarificationMessage,
   formatDeterministicCandidateSection,
   formatAccountSelectionPrompt,
-} from '../src/utils/accountClarificationFormatter.js';
+} from '../src/brain/accountClarificationFormatter.js';
 
 class MockMessagingGateway {
   public readonly messages: Array<{ channel: string; chatId: string; content: string }> = [];

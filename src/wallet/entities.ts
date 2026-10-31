@@ -7,7 +7,7 @@ import type {
   WalletLabelItem,
   WalletBudgetItem,
 } from './types.js';
-import { applicationLogger } from '../utils/logger.js';
+import { applicationLogger } from '../lib/logger.js';
 
 export interface ToolInvoker {
   callMcpTool<T>(toolName: string, args?: Record<string, unknown>): Promise<T>;

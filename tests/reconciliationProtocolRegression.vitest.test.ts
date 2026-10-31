@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
-import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
-import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
-import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
+import { UserMessageHandler } from '../src/core/dispatcher.js';
+import { PendingActionHandler } from '../src/core/pendingHandler.js';
+import { AccountClarificationHandler } from '../src/core/accountClarificationHandler.js';
+import { PendingTransactionService } from '../src/core/pending.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
-import { formatAccountSelectionUnknownOutcome } from '../src/utils/accountClarificationFormatter.js';
+import { formatAccountSelectionUnknownOutcome } from '../src/brain/accountClarificationFormatter.js';
 
 class MockMessagingGateway {
   public readonly messages: string[] = [];

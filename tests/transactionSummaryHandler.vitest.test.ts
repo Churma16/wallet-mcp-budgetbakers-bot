@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
+import { FastPathHandler } from '../src/core/fastPathHandler.js';
 import { TransactionHistoryService } from '../src/wallet/index.js';
 import { TransactionSummaryService } from '../src/wallet/index.js';
 import { WalletMcpClientService } from '../src/wallet/index.js';

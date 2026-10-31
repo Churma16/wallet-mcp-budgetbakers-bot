@@ -1,4 +1,4 @@
-import { applicationLogger } from '../utils/logger.js';
+import { applicationLogger } from '../lib/logger.js';
 import { parseFinancialAmount } from './parsers/amountParser.js';
 import { FINANCIAL_ACTION_TYPES } from './constants.js';
 import type {

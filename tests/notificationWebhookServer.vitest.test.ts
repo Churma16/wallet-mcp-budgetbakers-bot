@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import http from 'node:http';
-import { NotificationWebhookServer } from '../src/services/webhook/notificationWebhookServer.js';
-import { PushNotificationPayload } from '../src/services/webhook/types.js';
+import { NotificationWebhookServer } from '../src/gateway/webhook.js';
+import { PushNotificationPayload } from '../src/gateway/webhook.js';
 
 describe('NotificationWebhookServer', () => {
   let server: NotificationWebhookServer;

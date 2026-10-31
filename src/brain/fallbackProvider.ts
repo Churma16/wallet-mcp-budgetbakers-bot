@@ -9,7 +9,7 @@ import {
 } from './types.js';
 import { WalletAccountItem, WalletCategoryItem } from '../wallet/index.js';
 import { GateEvaluationResult } from '../email/index.js';
-import { applicationLogger, formatConciseErrorMessage } from '../utils/logger.js';
+import { applicationLogger, formatConciseErrorMessage } from '../lib/logger.js';
 import { isAiResponseParseError } from './jsonExtraction.js';
 
 /**

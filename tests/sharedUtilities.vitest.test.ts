@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { calculateExponentialBackoff } from '../src/utils/exponentialBackoff.js';
-import { digitsOnly } from '../src/utils/digitNormalization.js';
+import { calculateExponentialBackoff } from '../src/lib/resilience.js';
+import { digitsOnly } from '../src/lib/digits.js';
 
 describe('calculateExponentialBackoff', () => {
   it('scales the base delay exponentially and adds configured jitter', () => {
