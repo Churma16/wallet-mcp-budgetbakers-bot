@@ -8,7 +8,7 @@ import {
 } from '../src/i18n/index.js';
 import {
   formatPendingEmailTransactionNotification,
-} from '../src/wallet/humanResponseFormatter.js';
+} from '../src/wallet/formatters/humanResponseFormatter.js';
 import {
   formatUncertainOutcomeResponse,
   formatTransactionAttentionSummary,
@@ -16,20 +16,20 @@ import {
   formatReconciliationAbsentResponse,
   formatReconciliationNotFoundResponse,
   formatReconciliationAmbiguousResponse,
-} from '../src/wallet/transactionStatusFormatter.js';
+} from '../src/wallet/formatters/transactionStatusFormatter.js';
 import {
   buildTransactionAttentionSummary,
   buildItemViewModelFromClarificationDraft,
   buildItemViewModelFromPendingItem,
   TransactionAttentionItemViewModel,
-} from '../src/wallet/transactionStatusViewModel.js';
+} from '../src/wallet/formatters/transactionStatusViewModel.js';
 import {
   PendingTransactionService,
   PendingTransactionItem,
   PendingAccountSelectionDraft,
 } from '../src/core/pending.js';
-import { PendingActionHandler } from '../src/core/pendingHandler.js';
-import { FastPathHandler } from '../src/core/fastPathHandler.js';
+import { PendingActionHandler } from '../src/core/handlers/pendingHandler.js';
+import { FastPathHandler } from '../src/core/handlers/fastPathHandler.js';
 import {
   WalletMcpRequestError,
 } from '../src/wallet/index.js';
@@ -43,7 +43,7 @@ import {
   detectFastPathAction,
   detectReconciliationAction,
 } from '../src/brain/index.js';
-import { CheckQueueActionHandler } from '../src/core/readActionHandlers.js';
+import { CheckQueueActionHandler } from '../src/core/handlers/readActionHandlers.js';
 import {
   formatAccountSelectionPrompt,
   formatAccountSelectionCancellation,
@@ -51,7 +51,7 @@ import {
   formatAccountSelectionRetry,
   formatAccountSelectionUnknownOutcome,
   formatAccountSelectionUnknownDismissal,
-} from '../src/brain/accountClarificationFormatter.js';
+} from '../src/brain/clarification/accountClarificationFormatter.js';
 
 class MockWalletMcpClient {
   public readonly calls: CreateRecordInputPayload[][] = [];

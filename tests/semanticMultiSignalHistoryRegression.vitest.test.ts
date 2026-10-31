@@ -2,20 +2,20 @@ import { describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { UserMessageHandler } from '../src/core/dispatcher.js';
-import { FastPathHandler } from '../src/core/fastPathHandler.js';
+import { FastPathHandler } from '../src/core/handlers/fastPathHandler.js';
 import { detectFastPathAction } from '../src/brain/index.js';
 import {
   normalizeTransactionHistoryFilters,
   matchDynamicCategoryGroup,
   extractDynamicCategoryGroups,
-} from '../src/wallet/transactionHistoryFilterNormalizer.js';
+} from '../src/wallet/history/transactionHistoryFilterNormalizer.js';
 import { validateSemanticHistoryQueryOptions } from '../src/brain/index.js';
 import { WalletAccountItem, WalletCategoryItem, WalletRecordItem } from '../src/types/walletTypes.js';
 import { WalletMcpClientService } from '../src/wallet/index.js';
 import { TransactionHistoryService } from '../src/wallet/index.js';
 import { FinancialActionExecutor } from '../src/core/executor.js';
-import { FinancialActionRegistry } from '../src/core/financialActionRegistry.js';
-import { TransactionHistoryActionHandler } from '../src/core/readActionHandlers.js';
+import { FinancialActionRegistry } from '../src/core/handlers/financialActionRegistry.js';
+import { TransactionHistoryActionHandler } from '../src/core/handlers/readActionHandlers.js';
 import { getDictionary } from '../src/i18n/index.js';
 
 const MOCK_ACCOUNTS: WalletAccountItem[] = [
@@ -1048,7 +1048,7 @@ describe('Issue #160 comment checklist regression corpus', () => {
 
     it('verifies synthetic keywords (spotify, github, netflix) do not exist in production routing code', () => {
       const fastPathSource = fs.readFileSync(
-        path.resolve(process.cwd(), 'src/brain/fastPath.ts'),
+        path.resolve(process.cwd(), 'src/brain/fastpath/fastPath.ts'),
         'utf-8'
       );
       const userHandlerSource = fs.readFileSync(
@@ -1711,4 +1711,5 @@ describe('Issue #160 comment checklist regression corpus', () => {
     });
   });
 });
+
 

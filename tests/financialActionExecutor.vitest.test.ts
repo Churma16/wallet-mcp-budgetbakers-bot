@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { FinancialActionExecutor } from '../src/core/executor.js';
-import { FastPathHandler } from '../src/core/fastPathHandler.js';
+import { FastPathHandler } from '../src/core/handlers/fastPathHandler.js';
 import { UserMessageHandler } from '../src/core/dispatcher.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { TransactionHistoryService } from '../src/wallet/index.js';

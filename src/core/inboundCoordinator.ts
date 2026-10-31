@@ -8,7 +8,7 @@ import {
   formatPendingEmailTransactionNotification,
   formatEnrichedPendingEmailTransactionNotification,
   formatCorrelatedWalletRecordNotification,
-} from '../wallet/humanResponseFormatter.js';
+} from '../wallet/formatters/humanResponseFormatter.js';
 import { applicationLogger } from '../lib/logger.js';
 
 export interface InboundTransactionCandidateContext {

@@ -6,9 +6,9 @@ import {
 } from '../src/wallet/index.js';
 import { TransactionHistoryService } from '../src/wallet/index.js';
 import { WalletCacheService } from '../src/wallet/index.js';
-import { FastPathHandler } from '../src/core/fastPathHandler.js';
+import { FastPathHandler } from '../src/core/handlers/fastPathHandler.js';
 import { detectFastPathAction } from '../src/brain/index.js';
-import { formatTransactionHistoryMessage } from '../src/wallet/humanResponseFormatter.js';
+import { formatTransactionHistoryMessage } from '../src/wallet/formatters/humanResponseFormatter.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import type {
   TransactionHistoryPage,

@@ -11,8 +11,8 @@ import {
   formatBalanceSummaryMessage,
   formatBudgetSummaryMessage,
   formatTransactionHistoryMessage,
-} from '../wallet/humanResponseFormatter.js';
-import { formatTransactionSummaryMessage } from '../wallet/transactionSummaryFormatter.js';
+} from '../wallet/formatters/humanResponseFormatter.js';
+import { formatTransactionSummaryMessage } from '../wallet/formatters/transactionSummaryFormatter.js';
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../lib/logger.js';
 

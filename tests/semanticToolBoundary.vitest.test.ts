@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FinancialActionRegistry } from '../src/core/financialActionRegistry.js';
+import { FinancialActionRegistry } from '../src/core/handlers/financialActionRegistry.js';
 import {
   SEMANTIC_TOOL_ALLOWLIST,
   SemanticToolBoundary,

@@ -7,7 +7,7 @@ import {
   buildEmailEvaluationPrompt,
   wrapUntrustedPromptText,
 } from '../src/brain/index.js';
-import { validateAndSanitizeFinancialRecords } from '../src/wallet/recordValidator.js';
+import { validateAndSanitizeFinancialRecords } from '../src/wallet/records/recordValidator.js';
 import { WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import { validateReceiptFinancialIntentEnvelope } from '../src/brain/index.js';

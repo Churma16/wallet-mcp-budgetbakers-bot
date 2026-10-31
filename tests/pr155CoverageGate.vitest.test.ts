@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PendingActionHandler } from '../src/core/pendingHandler.js';
+import { PendingActionHandler } from '../src/core/handlers/pendingHandler.js';
 import { PendingTransactionService } from '../src/core/pending.js';
-import { buildTransactionAttentionSummary } from '../src/wallet/transactionStatusViewModel.js';
+import { buildTransactionAttentionSummary } from '../src/wallet/formatters/transactionStatusViewModel.js';
 import {
   formatAccountSelectionUnknownDismissal,
   formatAccountSelectionUnknownOutcome,
-} from '../src/brain/accountClarificationFormatter.js';
+} from '../src/brain/clarification/accountClarificationFormatter.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 
 const event = {

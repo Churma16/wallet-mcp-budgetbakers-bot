@@ -6,7 +6,7 @@ import {
   buildReceiptSystemInstruction,
   resolveEmailExtractedEntities,
 } from '../src/brain/index.js';
-import { resolveSemanticCategoryHint } from '../src/brain/semanticEntityResolver.js';
+import { resolveSemanticCategoryHint } from '../src/brain/semantic/semanticEntityResolver.js';
 import { TransactionCorrelationService } from '../src/email/index.js';
 import { WalletCategoryItem, WalletAccountItem } from '../src/types/walletTypes.js';
 

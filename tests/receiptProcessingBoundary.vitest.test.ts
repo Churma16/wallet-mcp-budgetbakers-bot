@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import { afterEach, test } from 'vitest';
 import { UserMessageHandler } from '../src/core/dispatcher.js';
-import { AccountClarificationHandler } from '../src/core/accountClarificationHandler.js';
+import { AccountClarificationHandler } from '../src/core/handlers/accountClarificationHandler.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
@@ -10,7 +10,7 @@ import { setActiveLanguage } from '../src/i18n/index.js';
 import { AiResponseParseError } from '../src/brain/index.js';
 import { ExtractedFinancialIntent, FinancialAiProvider } from '../src/brain/index.js';
 import { parseFinancialAmount, parseFinancialAmountString } from '../src/brain/index.js';
-import { validateAndSanitizeFinancialRecords } from '../src/wallet/recordValidator.js';
+import { validateAndSanitizeFinancialRecords } from '../src/wallet/records/recordValidator.js';
 import { validateReceiptFinancialIntentEnvelope } from '../src/brain/index.js';
 import { OpenAiCompatibleAiProvider } from '../src/brain/index.js';
 import { FallbackAiProvider } from '../src/brain/index.js';

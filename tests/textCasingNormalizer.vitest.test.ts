@@ -3,7 +3,7 @@ import {
   normalizeTransactionText,
   formatSmartTitleCase,
 } from '../src/lib/textCasing.js';
-import { validateAndSanitizeFinancialRecords } from '../src/wallet/recordValidator.js';
+import { validateAndSanitizeFinancialRecords } from '../src/wallet/records/recordValidator.js';
 import {
   buildCompactSystemInstruction,
 } from '../src/brain/index.js';

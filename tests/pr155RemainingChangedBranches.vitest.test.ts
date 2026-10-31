@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AccountClarificationHandler } from '../src/core/accountClarificationHandler.js';
-import { FastPathHandler } from '../src/core/fastPathHandler.js';
+import { AccountClarificationHandler } from '../src/core/handlers/accountClarificationHandler.js';
+import { FastPathHandler } from '../src/core/handlers/fastPathHandler.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { createDefaultFinancialActionRegistry } from '../src/core/index.js';
 

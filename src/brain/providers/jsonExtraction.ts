@@ -1,0 +1,297 @@
+import { applicationLogger } from '../../lib/logger.js';
+import { parseFinancialAmount } from '../parsers/amountParser.js';
+import { FINANCIAL_ACTION_TYPES } from '../constants.js';
+import type {
+  ExtractedFinancialIntent,
+  ExtractedFinancialRecordItem,
+  AccountClarificationProposal,
+  TokenUsageStatistics,
+} from '../types.js';
+
+/**
+ * Extracts the content of the first triple-backtick code fence using linear index scanning.
+ */
+function extractMarkdownCodeFenceContent(rawText: string): string | null {
+  const fenceMarker = '```';
+  const fenceOpenIndex = rawText.indexOf(fenceMarker);
+  if (fenceOpenIndex === -1) {
+    return null;
+  }
+
+  const contentStartIndex = fenceOpenIndex + fenceMarker.length;
+  const fenceCloseIndex = rawText.indexOf(fenceMarker, contentStartIndex);
+  if (fenceCloseIndex === -1) {
+    return null;
+  }
+
+  let extractedContent = rawText.slice(contentStartIndex, fenceCloseIndex).trim();
+  const firstLineBreakIndex = extractedContent.indexOf('\n');
+  const openingLabelLine = (firstLineBreakIndex === -1
+    ? extractedContent
+    : extractedContent.slice(0, firstLineBreakIndex)).trim();
+
+  if (/^json$/i.test(openingLabelLine)) {
+    extractedContent = firstLineBreakIndex === -1 ? '' : extractedContent.slice(firstLineBreakIndex).trim();
+  }
+
+  return extractedContent;
+}
+
+/**
+ * Dedicated error class for AI response extraction and parsing failures.
+ *
+ * Core Purpose & Responsibility:
+ * Represents unrecoverable or malformed JSON extraction failures from AI provider responses.
+ *
+ * Architectural Role:
+ * Thrown by jsonExtraction helpers and handled by providerWorkflow and humanResponseFormatter.
+ */
+export class AiResponseParseError extends Error {
+  constructor(
+    message: string,
+    public readonly rawResponseContent?: string
+  ) {
+    super(message);
+    this.name = 'AiResponseParseError';
+  }
+}
+
+/**
+ * Checks whether an error is an AiResponseParseError.
+ */
+export function isAiResponseParseError(error: unknown): error is AiResponseParseError {
+  return error instanceof AiResponseParseError || (
+    error instanceof Error && error.name === 'AiResponseParseError'
+  );
+}
+
+/**
+ * Robustly extracts and parses a JSON object from arbitrary LLM response text.
+ */
+export function extractAndParseJsonObject<T>(rawResponseText: string): T {
+  let sanitizedText = rawResponseText.trim();
+  sanitizedText = sanitizedText.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
+  const extractedFenceContent = extractMarkdownCodeFenceContent(sanitizedText);
+  if (extractedFenceContent !== null) {
+    sanitizedText = extractedFenceContent;
+  }
+
+  try {
+    return JSON.parse(sanitizedText) as T;
+  } catch {
+    const firstBraceIndex = sanitizedText.indexOf('{');
+    const lastBraceIndex = sanitizedText.lastIndexOf('}');
+
+    if (firstBraceIndex !== -1 && lastBraceIndex !== -1 && lastBraceIndex > firstBraceIndex) {
+      const extractedJsonSubstring = sanitizedText.substring(firstBraceIndex, lastBraceIndex + 1);
+      try {
+        return JSON.parse(extractedJsonSubstring) as T;
+      } catch (parseError: unknown) {
+        const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+        applicationLogger.fileDetail('error', 'Failed substring JSON parse attempt', {
+          errorMessage,
+          extractedJsonSubstring,
+        });
+        throw new AiResponseParseError(
+          `Unable to parse JSON from AI response: ${errorMessage}`,
+          rawResponseText
+        );
+      }
+    }
+
+    throw new AiResponseParseError(
+      'No valid JSON object structure found in AI response',
+      rawResponseText
+    );
+  }
+}
+
+/**
+ * Validates the runtime envelope of parsed Receipt Vision model output.
+ */
+export function validateReceiptFinancialIntentEnvelope(
+  rawParsedObject: unknown,
+  rawResponseContent?: string
+): ExtractedFinancialIntent {
+  if (!rawParsedObject || typeof rawParsedObject !== 'object' || Array.isArray(rawParsedObject)) {
+    throw new AiResponseParseError(
+      'Receipt Vision output is not a valid JSON object',
+      rawResponseContent
+    );
+  }
+
+  const rawRecord = rawParsedObject as Record<string, unknown>;
+  const allowedActions = new Set<string>([
+    FINANCIAL_ACTION_TYPES.CREATE_RECORD,
+    'GENERAL_REPLY',
+  ]);
+
+  const rawAction = rawRecord.action;
+  if (typeof rawAction !== 'string' || !allowedActions.has(rawAction)) {
+    throw new AiResponseParseError(
+      `Receipt Vision output contains invalid action: ${String(rawAction)}`,
+      rawResponseContent
+    );
+  }
+
+  const validatedAction = rawAction as 'CREATE_RECORD' | 'GENERAL_REPLY';
+
+  if (validatedAction === FINANCIAL_ACTION_TYPES.CREATE_RECORD) {
+    if (!('records' in rawRecord) || !Array.isArray(rawRecord.records)) {
+      throw new AiResponseParseError(
+        'Receipt Vision CREATE_RECORD intent requires records to be an array',
+        rawResponseContent
+      );
+    }
+
+    const validatedRecords: ExtractedFinancialRecordItem[] = [];
+    for (let index = 0; index < rawRecord.records.length; index++) {
+      const item = rawRecord.records[index];
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        throw new AiResponseParseError(
+          `Receipt Vision record item at index ${index} must be a non-null object`,
+          rawResponseContent
+        );
+      }
+      const rawItem = item as Record<string, unknown>;
+
+      const rawAmount = rawItem.amount;
+      const isValidNumberAmount = typeof rawAmount === 'number' && Number.isFinite(rawAmount);
+      const isValidStringAmount = typeof rawAmount === 'string' && rawAmount.trim().length > 0;
+      if (!isValidNumberAmount && !isValidStringAmount) {
+        throw new AiResponseParseError(
+          `Receipt Vision record item at index ${index} must have a valid amount`,
+          rawResponseContent
+        );
+      }
+
+      const rawRecordDate = rawItem.recordDate;
+      let resolvedRecordDate: string | undefined = undefined;
+      if (rawRecordDate !== undefined && rawRecordDate !== null) {
+        if (typeof rawRecordDate !== 'string') {
+          throw new AiResponseParseError(
+            `Receipt Vision record item at index ${index} must have a valid recordDate`,
+            rawResponseContent
+          );
+        }
+        const trimmedRecordDate = rawRecordDate.trim();
+        if (trimmedRecordDate.length > 0) {
+          if (Number.isNaN(Date.parse(trimmedRecordDate))) {
+            throw new AiResponseParseError(
+              `Receipt Vision record item at index ${index} must have a valid recordDate`,
+              rawResponseContent
+            );
+          }
+          resolvedRecordDate = trimmedRecordDate;
+        }
+      }
+
+      let resolvedCurrency: string | undefined = undefined;
+      if (typeof rawItem.currency === 'string' && /^[A-Za-z]{3}$/.test(rawItem.currency.trim())) {
+        resolvedCurrency = rawItem.currency.trim().toUpperCase();
+      } else if (typeof rawAmount === 'string') {
+        const parsedFinancialResult = parseFinancialAmount(rawAmount);
+        if (parsedFinancialResult?.explicitCurrencyHint) {
+          resolvedCurrency = parsedFinancialResult.explicitCurrencyHint.trim().toUpperCase();
+        }
+      }
+
+      if (!resolvedCurrency) {
+        throw new AiResponseParseError(
+          `Receipt Vision record item at index ${index} must have a valid currency`,
+          rawResponseContent
+        );
+      }
+
+      const resolvedAccountId = typeof rawItem.accountId === 'string' ? rawItem.accountId.trim() : '';
+      const resolvedAccountHint = typeof rawItem.accountHint === 'string'
+        ? rawItem.accountHint.trim()
+        : undefined;
+      const resolvedCategoryHint = typeof rawItem.categoryHint === 'string' && rawItem.categoryHint.trim()
+        ? rawItem.categoryHint.trim()
+        : undefined;
+
+      validatedRecords.push({
+        accountId: resolvedAccountId,
+        accountHint: resolvedAccountHint,
+        categoryId: typeof rawItem.categoryId === 'string' && rawItem.categoryId.trim()
+          ? rawItem.categoryId.trim()
+          : undefined,
+        categoryHint: resolvedCategoryHint,
+        amount: rawAmount as any,
+        currency: resolvedCurrency,
+        recordDate: resolvedRecordDate,
+        note: typeof rawItem.note === 'string' ? rawItem.note : '',
+        counterParty: typeof rawItem.counterParty === 'string' && rawItem.counterParty.trim()
+          ? rawItem.counterParty.trim()
+          : undefined,
+        labels: Array.isArray(rawItem.labels)
+          ? rawItem.labels.filter((labelItem): labelItem is string => typeof labelItem === 'string')
+          : undefined,
+      });
+    }
+
+    return {
+      action: validatedAction,
+      records: validatedRecords,
+      explanation: typeof rawRecord.explanation === 'string' ? rawRecord.explanation : undefined,
+    };
+  }
+
+  return {
+    action: validatedAction,
+    explanation: typeof rawRecord.explanation === 'string' ? rawRecord.explanation : undefined,
+  };
+}
+
+/**
+ * Parses and normalizes LLM response for account clarification question generation.
+ */
+export function parseClarificationQuestionResponse(
+  rawResponseText: string,
+  tokenUsage?: TokenUsageStatistics
+): { question: string; tokenUsage?: TokenUsageStatistics } {
+  try {
+    const parsed = extractAndParseJsonObject<{ question?: string }>(rawResponseText);
+    return {
+      question: parsed.question || rawResponseText,
+      tokenUsage,
+    };
+  } catch {
+    return {
+      question: rawResponseText,
+      tokenUsage,
+    };
+  }
+}
+
+/**
+ * Parses and normalizes LLM response for account clarification reply interpretation.
+ */
+export function parseClarificationProposalResponse(
+  rawResponseText: string,
+  tokenUsage?: TokenUsageStatistics
+): AccountClarificationProposal {
+  try {
+    const parsed = extractAndParseJsonObject<{
+      selectedCandidateIndex?: unknown;
+      reasoning?: unknown;
+    }>(rawResponseText);
+    return {
+      selectedCandidateIndex:
+        typeof parsed.selectedCandidateIndex === 'number' &&
+        Number.isInteger(parsed.selectedCandidateIndex)
+          ? parsed.selectedCandidateIndex
+          : null,
+      reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : '',
+      tokenUsage,
+    };
+  } catch {
+    return {
+      selectedCandidateIndex: null,
+      reasoning: 'Failed to parse JSON response',
+      tokenUsage,
+    };
+  }
+}

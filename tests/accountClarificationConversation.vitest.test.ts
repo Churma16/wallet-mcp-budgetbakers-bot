@@ -1,5 +1,5 @@
 import { UserMessageHandler } from '../src/core/dispatcher.js';
-import { AccountClarificationHandler } from '../src/core/accountClarificationHandler.js';
+import { AccountClarificationHandler } from '../src/core/handlers/accountClarificationHandler.js';
 import { AccountClarificationConversationService } from '../src/brain/index.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';
@@ -32,7 +32,7 @@ import {
   composeClarificationMessage,
   formatDeterministicCandidateSection,
   formatAccountSelectionPrompt,
-} from '../src/brain/accountClarificationFormatter.js';
+} from '../src/brain/clarification/accountClarificationFormatter.js';
 
 class MockMessagingGateway {
   public readonly messages: Array<{ channel: string; chatId: string; content: string }> = [];

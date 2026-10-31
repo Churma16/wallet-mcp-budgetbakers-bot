@@ -10,7 +10,7 @@ import {
   formatCompactTransactionDate,
   formatCompactTransactionAmount,
   MAX_TRANSACTION_HISTORY_TITLE_LENGTH,
-} from '../src/wallet/humanResponseFormatter.js';
+} from '../src/wallet/formatters/humanResponseFormatter.js';
 import { formatConciseErrorMessage } from '../src/lib/logger.js';
 import { AiResponseParseError } from '../src/brain/index.js';
 

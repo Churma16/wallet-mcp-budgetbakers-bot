@@ -2,10 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   resolveSemanticAccountHint,
   resolveSemanticCategoryHint,
-} from '../src/brain/semanticEntityResolver.js';
-import { validateAndSanitizeFinancialRecords } from '../src/wallet/recordValidator.js';
-import { CreateRecordActionHandler } from '../src/core/createRecordHandler.js';
-import { AccountClarificationHandler } from '../src/core/accountClarificationHandler.js';
+} from '../src/brain/semantic/semanticEntityResolver.js';
+import { validateAndSanitizeFinancialRecords } from '../src/wallet/records/recordValidator.js';
+import { CreateRecordActionHandler } from '../src/core/handlers/createRecordHandler.js';
+import { AccountClarificationHandler } from '../src/core/handlers/accountClarificationHandler.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 
 const accounts = [

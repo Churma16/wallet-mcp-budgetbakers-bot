@@ -1,4 +1,4 @@
-import { PendingActionHandler } from '../src/core/pendingHandler.js';
+import { PendingActionHandler } from '../src/core/handlers/pendingHandler.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import {
   WalletMcpClientService,

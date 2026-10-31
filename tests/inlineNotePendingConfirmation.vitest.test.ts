@@ -4,12 +4,12 @@ import {
   PendingConfirmationIntent,
 } from '../src/brain/index.js';
 import { PendingTransactionService } from '../src/core/pending.js';
-import { PendingActionHandler } from '../src/core/pendingHandler.js';
+import { PendingActionHandler } from '../src/core/handlers/pendingHandler.js';
 import { MessagingGatewayService, IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { WalletMcpClientService } from '../src/wallet/index.js';
 import { WalletCacheService } from '../src/wallet/index.js';
 import { indonesianDictionary, englishDictionary } from '../src/i18n/index.js';
-import { formatPendingConfirmationPrompt } from '../src/wallet/humanResponseFormatter.js';
+import { formatPendingConfirmationPrompt } from '../src/wallet/formatters/humanResponseFormatter.js';
 
 function createMockEvent(text: string): IncomingUserMessageEvent {
   return {

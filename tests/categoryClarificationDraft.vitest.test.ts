@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { CategoryContextService } from '../src/brain/categoryContext.js';
+import { CategoryContextService } from '../src/brain/category/categoryContext.js';
 import { UserMessageHandler } from '../src/core/dispatcher.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';

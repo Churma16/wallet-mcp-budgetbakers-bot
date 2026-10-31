@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WalletMcpClientService } from '../src/wallet/index.js';
-import { formatBudgetSummaryMessage } from '../src/wallet/humanResponseFormatter.js';
+import { formatBudgetSummaryMessage } from '../src/wallet/formatters/humanResponseFormatter.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 
 const mockRawBudgets = [
