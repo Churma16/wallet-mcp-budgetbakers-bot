@@ -6,6 +6,7 @@ export interface PushNotificationPayload {
   title: string;
   text: string;
   timestamp?: number;
+  isTest?: boolean;
 }
 
 export interface NotificationWebhookResponse {
@@ -172,11 +173,16 @@ export class NotificationWebhookServer {
         return;
       }
 
+      const isTestPing =
+        Boolean(parsedPayload.isTest) ||
+        String(parsedPayload.packageName).trim() === 'codes.churma.walletforwarder';
+
       const validPayload: PushNotificationPayload = {
         packageName: String(parsedPayload.packageName).trim(),
         title: String(parsedPayload.title || '').trim(),
         text: String(parsedPayload.text || '').trim(),
         timestamp: typeof parsedPayload.timestamp === 'number' ? parsedPayload.timestamp : Date.now(),
+        isTest: isTestPing,
       };
 
       // Delegate to handler
@@ -187,7 +193,9 @@ export class NotificationWebhookServer {
         res.end(
           JSON.stringify({
             success: true,
-            message: 'Notification received and processed',
+            message: isTestPing
+              ? 'Test ping received and verified'
+              : 'Notification received and processed',
           })
         );
       } catch (handlerError: any) {

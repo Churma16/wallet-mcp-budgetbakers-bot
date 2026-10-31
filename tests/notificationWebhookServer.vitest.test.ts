@@ -151,9 +151,41 @@ describe('NotificationWebhookServer', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
+    expect(response.body.message).toBe('Notification received and processed');
     expect(receivedPayloads.length).toBe(1);
     expect(receivedPayloads[0].packageName).toBe('com.jago');
     expect(receivedPayloads[0].text).toBe('Pembayaran Rp 15.799 berhasil');
+  });
+
+  it('accepts test ping payload and returns verified ping message', async () => {
+    server = new NotificationWebhookServer({
+      port: testPort,
+      host: '127.0.0.1',
+      secret: testSecret,
+      onNotificationReceived: async payload => {
+        receivedPayloads.push(payload);
+      },
+    });
+    await server.start();
+
+    const response = await makeRequest(
+      'POST',
+      '/api/webhook/notification',
+      {
+        packageName: 'codes.churma.walletforwarder',
+        title: 'Test Ping (Wallet Forwarder)',
+        text: 'Connectivity check',
+        isTest: true,
+      },
+      { Authorization: `Bearer ${testSecret}` }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.message).toBe('Test ping received and verified');
+    expect(receivedPayloads.length).toBe(1);
+    expect(receivedPayloads[0].isTest).toBe(true);
+    expect(receivedPayloads[0].packageName).toBe('codes.churma.walletforwarder');
   });
 
   it('validates required payload properties', async () => {
