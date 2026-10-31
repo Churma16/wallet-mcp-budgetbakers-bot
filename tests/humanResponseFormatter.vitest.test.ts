@@ -380,4 +380,75 @@ describe('human response formatter', () => {
     assert.ok(message.includes('💳 Jago Expense ➔ Gopay'));
     assert.ok(message.includes('2. 💸 Kopi — *Rp 15.000* dari Jago Expense'));
   });
+
+  test('formats transfer with accountHint fallback and default account name', () => {
+    const message = formatRecordSuccessMessage(
+      [{
+        accountId: 'acc-unknown',
+        amount: -10000,
+        recordDate: '2026-09-13T06:00:00.000Z',
+        transfer: {
+          pairingMode: 'new',
+          accountHint: 'Dana',
+        },
+      }],
+      [],
+      [],
+      'id'
+    );
+    assert.ok(message.includes('Akun ➔ Dana'));
+    assert.ok(message.includes('🔁 Rp 10.000'));
+  });
+
+  test('formats transfer without destination account', () => {
+    const message = formatRecordSuccessMessage(
+      [{
+        accountId: 'acc-jago',
+        amount: -10000,
+        recordDate: '2026-09-13T06:00:00.000Z',
+        counterParty: 'Gopay Topup',
+        transfer: {
+          pairingMode: 'new',
+        },
+      }],
+      [{ id: 'acc-jago', name: 'Jago Expense' }],
+      [],
+      'id'
+    );
+    assert.ok(message.includes('💳 Jago Expense'));
+    assert.ok(message.includes('📝 Gopay Topup'));
+  });
+
+  test('formats multiple transfer records with labels and accountHint', () => {
+    const message = formatRecordSuccessMessage(
+      [
+        {
+          accountId: 'acc-jago',
+          amount: -50000,
+          recordDate: '2026-09-13T06:00:00.000Z',
+          counterParty: 'OVO',
+          labels: ['ewallet'],
+          transfer: {
+            pairingMode: 'new',
+            accountHint: 'OVO Saldo',
+          },
+        },
+        {
+          accountId: 'acc-jago',
+          amount: -30000,
+          recordDate: '2026-09-13T06:00:00.000Z',
+          transfer: {
+            pairingMode: 'new',
+          },
+        },
+      ],
+      [{ id: 'acc-jago', name: 'Jago Expense' }],
+      [],
+      'id'
+    );
+    assert.ok(message.includes('1. 🔁 OVO — *Rp 50.000*'));
+    assert.ok(message.includes('💳 Jago Expense ➔ OVO Saldo'));
+    assert.ok(message.includes('🔖 #ewallet'));
+    assert.ok(message.includes('2. 🔁 Transfer — *Rp 30.000*'));
+  });
 });
