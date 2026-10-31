@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractCleanEmailBody } from '../src/services/emailListenerService.js';
+import { extractCleanEmailBody } from '../src/email/index.js';
 
 describe('extractCleanEmailBody (HTML to clean text extraction)', () => {
   it('strips heavy inline <style> CSS completely from HTML emails (e.g. Grab E-Receipt)', () => {

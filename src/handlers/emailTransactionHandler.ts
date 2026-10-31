@@ -1,8 +1,8 @@
-import { EmailTransactionDetectedEvent, EmailListenerService } from '../services/emailListenerService.js';
+import { EmailTransactionDetectedEvent, EmailListenerService } from '../email/index.js';
 import { FinancialAiProvider } from '../brain/index.js';
 import { PendingTransactionService } from '../services/pendingTransactionService.js';
 import { MessagingGatewayService } from '../services/messaging/index.js';
-import { TransactionCorrelationService } from '../services/transactionCorrelationService.js';
+import { TransactionCorrelationService } from '../email/index.js';
 import { WalletCacheService, WalletMcpClientService } from '../wallet/index.js';
 import { coordinateInboundTransactionCandidate } from './inboundTransactionCoordinator.js';
 import { applicationLogger } from '../utils/logger.js';

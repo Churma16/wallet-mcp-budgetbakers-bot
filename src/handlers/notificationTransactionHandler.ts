@@ -1,7 +1,7 @@
 import { FinancialAiProvider } from '../brain/index.js';
 import { PendingTransactionService } from '../services/pendingTransactionService.js';
 import { MessagingGatewayService } from '../services/messaging/index.js';
-import { TransactionCorrelationService } from '../services/transactionCorrelationService.js';
+import { TransactionCorrelationService } from '../email/index.js';
 import { WalletCacheService, WalletMcpClientService } from '../wallet/index.js';
 import { PushNotificationPayload } from '../services/webhook/types.js';
 import { evaluateNotificationThroughGate } from '../config/notificationRules.js';

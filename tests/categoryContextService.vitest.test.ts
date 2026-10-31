@@ -12,7 +12,7 @@ import { GeminiAiProvider } from '../src/brain/index.js';
 import { OpenAiCompatibleAiProvider } from '../src/brain/index.js';
 import { WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 import { Application } from '../src/app.js';
-import { GateEvaluationResult } from '../src/utils/emailGateEvaluator.js';
+import { GateEvaluationResult } from '../src/email/index.js';
 
 const mockAccounts: WalletAccountItem[] = [
   { id: 'acc-1', name: 'Cash', currency: 'IDR', accountType: 'Cash' },

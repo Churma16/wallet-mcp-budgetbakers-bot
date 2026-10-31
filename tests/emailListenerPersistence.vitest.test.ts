@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'vitest';
-import { EmailListenerService } from '../src/services/emailListenerService.js';
+import { EmailListenerService } from '../src/email/index.js';
 
 interface FakeImapClient {
   usable: boolean;

@@ -3,7 +3,7 @@ import { WalletMcpClientService } from '../src/wallet/index.js';
 import { createFinancialAiProvider } from '../src/brain/index.js';
 import { applicationLogger } from '../src/utils/logger.js';
 import { WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
-import { GateEvaluationResult } from '../src/utils/emailGateEvaluator.js';
+import { GateEvaluationResult } from '../src/email/index.js';
 
 async function runAiProviderVerification(): Promise<void> {
   applicationLogger.info('Starting Agnostic AI Provider Diagnostic Test...');

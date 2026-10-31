@@ -26,9 +26,9 @@ import {
   TelegramMessagingAdapter,
   ConsoleMessagingAdapter,
 } from './services/messaging/index.js';
-import { EmailListenerService } from './services/emailListenerService.js';
+import { EmailListenerService, TransactionCorrelationService } from './email/index.js';
 import { PendingTransactionService } from './services/pendingTransactionService.js';
-import { TransactionCorrelationService } from './services/transactionCorrelationService.js';
+
 import {
   EmailTransactionHandler,
   NotificationTransactionHandler,

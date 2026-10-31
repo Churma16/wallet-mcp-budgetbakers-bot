@@ -7,7 +7,7 @@ import {
   isWalletMcpDispatchOutcomeUnknown,
 } from '../wallet/index.js';
 import { MessagingGatewayService, IncomingUserMessageEvent } from '../services/messaging/index.js';
-import { EmailListenerService } from '../services/emailListenerService.js';
+import { EmailListenerService } from '../email/index.js';
 import {
   PendingConfirmationIntent,
   ReconciliationIntent,

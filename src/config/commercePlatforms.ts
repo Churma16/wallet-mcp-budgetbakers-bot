@@ -1,4 +1,4 @@
-import type { BankEmailRuleDefinition } from './bankEmailRules.js';
+import type { BankEmailRuleDefinition } from '../email/types.js';
 
 export interface CommercePlatformDefinition {
   /** Unique identifier for the platform (e.g. 'grab', 'shopee', 'blibli', 'tokopedia') */

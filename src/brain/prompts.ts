@@ -1,5 +1,5 @@
 import { WalletAccountItem, WalletCategoryItem } from '../wallet/index.js';
-import { GateEvaluationResult } from '../utils/emailGateEvaluator.js';
+import { GateEvaluationResult } from '../email/index.js';
 import { getActiveLanguage } from '../i18n/index.js';
 import { formatLocalTimeAnchor } from './parsers/timeParser.js';
 import {
