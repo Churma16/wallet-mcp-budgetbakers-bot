@@ -11,6 +11,9 @@ export interface RecordMessageParams {
   recordTimestampDisplay: string;
   transactionTypeIcon: string;
   labels?: string[];
+  isTransfer?: boolean;
+  destinationAccountName?: string;
+  note?: string;
 }
 
 export interface MultipleRecordsItemParams {
@@ -22,6 +25,8 @@ export interface MultipleRecordsItemParams {
   categoryName: string;
   recordTimestampDisplay: string;
   labels?: string[];
+  isTransfer?: boolean;
+  destinationAccountName?: string;
 }
 
 export interface PendingEmailNotificationParams {

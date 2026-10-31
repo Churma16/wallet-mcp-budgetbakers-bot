@@ -264,4 +264,120 @@ describe('human response formatter', () => {
     assert.match(message, /Transfer \/ Top-Up • \d+ Sep \d\d:\d\d/);
     assert.strictEqual(message.includes('Pengeluaran'), false);
   });
+
+  test('formats a single transfer record using dedicated transfer layout (Option 1)', () => {
+    const message = formatRecordSuccessMessage(
+      [{
+        accountId: 'acc-jago',
+        amount: -25000,
+        recordDate: new Date('2026-09-13T06:00:00.000Z').toISOString(),
+        note: 'Transfer',
+        transfer: {
+          pairingMode: 'new',
+          accountId: 'acc-gopay',
+        },
+      }],
+      [
+        { id: 'acc-jago', name: 'Jago Expense', currency: 'IDR' },
+        { id: 'acc-gopay', name: 'Gopay', currency: 'IDR' },
+      ],
+      [{ id: 'cat-gen', name: 'Umum' }],
+      'id'
+    );
+
+    assert.ok(message.includes('✅ *Transfer berhasil dicatat!*'), 'Has dedicated transfer header');
+    assert.ok(message.includes('🔁 Rp 25.000'), 'Uses transfer cycle icon and positive formatted amount');
+    assert.ok(message.includes('💳 Jago Expense ➔ Gopay'), 'Shows clear transfer route');
+    assert.ok(message.includes('⏰'), 'Shows timestamp');
+    assert.strictEqual(message.includes('🏷️'), false, 'Does not show awkward category icon');
+    assert.strictEqual(message.includes('Umum'), false, 'Does not show category name for transfer');
+    assert.strictEqual(message.includes('💸'), false, 'Does not use expense flying cash icon');
+  });
+
+  test('formats a transfer record with custom note and labels', () => {
+    const message = formatRecordSuccessMessage(
+      [{
+        accountId: 'acc-jago',
+        amount: -50000,
+        recordDate: new Date('2026-09-13T06:00:00.000Z').toISOString(),
+        note: 'Top up Gopay',
+        labels: ['topup', 'jajan'],
+        transfer: {
+          pairingMode: 'new',
+          accountId: 'acc-gopay',
+        },
+      }],
+      [
+        { id: 'acc-jago', name: 'Jago Expense', currency: 'IDR' },
+        { id: 'acc-gopay', name: 'Gopay', currency: 'IDR' },
+      ],
+      [{ id: 'cat-gen', name: 'Umum' }],
+      'id'
+    );
+
+    assert.ok(message.includes('✅ *Transfer berhasil dicatat!*'));
+    assert.ok(message.includes('🔁 Rp 50.000'));
+    assert.ok(message.includes('💳 Jago Expense ➔ Gopay'));
+    assert.ok(message.includes('📝 Top up Gopay'));
+    assert.ok(message.includes('🔖 #topup #jajan'));
+  });
+
+  test('formats a transfer record in English', () => {
+    const message = formatRecordSuccessMessage(
+      [{
+        accountId: 'acc-jago',
+        amount: -25000,
+        recordDate: new Date('2026-09-13T06:00:00.000Z').toISOString(),
+        note: 'Transfer',
+        transfer: {
+          pairingMode: 'new',
+          accountId: 'acc-gopay',
+        },
+      }],
+      [
+        { id: 'acc-jago', name: 'Jago Expense', currency: 'IDR' },
+        { id: 'acc-gopay', name: 'Gopay', currency: 'IDR' },
+      ],
+      [{ id: 'cat-gen', name: 'General' }],
+      'en'
+    );
+
+    assert.ok(message.includes('✅ *Transfer recorded successfully!*'));
+    assert.ok(message.includes('🔁 Rp 25,000') || message.includes('🔁 Rp 25.000'));
+    assert.ok(message.includes('💳 Jago Expense ➔ Gopay'));
+  });
+
+  test('formats multiple records containing a transfer', () => {
+    const message = formatRecordSuccessMessage(
+      [
+        {
+          accountId: 'acc-jago',
+          amount: -25000,
+          recordDate: new Date('2026-09-13T06:00:00.000Z').toISOString(),
+          note: 'Top up Gopay',
+          transfer: {
+            pairingMode: 'new',
+            accountId: 'acc-gopay',
+          },
+        },
+        {
+          accountId: 'acc-jago',
+          amount: -15000,
+          recordDate: new Date('2026-09-13T06:00:00.000Z').toISOString(),
+          note: 'Kopi',
+          categoryId: 'cat-food',
+        },
+      ],
+      [
+        { id: 'acc-jago', name: 'Jago Expense', currency: 'IDR' },
+        { id: 'acc-gopay', name: 'Gopay', currency: 'IDR' },
+      ],
+      [{ id: 'cat-food', name: 'Food & Drinks' }],
+      'id'
+    );
+
+    assert.ok(message.includes('1. 🔁 Top up Gopay — *Rp 25.000*'));
+    assert.ok(message.includes('💳 Jago Expense ➔ Gopay'));
+    assert.ok(message.includes('2. 💸 Kopi — *Rp 15.000* dari Jago Expense'));
+  });
 });

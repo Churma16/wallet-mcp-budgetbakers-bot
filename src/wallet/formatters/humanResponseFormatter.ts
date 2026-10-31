@@ -250,14 +250,20 @@ function formatSingleRecordSuccess(
   accountName: string,
   categoryName: string,
   languageCode?: SupportedLanguage,
-  accountCurrency?: string
+  accountCurrency?: string,
+  destinationAccountName?: string
 ): string {
   const dictionary = getDictionary(languageCode);
+  const isTransfer = Boolean(recordItem.transfer);
   const isExpense = recordItem.amount < 0;
-  const transactionTypeIcon = isExpense ? '💸' : '💰';
+  const transactionTypeIcon = isTransfer ? '🔁' : isExpense ? '💸' : '💰';
   const resolvedCurrency = accountCurrency || getDefaultCurrency();
   const formattedAmount = formatCurrencyAmount(recordItem.amount, resolvedCurrency, languageCode);
-  const defaultTitle = isExpense ? dictionary.labels.expense : dictionary.labels.income;
+  const defaultTitle = isTransfer
+    ? 'Transfer'
+    : isExpense
+      ? dictionary.labels.expense
+      : dictionary.labels.income;
   const transactionTitle = recordItem.note || recordItem.counterParty || defaultTitle;
   const recordTimestampDisplay = formatTransactionDate(recordItem.recordDate, languageCode);
 
@@ -269,6 +275,9 @@ function formatSingleRecordSuccess(
     recordTimestampDisplay,
     transactionTypeIcon,
     labels: recordItem.labels,
+    isTransfer,
+    destinationAccountName,
+    note: recordItem.note,
   });
 }
 
@@ -287,14 +296,23 @@ function formatMultipleRecordsSuccess(
   const headerMessage = dictionary.records.multipleSuccessHeader(totalRecordsCount, currentTimestamp);
 
   const recordEntries = recordList.map((recordItem, recordIndex) => {
+    const isTransfer = Boolean(recordItem.transfer);
     const isExpense = recordItem.amount < 0;
-    const transactionTypeIcon = isExpense ? '💸' : '💰';
+    const transactionTypeIcon = isTransfer ? '🔁' : isExpense ? '💸' : '💰';
     const targetAccount = availableAccounts.find(account => account.id === recordItem.accountId);
+    const destinationAccount = recordItem.transfer?.accountId
+      ? availableAccounts.find(account => account.id === recordItem.transfer?.accountId)
+      : undefined;
+    const destinationAccountName = destinationAccount?.name || recordItem.transfer?.accountHint;
     const resolvedCurrency = targetAccount?.currency || getDefaultCurrency();
     const formattedAmount = formatCurrencyAmount(recordItem.amount, resolvedCurrency, languageCode);
     const accountName = targetAccount?.name || dictionary.labels.defaultAccount;
     const categoryName = availableCategories.find(category => category.id === recordItem.categoryId)?.name || dictionary.labels.defaultCategory;
-    const defaultDescription = isExpense ? dictionary.labels.expense : dictionary.labels.income;
+    const defaultDescription = isTransfer
+      ? 'Transfer'
+      : isExpense
+        ? dictionary.labels.expense
+        : dictionary.labels.income;
     const transactionDescription = recordItem.note || recordItem.counterParty || defaultDescription;
     const recordTimestampDisplay = formatTransactionDate(recordItem.recordDate, languageCode);
 
@@ -307,6 +325,8 @@ function formatMultipleRecordsSuccess(
       categoryName,
       recordTimestampDisplay,
       labels: recordItem.labels,
+      isTransfer,
+      destinationAccountName,
     });
   });
 
@@ -332,7 +352,19 @@ export function formatRecordSuccessMessage(
     const targetAccount = availableAccounts.find(account => account.id === singleRecord.accountId);
     const accountName = targetAccount?.name || dictionary.labels.defaultAccount;
     const categoryName = availableCategories.find(category => category.id === singleRecord.categoryId)?.name || dictionary.labels.defaultCategory;
-    return formatSingleRecordSuccess(singleRecord, accountName, categoryName, languageCode, targetAccount?.currency);
+    const destinationAccount = singleRecord.transfer?.accountId
+      ? availableAccounts.find(account => account.id === singleRecord.transfer?.accountId)
+      : undefined;
+    const destinationAccountName = destinationAccount?.name || singleRecord.transfer?.accountHint;
+
+    return formatSingleRecordSuccess(
+      singleRecord,
+      accountName,
+      categoryName,
+      languageCode,
+      targetAccount?.currency,
+      destinationAccountName
+    );
   }
 
   return formatMultipleRecordsSuccess(recordList, availableAccounts, availableCategories, languageCode);
