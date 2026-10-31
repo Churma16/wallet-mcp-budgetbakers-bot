@@ -9,7 +9,8 @@
     "notes": [
       "Prefers cashless payments (QRIS, credit card, Apple Pay)",
       "Distinguishes impulse snacks from main meals",
-      "Splits bills with friends for group dinners"
+      "Splits bills with friends for group dinners",
+      "Semua transaksi pengeluaran, pembayaran belanja, debit card, QRIS, tagihan, dan transfer keluar dari Bank Jago (com.jago / Jago) harus selalu menggunakan akun 'Jago Expense'. Akun 'Jago Emergency' dan 'Jago Saving' bukan untuk pengeluaran belanja harian dan tidak boleh dipilih untuk transaksi pembayaran."
     ]
   },
   "categories": [

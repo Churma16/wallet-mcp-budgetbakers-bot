@@ -19,7 +19,7 @@ type PackageRuleTuple = [
 ];
 
 const RAW_PACKAGE_RULES: readonly PackageRuleTuple[] = [
-  ['com.jago', 'Bank Jago', 'Jago', 'jago', 'BANK'],
+  ['com.jago', 'Bank Jago', 'Jago Expense', 'jago', 'BANK'],
   ['com.bankmandiri.livin', 'Bank Mandiri (Livin)', 'Mandiri', 'mandiri', 'BANK'],
   ['com.bca', 'BCA', 'BCA', 'bca', 'BANK'],
   ['com.bca.mobile', 'BCA', 'BCA', 'bca', 'BANK'],

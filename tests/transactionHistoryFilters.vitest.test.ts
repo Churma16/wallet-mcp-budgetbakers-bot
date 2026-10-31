@@ -81,6 +81,19 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
       assert.strictEqual(unresolvedPage.unresolvedFilters?.length, 1);
       assert.strictEqual(unresolvedPage.unresolvedFilters[0].filterKey, 'account');
       assert.strictEqual(unresolvedPage.unresolvedFilters[0].reason, 'NOT_FOUND');
+
+      // 1.6 Jago Expense prioritization when multiple Jago accounts exist
+      const jagoContext = createQueryExecutionContext({
+        accounts: [
+          { id: 'acc-jago-emg', name: 'Jago Emergency', currency: 'IDR' },
+          { id: 'acc-jago-exp', name: 'Jago Expense', currency: 'IDR' },
+          { id: 'acc-jago-sav', name: 'Jago Saving', currency: 'IDR' },
+        ],
+        categories: MOCK_CATEGORIES,
+      });
+      const jagoResult = await jagoContext.service.getTransactionHistory({ accountName: 'jago' });
+      assert.strictEqual(jagoResult.appliedFilters?.account?.id, 'acc-jago-exp');
+      assert.strictEqual(jagoResult.appliedFilters?.account?.name, 'Jago Expense');
     });
   });
 

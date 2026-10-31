@@ -79,7 +79,7 @@ export const BANK_DEBIT_AND_GATEWAY_RULES: BankEmailRuleDefinition[] = [
   {
     bankKey: 'jago',
     displayName: 'Bank Jago',
-    accountNameHint: 'Jago',
+    accountNameHint: 'Jago Expense',
     senderDomains: ['jago.com'],
     subjectKeywords: [
       'uang keluar',

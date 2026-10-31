@@ -99,7 +99,17 @@ export function resolveEmailExtractedEntities(
 ): ExtractedEmailTransactionData {
   if (!parsedData.matchedAccountId && (parsedData.accountNameHint || gateResult.matchedBankRule?.accountNameHint)) {
     const targetSearch = (parsedData.accountNameHint || gateResult.matchedBankRule?.accountNameHint || '').toLowerCase();
-    const matched = availableAccountList.find(acc => acc.name.toLowerCase().includes(targetSearch));
+    let matched = availableAccountList.find(acc => acc.name.toLowerCase().includes(targetSearch));
+    if (targetSearch.includes('jago') && !targetSearch.includes('emergency') && !targetSearch.includes('saving')) {
+      const expenseMatch = availableAccountList.find(
+        acc =>
+          acc.name.toLowerCase().includes('jago') &&
+          (acc.name.toLowerCase().includes('expense') || acc.name.toLowerCase().includes('expenses'))
+      );
+      if (expenseMatch) {
+        matched = expenseMatch;
+      }
+    }
     if (matched) {
       parsedData.matchedAccountId = matched.id;
       parsedData.accountNameHint = matched.name;

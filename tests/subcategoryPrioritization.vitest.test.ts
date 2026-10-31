@@ -190,6 +190,32 @@ describe('Universal Specific Subcategory Prioritization Across All Categories', 
       expect(resolved.matchedCategoryId).toBe('cat-pc-digital');
       expect(resolved.matchedCategoryName).toBe('Pengeluaran Digital');
     });
+
+    it('prioritizes Jago Expense when multiple Jago accounts exist and hint is generic Jago', () => {
+      const multipleJagoAccounts = [
+        { id: 'acc-jago-emg', name: 'Jago Emergency', currency: 'IDR' },
+        { id: 'acc-jago-exp', name: 'Jago Expense', currency: 'IDR' },
+        { id: 'acc-jago-sav', name: 'Jago Saving', currency: 'IDR' },
+      ];
+
+      const resolved = resolveEmailExtractedEntities(
+        {
+          isTransaction: true,
+          transactionType: 'EXPENSE',
+          amount: 25000,
+          counterParty: 'Kopi Kenangan',
+          accountNameHint: 'Jago',
+        },
+        { passed: true, candidateAmount: 25000, isTransferCandidate: false },
+        'Subject',
+        new Date('2026-10-21T10:00:00.000Z'),
+        multipleJagoAccounts,
+        mockCategories
+      );
+
+      expect(resolved.matchedAccountId).toBe('acc-jago-exp');
+      expect(resolved.accountNameHint).toBe('Jago Expense');
+    });
   });
 
   describe('resolveSemanticCategoryHint disambiguation', () => {

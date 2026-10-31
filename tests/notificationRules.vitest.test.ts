@@ -56,6 +56,7 @@ describe('notificationRules', () => {
       });
       expect(result.passed).toBe(true);
       expect(result.matchedBankRule?.displayName).toBe('Bank Jago');
+      expect(result.matchedBankRule?.accountNameHint).toBe('Jago Expense');
       expect(result.candidateAmount).toBe(15799);
       expect(result.originalDate?.getTime()).toBe(1730335000000);
     });

@@ -869,15 +869,30 @@ export function normalizeTransactionHistoryFilters(
             normalizedAccountHint.includes(account.name.toLowerCase())
         );
 
-        if (substringMatches.length === 1) {
-          upstreamAccountId = substringMatches[0].id;
+        let effectiveMatches = substringMatches;
+        if (
+          substringMatches.length > 1 &&
+          normalizedAccountHint.includes('jago') &&
+          !normalizedAccountHint.includes('emergency') &&
+          !normalizedAccountHint.includes('saving')
+        ) {
+          const expenseMatch = substringMatches.find(
+            acc => acc.name.toLowerCase().includes('expense') || acc.name.toLowerCase().includes('expenses')
+          );
+          if (expenseMatch) {
+            effectiveMatches = [expenseMatch];
+          }
+        }
+
+        if (effectiveMatches.length === 1) {
+          upstreamAccountId = effectiveMatches[0].id;
           appliedFilters.account = {
-            id: substringMatches[0].id,
-            name: substringMatches[0].name,
+            id: effectiveMatches[0].id,
+            name: effectiveMatches[0].name,
             selector: accountSelector,
           };
-        } else if (substringMatches.length > 1) {
-          const candidateNames = substringMatches.map(account => account.name).sort((a, b) => a.localeCompare(b));
+        } else if (effectiveMatches.length > 1) {
+          const candidateNames = effectiveMatches.map(account => account.name).sort((a, b) => a.localeCompare(b));
           unresolvedFilterIssues.push({
             filterKey: 'account',
             rawValue: trimmedAccountHint,

@@ -68,11 +68,15 @@ export function resolveSemanticAccountHint(hint: string, accounts: readonly Wall
   candidates.push(...exactNames);
 
   if (exactNames.length === 0 && normalizedHint.length > 1) {
+    const hintTokens = words(rawHint);
     candidates.push(...accounts.filter(account => {
       const candidate = normalize(account.name);
-      return candidate.length > 0 && (
-        candidate.includes(normalizedHint) || normalizedHint.includes(candidate)
-      );
+      if (!candidate) return false;
+      if (candidate.includes(normalizedHint) || normalizedHint.includes(candidate)) {
+        return true;
+      }
+      const candidateWords = words(account.name);
+      return candidateWords.some(cw => cw.length >= 3 && hintTokens.includes(cw));
     }));
   }
 
@@ -97,6 +101,22 @@ export function resolveSemanticAccountHint(hint: string, accounts: readonly Wall
           : 'SEMANTIC';
     return resolved(match, matchedBy);
   }
+
+  if (
+    uniqueCandidates.length > 1 &&
+    normalizedHint.includes('jago') &&
+    !normalizedHint.includes('emergency') &&
+    !normalizedHint.includes('saving')
+  ) {
+    const expenseCandidate = uniqueCandidates.find(c => {
+      const lower = normalize(c.name);
+      return lower.includes('jago') && (lower.includes('expense') || lower.includes('expenses'));
+    });
+    if (expenseCandidate) {
+      return resolved(expenseCandidate, 'SEMANTIC');
+    }
+  }
+
   return unresolved(rawHint, uniqueCandidates);
 }
 
