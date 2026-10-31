@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { TransactionCorrelationService } from '../src/services/transactionCorrelationService.js';
+import { TransactionCorrelationService } from '../src/email/index.js';
 import { PendingTransactionItem } from '../src/services/pendingTransactionService.js';
-import { TransactionEvidence } from '../src/types/transactionCorrelationTypes.js';
+import { TransactionEvidence } from '../src/email/index.js';
 import { WalletRecordItem } from '../src/types/walletTypes.js';
 import {
   formatEnrichedPendingEmailTransactionNotification,

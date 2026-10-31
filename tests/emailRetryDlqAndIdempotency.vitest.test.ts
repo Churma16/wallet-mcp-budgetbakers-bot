@@ -7,12 +7,12 @@ import {
 } from '../src/brain/index.js';
 import { AiResponseParseError } from '../src/brain/index.js';
 import { FallbackAiProvider } from '../src/brain/index.js';
-import { EmailListenerService, DeadLetterQueueItem } from '../src/services/emailListenerService.js';
+import { EmailListenerService, DeadLetterQueueItem } from '../src/email/index.js';
 import { EmailTransactionHandler } from '../src/handlers/emailTransactionHandler.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
-import { TransactionCorrelationService } from '../src/services/transactionCorrelationService.js';
-import { BANK_EMAIL_RULES } from '../src/config/bankEmailRules.js';
-import { GateEvaluationResult } from '../src/utils/emailGateEvaluator.js';
+import { TransactionCorrelationService } from '../src/email/index.js';
+import { BANK_EMAIL_RULES } from '../src/email/index.js';
+import { GateEvaluationResult } from '../src/email/index.js';
 
 describe('Email AI Error Propagation, Retry DLQ, and Idempotency', () => {
   const dummyGateResult: GateEvaluationResult = {

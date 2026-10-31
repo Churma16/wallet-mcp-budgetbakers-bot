@@ -4,9 +4,9 @@ import {
   DEFAULT_COMMERCE_PLATFORMS,
   CommercePlatformDefinition,
 } from '../src/config/commercePlatforms.js';
-import { TransactionCorrelationService } from '../src/services/transactionCorrelationService.js';
+import { TransactionCorrelationService } from '../src/email/index.js';
 import type { PendingTransactionItem } from '../src/services/pendingTransactionService.js';
-import type { TransactionEvidence } from '../src/types/transactionCorrelationTypes.js';
+import type { TransactionEvidence } from '../src/email/index.js';
 
 describe('CommercePlatformRegistry', () => {
   let registry: CommercePlatformRegistry;

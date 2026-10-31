@@ -3,9 +3,26 @@ import path from 'path';
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import { convert } from 'html-to-text';
-import { evaluateEmailThroughGateOne, GateEvaluationResult } from '../utils/emailGateEvaluator.js';
+import { evaluateEmailThroughGateOne } from './bankRules.js';
+import type {
+  GateEvaluationResult,
+  EmailTransactionDetectedEvent,
+  EmailTransactionCallback,
+  DeadLetterQueueItem,
+  DeadLetterCallback,
+  PersistentTransactionCacheStructure,
+} from './types.js';
 import { calculateExponentialBackoff } from '../utils/exponentialBackoff.js';
 import { applicationLogger } from '../utils/logger.js';
+
+export type {
+  GateEvaluationResult,
+  EmailTransactionDetectedEvent,
+  EmailTransactionCallback,
+  DeadLetterQueueItem,
+  DeadLetterCallback,
+  PersistentTransactionCacheStructure,
+};
 
 /**
  * Extracts clean plain-text from email content.
@@ -44,35 +61,10 @@ export function extractCleanEmailBody(
   return '';
 }
 
-export interface EmailTransactionDetectedEvent {
-  gateResult: GateEvaluationResult;
-  emailSubject: string;
-  emailSender: string;
-  emailDate: Date;
-  cleanedBodyText: string;
-  rawMessageId: string;
-}
-
-export type EmailTransactionCallback = (event: EmailTransactionDetectedEvent) => Promise<void>;
-
-export interface DeadLetterQueueItem {
-  messageId: string;
-  subject: string;
-  sender: string;
-  date: string;
-  attempts: number;
-  lastError: string;
-  failedAt: string;
-}
-
-export type DeadLetterCallback = (dlqItem: DeadLetterQueueItem) => Promise<void> | void;
-
-interface PersistentTransactionCacheStructure {
-  processedMessageIds: string[];
-  processedReferenceNumbers: string[];
-  deadLetterQueue?: DeadLetterQueueItem[];
-}
-
+/**
+ * Manages IMAP connection lifecycle, real-time IDLE event listening, reconnection backoff,
+ * duplicate filtering, and Gate 1 evaluation for incoming bank and merchant transaction emails.
+ */
 export class EmailListenerService {
   private imapClient: ImapFlow | null = null;
   private isServiceRunning: boolean = false;

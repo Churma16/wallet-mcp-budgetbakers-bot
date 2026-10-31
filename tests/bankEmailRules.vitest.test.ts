@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   evaluateEmailThroughGateOne,
   parseCurrencyAmountStringToNumber,
-} from '../src/utils/emailGateEvaluator.js';
+} from '../src/email/index.js';
 import { detectPendingConfirmationAction } from '../src/brain/index.js';
 
 const NOW = new Date('2026-09-13T06:00:00.000Z');

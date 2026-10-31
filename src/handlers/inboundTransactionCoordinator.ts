@@ -1,9 +1,9 @@
 import { ExtractedEmailTransactionData } from '../brain/types.js';
-import { GateEvaluationResult } from '../utils/emailGateEvaluator.js';
+import { GateEvaluationResult } from '../email/index.js';
 import { PendingTransactionService } from '../services/pendingTransactionService.js';
 import { MessagingGatewayService } from '../services/messaging/index.js';
-import { TransactionCorrelationService } from '../services/transactionCorrelationService.js';
-import { TransactionEvidence, TransactionEvidenceSource } from '../types/transactionCorrelationTypes.js';
+import { TransactionCorrelationService } from '../email/index.js';
+import { TransactionEvidence, TransactionEvidenceSource } from '../email/index.js';
 import { WalletCacheService, WalletMcpClientService, WalletRecordItem } from '../wallet/index.js';
 import {
   formatPendingEmailTransactionNotification,

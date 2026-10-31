@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NotificationTransactionHandler } from '../src/handlers/notificationTransactionHandler.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
-import { TransactionCorrelationService } from '../src/services/transactionCorrelationService.js';
+import { TransactionCorrelationService } from '../src/email/index.js';
 
 describe('NotificationTransactionHandler', () => {
   function createMockAiProvider(isTransaction = true, amount = -15799) {

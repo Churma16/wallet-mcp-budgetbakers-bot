@@ -6,7 +6,7 @@ import {
   WalletCategoryItem,
   InternalTransactionTypeValue,
 } from '../wallet/index.js';
-import { GateEvaluationResult } from '../utils/emailGateEvaluator.js';
+import { GateEvaluationResult } from '../email/index.js';
 import { FinancialActionTypeValue, FINANCIAL_ACTION_TYPES } from './constants.js';
 
 export interface TokenUsageStatistics {

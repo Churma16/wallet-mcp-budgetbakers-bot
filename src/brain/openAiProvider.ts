@@ -1,6 +1,6 @@
 import { AxiosInstance } from 'axios';
 import { WalletAccountItem, WalletCategoryItem } from '../wallet/index.js';
-import { GateEvaluationResult } from '../utils/emailGateEvaluator.js';
+import { GateEvaluationResult } from '../email/index.js';
 import { applicationLogger } from '../utils/logger.js';
 import {
   FinancialAiProvider,
