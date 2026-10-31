@@ -35,7 +35,8 @@ import {
   TransactionSummaryActionHandler,
 } from './handlers/readActionHandlers.js';
 import { coordinateInboundTransactionCandidate } from './inboundCoordinator.js';
-import { evaluateNotificationThroughGate } from '../config/notificationRules.js';
+import { NotificationTransactionHandler } from './handlers/inboundHandlers.js';
+import { TransactionCorrelationService } from '../email/index.js';
 import {
   normalizeTransactionHistoryFilters,
   formatErrorMessageForHuman,
@@ -1016,99 +1017,16 @@ export class MessageDispatcher {
    * Processes mobile push notifications from the webhook receiver.
    */
   public async handleNotificationReceived(payload: PushNotificationPayload): Promise<void> {
-    applicationLogger.info(`[NotificationWebhook] Processing notification from package: ${payload.packageName}`);
-    applicationLogger.fileDetail('notification', 'Detected Push Notification Candidate', {
-      packageName: payload.packageName,
-      title: payload.title,
-      text: payload.text,
-      timestamp: payload.timestamp,
-    });
-
-    // 0. Explicit Test Ping Handler (Companion App connectivity test)
-    if (payload.isTest || payload.packageName === 'codes.churma.walletforwarder') {
-      applicationLogger.info('[NotificationWebhook] Test ping notification received from companion app.');
-      const testTimestamp = payload.timestamp ? new Date(payload.timestamp) : new Date();
-      const formattedDate = testTimestamp.toLocaleString('id-ID', {
-        timeZone: 'Asia/Jakarta',
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-
-      const pingMessage = [
-        '🧪 *[TEST PING] Wallet Forwarder*',
-        '',
-        '✅ *Koneksi Webhook Berhasil!*',
-        `• *Status*: Terhubung (Bearer Auth Valid)`,
-        `• *Perangkat*: ${payload.title || 'Android Companion App'}`,
-        `• *Waktu*: ${formattedDate} WIB`,
-        '',
-        '_Ini adalah pesan uji coba konektivitas. Tidak ada transaksi yang dicatat ke Wallet._',
-      ].join('\n');
-
-      await this.context.gateway.broadcastNotification(pingMessage);
-      applicationLogger.info('[NotificationWebhook] Test ping broadcasted successfully to messaging channels.');
-      return;
-    }
-
-    const gateResult = evaluateNotificationThroughGate(payload);
-    if (!gateResult.passed) {
-      applicationLogger.info(`[Gate 1 Skip] Push notification rejected: ${gateResult.reason}`);
-      return;
-    }
-
-    applicationLogger.info(
-      `[Gate 1 Passed] Matched package rule: ${gateResult.matchedBankRule?.displayName || payload.packageName}`
+    const handler = new NotificationTransactionHandler(
+      this.context.brain.provider,
+      this.context.wallet.cache,
+      this.context.pending,
+      this.context.gateway,
+      this.context.config.defaultCurrency,
+      this.context.email?.correlation || new TransactionCorrelationService(),
+      this.context.wallet.client
     );
-
-    const cachedAccounts = this.context.wallet.cache.getAccounts();
-    const cachedCategories = this.context.wallet.cache.getCategories();
-    const notificationDate = gateResult.originalDate || (payload.timestamp ? new Date(payload.timestamp) : new Date());
-
-    const parsedData = await this.context.brain.provider.processEmailTransactionMessage(
-      gateResult,
-      payload.title,
-      payload.packageName,
-      payload.text,
-      notificationDate,
-      cachedAccounts,
-      cachedCategories
-    );
-
-    if (!parsedData.isTransaction) {
-      applicationLogger.info('[Gate 2 Filtered Out] Notification classified as non-transaction.');
-      return;
-    }
-
-    const evidenceSourceType = 'PUSH_NOTIFICATION';
-
-    await coordinateInboundTransactionCandidate(
-      {
-        parsedData,
-        gateResult,
-        sourceType: 'PUSH_NOTIFICATION',
-        evidenceSourceType,
-        sourceId: `notif-${payload.packageName}-${notificationDate.getTime()}-${Math.abs(parsedData.amount)}`,
-        sourceDate: notificationDate,
-        sourceDisplayName: gateResult.matchedBankRule?.displayName || payload.packageName,
-        fallbackNote: payload.title ? `${payload.title} - ${payload.text}` : payload.text,
-        onRecordProcessed: ref => {
-          if (this.context.email.listener) {
-            this.context.email.listener.recordProcessedTransaction(undefined, ref);
-          }
-        },
-      },
-      {
-        walletCacheService: this.context.wallet.cache,
-        pendingTransactionManager: this.context.pending,
-        messagingGateway: this.context.gateway,
-        defaultCurrency: this.context.config.defaultCurrency,
-        correlationService: this.context.email.correlation,
-        walletMcpClient: this.context.wallet.client,
-      }
-    );
+    await handler.handleNotificationReceived(payload);
   }
 }
 
