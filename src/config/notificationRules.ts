@@ -1,6 +1,6 @@
 import { BankEmailRuleDefinition, BANK_DEBIT_AND_GATEWAY_RULES } from '../email/index.js';
 import { GateEvaluationResult } from '../email/index.js';
-import { PushNotificationPayload } from '../services/webhook/types.js';
+import { PushNotificationPayload } from '../gateway/webhook.js';
 
 export interface NotificationPackageDefinition {
   readonly packageName: string;

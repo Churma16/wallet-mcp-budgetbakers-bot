@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
-import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
-import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
-import { createDefaultFinancialActionRegistry } from '../src/actions/index.js';
+import { AccountClarificationHandler } from '../src/core/accountClarificationHandler.js';
+import { FastPathHandler } from '../src/core/fastPathHandler.js';
+import { PendingTransactionService } from '../src/core/pending.js';
+import { createDefaultFinancialActionRegistry } from '../src/core/index.js';
 
 const event = {
   channel: 'whatsapp',

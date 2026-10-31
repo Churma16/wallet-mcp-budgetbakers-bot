@@ -8,7 +8,7 @@ import {
   sanitizeLogArgument,
   formatConciseErrorMessage,
   applicationLogger,
-} from '../src/utils/logger.js';
+} from '../src/lib/logger.js';
 
 function runLoggerSanitizerTests(): void {
   console.log('[TEST] Starting Bank Account Number and PAN Sanitizer Unit Tests');

@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
-import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
+import { PendingActionHandler } from '../src/core/pendingHandler.js';
+import { PendingTransactionService } from '../src/core/pending.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
-import { formatUncertainOutcomeResponse } from '../src/utils/transactionStatusFormatter.js';
-import { formatAccountSelectionUnknownOutcome } from '../src/utils/accountClarificationFormatter.js';
+import { formatUncertainOutcomeResponse } from '../src/wallet/transactionStatusFormatter.js';
+import { formatAccountSelectionUnknownOutcome } from '../src/brain/accountClarificationFormatter.js';
 
 function addTransaction(service: PendingTransactionService, note: string) {
   return service.addPendingTransaction({

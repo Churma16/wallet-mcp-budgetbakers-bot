@@ -1,7 +1,7 @@
 import assert from 'node:assert';
-import { FinancialActionExecutor } from '../src/services/financialActionExecutor.js';
-import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
-import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
+import { FinancialActionExecutor } from '../src/core/executor.js';
+import { FastPathHandler } from '../src/core/fastPathHandler.js';
+import { UserMessageHandler } from '../src/core/dispatcher.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { TransactionHistoryService } from '../src/wallet/index.js';
 import { TransactionSummaryService } from '../src/wallet/index.js';
@@ -12,7 +12,7 @@ import {
   TransactionSummaryResult,
 } from '../src/types/walletTypes.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
-import { applicationLogger } from '../src/utils/logger.js';
+import { applicationLogger } from '../src/lib/logger.js';
 import { afterEach, test } from 'vitest';
 
 afterEach(() => setActiveLanguage('id'));

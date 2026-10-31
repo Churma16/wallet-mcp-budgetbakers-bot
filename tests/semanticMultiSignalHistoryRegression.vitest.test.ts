@@ -1,21 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
-import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
+import { UserMessageHandler } from '../src/core/dispatcher.js';
+import { FastPathHandler } from '../src/core/fastPathHandler.js';
 import { detectFastPathAction } from '../src/brain/index.js';
 import {
   normalizeTransactionHistoryFilters,
   matchDynamicCategoryGroup,
   extractDynamicCategoryGroups,
-} from '../src/utils/transactionHistoryFilterNormalizer.js';
+} from '../src/wallet/transactionHistoryFilterNormalizer.js';
 import { validateSemanticHistoryQueryOptions } from '../src/brain/index.js';
 import { WalletAccountItem, WalletCategoryItem, WalletRecordItem } from '../src/types/walletTypes.js';
 import { WalletMcpClientService } from '../src/wallet/index.js';
 import { TransactionHistoryService } from '../src/wallet/index.js';
-import { FinancialActionExecutor } from '../src/services/financialActionExecutor.js';
-import { FinancialActionRegistry } from '../src/actions/financialActionRegistry.js';
-import { TransactionHistoryActionHandler } from '../src/actions/readActionHandlers.js';
+import { FinancialActionExecutor } from '../src/core/executor.js';
+import { FinancialActionRegistry } from '../src/core/financialActionRegistry.js';
+import { TransactionHistoryActionHandler } from '../src/core/readActionHandlers.js';
 import { getDictionary } from '../src/i18n/index.js';
 
 const MOCK_ACCOUNTS: WalletAccountItem[] = [
@@ -1052,7 +1052,7 @@ describe('Issue #160 comment checklist regression corpus', () => {
         'utf-8'
       );
       const userHandlerSource = fs.readFileSync(
-        path.resolve(process.cwd(), 'src/handlers/userMessageHandler.ts'),
+        path.resolve(process.cwd(), 'src/core/dispatcher.ts'),
         'utf-8'
       );
 

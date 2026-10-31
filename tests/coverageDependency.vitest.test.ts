@@ -70,8 +70,8 @@ describe('coverage dependency wiring', () => {
   it('discovers existing Vitest production imports automatically', () => {
     expect(discoverDirectProductionImports()).toEqual(
       expect.arrayContaining([
-        'src/utils/digitNormalization.ts',
-        'src/utils/exponentialBackoff.ts',
+        'src/lib/digits.ts',
+        'src/lib/resilience.ts',
       ])
     );
   });

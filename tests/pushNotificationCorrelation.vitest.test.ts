@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { TransactionCorrelationService } from '../src/email/index.js';
-import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
+import { PendingTransactionService } from '../src/core/pending.js';
 import { TransactionEvidence } from '../src/email/index.js';
 import { WalletRecordItem } from '../src/wallet/index.js';
 

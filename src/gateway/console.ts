@@ -1,5 +1,5 @@
 import readline from 'node:readline';
-import { applicationLogger } from '../utils/logger.js';
+import { applicationLogger } from '../lib/logger.js';
 import {
   AdapterConnectionState,
   ConsoleAdapterConfiguration,

@@ -1,0 +1,182 @@
+import { FastPathAction } from '../brain/index.js';
+import { MessagingGatewayService, IncomingUserMessageEvent } from '../gateway/index.js';
+import { FinancialActionExecutor } from './executor.js';
+import { PendingTransactionService } from './pending.js';
+import {
+  FinancialActionRegistry,
+  CheckBalanceActionHandler,
+  CheckBudgetActionHandler,
+  CheckQueueActionHandler,
+  HelpMenuActionHandler,
+  TransactionHistoryActionHandler,
+  TransactionSummaryActionHandler,
+} from './index.js';
+import {
+  WalletMcpClientService,
+  WalletCacheService,
+  TransactionHistoryService,
+  TransactionSummaryService,
+  TransactionHistoryQueryOptions,
+  TransactionSummaryQueryOptions,
+} from '../wallet/index.js';
+import { applicationLogger } from '../lib/logger.js';
+
+/**
+ * Directs zero-token deterministic requests (balance checks, budget overviews,
+ * history queries, summaries, queue inspection) to corresponding financial action handlers.
+ */
+export class FastPathHandler {
+  private readonly transactionHistoryService: TransactionHistoryService;
+  private readonly transactionSummaryService: TransactionSummaryService;
+  private readonly financialActionExecutor: FinancialActionExecutor;
+  private readonly financialActionRegistry: FinancialActionRegistry;
+
+  constructor(
+    private readonly walletMcpClient: WalletMcpClientService,
+    private readonly walletCacheService: WalletCacheService,
+    private readonly messagingGateway: MessagingGatewayService,
+    transactionHistoryService?: TransactionHistoryService,
+    transactionSummaryService?: TransactionSummaryService,
+    financialActionExecutor?: FinancialActionExecutor,
+    financialActionRegistry?: FinancialActionRegistry,
+    pendingTransactionService?: PendingTransactionService
+  ) {
+    this.transactionHistoryService =
+      transactionHistoryService ||
+      new TransactionHistoryService(walletMcpClient, walletCacheService);
+    this.transactionSummaryService =
+      transactionSummaryService ||
+      new TransactionSummaryService(
+        walletMcpClient,
+        walletCacheService,
+        this.transactionHistoryService
+      );
+    this.financialActionExecutor =
+      financialActionExecutor ||
+      new FinancialActionExecutor(
+        walletMcpClient,
+        walletCacheService,
+        messagingGateway,
+        this.transactionHistoryService,
+        this.transactionSummaryService
+      );
+
+    if (financialActionRegistry) {
+      this.financialActionRegistry = financialActionRegistry;
+    } else {
+      this.financialActionRegistry = new FinancialActionRegistry();
+      this.financialActionRegistry.register(new CheckBalanceActionHandler(this.financialActionExecutor));
+      this.financialActionRegistry.register(new CheckBudgetActionHandler(this.financialActionExecutor));
+      this.financialActionRegistry.register(new HelpMenuActionHandler(this.financialActionExecutor));
+      this.financialActionRegistry.register(new TransactionHistoryActionHandler(this.financialActionExecutor));
+      this.financialActionRegistry.register(new TransactionSummaryActionHandler(this.financialActionExecutor));
+      if (pendingTransactionService) {
+        this.financialActionRegistry.register(
+          new CheckQueueActionHandler(pendingTransactionService, messagingGateway)
+        );
+      }
+    }
+  }
+
+  /**
+   * Handles zero-token instant actions like balance checks, budget status,
+   * transaction history, transaction summaries, and help menu via the financial action registry.
+   */
+  public async handleFastPath(
+    event: IncomingUserMessageEvent,
+    fastPathAction: FastPathAction,
+    processingStartTimestamp: number
+  ): Promise<boolean> {
+    if (
+      typeof fastPathAction === 'object' &&
+      fastPathAction !== null &&
+      fastPathAction.type === 'TRANSACTION_SUMMARY'
+    ) {
+      applicationLogger.info('Fast-path matched: TRANSACTION_SUMMARY (0 AI tokens consumed)');
+      await this.financialActionRegistry.execute({
+        action: 'TRANSACTION_SUMMARY',
+        event,
+        summaryOptions: fastPathAction.options,
+        processingStartTimestamp,
+        routingSource: 'fast-path',
+      });
+      return true;
+    }
+
+    if (
+      (typeof fastPathAction === 'object' &&
+        fastPathAction !== null &&
+        fastPathAction.type === 'TRANSACTION_HISTORY') ||
+      (fastPathAction as unknown) === 'TRANSACTION_HISTORY'
+    ) {
+      const options =
+        typeof fastPathAction === 'object' &&
+        fastPathAction !== null &&
+        'options' in fastPathAction
+          ? (fastPathAction.options as TransactionHistoryQueryOptions)
+          : undefined;
+      applicationLogger.info('Fast-path matched: TRANSACTION_HISTORY (0 AI tokens consumed)');
+      await this.financialActionRegistry.execute({
+        action: 'TRANSACTION_HISTORY',
+        event,
+        queryOptions: options,
+        processingStartTimestamp,
+        routingSource: 'fast-path',
+      });
+      return true;
+    }
+
+    if (fastPathAction === 'CHECK_BALANCE') {
+      applicationLogger.info('Fast-path matched: CHECK_BALANCE (0 AI tokens consumed)');
+      await this.financialActionRegistry.execute({
+        action: 'CHECK_BALANCE',
+        event,
+        processingStartTimestamp,
+        routingSource: 'fast-path',
+      });
+      return true;
+    }
+
+    if (fastPathAction === 'CHECK_BUDGET') {
+      applicationLogger.info('Fast-path matched: CHECK_BUDGET (0 AI tokens consumed)');
+      await this.financialActionRegistry.execute({
+        action: 'CHECK_BUDGET',
+        event,
+        processingStartTimestamp,
+        routingSource: 'fast-path',
+      });
+      return true;
+    }
+
+    if (fastPathAction === 'HELP_MENU') {
+      applicationLogger.info('Fast-path matched: HELP_MENU (0 AI tokens consumed)');
+      await this.financialActionRegistry.execute({
+        action: 'HELP_MENU',
+        event,
+        processingStartTimestamp,
+        routingSource: 'fast-path',
+      });
+      return true;
+    }
+
+    if (fastPathAction === 'CHECK_QUEUE') {
+      const registryWithCapabilities = this.financialActionRegistry as Partial<FinancialActionRegistry>;
+      if (
+        typeof registryWithCapabilities.hasHandler === 'function' &&
+        !registryWithCapabilities.hasHandler.call(this.financialActionRegistry, 'CHECK_QUEUE')
+      ) {
+        return false;
+      }
+      applicationLogger.info('Fast-path matched: CHECK_QUEUE (0 AI tokens consumed)');
+      await this.financialActionRegistry.execute({
+        action: 'CHECK_QUEUE',
+        event,
+        processingStartTimestamp,
+        routingSource: 'fast-path',
+      });
+      return true;
+    }
+
+    return false;
+  }
+}

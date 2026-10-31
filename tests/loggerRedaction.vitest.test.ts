@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { redactSensitiveData, sanitizeLogArgument } from '../src/utils/logger.js';
+import { redactSensitiveData, sanitizeLogArgument } from '../src/lib/logger.js';
 
 describe('logger redaction', () => {
   it.each([

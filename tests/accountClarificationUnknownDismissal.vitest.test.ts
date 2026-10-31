@@ -1,6 +1,6 @@
-import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
-import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
-import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
+import { AccountClarificationHandler } from '../src/core/accountClarificationHandler.js';
+import { UserMessageHandler } from '../src/core/dispatcher.js';
+import { PendingTransactionService } from '../src/core/pending.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';

@@ -1,7 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
-import { CategoryContextService } from '../services/categoryContextService.js';
+import { CategoryContextService } from './categoryContext.js';
 import { TokenUsageStatistics } from './types.js';
-import { applicationLogger, formatConciseErrorMessage } from '../utils/logger.js';
+import { applicationLogger, formatConciseErrorMessage } from '../lib/logger.js';
 import { isRecoverableModelExecutionError } from './providerWorkflow.js';
 
 export interface OpenAiCompatibleProviderConfiguration {

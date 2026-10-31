@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { WalletMcpClientService } from '../src/wallet/index.js';
-import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
+import { validateAndSanitizeFinancialRecords } from '../src/wallet/recordValidator.js';
 import type { WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 
 const accounts: WalletAccountItem[] = [

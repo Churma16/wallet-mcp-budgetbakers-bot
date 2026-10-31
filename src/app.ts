@@ -1,207 +1,51 @@
 import {
-  loadEnvironmentConfiguration,
   validateApplicationConfiguration,
   ApplicationEnvironmentConfiguration,
-  setRuntimeApplicationConfig,
 } from './config/index.js';
 import {
-  WalletMcpClientService,
-  WalletCacheService,
-  TransactionHistoryService,
-  TransactionSummaryService,
-  WalletMcpCapabilityService,
-  WalletRecordPreparationService,
-} from './wallet/index.js';
-
-import { CategoryContextService } from './services/categoryContextService.js';
-import { CategoryContextValidationResult } from './types/categoryContextTypes.js';
+  AppContext,
+  createAppContext,
+  initializeAppContext,
+  closeAppContext,
+  MessageDispatcher,
+} from './core/index.js';
 import {
-  createFinancialAiProvider,
-  FinancialAiProvider,
-  AccountClarificationConversationService,
-} from './brain/index.js';
-import {
-  MessagingGatewayService,
   WhatsappMessagingAdapter,
   TelegramMessagingAdapter,
   ConsoleMessagingAdapter,
+  NotificationWebhookServer,
 } from './gateway/index.js';
-import { EmailListenerService, TransactionCorrelationService } from './email/index.js';
-import { PendingTransactionService } from './services/pendingTransactionService.js';
-
+import { EmailListenerService } from './email/index.js';
 import {
-  EmailTransactionHandler,
-  NotificationTransactionHandler,
-  PendingActionHandler,
-  FastPathHandler,
-  UserMessageHandler,
-} from './handlers/index.js';
-import { NotificationWebhookServer } from './services/webhook/index.js';
+  CategoryContextService,
+  CategoryContextValidationResult,
+} from './brain/index.js';
+import { WalletMcpCapabilityService } from './wallet/index.js';
+import {
+  applicationLogger,
+  installConsoleInterceptors,
+  purgeExpiredLogFiles,
+} from './lib/index.js';
 
-
-
-import { FinancialActionExecutor } from './services/financialActionExecutor.js';
-import { FinancialActionRegistry, createDefaultFinancialActionRegistry } from './actions/index.js';
-
-import { AccountClarificationHandler } from './handlers/accountClarificationHandler.js';
-import { applicationLogger, installConsoleInterceptors, purgeExpiredLogFiles } from './utils/logger.js';
-import { setActiveLanguage } from './i18n/index.js';
-
+/**
+ * Root application orchestrator managing lifecycle startup, adapter registration,
+ * and graceful shutdown via unified AppContext and MessageDispatcher.
+ */
 export class Application {
-  private readonly environmentConfig: ApplicationEnvironmentConfiguration;
-  private readonly walletMcpClient: WalletMcpClientService;
-  private readonly walletCacheService: WalletCacheService;
-  private readonly walletCapabilityService: WalletMcpCapabilityService;
-  private readonly transactionHistoryService: TransactionHistoryService;
-  private readonly transactionSummaryService: TransactionSummaryService;
-  private readonly financialActionExecutor: FinancialActionExecutor;
-  private readonly categoryContextService: CategoryContextService;
-  private readonly financialAiProvider: FinancialAiProvider;
-  private readonly pendingTransactionManager: PendingTransactionService;
-  private readonly messagingGateway: MessagingGatewayService;
-  private emailListenerService: EmailListenerService | null = null;
-  private readonly emailTransactionHandler: EmailTransactionHandler;
-  private notificationWebhookServer: NotificationWebhookServer | null = null;
-  private readonly notificationTransactionHandler: NotificationTransactionHandler;
-  private readonly pendingActionHandler: PendingActionHandler;
-  private readonly fastPathHandler: FastPathHandler;
-  private readonly userMessageHandler: UserMessageHandler;
-  private readonly financialActionRegistry: FinancialActionRegistry;
+  public readonly context: AppContext;
+  public readonly dispatcher: MessageDispatcher;
   private isRunning: boolean = false;
 
   constructor(customConfig?: ApplicationEnvironmentConfiguration) {
-    this.environmentConfig = customConfig || loadEnvironmentConfiguration();
-    setRuntimeApplicationConfig(this.environmentConfig);
-    setActiveLanguage(this.environmentConfig.appLanguage);
-
-    this.walletMcpClient = new WalletMcpClientService(
-      this.environmentConfig.walletMcpBaseUrl,
-      this.environmentConfig.walletMcpAccessToken
-    );
-
-    this.walletCapabilityService = new WalletMcpCapabilityService(this.walletMcpClient);
-
-    this.walletCacheService = new WalletCacheService(this.walletMcpClient);
-    this.categoryContextService = new CategoryContextService(
-      this.environmentConfig.categoryContextFilePath
-    );
-    this.financialAiProvider = createFinancialAiProvider(
-      this.environmentConfig,
-      this.categoryContextService
-    );
-    this.pendingTransactionManager = new PendingTransactionService();
-    this.messagingGateway = new MessagingGatewayService();
-    const transactionCorrelationService = new TransactionCorrelationService();
-
-    this.emailTransactionHandler = new EmailTransactionHandler(
-      this.financialAiProvider,
-      this.walletCacheService,
-      this.pendingTransactionManager,
-      this.messagingGateway,
-      this.environmentConfig.defaultCurrency,
-      transactionCorrelationService,
-      () => this.emailListenerService,
-      this.walletMcpClient
-    );
-
-    this.notificationTransactionHandler = new NotificationTransactionHandler(
-      this.financialAiProvider,
-      this.walletCacheService,
-      this.pendingTransactionManager,
-      this.messagingGateway,
-      this.environmentConfig.defaultCurrency,
-      transactionCorrelationService,
-      this.walletMcpClient
-    );
-
-    this.pendingActionHandler = new PendingActionHandler(
-      this.pendingTransactionManager,
-      this.walletMcpClient,
-      this.messagingGateway,
-      () => this.emailListenerService,
-      this.walletCacheService
-    );
-
-    this.transactionHistoryService = new TransactionHistoryService(
-      this.walletMcpClient,
-      this.walletCacheService
-    );
-
-    this.transactionSummaryService = new TransactionSummaryService(
-      this.walletMcpClient,
-      this.walletCacheService,
-      this.transactionHistoryService,
-      this.walletCapabilityService
-    );
-
-    this.financialActionExecutor = new FinancialActionExecutor(
-      this.walletMcpClient,
-      this.walletCacheService,
-      this.messagingGateway,
-      this.transactionHistoryService,
-      this.transactionSummaryService
-    );
-
-    const recordPreparationService = new WalletRecordPreparationService(
-      this.walletCacheService,
-      this.walletMcpClient
-    );
-
-    const accountClarificationConversationService = new AccountClarificationConversationService(
-      this.financialAiProvider
-    );
-
-    const accountClarificationHandler = new AccountClarificationHandler(
-      this.pendingTransactionManager,
-      this.walletMcpClient,
-      this.walletCacheService,
-      this.messagingGateway,
-      recordPreparationService,
-      this.categoryContextService,
-      accountClarificationConversationService
-    );
-
-    this.financialActionRegistry = createDefaultFinancialActionRegistry({
-      financialActionExecutor: this.financialActionExecutor,
-      walletMcpClient: this.walletMcpClient,
-      walletCacheService: this.walletCacheService,
-      messagingGateway: this.messagingGateway,
-      recordPreparationService,
-      accountClarificationHandler,
-      pendingTransactionService: this.pendingTransactionManager,
-      categoryContextService: this.categoryContextService,
-    });
-
-    this.fastPathHandler = new FastPathHandler(
-      this.walletMcpClient,
-      this.walletCacheService,
-      this.messagingGateway,
-      this.transactionHistoryService,
-      this.transactionSummaryService,
-      this.financialActionExecutor,
-      this.financialActionRegistry
-    );
-
-    this.userMessageHandler = new UserMessageHandler(
-      this.messagingGateway,
-      this.pendingTransactionManager,
-      this.pendingActionHandler,
-      this.fastPathHandler,
-      this.financialAiProvider,
-      this.walletCacheService,
-      this.walletMcpClient,
-      this.financialActionExecutor,
-      recordPreparationService,
-      this.financialActionRegistry,
-      accountClarificationHandler
-    );
+    this.context = createAppContext(customConfig);
+    this.dispatcher = new MessageDispatcher(this.context);
   }
 
   /**
-   * Validates mandatory environment variables before starting services
+   * Validates mandatory environment variables before starting services.
    */
   private validateConfiguration(): void {
-    const validationResult = validateApplicationConfiguration(this.environmentConfig);
+    const validationResult = validateApplicationConfiguration(this.context.config);
 
     if (!validationResult.isValid) {
       for (const errorIssue of validationResult.errors) {
@@ -211,14 +55,18 @@ export class Application {
         }
       }
 
-      applicationLogger.warn('Please configure all required environment variables in your .env file before running the bot.');
-      applicationLogger.info('You can test the Wallet MCP connection independently with: npm run test:mcp\n');
+      applicationLogger.warn(
+        'Please configure all required environment variables in your .env file before running the bot.'
+      );
+      applicationLogger.info(
+        'You can test the Wallet MCP connection independently with: npm run test:mcp\n'
+      );
       process.exit(1);
     }
   }
 
   /**
-   * Bootstraps the application, caches data, registers adapters, and starts listeners
+   * Bootstraps the application, caches data, registers adapters, and starts listeners.
    */
   public async start(): Promise<void> {
     installConsoleInterceptors();
@@ -227,44 +75,41 @@ export class Application {
     applicationLogger.info('Starting AI Bookkeeper for Wallet');
     console.log('====================================================');
 
-    applicationLogger.info(`Configured Response Language: ${this.environmentConfig.appLanguage.toUpperCase()}`);
+    applicationLogger.info(
+      `Configured Response Language: ${this.context.config.appLanguage.toUpperCase()}`
+    );
 
     // Enforce file logger retention policy on startup
-    purgeExpiredLogFiles(this.environmentConfig.logRetentionDays);
+    purgeExpiredLogFiles(this.context.config.logRetentionDays);
 
     // Validate critical configuration variables
     this.validateConfiguration();
 
     // 1. Initialize Wallet MCP Client & Pre-cache accounts & categories
-    applicationLogger.info('Connecting to BudgetBakers Wallet MCP Server...');
-    await this.walletCacheService.initialize();
-    try {
-      await this.walletCapabilityService.refreshCapabilities();
-      applicationLogger.info('Discovered Wallet MCP capabilities and client profile.');
-    } catch (capabilityError) {
-      applicationLogger.warn('Best-effort capability discovery failed during startup; continuing with conservative fallback', {
-        error: capabilityError instanceof Error ? capabilityError.message : String(capabilityError),
-      });
-    }
+    await initializeAppContext(this.context);
 
-    if (this.environmentConfig.enabledMessengerChannels.includes('whatsapp')) {
-      const allowedPhoneList = this.environmentConfig.allowedPhoneNumbers?.length > 0
-        ? this.environmentConfig.allowedPhoneNumbers
-        : (this.environmentConfig.allowedPhoneNumber ? [this.environmentConfig.allowedPhoneNumber] : []);
+    // 2. Register enabled messaging adapters
+    if (this.context.config.enabledMessengerChannels.includes('whatsapp')) {
+      const allowedPhoneList =
+        this.context.config.allowedPhoneNumbers?.length > 0
+          ? this.context.config.allowedPhoneNumbers
+          : this.context.config.allowedPhoneNumber
+            ? [this.context.config.allowedPhoneNumber]
+            : [];
       if (allowedPhoneList.length > 0) {
         const whatsappAdapter = new WhatsappMessagingAdapter(
-          this.environmentConfig.whatsappSessionPath,
+          this.context.config.whatsappSessionPath,
           allowedPhoneList,
-          event => this.userMessageHandler.handleIncomingUserMessage(event),
+          event => this.dispatcher.handleIncomingUserMessage(event),
           {
-            maxReconnectAttempts: this.environmentConfig.whatsappMaxReconnectAttempts,
-            maxBackoffSeconds: this.environmentConfig.whatsappReconnectMaxBackoffSeconds,
-            messageQueueIntervalMs: this.environmentConfig.whatsappMessageQueueIntervalMs,
-            typingPresenceCooldownMs: this.environmentConfig.whatsappTypingPresenceCooldownMs,
-            maxMediaDownloadBytes: this.environmentConfig.maxMediaDownloadMb * 1024 * 1024,
+            maxReconnectAttempts: this.context.config.whatsappMaxReconnectAttempts,
+            maxBackoffSeconds: this.context.config.whatsappReconnectMaxBackoffSeconds,
+            messageQueueIntervalMs: this.context.config.whatsappMessageQueueIntervalMs,
+            typingPresenceCooldownMs: this.context.config.whatsappTypingPresenceCooldownMs,
+            maxMediaDownloadBytes: this.context.config.maxMediaDownloadMb * 1024 * 1024,
           }
         );
-        this.messagingGateway.registerAdapter(whatsappAdapter);
+        this.context.gateway.registerAdapter(whatsappAdapter);
       } else {
         applicationLogger.warn(
           'WhatsApp is enabled in configuration but ALLOWED_PHONE_NUMBER is not set. WhatsApp adapter skipped.'
@@ -272,20 +117,22 @@ export class Application {
       }
     }
 
-    if (this.environmentConfig.enabledMessengerChannels.includes('telegram')) {
-      if (this.environmentConfig.telegramBotToken && this.environmentConfig.telegramAllowedUserId) {
+    if (this.context.config.enabledMessengerChannels.includes('telegram')) {
+      if (
+        this.context.config.telegramBotToken &&
+        this.context.config.telegramAllowedUserId
+      ) {
         const telegramAdapter = new TelegramMessagingAdapter(
-          this.environmentConfig.telegramBotToken,
-          this.environmentConfig.telegramAllowedUserId,
-          event => this.userMessageHandler.handleIncomingUserMessage(event),
+          this.context.config.telegramBotToken,
+          this.context.config.telegramAllowedUserId,
+          event => this.dispatcher.handleIncomingUserMessage(event),
           {
-            maxStartupAttempts: this.environmentConfig.telegramMaxStartupAttempts,
-            startupRetryBaseDelayMs: this.environmentConfig.telegramStartupRetryDelayMs,
-            maxMediaDownloadBytes: this.environmentConfig.maxMediaDownloadMb * 1024 * 1024,
+            maxStartupAttempts: this.context.config.telegramMaxStartupAttempts,
+            startupRetryBaseDelayMs: this.context.config.telegramStartupRetryDelayMs,
+            maxMediaDownloadBytes: this.context.config.maxMediaDownloadMb * 1024 * 1024,
           }
         );
-
-        this.messagingGateway.registerAdapter(telegramAdapter);
+        this.context.gateway.registerAdapter(telegramAdapter);
       } else {
         applicationLogger.warn(
           'Telegram is enabled in configuration but TELEGRAM_BOT_TOKEN or TELEGRAM_ALLOWED_USER_ID is not set. Telegram adapter skipped.'
@@ -293,48 +140,53 @@ export class Application {
       }
     }
 
-    if (this.environmentConfig.enabledMessengerChannels.includes('console')) {
+    if (this.context.config.enabledMessengerChannels.includes('console')) {
       const consoleAdapter = new ConsoleMessagingAdapter(
-        event => this.userMessageHandler.handleIncomingUserMessage(event),
+        event => this.dispatcher.handleIncomingUserMessage(event),
         {
           onExitRequested: () => {
             void this.stop().then(() => process.exit(0));
           },
         }
       );
-      this.messagingGateway.registerAdapter(consoleAdapter);
+      this.context.gateway.registerAdapter(consoleAdapter);
     }
 
     // 3. Start registered messaging adapter connections
     applicationLogger.info('Starting registered messaging adapter connections...');
-    await this.messagingGateway.startAll();
+    await this.context.gateway.startAll();
 
     // 4. Initialize & Start Email Listener (if toggled on in .env)
-    if (this.environmentConfig.emailSyncEnabled) {
-      if (!this.environmentConfig.emailImapUser || !this.environmentConfig.emailImapPassword) {
+    if (this.context.config.emailSyncEnabled) {
+      if (
+        !this.context.config.emailImapUser ||
+        !this.context.config.emailImapPassword
+      ) {
         applicationLogger.warn(
           'EMAIL_SYNC_ENABLED is true, but EMAIL_IMAP_USER or EMAIL_IMAP_PASSWORD is not set. Email listener is disabled.'
         );
       } else {
-        this.emailListenerService = new EmailListenerService(
-          this.environmentConfig.emailImapHost,
-          this.environmentConfig.emailImapPort,
-          this.environmentConfig.emailImapUser,
-          this.environmentConfig.emailImapPassword,
-          this.environmentConfig.emailLookbackMinutes,
-          detectedEvent => this.emailTransactionHandler.handleEmailTransactionDetected(detectedEvent),
+        this.context.email.listener = new EmailListenerService(
+          this.context.config.emailImapHost,
+          this.context.config.emailImapPort,
+          this.context.config.emailImapUser,
+          this.context.config.emailImapPassword,
+          this.context.config.emailLookbackMinutes,
+          detectedEvent => this.dispatcher.handleEmailTransactionDetected(detectedEvent),
           undefined,
           undefined,
           undefined,
           3,
           async dlqItem => {
             const alertText = `⚠️ *[Gagal Ekstraksi Email]*\nEmail transaksi gagal diproses AI setelah ${dlqItem.attempts}x percobaan.\nSubjek: *${dlqItem.subject}*\nPengirim: \`${dlqItem.sender}\`\nError: \`${dlqItem.lastError}\``;
-            await this.messagingGateway.broadcastNotification(alertText);
+            await this.context.gateway.broadcastNotification(alertText);
           }
         );
 
-        this.emailListenerService.startListening().catch(emailStartError => {
-          applicationLogger.error(`Failed to start Gmail IMAP listener: ${emailStartError.message}`);
+        this.context.email.listener.startListening().catch(emailStartError => {
+          applicationLogger.error(
+            `Failed to start Gmail IMAP listener: ${emailStartError.message}`
+          );
         });
       }
     } else {
@@ -342,16 +194,16 @@ export class Application {
     }
 
     // 5. Initialize & Start Notification Webhook Receiver (if toggled on in .env)
-    if (this.environmentConfig.notificationWebhookEnabled) {
-      this.notificationWebhookServer = new NotificationWebhookServer({
-        port: this.environmentConfig.notificationWebhookPort,
-        host: this.environmentConfig.notificationWebhookHost,
-        secret: this.environmentConfig.notificationWebhookSecret,
+    if (this.context.config.notificationWebhookEnabled) {
+      this.context.webhook = new NotificationWebhookServer({
+        port: this.context.config.notificationWebhookPort,
+        host: this.context.config.notificationWebhookHost,
+        secret: this.context.config.notificationWebhookSecret,
         onNotificationReceived: payload =>
-          this.notificationTransactionHandler.handleNotificationReceived(payload),
+          this.dispatcher.handleNotificationReceived(payload),
       });
 
-      await this.notificationWebhookServer.start().catch(webhookStartError => {
+      await this.context.webhook.start().catch(webhookStartError => {
         applicationLogger.error(
           `Failed to start notification webhook server: ${webhookStartError.message}`
         );
@@ -362,7 +214,7 @@ export class Application {
   }
 
   /**
-   * Gracefully shuts down all active services, adapters, and listeners
+   * Gracefully shuts down all active services, adapters, and listeners.
    */
   public async stop(): Promise<void> {
     if (!this.isRunning) {
@@ -370,18 +222,7 @@ export class Application {
     }
 
     applicationLogger.info('Shutting down application services...');
-
-    if (this.emailListenerService) {
-      await this.emailListenerService.stop();
-    }
-
-    if (this.notificationWebhookServer) {
-      await this.notificationWebhookServer.stop();
-    }
-
-    await this.messagingGateway.stopAll();
-    await this.walletMcpClient.close();
-
+    await closeAppContext(this.context);
     this.isRunning = false;
     applicationLogger.info('All services stopped gracefully.');
   }
@@ -390,27 +231,74 @@ export class Application {
    * Returns the active notification webhook server instance, or null if disabled.
    */
   public getNotificationWebhookServer(): NotificationWebhookServer | null {
-    return this.notificationWebhookServer;
+    return this.context.webhook;
   }
 
   /**
    * Reloads category context configuration from disk.
    */
   public reloadCategoryContext(): CategoryContextValidationResult {
-    return this.categoryContextService.reload();
+    return this.context.brain.categoryContext.reload();
   }
 
   /**
    * Returns the active category context service instance.
    */
   public getCategoryContextService(): CategoryContextService {
-    return this.categoryContextService;
+    return this.context.brain.categoryContext;
   }
 
   /**
    * Returns the active Wallet MCP capability service instance.
    */
   public getWalletCapabilityService(): WalletMcpCapabilityService {
-    return this.walletCapabilityService;
+    return this.context.wallet.capabilities;
+  }
+
+  // Accessor compatibility properties for direct test access
+  public get walletMcpClient(): AppContext['wallet']['client'] {
+    return this.context.wallet.client;
+  }
+  public get walletCacheService(): AppContext['wallet']['cache'] {
+    return this.context.wallet.cache;
+  }
+  public get walletCapabilityService(): AppContext['wallet']['capabilities'] {
+    return this.context.wallet.capabilities;
+  }
+  public get messagingGateway(): AppContext['gateway'] {
+    return this.context.gateway;
+  }
+  public get pendingTransactionManager(): AppContext['pending'] {
+    return this.context.pending;
+  }
+  public get userMessageHandler(): MessageDispatcher {
+    return this.dispatcher;
+  }
+  public get financialActionExecutor(): MessageDispatcher['financialActionExecutor'] {
+    return this.dispatcher.financialActionExecutor;
+  }
+  public get financialActionRegistry(): MessageDispatcher['financialActionRegistry'] {
+    return this.dispatcher.financialActionRegistry;
+  }
+  public get fastPathHandler(): MessageDispatcher['fastPathHandler'] {
+    return this.dispatcher.fastPathHandler;
+  }
+  public get pendingActionHandler(): MessageDispatcher['pendingActionHandler'] {
+    return this.dispatcher.pendingActionHandler;
+  }
+  public get accountClarificationHandler(): MessageDispatcher['accountClarificationHandler'] {
+    return this.dispatcher.accountClarificationHandler;
+  }
+  public get categoryClarificationHandler(): MessageDispatcher['categoryClarificationHandler'] {
+    return this.dispatcher.categoryClarificationHandler;
+  }
+  public get transactionHistoryService(): AppContext['wallet']['history'] {
+    return this.context.wallet.history;
+  }
+  public get transactionSummaryService(): AppContext['wallet']['summary'] {
+    return this.context.wallet.summary;
+  }
+  public get emailListenerService(): AppContext['email']['listener'] {
+    return this.context.email.listener;
   }
 }

@@ -24,8 +24,8 @@ import {
   fetchRecordsAggregation,
   type AggregationInvoker,
 } from './aggregation.js';
-import { normalizeTransactionHistoryFilters } from '../utils/transactionHistoryFilterNormalizer.js';
-import { applicationLogger } from '../utils/logger.js';
+import { normalizeTransactionHistoryFilters } from './transactionHistoryFilterNormalizer.js';
+import { applicationLogger } from '../lib/logger.js';
 import { WALLET_MCP_TOOL_NAMES } from './constants.js';
 
 export interface SummaryClient extends AggregationInvoker {

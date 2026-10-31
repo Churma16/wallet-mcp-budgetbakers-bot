@@ -1,10 +1,10 @@
-import type { PendingTransactionItem } from '../services/pendingTransactionService.js';
+import type { PendingTransactionItem } from '../core/pending.js';
 import type { WalletRecordItem } from '../wallet/types.js';
 import type {
   CorrelationConfidence,
   CorrelationSuggestedAction,
-  InternalTransactionTypeValue,
-} from '../constants/index.js';
+} from '../brain/constants.js';
+import type { InternalTransactionTypeValue } from '../wallet/constants.js';
 import type { CommercePlatformRegistry } from '../config/commercePlatforms.js';
 
 export type { CorrelationConfidence, CorrelationSuggestedAction };

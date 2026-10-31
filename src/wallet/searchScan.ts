@@ -11,7 +11,7 @@ import type {
   TransactionHistoryPage,
 } from './types.js';
 import { WalletMcpRequestError } from './errors.js';
-import { matchesTransactionRecordSearch } from '../utils/transactionSearchMatcher.js';
+import { matchesTransactionRecordSearch } from './transactionSearchMatcher.js';
 
 export interface TransactionSearchScanCacheEntry {
   matchedRecords: WalletRecordItem[];

@@ -17,7 +17,7 @@ import {
   handleMediaDownloadFailure,
 } from '../src/gateway/mediaPolicy.js';
 import { setActiveLanguage, getActiveLanguage } from '../src/i18n/index.js';
-import { applicationLogger } from '../src/utils/logger.js';
+import { applicationLogger } from '../src/lib/logger.js';
 
 interface AssertionStatistics {
   totalCount: number;

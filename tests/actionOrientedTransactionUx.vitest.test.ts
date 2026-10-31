@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
+import { UserMessageHandler } from '../src/core/dispatcher.js';
 import {
   setActiveLanguage,
   getDictionary,
@@ -8,7 +8,7 @@ import {
 } from '../src/i18n/index.js';
 import {
   formatPendingEmailTransactionNotification,
-} from '../src/utils/humanResponseFormatter.js';
+} from '../src/wallet/humanResponseFormatter.js';
 import {
   formatUncertainOutcomeResponse,
   formatTransactionAttentionSummary,
@@ -16,20 +16,20 @@ import {
   formatReconciliationAbsentResponse,
   formatReconciliationNotFoundResponse,
   formatReconciliationAmbiguousResponse,
-} from '../src/utils/transactionStatusFormatter.js';
+} from '../src/wallet/transactionStatusFormatter.js';
 import {
   buildTransactionAttentionSummary,
   buildItemViewModelFromClarificationDraft,
   buildItemViewModelFromPendingItem,
   TransactionAttentionItemViewModel,
-} from '../src/services/transactionStatusViewModel.js';
+} from '../src/wallet/transactionStatusViewModel.js';
 import {
   PendingTransactionService,
   PendingTransactionItem,
   PendingAccountSelectionDraft,
-} from '../src/services/pendingTransactionService.js';
-import { PendingActionHandler } from '../src/handlers/pendingActionHandler.js';
-import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
+} from '../src/core/pending.js';
+import { PendingActionHandler } from '../src/core/pendingHandler.js';
+import { FastPathHandler } from '../src/core/fastPathHandler.js';
 import {
   WalletMcpRequestError,
 } from '../src/wallet/index.js';
@@ -43,7 +43,7 @@ import {
   detectFastPathAction,
   detectReconciliationAction,
 } from '../src/brain/index.js';
-import { CheckQueueActionHandler } from '../src/actions/readActionHandlers.js';
+import { CheckQueueActionHandler } from '../src/core/readActionHandlers.js';
 import {
   formatAccountSelectionPrompt,
   formatAccountSelectionCancellation,
@@ -51,7 +51,7 @@ import {
   formatAccountSelectionRetry,
   formatAccountSelectionUnknownOutcome,
   formatAccountSelectionUnknownDismissal,
-} from '../src/utils/accountClarificationFormatter.js';
+} from '../src/brain/accountClarificationFormatter.js';
 
 class MockWalletMcpClient {
   public readonly calls: CreateRecordInputPayload[][] = [];

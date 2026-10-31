@@ -1,23 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createDefaultFinancialActionRegistry } from '../src/actions/index.js';
-import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
+import { createDefaultFinancialActionRegistry } from '../src/core/index.js';
+import { PendingTransactionService } from '../src/core/pending.js';
 import {
   buildItemViewModelFromClarificationDraft,
   buildItemViewModelFromPendingItem,
   buildTransactionAttentionSummary,
   TransactionAttentionItemViewModel,
-} from '../src/services/transactionStatusViewModel.js';
+} from '../src/wallet/transactionStatusViewModel.js';
 import {
   formatTransactionAttentionSummary,
   formatUncertainOutcomeResponse,
-} from '../src/utils/transactionStatusFormatter.js';
+} from '../src/wallet/transactionStatusFormatter.js';
 import { detectReconciliationAction } from '../src/brain/index.js';
 import {
   englishDictionary,
   indonesianDictionary,
   setActiveLanguage,
 } from '../src/i18n/index.js';
-import { formatAccountSelectionUnknownOutcome } from '../src/utils/accountClarificationFormatter.js';
+import { formatAccountSelectionUnknownOutcome } from '../src/brain/accountClarificationFormatter.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 
 function event(text = 'status'): IncomingUserMessageEvent {

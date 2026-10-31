@@ -3,7 +3,7 @@ import {
   detectFastPathAction,
   FastPathTransactionHistoryAction,
 } from '../src/brain/index.js';
-import { normalizeTransactionHistoryFilters } from '../src/utils/transactionHistoryFilterNormalizer.js';
+import { normalizeTransactionHistoryFilters } from '../src/wallet/transactionHistoryFilterNormalizer.js';
 import { WalletCategoryItem } from '../src/types/walletTypes.js';
 
 const CATEGORY_FIXTURES: WalletCategoryItem[] = [

@@ -15,7 +15,7 @@ import {
   buildTextMessagePrompt,
 } from '../src/brain/index.js';
 import { GeminiAiProvider } from '../src/brain/index.js';
-import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
+import { validateAndSanitizeFinancialRecords } from '../src/wallet/recordValidator.js';
 import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 import {
   loadEnvironmentConfiguration,
@@ -23,8 +23,8 @@ import {
   ApplicationEnvironmentConfiguration,
 } from '../src/config/environmentConfig.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
-import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
-import { AccountClarificationHandler } from '../src/handlers/accountClarificationHandler.js';
+import { PendingTransactionService } from '../src/core/pending.js';
+import { AccountClarificationHandler } from '../src/core/accountClarificationHandler.js';
 import { WalletCacheService } from '../src/wallet/index.js';
 import { WalletMcpClientService } from '../src/wallet/index.js';
 import { IncomingUserMessageEvent } from '../src/gateway/types.js';

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { NotificationTransactionHandler } from '../src/handlers/notificationTransactionHandler.js';
-import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
+import { NotificationTransactionHandler } from '../src/core/index.js';
+import { PendingTransactionService } from '../src/core/pending.js';
 import { TransactionCorrelationService } from '../src/email/index.js';
 
 describe('NotificationTransactionHandler', () => {

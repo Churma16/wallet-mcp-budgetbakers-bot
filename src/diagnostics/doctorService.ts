@@ -17,7 +17,7 @@ import {
   WalletMcpCapabilityService,
   normalizeWalletClientProfile,
 } from '../wallet/index.js';
-import { DiagnosticStatus } from '../constants/index.js';
+import { DiagnosticStatus } from '../brain/constants.js';
 
 export type DoctorStatus = 'SUCCESS' | 'WARN' | 'ERROR';
 

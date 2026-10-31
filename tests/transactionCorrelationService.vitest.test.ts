@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { TransactionCorrelationService } from '../src/email/index.js';
-import { PendingTransactionItem } from '../src/services/pendingTransactionService.js';
+import { PendingTransactionItem } from '../src/core/pending.js';
 import { TransactionEvidence } from '../src/email/index.js';
 import { WalletRecordItem } from '../src/types/walletTypes.js';
 import {
   formatEnrichedPendingEmailTransactionNotification,
   formatCorrelatedWalletRecordNotification,
-} from '../src/utils/humanResponseFormatter.js';
+} from '../src/wallet/humanResponseFormatter.js';
 
 describe('TransactionCorrelationService (Issue #153)', () => {
   const service = new TransactionCorrelationService();

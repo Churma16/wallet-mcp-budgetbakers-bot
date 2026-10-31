@@ -5,7 +5,7 @@ import type {
   WalletRecordAggregationResultItem,
 } from './types.js';
 import { WalletMcpRequestError } from './errors.js';
-import { applicationLogger } from '../utils/logger.js';
+import { applicationLogger } from '../lib/logger.js';
 
 export interface AggregationInvoker {
   callMcpTool<T>(toolName: string, args?: Record<string, unknown>): Promise<T>;

@@ -10,7 +10,7 @@ import {
   AccountClarificationProposal,
   UnifiedClarificationCandidate,
 } from './types.js';
-import { CategoryContextService } from '../services/categoryContextService.js';
+import { CategoryContextService } from './categoryContext.js';
 import {
   SystemInstructionCache,
   executeTextWorkflow,

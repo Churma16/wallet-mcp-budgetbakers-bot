@@ -5,8 +5,8 @@ import { WalletMcpClientService, WalletMcpRequestError } from '../src/wallet/ind
 import { WalletCacheService } from '../src/wallet/index.js';
 import { TransactionSummaryService } from '../src/wallet/index.js';
 import { TransactionHistoryService } from '../src/wallet/index.js';
-import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
-import { FinancialActionExecutor } from '../src/services/financialActionExecutor.js';
+import { FastPathHandler } from '../src/core/fastPathHandler.js';
+import { FinancialActionExecutor } from '../src/core/executor.js';
 import {
   WalletAccountItem,
   WalletCategoryItem,
@@ -17,7 +17,7 @@ import {
   TransactionSummaryResult,
   WalletRecordItem,
 } from '../src/types/walletTypes.js';
-import { formatTransactionSummaryMessage } from '../src/utils/transactionSummaryFormatter.js';
+import { formatTransactionSummaryMessage } from '../src/wallet/transactionSummaryFormatter.js';
 import type {
   WalletMcpSdkClient,
   WalletMcpTransportDependencies,

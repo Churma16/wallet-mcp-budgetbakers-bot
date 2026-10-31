@@ -57,8 +57,8 @@ import {
   TransactionSearchScanStore,
   type TransactionSearchScanCacheEntry,
 } from './searchScan.js';
-import { normalizeTransactionRecordDate } from '../utils/recordDateNormalizer.js';
-import { applicationLogger } from '../utils/logger.js';
+import { normalizeTransactionRecordDate } from './recordDateNormalizer.js';
+import { applicationLogger } from '../lib/logger.js';
 
 export interface WalletMcpClientOptions {
   readonly transportDependencies?: WalletMcpTransportDependencies;

@@ -1,7 +1,7 @@
 import { loadEnvironmentConfiguration } from '../src/config/environmentConfig.js';
 import { WalletMcpClientService } from '../src/wallet/index.js';
 import { GeminiAiProvider } from '../src/brain/index.js';
-import { applicationLogger } from '../src/utils/logger.js';
+import { applicationLogger } from '../src/lib/logger.js';
 
 async function runGeminiAiVerification(): Promise<void> {
   applicationLogger.info('Testing Gemini AI Provider & Transaction Parsing...');

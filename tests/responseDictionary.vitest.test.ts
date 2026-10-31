@@ -15,10 +15,10 @@ import {
   formatPendingCancellationMessage,
   formatErrorMessageForHuman,
   formatCurrencyAmount,
-} from '../src/utils/humanResponseFormatter.js';
+} from '../src/wallet/humanResponseFormatter.js';
 import { detectFastPathAction, detectPendingConfirmationAction } from '../src/brain/index.js';
 import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload, WalletBudgetItem } from '../src/types/walletTypes.js';
-import { PendingTransactionItem } from '../src/services/pendingTransactionService.js';
+import { PendingTransactionItem } from '../src/core/pending.js';
 
 function collectDeepKeys(obj: Record<string, unknown>, prefix = ''): string[] {
   const keys: string[] = [];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateAndSanitizeFinancialRecords } from '../src/utils/recordValidator.js';
+import { validateAndSanitizeFinancialRecords } from '../src/wallet/recordValidator.js';
 import { indonesianDictionary, englishDictionary } from '../src/i18n/index.js';
 import { CreateRecordInputPayload, WalletAccountItem } from '../src/types/walletTypes.js';
 

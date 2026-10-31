@@ -1,5 +1,5 @@
 import { ExtractedFinancialRecordItem } from './types.js';
-import { WalletAccountItem, WalletCategoryItem } from '../types/walletTypes.js';
+import { WalletAccountItem, WalletCategoryItem } from '../wallet/types.js';
 import {
   ALLOWED_COUNTER_AMOUNT_KEYS,
   ALLOWED_RECORD_KEYS,

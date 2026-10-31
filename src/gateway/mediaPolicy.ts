@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { applicationLogger } from '../utils/logger.js';
+import { applicationLogger } from '../lib/logger.js';
 import { getDictionary, SupportedLanguage } from '../i18n/index.js';
 import {
   HandleMediaDownloadFailureParameters,

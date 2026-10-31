@@ -6,7 +6,7 @@ import {
   formatAccountSelectionPrompt,
   formatAccountSelectionRetry,
   formatAccountSelectionUnknownOutcome,
-} from '../src/utils/accountClarificationFormatter.js';
+} from '../src/brain/accountClarificationFormatter.js';
 
 function draft(overrides: Record<string, unknown> = {}) {
   return {

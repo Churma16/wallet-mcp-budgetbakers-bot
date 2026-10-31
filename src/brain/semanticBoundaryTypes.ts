@@ -1,6 +1,6 @@
-import { FinancialActionContext } from '../actions/types.js';
+import { FinancialActionContext } from '../core/types.js';
 import { IncomingUserMessageEvent } from '../gateway/index.js';
-import { WalletAccountItem, WalletCategoryItem } from '../types/walletTypes.js';
+import { WalletAccountItem, WalletCategoryItem } from '../wallet/types.js';
 
 export const SEMANTIC_TOOL_ALLOWLIST = {
   get_balance: { access: 'read' },

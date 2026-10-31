@@ -1,6 +1,6 @@
-import './utils/financialLoggingPolicy.js';
+import './lib/financialLoggingPolicy.js';
 import { Application } from './app.js';
-import { applicationLogger } from './utils/logger.js';
+import { applicationLogger } from './lib/logger.js';
 
 function constructApplicationInstance(): Application {
   try {

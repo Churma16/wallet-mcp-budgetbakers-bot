@@ -1,7 +1,7 @@
 import { loadEnvironmentConfiguration } from '../src/config/environmentConfig.js';
 import { WalletMcpClientService } from '../src/wallet/index.js';
 import { createFinancialAiProvider } from '../src/brain/index.js';
-import { applicationLogger } from '../src/utils/logger.js';
+import { applicationLogger } from '../src/lib/logger.js';
 import { WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 import { GateEvaluationResult } from '../src/email/index.js';
 

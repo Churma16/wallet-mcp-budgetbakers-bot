@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
+import { PendingTransactionService } from '../src/core/pending.js';
 import { WhatsappInboundMessageProcessor } from '../src/gateway/whatsapp.js';
 import { MessageIdTracker } from '../src/gateway/whatsapp.js';
 import { loadEnvironmentConfiguration } from '../src/config/environmentConfig.js';

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { EmailTransactionHandler } from '../src/handlers/emailTransactionHandler.js';
-import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
+import { EmailTransactionHandler } from '../src/core/index.js';
+import { PendingTransactionService } from '../src/core/pending.js';
 import { TransactionCorrelationService } from '../src/email/index.js';
 import { EmailTransactionDetectedEvent } from '../src/email/index.js';
 import { BANK_EMAIL_RULES } from '../src/email/index.js';

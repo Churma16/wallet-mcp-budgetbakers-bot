@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { shouldDeferHistoryCategoryToSemanticResolver, UserMessageHandler } from '../src/handlers/userMessageHandler.js';
+import { shouldDeferHistoryCategoryToSemanticResolver, UserMessageHandler } from '../src/core/dispatcher.js';
 import { buildCompactSystemInstruction, buildTextMessagePrompt } from '../src/brain/index.js';
 import { postProcessFinancialIntentResponse } from '../src/brain/index.js';
 import {

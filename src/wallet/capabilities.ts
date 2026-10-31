@@ -6,7 +6,7 @@ import type {
   WalletMcpCapabilitySnapshot,
   WalletMcpToolCapability,
 } from './types.js';
-import { applicationLogger } from '../utils/logger.js';
+import { applicationLogger } from '../lib/logger.js';
 
 export interface CapabilityDiscoveryClient {
   listTools(): Promise<WalletMcpToolCapability[]>;

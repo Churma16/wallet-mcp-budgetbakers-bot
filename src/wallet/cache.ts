@@ -3,7 +3,7 @@ import type {
   WalletCategoryItem,
   WalletLabelItem,
 } from './types.js';
-import { applicationLogger } from '../utils/logger.js';
+import { applicationLogger } from '../lib/logger.js';
 
 export interface WalletEntityFetcher {
   fetchAccounts(forceRefresh?: boolean): Promise<WalletAccountItem[]>;
