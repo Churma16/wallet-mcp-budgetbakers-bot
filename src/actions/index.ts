@@ -5,7 +5,7 @@ import {
   WalletRecordPreparationService,
 } from '../wallet/index.js';
 
-import { MessagingGatewayService } from '../services/messaging/index.js';
+import { MessagingGatewayService } from '../gateway/index.js';
 
 import { AccountClarificationHandler } from '../handlers/accountClarificationHandler.js';
 import { CategoryClarificationHandler } from '../handlers/categoryClarificationHandler.js';

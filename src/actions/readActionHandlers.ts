@@ -1,6 +1,6 @@
 import { FinancialActionExecutor } from '../services/financialActionExecutor.js';
 import { PendingTransactionService } from '../services/pendingTransactionService.js';
-import { MessagingGatewayService } from '../services/messaging/index.js';
+import { MessagingGatewayService } from '../gateway/index.js';
 import { buildTransactionAttentionSummary } from '../services/transactionStatusViewModel.js';
 import { formatTransactionAttentionSummary } from '../utils/transactionStatusFormatter.js';
 import { FINANCIAL_ACTION_TYPES } from '../constants/index.js';

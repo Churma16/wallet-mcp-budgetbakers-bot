@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import { FinancialActionExecutor } from '../src/services/financialActionExecutor.js';
 import { FastPathHandler } from '../src/handlers/fastPathHandler.js';
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
-import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
+import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { TransactionHistoryService } from '../src/wallet/index.js';
 import { TransactionSummaryService } from '../src/wallet/index.js';
 import {

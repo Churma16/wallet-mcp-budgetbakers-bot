@@ -6,7 +6,7 @@ import {
   isWalletMcpDefinitiveFailure,
   isWalletMcpDispatchOutcomeUnknown,
 } from '../wallet/index.js';
-import { MessagingGatewayService, IncomingUserMessageEvent } from '../services/messaging/index.js';
+import { MessagingGatewayService, IncomingUserMessageEvent } from '../gateway/index.js';
 import { EmailListenerService } from '../email/index.js';
 import {
   PendingConfirmationIntent,

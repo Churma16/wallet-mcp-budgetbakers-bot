@@ -1,10 +1,10 @@
 import axios from 'axios';
 import { beforeEach, describe, it } from 'vitest';
 import { Bot } from 'grammy';
-import { TelegramMessagingAdapter } from '../src/services/messaging/telegramAdapter.js';
-import { WhatsappMessagingAdapter } from '../src/services/messaging/whatsappAdapter.js';
+import { TelegramMessagingAdapter } from '../src/gateway/telegram.js';
+import { WhatsappMessagingAdapter } from '../src/gateway/whatsapp.js';
 import { loadEnvironmentConfiguration } from '../src/config/environmentConfig.js';
-import { IncomingUserMessageEvent } from '../src/services/messaging/types.js';
+import { IncomingUserMessageEvent } from '../src/gateway/types.js';
 import {
   formatBytesToMegabytes,
   formatBytesToMegabytesDisplay,
@@ -15,7 +15,7 @@ import {
   formatMediaDownloadFailedMessage,
   rejectOversizedMedia,
   handleMediaDownloadFailure,
-} from '../src/services/messaging/mediaPolicy.js';
+} from '../src/gateway/mediaPolicy.js';
 import { setActiveLanguage, getActiveLanguage } from '../src/i18n/index.js';
 import { applicationLogger } from '../src/utils/logger.js';
 

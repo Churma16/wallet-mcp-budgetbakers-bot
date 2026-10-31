@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { convertWhatsAppMarkupToTelegramHtml } from '../src/services/messaging/messageFormatHelper.js';
+import { convertWhatsAppMarkupToTelegramHtml } from '../src/gateway/telegram.js';
 
 describe('convertWhatsAppMarkupToTelegramHtml', () => {
   it.each([

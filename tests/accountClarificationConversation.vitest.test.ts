@@ -3,7 +3,7 @@ import { AccountClarificationHandler } from '../src/handlers/accountClarificatio
 import { AccountClarificationConversationService } from '../src/brain/index.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';
-import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
+import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import {
   CreateRecordInputPayload,
   WalletAccountItem,

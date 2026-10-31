@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
-import { WhatsappInboundMessageProcessor } from '../src/services/messaging/whatsapp/inboundMessageProcessor.js';
-import { MessageIdTracker } from '../src/services/messaging/whatsapp/messageIdTracker.js';
+import { WhatsappInboundMessageProcessor } from '../src/gateway/whatsapp.js';
+import { MessageIdTracker } from '../src/gateway/whatsapp.js';
 import { loadEnvironmentConfiguration } from '../src/config/environmentConfig.js';
 import { proto } from '@whiskeysockets/baileys';
 

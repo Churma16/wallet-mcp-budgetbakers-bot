@@ -1,12 +1,12 @@
-import { TelegramMessagingAdapter } from '../src/services/messaging/telegramAdapter.js';
+import { TelegramMessagingAdapter } from '../src/gateway/telegram.js';
 import { beforeEach, describe, it } from 'vitest';
-import { WhatsappMessagingAdapter } from '../src/services/messaging/whatsappAdapter.js';
+import { WhatsappMessagingAdapter } from '../src/gateway/whatsapp.js';
 import {
   validateApplicationConfiguration,
   ApplicationEnvironmentConfiguration,
 } from '../src/config/environmentConfig.js';
 import { Application } from '../src/app.js';
-import { IncomingUserMessageEvent } from '../src/services/messaging/types.js';
+import { IncomingUserMessageEvent } from '../src/gateway/types.js';
 import type { proto } from '@whiskeysockets/baileys';
 import type { Context } from 'grammy';
 

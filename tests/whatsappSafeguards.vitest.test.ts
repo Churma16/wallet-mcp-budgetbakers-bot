@@ -1,4 +1,4 @@
-import { WhatsappMessagingAdapter } from '../src/services/messaging/whatsappAdapter.js';
+import { WhatsappMessagingAdapter } from '../src/gateway/whatsapp.js';
 import { beforeEach, describe, it, vi } from 'vitest';
 import makeWASocket, {
   DisconnectReason,

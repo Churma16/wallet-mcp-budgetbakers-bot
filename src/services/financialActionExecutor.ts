@@ -7,7 +7,7 @@ import {
   TransactionSummaryQueryOptions,
 } from '../wallet/index.js';
 
-import { MessagingGatewayService, IncomingUserMessageEvent } from './messaging/index.js';
+import { MessagingGatewayService, IncomingUserMessageEvent } from '../gateway/index.js';
 
 
 import {

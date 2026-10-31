@@ -5,7 +5,7 @@ import { CategoryContextService } from '../src/services/categoryContextService.j
 import { UserMessageHandler } from '../src/handlers/userMessageHandler.js';
 import { PendingTransactionService } from '../src/services/pendingTransactionService.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';
-import { IncomingUserMessageEvent } from '../src/services/messaging/index.js';
+import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
