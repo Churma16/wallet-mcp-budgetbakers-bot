@@ -16,6 +16,25 @@ export interface BankEmailRuleDefinition {
   ruleCategory?: BankEmailRuleCategory;
 }
 
+export const COMMON_BANK_BLACKLIST_KEYWORDS = [
+  'otp',
+  'kode verifikasi',
+  'login',
+  'perangkat baru',
+  'promo',
+  'diskon',
+  'newsletter',
+];
+
+export const COMMON_TRANSFER_TOPUP_KEYWORDS = [
+  'top up',
+  'gopay',
+  'ovo',
+  'dana',
+  'shopeepay',
+  'transfer',
+];
+
 export const BANK_DEBIT_AND_GATEWAY_RULES: BankEmailRuleDefinition[] = [
   // 1. Bank Mandiri (Livin' by Mandiri)
   {
@@ -119,6 +138,38 @@ export const BANK_DEBIT_AND_GATEWAY_RULES: BankEmailRuleDefinition[] = [
       'pindah kantong',
       'kirim uang',
     ],
+  },
+
+  // 3. Bank Central Asia (BCA)
+  {
+    bankKey: 'bca',
+    displayName: 'BCA',
+    accountNameHint: 'BCA',
+    senderDomains: ['bca.co.id', 'klikbca.com'],
+    subjectKeywords: [
+      'transaksi',
+      'debet',
+      'kredit',
+      'transfer',
+      'qris',
+      'm-bca',
+      'mybca',
+      'pembayaran',
+      'payment',
+    ],
+    blacklistKeywords: COMMON_BANK_BLACKLIST_KEYWORDS,
+    bodyRequiredPatterns: [
+      /(?:transaksi|debet|kredit|berhasil|nominal|rekening|qris|pembayaran)/i,
+    ],
+    amountPriorityPatterns: [
+      /(?:Nominal|Jumlah|Total|Sebesar)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
+      /(?:Rp|IDR)\s*([\d.,]+)/i,
+    ],
+    referencePatterns: [
+      /(?:No\.?\s*Referensi|Nomor\s*Referensi|Ref)[:\s]*([A-Za-z0-9]+)/i,
+    ],
+    transferOrTopupKeywords: COMMON_TRANSFER_TOPUP_KEYWORDS,
+    ruleCategory: 'BANK',
   },
 
   // 3. GoPay / Gojek

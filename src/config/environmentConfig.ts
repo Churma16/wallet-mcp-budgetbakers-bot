@@ -90,6 +90,10 @@ export interface ApplicationEnvironmentConfiguration {
   maxMediaDownloadMb: number;
   categoryContextFilePath: string;
   categoryResolutionMode: 'ask' | 'auto';
+  notificationWebhookEnabled: boolean;
+  notificationWebhookPort: number;
+  notificationWebhookHost: string;
+  notificationWebhookSecret: string;
 }
 
 
@@ -299,6 +303,12 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
   const rawCategoryResolutionMode = process.env.CATEGORY_RESOLUTION_MODE?.trim().toLowerCase();
   const categoryResolutionMode: 'ask' | 'auto' = rawCategoryResolutionMode === 'auto' ? 'auto' : 'ask';
 
+  const notificationWebhookEnabled = process.env.NOTIFICATION_WEBHOOK_ENABLED === 'true';
+  const parsedWebhookPort = Number.parseInt(process.env.NOTIFICATION_WEBHOOK_PORT || '3000', 10);
+  const notificationWebhookPort = Number.isNaN(parsedWebhookPort) || parsedWebhookPort <= 0 ? 3000 : parsedWebhookPort;
+  const notificationWebhookHost = (process.env.NOTIFICATION_WEBHOOK_HOST || '0.0.0.0').trim();
+  const notificationWebhookSecret = (process.env.NOTIFICATION_WEBHOOK_SECRET || '').trim();
+
   return {
     aiProvider,
     aiProviders,
@@ -338,6 +348,10 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     maxMediaDownloadMb,
     categoryContextFilePath,
     categoryResolutionMode,
+    notificationWebhookEnabled,
+    notificationWebhookPort,
+    notificationWebhookHost,
+    notificationWebhookSecret,
   };
 }
 
@@ -450,6 +464,15 @@ export function validateApplicationConfiguration(
       variableName: 'APP_TIMEZONE',
       message: `APP_TIMEZONE '${config.appTimezone}' is not a valid IANA timezone identifier!`,
       hint: 'Specify a valid IANA timezone identifier (e.g. "Asia/Jakarta", "America/New_York", or "UTC").',
+    });
+  }
+
+  // 5. Notification webhook validation
+  if (config.notificationWebhookEnabled && !config.notificationWebhookSecret) {
+    validationWarningList.push({
+      variableName: 'NOTIFICATION_WEBHOOK_SECRET',
+      message: 'NOTIFICATION_WEBHOOK_ENABLED is true, but NOTIFICATION_WEBHOOK_SECRET is not set. Webhook will accept unauthenticated requests.',
+      hint: 'Set a secret Bearer token in NOTIFICATION_WEBHOOK_SECRET to protect the webhook endpoint.',
     });
   }
 

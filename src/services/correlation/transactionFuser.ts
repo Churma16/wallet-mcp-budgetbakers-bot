@@ -25,7 +25,14 @@ export function resolveAccount(
   platformRegistry: CommercePlatformRegistry
 ): ResolvedAccountDetails {
   const isCandidateBank = isBankSource(candidate);
-  const isIncomingBank = incoming.sourceType === 'EMAIL_BANK';
+  const isIncomingBank =
+    incoming.sourceType === 'EMAIL_BANK' ||
+    (incoming.sourceType === 'PUSH_NOTIFICATION' &&
+      isBankSource({
+        bankDisplayName: incoming.accountHint,
+        accountNameHint: incoming.accountHint,
+        evidenceSources: [incoming.sourceType],
+      }));
 
   let resolvedAccountId = candidate.matchedAccountId;
   let resolvedAccountName = candidate.accountNameHint;
