@@ -19,19 +19,73 @@ type PackageRuleTuple = [
 ];
 
 const RAW_PACKAGE_RULES: readonly PackageRuleTuple[] = [
+  // Bank Jago
+  ['com.jago.digital', 'Bank Jago', 'Jago', 'jago', 'BANK'],
   ['com.jago', 'Bank Jago', 'Jago', 'jago', 'BANK'],
+
+  // Bank Mandiri (Livin')
+  ['id.co.bankmandiri.livin', 'Bank Mandiri (Livin)', 'Mandiri', 'mandiri', 'BANK'],
   ['com.bankmandiri.livin', 'Bank Mandiri (Livin)', 'Mandiri', 'mandiri', 'BANK'],
+
+  // BCA (BCA mobile, myBCA)
   ['com.bca', 'BCA', 'BCA', 'bca', 'BANK'],
   ['com.bca.mobile', 'BCA', 'BCA', 'bca', 'BANK'],
   ['com.bca.mybca', 'BCA', 'BCA', 'bca', 'BANK'],
-  ['com.gojek.app', 'GoPay / Gojek', 'GoPay', 'gopay', 'E_WALLET'],
-  ['com.shopee.id', 'ShopeePay', 'ShopeePay', 'shopeepay', 'E_WALLET'],
-  ['id.dana', 'DANA', 'DANA', 'dana', 'E_WALLET'],
-  ['ovo.id', 'OVO', 'OVO', 'ovo', 'E_WALLET'],
+  ['id.co.bca.mybca', 'BCA', 'BCA', 'bca', 'BANK'],
+
+  // BRI (BRImo)
+  ['id.co.bri.brimo', 'BRI (BRImo)', 'BRI', 'bri', 'BANK'],
+
+  // BNI (BNI Mobile & wondr)
+  ['com.bni', 'BNI Mobile Banking', 'BNI', 'bni', 'BANK'],
+  ['co.id.bni.wondr', 'wondr by BNI', 'BNI', 'bni', 'BANK'],
+
+  // Blu by BCA Digital
+  ['com.bcadigital.blu', 'blu by BCA Digital', 'blu', 'blu', 'BANK'],
+
+  // Jenius
+  ['com.btpn.jenius', 'Jenius', 'Jenius', 'jenius', 'BANK'],
+  ['com.btpn.sinaya', 'Jenius', 'Jenius', 'jenius', 'BANK'],
+
+  // SeaBank
+  ['com.seabank.seabankid', 'SeaBank', 'SeaBank', 'seabank', 'BANK'],
+  ['com.seabank.id', 'SeaBank', 'SeaBank', 'seabank', 'BANK'],
+
+  // CIMB Niaga (OCTO Mobile)
+  ['id.co.cimbniaga.mobile.android', 'CIMB Niaga OCTO Mobile', 'CIMB', 'cimb', 'BANK'],
+  ['id.co.cimbniaga.octomobile', 'CIMB Niaga OCTO Mobile', 'CIMB', 'cimb', 'BANK'],
+
+  // Flip
   ['id.co.flip', 'Flip', 'Flip', 'flip', 'BANK'],
+
+  // Gojek / GoPay
+  ['com.gojek.app', 'GoPay / Gojek', 'GoPay', 'gopay', 'E_WALLET'],
+  ['com.gojek.gopay', 'GoPay', 'GoPay', 'gopay', 'E_WALLET'],
+
+  // Shopee / ShopeePay
+  ['com.shopee.id', 'ShopeePay', 'ShopeePay', 'shopeepay', 'E_WALLET'],
+
+  // DANA
+  ['id.dana', 'DANA', 'DANA', 'dana', 'E_WALLET'],
+
+  // OVO
+  ['ovo.id', 'OVO', 'OVO', 'ovo', 'E_WALLET'],
+
+  // LinkAja
+  ['com.telkom.mwallet', 'LinkAja', 'LinkAja', 'linkaja', 'E_WALLET'],
+
+  // Tokopedia
+  ['com.tokopedia.tkpd', 'Tokopedia', 'Tokopedia', 'tokopedia', 'MERCHANT'],
+
+  // Blibli
+  ['blibli.mobile.commerce', 'Blibli', 'Blibli', 'blibli', 'MERCHANT'],
+
+  // TikTok / TikTok Shop
   ['com.zhiliaoapp.musically', 'TikTok Shop', 'TikTok', 'tiktok', 'MERCHANT'],
   ['com.ss.android.ugc.trill', 'TikTok Shop', 'TikTok', 'tiktok', 'MERCHANT'],
-  ['com.grabtaxi.passenger', 'Grab', 'OVO', 'grab', 'MERCHANT'],
+
+  // Grab
+  ['com.grabtaxi.passenger', 'Grab', 'Grab', 'grab', 'MERCHANT'],
 ];
 
 export const NOTIFICATION_PACKAGE_RULES: readonly NotificationPackageDefinition[] =
@@ -159,6 +213,15 @@ export function evaluateNotificationThroughGate(
     return {
       passed: false,
       reason: 'UNRECOGNIZED_NON_FINANCIAL_PACKAGE',
+    };
+  }
+
+  // If from a recognized package but has no financial keyword AND no candidate amount,
+  // skip early at Gate 1 without calling AI (e.g. shipping updates, marketing chatter, store replies)
+  if (matchedPackageRule && !hasFinancialKeyword && candidateAmount === undefined) {
+    return {
+      passed: false,
+      reason: 'NO_FINANCIAL_OR_TRANSACTION_INDICATOR',
     };
   }
 
