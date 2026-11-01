@@ -13,6 +13,8 @@ import {
   resolveLocalCalendarRange,
 } from '../../brain/index.js';
 
+export { resolveLocalCalendarDayRange };
+
 export interface NormalizedBoundaryResult {
   recordDateToken: string;
   isoInstant: string;

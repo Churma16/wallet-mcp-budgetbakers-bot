@@ -7,7 +7,6 @@ import {
   WalletCategoryItem,
 } from '../types.js';
 import { getApplicationTimezone } from '../../config/applicationConfig.js';
-import { resolveLocalCalendarDayRange } from '../../brain/index.js';
 import { MAX_SEARCH_QUERY_LENGTH } from './transactionSearchMatcher.js';
 import { FILTER_ERROR_REASONS } from '../constants.js';
 import {
@@ -24,6 +23,7 @@ import {
   isDateOnlyString,
   normalizeDateBoundary,
   calculateRelativeDateRange,
+  resolveLocalCalendarDayRange,
   NormalizedBoundaryResult,
 } from './dateBoundaries.js';
 
