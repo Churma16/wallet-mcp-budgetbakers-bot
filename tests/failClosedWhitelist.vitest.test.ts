@@ -78,7 +78,7 @@ function createBaseConfiguration(
 
 async function runTestGroup(testGroup: number): Promise<void> {
   console.log('====================================================');
-  console.log('[INFO] Running Fail-Closed Whitelist Authorization Test Suite (Issue #74)');
+  console.log('[INFO] Running Fail-Closed Whitelist Authorization Test Suite');
   console.log('====================================================\n');
 
   const dummyToken = '123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ';

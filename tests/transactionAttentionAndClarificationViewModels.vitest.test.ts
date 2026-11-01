@@ -45,7 +45,7 @@ function registryDependencies(
   };
 }
 
-describe('PR #155 new-code branch coverage', () => {
+describe('transaction attention summaries, clarification view models, and fallback formatting', () => {
   beforeEach(() => {
     setActiveLanguage('id');
   });

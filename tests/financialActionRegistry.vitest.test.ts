@@ -30,7 +30,7 @@ function createMockIncomingEvent(textPayload: string): IncomingUserMessageEvent 
   };
 }
 
-describe('FinancialActionRegistry & Action Handlers (Issue #116)', () => {
+describe('FinancialActionRegistry & Action Handlers', () => {
   beforeEach(() => {
     setActiveLanguage('id');
   });

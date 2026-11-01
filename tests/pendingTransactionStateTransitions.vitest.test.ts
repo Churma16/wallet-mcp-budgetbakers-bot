@@ -46,7 +46,7 @@ function addDraft(
   });
 }
 
-describe('PR #155 PendingTransactionService state branch coverage', () => {
+describe('PendingTransactionService state transitions and query boundaries', () => {
   it('covers scoped account-draft lookup, latest ordering, and empty paths', () => {
     const service = new PendingTransactionService();
 

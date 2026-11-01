@@ -11,7 +11,7 @@ import {
   type SummaryExecutionContext,
 } from './fixtures/transactionFixtures.js';
 
-describe('Transaction Summary & Breakdown Tests (Issue #103 & #140)', () => {
+describe('Transaction Summary & Breakdown Tests', () => {
   beforeEach(() => {
     setActiveLanguage('id');
   });
@@ -21,7 +21,7 @@ describe('Transaction Summary & Breakdown Tests (Issue #103 & #140)', () => {
     vi.restoreAllMocks();
   });
 
-  describe('Suite 1: Aggregates totals via native aggregation and excludes transfers', () => {
+  describe('Aggregates totals via native aggregation and excludes transfers', () => {
     let summaryContext: SummaryExecutionContext;
 
     beforeEach(() => {
@@ -114,7 +114,7 @@ describe('Transaction Summary & Breakdown Tests (Issue #103 & #140)', () => {
     });
   });
 
-  describe('Suite 2: Filtered totals preserve history filter semantics without pseudo-net output', () => {
+  describe('Filtered totals preserve history filter semantics without pseudo-net output', () => {
     let summaryContext: SummaryExecutionContext;
 
     beforeEach(() => {
@@ -189,7 +189,7 @@ describe('Transaction Summary & Breakdown Tests (Issue #103 & #140)', () => {
     });
   });
 
-  describe('Suite 3: Multi-currency totals remain isolated', () => {
+  describe('Multi-currency totals remain isolated', () => {
     let summaryContext: SummaryExecutionContext;
 
     beforeEach(() => {
@@ -248,7 +248,7 @@ describe('Transaction Summary & Breakdown Tests (Issue #103 & #140)', () => {
     });
   });
 
-  describe('Suite 4: Empty and unresolved results fail clearly', () => {
+  describe('Empty and unresolved results fail clearly', () => {
     let summaryContext: SummaryExecutionContext;
 
     beforeEach(() => {
@@ -278,7 +278,7 @@ describe('Transaction Summary & Breakdown Tests (Issue #103 & #140)', () => {
     });
   });
 
-  describe('Suite 5: Fast-path summary intents reuse history-style filters', () => {
+  describe('Fast-path summary intents reuse history-style filters', () => {
     it('routes command and natural-language summary questions through deterministic parsing', () => {
       const expenseAction = detectFastPathAction('total pengeluaran bulan ini');
       expect(typeof expenseAction).toBe('object');
@@ -327,7 +327,7 @@ describe('Transaction Summary & Breakdown Tests (Issue #103 & #140)', () => {
     });
   });
 
-  describe('Suite 6: Compatibility fallback for free-text search gap', () => {
+  describe('Compatibility fallback for free-text search gap', () => {
     let summaryContext: SummaryExecutionContext;
     const capturedSearchOptions: TransactionHistoryQueryOptions[] = [];
 

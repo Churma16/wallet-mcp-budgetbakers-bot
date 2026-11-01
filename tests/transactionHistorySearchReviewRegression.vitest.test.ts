@@ -7,7 +7,7 @@ import { detectFastPathAction } from '../src/brain/index.js';
 import { formatTransactionHistoryMessage } from '../src/wallet/formatters/humanResponseFormatter.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 
-describe('PR #114 transaction search review regression tests', () => {
+describe('transaction search review regressions', () => {
   beforeEach(() => {
     setActiveLanguage('id');
   });

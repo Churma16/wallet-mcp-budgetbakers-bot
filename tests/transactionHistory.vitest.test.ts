@@ -20,7 +20,7 @@ import {
   type QueryExecutionContext,
 } from './fixtures/transactionFixtures.js';
 
-describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
+describe('Transaction History Pagination & Sorting Tests', () => {
   beforeEach(() => {
     setActiveLanguage('id');
   });
@@ -30,7 +30,7 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
     vi.restoreAllMocks();
   });
 
-  describe('Suite 1: Configurable Limits & Safe Upper Bound', () => {
+  describe('Configurable Limits & Safe Upper Bound', () => {
     let queryContext: QueryExecutionContext;
 
     beforeEach(() => {
@@ -71,7 +71,7 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
     });
   });
 
-  describe('Suite 2: Offset & Page-Based Pagination', () => {
+  describe('Offset & Page-Based Pagination', () => {
     let queryContext: QueryExecutionContext;
 
     beforeEach(() => {
@@ -110,7 +110,7 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
     });
   });
 
-  describe('Suite 3: Deterministic Sorting', () => {
+  describe('Deterministic Sorting', () => {
     let queryContext: QueryExecutionContext;
 
     beforeEach(() => {
@@ -133,7 +133,7 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
     });
   });
 
-  describe('Suite 4: Pagination Metadata & Multi-Page Navigation', () => {
+  describe('Pagination Metadata & Multi-Page Navigation', () => {
     let queryContext: QueryExecutionContext;
     const sampleRawRecords = Array.from({ length: 10 }, (_, index) => ({
       id: `rec-${index + 1}`,
@@ -233,7 +233,7 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
     });
   });
 
-  describe('Suite 5: Empty Pages & End-of-History Behavior', () => {
+  describe('Empty Pages & End-of-History Behavior', () => {
     let queryContext: QueryExecutionContext;
 
     beforeEach(() => {
@@ -274,7 +274,7 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
     });
   });
 
-  describe('Suite 6: Data Normalization & Cache Enrichment', () => {
+  describe('Data Normalization & Cache Enrichment', () => {
     let queryContext: QueryExecutionContext;
 
     beforeEach(() => {
@@ -317,7 +317,7 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
     });
   });
 
-  describe('Suite 7: Human-Facing Response Formatting (i18n)', () => {
+  describe('Human-Facing Response Formatting (i18n)', () => {
     const samplePage: TransactionHistoryPage = {
       records: [
         {
@@ -436,7 +436,7 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
     });
   });
 
-  describe('Suite 8: Fast-Path Intent Detection', () => {
+  describe('Fast-Path Intent Detection', () => {
     it('detects basic keywords', () => {
       const action1 = detectFastPathAction('riwayat');
       expect(typeof action1).toBe('object');
@@ -536,7 +536,7 @@ describe('Transaction History Pagination & Sorting Tests (Issue #100)', () => {
     });
   });
 
-  describe('Suite 9: FastPathHandler Integration', () => {
+  describe('FastPathHandler Integration', () => {
     let queryContext: QueryExecutionContext;
 
     beforeEach(() => {

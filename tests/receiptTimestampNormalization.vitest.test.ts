@@ -16,7 +16,7 @@ import {
 import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload } from '../src/wallet/index.js';
 import { WalletMcpClientService } from '../src/wallet/index.js';
 
-describe('Receipt Timestamp Normalization & Timezone Preservation (Issue #147)', () => {
+describe('Receipt Timestamp Normalization & Timezone Preservation', () => {
   const referenceInstantUtc = new Date('2026-09-13T08:26:18.209Z');
   const applicationTimezoneJakarta = 'Asia/Jakarta'; // UTC+7
 

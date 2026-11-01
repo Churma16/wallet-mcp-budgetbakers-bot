@@ -112,12 +112,12 @@ function createMockEvent(messageContent: string): IncomingUserMessageEvent {
   };
 }
 
-describe('Issue #154: Action-Oriented Pending & Uncertain Transaction UX', () => {
+describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
   beforeEach(() => {
     setActiveLanguage('id');
   });
 
-  describe('1. Pending Email Notification UX', () => {
+  describe('Pending Email Notification UX', () => {
     const singlePendingItem: PendingTransactionItem = {
       ticketId: 101,
       sourceType: 'EMAIL_AUTO_DETECTED',
@@ -181,7 +181,7 @@ describe('Issue #154: Action-Oriented Pending & Uncertain Transaction UX', () =>
     });
   });
 
-  describe('2. Uncertain Write Outcome Formatting', () => {
+  describe('Uncertain Write Outcome Formatting', () => {
     const mockViewModel = {
       ticketId: 202,
       status: 'NEEDS_CHECK' as const,
@@ -249,7 +249,7 @@ describe('Issue #154: Action-Oriented Pending & Uncertain Transaction UX', () =>
     });
   });
 
-  describe('3. Reconciliation Actions via PendingActionHandler', () => {
+  describe('Reconciliation Actions via PendingActionHandler', () => {
     let pendingService: PendingTransactionService;
     let walletMcpClient: MockWalletMcpClient;
     let gateway: MockMessagingGateway;
@@ -565,7 +565,7 @@ describe('Issue #154: Action-Oriented Pending & Uncertain Transaction UX', () =>
     });
   });
 
-  describe('4. Queue / Status Commands & View Model', () => {
+  describe('Queue / Status Commands & View Model', () => {
     let pendingService: PendingTransactionService;
 
     beforeEach(() => {
@@ -765,7 +765,7 @@ describe('Issue #154: Action-Oriented Pending & Uncertain Transaction UX', () =>
     });
   });
 
-  describe('5. Intent Detection for Fast-Path and Reconciliation', () => {
+  describe('Intent Detection for Fast-Path and Reconciliation', () => {
     it('detects queue / status commands in Indonesian and English', () => {
       expect(detectFastPathAction('antrean')).toBe('CHECK_QUEUE');
       expect(detectFastPathAction('antrian')).toBe('CHECK_QUEUE');
@@ -835,7 +835,7 @@ describe('Issue #154: Action-Oriented Pending & Uncertain Transaction UX', () =>
     });
   });
 
-  describe('6. Account Clarification Formatter Coverage', () => {
+  describe('Account Clarification Formatter Coverage', () => {
     const mockDraft: PendingAccountSelectionDraft = {
       ticketId: 77,
       channel: 'whatsapp',
@@ -955,7 +955,7 @@ describe('Issue #154: Action-Oriented Pending & Uncertain Transaction UX', () =>
     });
   });
 
-  describe('7. View Model Builders & Formatters Edge Cases', () => {
+  describe('View Model Builders & Formatters Edge Cases', () => {
     it('builds item view model from clarification draft with WAITING_FOR_ACCOUNT and NEEDS_CHECK', () => {
       const draft: PendingAccountSelectionDraft = {
         ticketId: 88,
@@ -1027,7 +1027,7 @@ describe('Issue #154: Action-Oriented Pending & Uncertain Transaction UX', () =>
     });
   });
 
-  describe('8. Dictionary Direct Coverage for Locales', () => {
+  describe('Dictionary Direct Coverage for Locales', () => {
     it('covers all custom functions in id and en dictionary', () => {
       const idDict = indonesianDictionary;
       const enDict = englishDictionary;
@@ -1222,7 +1222,7 @@ describe('Issue #154: Action-Oriented Pending & Uncertain Transaction UX', () =>
     });
   });
 
-  describe('9. Mixed Outcomes & Cancellation Scenarios in PendingActionHandler', () => {
+  describe('Mixed Outcomes & Cancellation Scenarios in PendingActionHandler', () => {
     let pendingService: PendingTransactionService;
     let mockClient: MockWalletMcpClient;
     let mockGateway: MockMessagingGateway;
@@ -1468,7 +1468,7 @@ describe('Issue #154: Action-Oriented Pending & Uncertain Transaction UX', () =>
     });
   });
 
-  describe('10. UserMessageHandler Reconciliation Command Routing', () => {
+  describe('UserMessageHandler Reconciliation Command Routing', () => {
     it('intercepts reconciliation commands and routes to PendingActionHandler', async () => {
       const mockPendingActionHandler = {
         handleReconciliationAction: vi.fn().mockResolvedValue(true),
@@ -1527,7 +1527,7 @@ describe('Issue #154: Action-Oriented Pending & Uncertain Transaction UX', () =>
     });
   });
 
-  describe('11. PendingTransactionService Direct State & Uncertain Queries', () => {
+  describe('PendingTransactionService Direct State & Uncertain Queries', () => {
     it('reopens unknown transaction as pending', () => {
       const service = new PendingTransactionService();
       const item = service.addPendingTransaction({
@@ -1592,7 +1592,7 @@ describe('Issue #154: Action-Oriented Pending & Uncertain Transaction UX', () =>
     });
   });
 
-  describe('12. Comprehensive Intent Detection Regexes', () => {
+  describe('Comprehensive Intent Detection Regexes', () => {
     it('detects short and alternative forms of reconciliation action', () => {
       expect(detectReconciliationAction('sudah 5')).toEqual({
         actionType: 'CONFIRM_RECORDED',
@@ -1675,7 +1675,7 @@ describe('Issue #154: Action-Oriented Pending & Uncertain Transaction UX', () =>
     });
   });
 
-  describe('13. Reconciliation Action Edge Cases in PendingActionHandler', () => {
+  describe('Reconciliation Action Edge Cases in PendingActionHandler', () => {
     let pendingService: PendingTransactionService;
     let mockClient: MockWalletMcpClient;
     let mockGateway: MockMessagingGateway;

@@ -8,7 +8,7 @@ import {
   formatCorrelatedWalletRecordNotification,
 } from '../src/wallet/formatters/humanResponseFormatter.js';
 
-describe('TransactionCorrelationService (Issue #153)', () => {
+describe('TransactionCorrelationService', () => {
   const service = new TransactionCorrelationService();
 
   const baseInstant = '2026-10-14T10:18:00.000Z';

@@ -8,7 +8,7 @@ import {
 } from '../src/wallet/formatters/humanResponseFormatter.js';
 import type { TransactionHistoryPage } from '../src/wallet/index.js';
 
-describe('Transaction History Formatting (Issue #115)', () => {
+describe('Transaction History Formatting', () => {
   describe('Title Truncation (Unicode- and line-safe)', () => {
     it('does not truncate titles at or below the maximum length', () => {
       const shortTitle = 'Makan siang padang';

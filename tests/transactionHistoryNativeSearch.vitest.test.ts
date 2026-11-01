@@ -156,7 +156,7 @@ const LIVE_PROVENANCE_RECORDS: any[] = [
   },
 ];
 
-describe('native Wallet MCP text search and compatibility shim (Issue #162)', () => {
+describe('native Wallet MCP text search and compatibility shim', () => {
   const cachedAccounts: WalletAccountItem[] = [
     { id: 'a0000000-0000-4000-8000-000000000001', name: 'BCA Utama', currency: 'IDR' },
     { id: 'a0000000-0000-4000-8000-000000000002', name: 'Cash Dompet', currency: 'IDR' },

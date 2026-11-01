@@ -76,7 +76,7 @@ function addDraft(service: PendingTransactionService, overrides: Record<string, 
   } as any);
 }
 
-describe('PR #155 changed-condition coverage', () => {
+describe('pending action outcomes, reconciliation combinations, and routing conditions', () => {
   beforeEach(() => setActiveLanguage('id'));
 
   describe('PendingActionHandler outcome combinations', () => {

@@ -40,7 +40,7 @@ import { FinancialAiProvider } from '../src/brain/index.js';
 import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem, WalletLabelItem } from '../src/wallet/index.js';
 import { IncomingUserMessageEvent } from '../src/gateway/types.js';
 
-describe('Centralized Record Preparation (Issue #110 Part A)', () => {
+describe('Centralized Record Preparation', () => {
   let mockWalletCacheService: Partial<WalletCacheService>;
   let mockWalletMcpClient: Partial<WalletMcpClientService>;
   let cachedLabels: WalletLabelItem[];
@@ -373,7 +373,7 @@ describe('Centralized Record Preparation (Issue #110 Part A)', () => {
   });
 });
 
-describe('Canonical Application Configuration (Issue #110 Part B)', () => {
+describe('Canonical Application Configuration', () => {
   const originalEnvTimezone = process.env.APP_TIMEZONE;
   const originalEnvCurrency = process.env.DEFAULT_CURRENCY;
   const originalEnvLanguage = process.env.APP_LANGUAGE;

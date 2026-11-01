@@ -48,7 +48,7 @@ const event = {
   textPayload: 'ya',
 } as any;
 
-describe('PR #155 global reconciliation prompt safety', () => {
+describe('global reconciliation prompt safety and qualification', () => {
   beforeEach(() => setActiveLanguage('id'));
 
   it('qualifies a newly UNKNOWN ticket when another UNKNOWN ticket already exists', async () => {

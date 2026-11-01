@@ -130,7 +130,7 @@ describe('Category Clarification and Auto Mode', () => {
     setActiveLanguage('id');
   });
 
-  it('Suite 1: Unrecognized category creates clarification draft in ask mode and numeric choice finalizes it', async () => {
+  it('Unrecognized category creates clarification draft in ask mode and numeric choice finalizes it', async () => {
     const aiProvider = new MockFinancialAiProvider({
       action: 'CREATE_RECORD',
       records: [
@@ -184,7 +184,7 @@ describe('Category Clarification and Auto Mode', () => {
     expect(afterDraft).toBeUndefined();
   });
 
-  it('Suite 2: Replying with category name finalizes the draft', async () => {
+  it('Replying with category name finalizes the draft', async () => {
     const aiProvider = new MockFinancialAiProvider({
       action: 'CREATE_RECORD',
       records: [
@@ -226,7 +226,7 @@ describe('Category Clarification and Auto Mode', () => {
     expect(mcpClient.calls[0][0].categoryId).toBe('cat-kesehatan');
   });
 
-  it('Suite 3: Invalid selection keeps the draft pending and delivers retry prompt', async () => {
+  it('Invalid selection keeps the draft pending and delivers retry prompt', async () => {
     const aiProvider = new MockFinancialAiProvider({
       action: 'CREATE_RECORD',
       records: [
@@ -272,7 +272,7 @@ describe('Category Clarification and Auto Mode', () => {
     expect(draft).toBeDefined();
   });
 
-  it('Suite 4: Cancellation discards the draft without writing to Wallet', async () => {
+  it('Cancellation discards the draft without writing to Wallet', async () => {
     const aiProvider = new MockFinancialAiProvider({
       action: 'CREATE_RECORD',
       records: [
@@ -318,7 +318,7 @@ describe('Category Clarification and Auto Mode', () => {
     expect(draft).toBeUndefined();
   });
 
-  it('Suite 5: Auto mode automatically matches and creates record without prompt', async () => {
+  it('Auto mode automatically matches and creates record without prompt', async () => {
     const aiProvider = new MockFinancialAiProvider({
       action: 'CREATE_RECORD',
       records: [
@@ -365,7 +365,7 @@ describe('Category Clarification and Auto Mode', () => {
     expect(draft).toBeUndefined();
   });
 
-  it('Suite 6: Definitive MCP failure keeps draft retryable', async () => {
+  it('Definitive MCP failure keeps draft retryable', async () => {
     const aiProvider = new MockFinancialAiProvider({
       action: 'CREATE_RECORD',
       records: [
@@ -416,7 +416,7 @@ describe('Category Clarification and Auto Mode', () => {
     await handler.handleIncomingUserMessage(createEvent('1'));
     expect(mcpClient.calls.length).toBe(2);
   });
-  it('Suite 7: Flexible numeric replies like #1 and 1. finalize the draft', async () => {
+  it('Flexible numeric replies like #1 and 1. finalize the draft', async () => {
     const aiProvider = new MockFinancialAiProvider({
       action: 'CREATE_RECORD',
       records: [
@@ -457,7 +457,7 @@ describe('Category Clarification and Auto Mode', () => {
     expect(mcpClient.calls[0][0].categoryId).toBe('cat-kesehatan');
   });
 
-  it('Suite 8: Reply routing prioritizes newer category draft over older account draft', async () => {
+  it('Reply routing prioritizes newer category draft over older account draft', async () => {
     const accountProvider = new MockFinancialAiProvider({
       action: 'CREATE_RECORD',
       records: [
@@ -522,7 +522,7 @@ describe('Category Clarification and Auto Mode', () => {
     expect(mcpClient.calls[0][0].accountId).toBe('acc-bca');
   });
 
-  it('Suite 9: Mixed unresolved entity batch fails validation safely without silently dropping records', async () => {
+  it('Mixed unresolved entity batch fails validation safely without silently dropping records', async () => {
     const mixedProvider = new MockFinancialAiProvider({
       action: 'CREATE_RECORD',
       records: [
@@ -570,7 +570,7 @@ describe('Category Clarification and Auto Mode', () => {
     expect(gateway.messages[0].content).toContain('tidak ditemukan');
   });
 
-  it('Suite 10: Dynamic categoryResolutionMode from CategoryContextService and env override', async () => {
+  it('Dynamic categoryResolutionMode from CategoryContextService and env override', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'category-context-override-'));
     const configPath = path.join(tempDir, 'category-context.json');
     fs.writeFileSync(

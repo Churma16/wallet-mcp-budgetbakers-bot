@@ -169,7 +169,7 @@ function textEvent(text: string) {
   return { channel: 'whatsapp', chatIdentifier: 'chat-reg', senderIdentifier: 'user-reg', messageType: 'text', textPayload: text } as any;
 }
 
-describe('Issue #160 comment checklist regression corpus', () => {
+describe('multi-signal category history regression corpus', () => {
   describe('Food / dining corpus', () => {
     it.each([
       ['History makan semua'],
@@ -618,7 +618,7 @@ describe('Issue #160 comment checklist regression corpus', () => {
     });
   });
 
-  describe('Issue #173 synthetic fixture & description search acceptance', () => {
+  describe('synthetic fixture and description search acceptance', () => {
 
     it('riwayat makan hangry: returns A, B, C, J and never D across categories and types', async () => {
       const { historyService, client } = createFixtureHistoryService();
@@ -1315,7 +1315,7 @@ describe('Issue #160 comment checklist regression corpus', () => {
     });
   });
 
-  describe('Additional Regression Cases (Issue #173 exact scenarios)', () => {
+  describe('Additional Regression Cases', () => {
     it('Riwayat beli AI: case-insensitivity preserves expense intent and description search without category lookup, rendering rec-E', async () => {
       const { client, historyService } = createFixtureHistoryService();
       const realGateway = {

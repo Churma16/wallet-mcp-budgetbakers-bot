@@ -92,7 +92,7 @@ async function expectDispatchOutcome(
   throw new Error('Expected Wallet MCP operation to fail');
 }
 
-describe('official MCP client boundary (issue #165)', () => {
+describe('official MCP client boundary', () => {
   it('uses the official Streamable HTTP wire protocol with bearer authentication', async () => {
     const observedMethods: string[] = [];
     const observedAuthorizationHeaders: Array<string | null> = [];

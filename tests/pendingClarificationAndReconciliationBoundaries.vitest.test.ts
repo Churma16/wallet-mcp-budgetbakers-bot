@@ -49,7 +49,7 @@ function addPending(service: PendingTransactionService, counterParty: string) {
   });
 }
 
-describe('PR #155 Sonar new-code coverage gate', () => {
+describe('clarification draft matching, confirmation warnings, and reconciliation safety boundaries', () => {
   it('covers scoped latest clarification lookup mismatches and the matching branch', () => {
     const service = new PendingTransactionService();
     const draft = addDraft(service);

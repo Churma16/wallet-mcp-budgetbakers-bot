@@ -20,7 +20,7 @@ const categories = [
   { id: 'cat-transport', name: 'Transport' },
 ];
 
-describe('semantic entity resolver (Issue #119)', () => {
+describe('semantic entity resolver', () => {
   it('preserves exact authoritative ID and exact-name precedence', () => {
     expect(resolveSemanticAccountHint('acc-cash', accounts)).toMatchObject({
       status: 'RESOLVED', id: 'acc-cash', matchedBy: 'ID',

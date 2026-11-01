@@ -75,7 +75,7 @@ function addUnknownAccountDraft(service: PendingTransactionService): number {
   return draft.ticketId;
 }
 
-describe('PR #155 reconciliation protocol regressions', () => {
+describe('reconciliation protocol regressions and edge cases', () => {
   beforeEach(() => {
     setActiveLanguage('id');
   });

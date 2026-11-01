@@ -15,7 +15,7 @@ import {
   WalletMcpClientService,
 } from '../src/wallet/index.js';
 
-describe('Wallet Typed MCP Tool Wrappers (Issue #234)', () => {
+describe('Wallet Typed MCP Tool Wrappers', () => {
   function createMockToolCaller(
     mockResponse: unknown = {}
   ): { caller: WalletToolCaller; mockCallMcpTool: ReturnType<typeof vi.fn> } {
@@ -26,7 +26,7 @@ describe('Wallet Typed MCP Tool Wrappers (Issue #234)', () => {
     return { caller, mockCallMcpTool };
   }
 
-  describe('1. callGetClientProfile', () => {
+  describe('callGetClientProfile', () => {
     it('dispatches get_client_profile tool name without arguments', async () => {
       const expectedResponse = {
         baseCurrency: 'IDR',
@@ -44,7 +44,7 @@ describe('Wallet Typed MCP Tool Wrappers (Issue #234)', () => {
     });
   });
 
-  describe('2. callGetAccounts', () => {
+  describe('callGetAccounts', () => {
     it('dispatches get_accounts tool name and returns typed array response', async () => {
       const mockAccounts = [
         { id: 'acc-1', name: 'BCA Main', balance: 5000000, currency: 'IDR' },
@@ -73,7 +73,7 @@ describe('Wallet Typed MCP Tool Wrappers (Issue #234)', () => {
     });
   });
 
-  describe('3. callGetCategories', () => {
+  describe('callGetCategories', () => {
     it('dispatches get_categories tool name and returns typed category list', async () => {
       const mockCategories = [
         { id: 'cat-1', name: 'Food & Dining', color: '#ff0000' },
@@ -89,7 +89,7 @@ describe('Wallet Typed MCP Tool Wrappers (Issue #234)', () => {
     });
   });
 
-  describe('4. callGetLabels', () => {
+  describe('callGetLabels', () => {
     it('dispatches get_labels tool name and returns typed label items', async () => {
       const mockLabels = [{ id: 'lbl-1', name: 'vacation' }];
       const { caller, mockCallMcpTool } = createMockToolCaller(mockLabels);
@@ -103,7 +103,7 @@ describe('Wallet Typed MCP Tool Wrappers (Issue #234)', () => {
     });
   });
 
-  describe('5. callCreateLabel', () => {
+  describe('callCreateLabel', () => {
     it('dispatches create_label tool name with serialized name argument', async () => {
       const mockLabel = { id: 'lbl-new', name: 'reimburse' };
       const { caller, mockCallMcpTool } = createMockToolCaller(mockLabel);
@@ -118,7 +118,7 @@ describe('Wallet Typed MCP Tool Wrappers (Issue #234)', () => {
     });
   });
 
-  describe('6. callGetBudgets', () => {
+  describe('callGetBudgets', () => {
     it('dispatches get_budgets tool name and returns typed budget array', async () => {
       const mockBudgets = [
         { id: 'bgt-1', name: 'Monthly Food', limit: 3000000, spent: 1500000 },
@@ -134,7 +134,7 @@ describe('Wallet Typed MCP Tool Wrappers (Issue #234)', () => {
     });
   });
 
-  describe('7. callGetRecords', () => {
+  describe('callGetRecords', () => {
     it('dispatches get_records tool name omitting undefined fields', async () => {
       const mockRecords = [
         { id: 'rec-1', accountId: 'acc-1', amount: -25000, recordDate: '2026-10-31' },
@@ -162,7 +162,7 @@ describe('Wallet Typed MCP Tool Wrappers (Issue #234)', () => {
     });
   });
 
-  describe('8. callCreateRecords', () => {
+  describe('callCreateRecords', () => {
     it('dispatches create_records tool name with sanitized records payload', async () => {
       const mockSuccessResult = {
         summary: { total: 1, succeeded: 1 },
@@ -190,7 +190,7 @@ describe('Wallet Typed MCP Tool Wrappers (Issue #234)', () => {
     });
   });
 
-  describe('9. callGetRecordsAggregation', () => {
+  describe('callGetRecordsAggregation', () => {
     it('dispatches get_records_aggregation tool name with query payload', async () => {
       const mockAggregation = {
         results: [{ currency: 'IDR', recordType: 'expense', count: 5, 'amount:sum': -125000 }],
@@ -215,7 +215,7 @@ describe('Wallet Typed MCP Tool Wrappers (Issue #234)', () => {
     });
   });
 
-  describe('10. extractRawArray utility', () => {
+  describe('extractRawArray utility', () => {
     it('returns array directly when given array input', () => {
       const items = [{ id: '1' }, { id: '2' }];
       expect(extractRawArray(items, 'items')).toBe(items);
@@ -239,7 +239,7 @@ describe('Wallet Typed MCP Tool Wrappers (Issue #234)', () => {
     });
   });
 
-  describe('11. WalletMcpClient typed method delegation', () => {
+  describe('WalletMcpClient typed method delegation', () => {
     it('delegates typed operations through WalletMcpClient methods', async () => {
       const client = new WalletMcpClientService('https://wallet.example.com', 'dummy-token');
       const spyCallMcpTool = vi.spyOn(client, 'callMcpTool').mockResolvedValue([]);

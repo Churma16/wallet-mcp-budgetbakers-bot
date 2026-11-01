@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { parseRecordEditCommand } from '../src/wallet/records/recordEditParser.js';
 
 describe('recordEditParser', () => {
-  describe('1. Explicit Prefix Parsing (`e` and `edit`)', () => {
+  describe('Explicit Prefix Parsing (`e` and `edit`)', () => {
     it('parses multi-key edit command prefixed with `e`', () => {
       const parsed = parseRecordEditCommand('e c: Makan t: #jajan n: Kopi susu a: -25000');
       expect(parsed).not.toBeNull();
@@ -23,7 +23,7 @@ describe('recordEditParser', () => {
     });
   });
 
-  describe('2. Direct Parsing Without Prefix (Shorthand & Full Names)', () => {
+  describe('Direct Parsing Without Prefix (Shorthand & Full Names)', () => {
     it('parses shorthand keys directly without `e` prefix', () => {
       const parsed = parseRecordEditCommand('c: Transport t: #bensin n: Pertamax');
       expect(parsed).not.toBeNull();
@@ -58,7 +58,7 @@ describe('recordEditParser', () => {
     });
   });
 
-  describe('3. Indonesian & Alternate Shorthand Aliases', () => {
+  describe('Indonesian & Alternate Shorthand Aliases', () => {
     it('supports Indonesian key aliases like kategori:, catatan:, label:', () => {
       const parsed = parseRecordEditCommand('kategori: Belanja Bulanan catatan: Sabun dan pasta gigi label: #rumah, #bulanan');
       expect(parsed).not.toBeNull();
@@ -78,7 +78,7 @@ describe('recordEditParser', () => {
     });
   });
 
-  describe('4. Amount Parsing Formats & Currency Prefixes', () => {
+  describe('Amount Parsing Formats & Currency Prefixes', () => {
     it('parses numeric amounts with positive/negative signs', () => {
       expect(parseRecordEditCommand('a: 45000')?.amount).toBe(45000);
       expect(parseRecordEditCommand('a: 45000')?.hasExplicitPositiveSign).toBe(false);
@@ -112,7 +112,7 @@ describe('recordEditParser', () => {
     });
   });
 
-  describe('5. Non-Matching and Guardrail Tests', () => {
+  describe('Non-Matching and Guardrail Tests', () => {
     it('returns null for empty, whitespace, or undefined input', () => {
       expect(parseRecordEditCommand('')).toBeNull();
       expect(parseRecordEditCommand('   ')).toBeNull();

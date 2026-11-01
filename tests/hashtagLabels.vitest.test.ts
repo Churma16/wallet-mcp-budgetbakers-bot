@@ -27,7 +27,7 @@ const mockCategories: WalletCategoryItem[] = [
   { id: 'cat-travel', name: 'Liburan' },
 ];
 
-test('1. Hashtag Parser Unit Tests', () => {
+test('parses hashtags from transaction text into clean label candidates', () => {
   const singleResult = extractHashtags('Makan siang 50rb #bandung');
   assert.deepEqual(singleResult.tags, ['bandung']);
   assert.equal(singleResult.cleanedText, 'Makan siang 50rb');
@@ -77,7 +77,7 @@ test('1. Hashtag Parser Unit Tests', () => {
   assert.deepEqual(deduplicateTags(['#alpha', 'Alpha', 'ALPHA', '#beta']), ['alpha', 'beta']);
 });
 
-test('2. Record Validator Sanitization & Note Cleaning', () => {
+test('sanitizes record input notes and cleans extracted hashtags', () => {
   const rawRecord: CreateRecordInputPayload = {
     accountId: 'acc-bca',
     amount: -50_000,
@@ -189,7 +189,7 @@ test('2. Record Validator Sanitization & Note Cleaning', () => {
   );
 });
 
-test('3. Label Resolution, Caching & MCP Auto-Creation', async () => {
+test('resolves cached labels and auto-creates missing labels via Wallet MCP', async () => {
   const initialLabels: WalletLabelItem[] = [
     { id: 'lbl-bandung', name: 'bandung' },
     { id: 'lbl-reimburse', name: 'Reimburse' },
@@ -277,7 +277,7 @@ test('3. Label Resolution, Caching & MCP Auto-Creation', async () => {
   assert.equal(createLabelCallsF.length, 0);
 });
 
-test('4. Human-Facing Success Message Formatting with Labels', () => {
+test('formats human-facing success messages with resolved labels', () => {
   const singleRecordWithLabels: CreateRecordInputPayload = {
     accountId: 'acc-bca',
     amount: -75_000,
@@ -317,7 +317,7 @@ test('4. Human-Facing Success Message Formatting with Labels', () => {
   assert.ok(!noLabelMessage.includes('🔖'));
 });
 
-test('5. End-to-End Record Payload Generation with labelIds', async () => {
+test('generates record payloads containing resolved labelIds end-to-end', async () => {
   let dispatchedRecordsPayload: CreateRecordInputPayload[] = [];
   const mockClient = {
     fetchAccounts: async () => mockAccounts,
@@ -354,7 +354,7 @@ test('5. End-to-End Record Payload Generation with labelIds', async () => {
   assert.equal(dispatchedRecordsPayload[0].note, 'Kopi Kenangan 28rb');
 });
 
-test('6. WalletMcpClientService & WalletCacheService Label Integration', async () => {
+test('integrates label caching between WalletMcpClientService and WalletCacheService', async () => {
   const realMcpClient = new WalletMcpClientService('http://localhost:8080');
   let mockToolResponse: unknown = [
     { id: 'lbl-1', name: 'makan', color: '#ff0000', icon: 'food' },
@@ -487,7 +487,7 @@ test('6. WalletMcpClientService & WalletCacheService Label Integration', async (
   assert.equal(realCacheService.isLabelsLoaded(), false);
 });
 
-test('7. UserMessageHandler Hashtag Fallback & Label Resolution', async () => {
+test('resolves hashtags and labels through UserMessageHandler fallback', async () => {
   const dispatchedMcpRecords: CreateRecordInputPayload[][] = [];
   const sentMessages: string[] = [];
   const mockMessagingGateway = {
@@ -638,7 +638,7 @@ test('7. UserMessageHandler Hashtag Fallback & Label Resolution', async () => {
   assert.ok(!sentMessages[0].includes('#throwing-tag'));
 });
 
-test('8. AccountClarificationHandler Label Resolution on Draft Finalization', async () => {
+test('resolves labels on AccountClarificationHandler draft finalization', async () => {
   const dispatchedMcpRecords: CreateRecordInputPayload[][] = [];
   const sentMessages: string[] = [];
   const mockMessagingGateway = {

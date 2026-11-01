@@ -22,7 +22,7 @@ function createMockEvent(text: string): IncomingUserMessageEvent {
 }
 
 describe('Inline Note & Category Override on Pending Confirmation', () => {
-  describe('1. Intent Detection: detectPendingConfirmationAction', () => {
+  describe('Intent Detection: detectPendingConfirmationAction', () => {
     it('detects simple inline note without ticket ID', () => {
       const intent = detectPendingConfirmationAction('Ya: Headset Sony');
       expect(intent).toEqual<PendingConfirmationIntent>({
@@ -177,7 +177,7 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
     });
   });
 
-  describe('2. End-to-End Handler Execution with Overrides', () => {
+  describe('End-to-End Handler Execution with Overrides', () => {
     it('overrides note and dispatches to Wallet MCP with custom note and labels', async () => {
       const pendingService = new PendingTransactionService();
       const sentMessages: string[] = [];
@@ -850,7 +850,7 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
     });
   });
 
-  describe('3. Notification Formatting Hints', () => {
+  describe('Notification Formatting Hints', () => {
     it('includes inline note hint in Indonesian notification', () => {
       const notifSingle = indonesianDictionary.emailPending.formatNotification({
         ticketId: 1,

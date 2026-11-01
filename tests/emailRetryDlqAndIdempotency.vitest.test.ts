@@ -36,7 +36,7 @@ describe('Email AI Error Propagation, Retry DLQ, and Idempotency', () => {
     originalDate: '2026-10-29T15:05:15.000Z',
   };
 
-  describe('1. postProcessEmailTransactionResponse error handling', () => {
+  describe('postProcessEmailTransactionResponse error handling', () => {
     it('throws AiResponseParseError when AI returns non-JSON text (e.g. guardrail output)', () => {
       expect(() => {
         postProcessEmailTransactionResponse(
@@ -117,7 +117,7 @@ describe('Email AI Error Propagation, Retry DLQ, and Idempotency', () => {
     });
   });
 
-  describe('2. FallbackAiProvider failover on parsing errors', () => {
+  describe('FallbackAiProvider failover on parsing errors', () => {
     it('fails over to secondary provider when primary provider returns malformed output', async () => {
       const mockPrimary = {
         providerName: 'PrimaryBroken',
@@ -163,7 +163,7 @@ describe('Email AI Error Propagation, Retry DLQ, and Idempotency', () => {
     });
   });
 
-  describe('3. EmailListenerService Retry & Dead Letter Queue (DLQ)', () => {
+  describe('EmailListenerService Retry & Dead Letter Queue (DLQ)', () => {
     function buildRawEmail(messageId: string, subject: string, sender: string, body: string): Buffer {
       const rawEmail = [
         `From: ${sender}`,
@@ -314,7 +314,7 @@ describe('Email AI Error Propagation, Retry DLQ, and Idempotency', () => {
     });
   });
 
-  describe('4. Idempotency on Retry', () => {
+  describe('Idempotency on Retry', () => {
     function createMockWalletCache() {
       return {
         getAccounts: vi.fn().mockReturnValue([
