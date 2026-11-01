@@ -17,7 +17,7 @@ import {
   matchesCategorySubstring,
   matchDynamicCategoryGroup,
   extractDynamicCategoryGroups,
-} from './categoryGroupMatcher.js';
+} from './categoryGroupResolver.js';
 import {
   isValidCalendarDateString,
   isDateOnlyString,
@@ -25,7 +25,7 @@ import {
   calculateRelativeDateRange,
   resolveLocalCalendarDayRange,
   NormalizedBoundaryResult,
-} from './dateBoundaries.js';
+} from './historyDateResolver.js';
 
 export interface NormalizedTransactionHistoryFilterResult {
   isValid: boolean;
