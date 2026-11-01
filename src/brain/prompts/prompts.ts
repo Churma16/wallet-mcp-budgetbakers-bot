@@ -121,7 +121,7 @@ export function resolveEmailExtractedEntities(
     }
   }
 
-  if (parsedData.matchedCategoryId) {
+  if (parsedData.matchedCategoryId && parsedData.matchedCategoryId.trim().length > 0) {
     const rawCatVal = parsedData.matchedCategoryId.trim();
     const cleanCatVal = rawCatVal.replace(/\s*\[.*?\]/g, '').trim();
 
@@ -129,19 +129,32 @@ export function resolveEmailExtractedEntities(
       cat => cat.id === rawCatVal || cat.id === cleanCatVal
     );
     if (directCat) {
-      parsedData.matchedCategoryId = directCat.id;
-      parsedData.matchedCategoryName = directCat.name;
+      if (directCat.isAssignable !== false && directCat.group?.id !== 'system_categories') {
+        parsedData.matchedCategoryId = directCat.id;
+        parsedData.matchedCategoryName = directCat.name;
+      } else {
+        parsedData.matchedCategoryId = undefined;
+        parsedData.matchedCategoryName = undefined;
+      }
     } else {
       const nameCat = availableCategoryList.find(
         cat =>
-          cat.name.toLowerCase() === rawCatVal.toLowerCase() ||
-          cat.name.toLowerCase() === cleanCatVal.toLowerCase()
+          (cat.name.toLowerCase() === rawCatVal.toLowerCase() ||
+          cat.name.toLowerCase() === cleanCatVal.toLowerCase()) &&
+          cat.isAssignable !== false &&
+          cat.group?.id !== 'system_categories'
       );
       if (nameCat) {
         parsedData.matchedCategoryId = nameCat.id;
         parsedData.matchedCategoryName = nameCat.name;
+      } else {
+        parsedData.matchedCategoryId = undefined;
+        parsedData.matchedCategoryName = undefined;
       }
     }
+  } else if (parsedData.matchedCategoryId !== undefined) {
+    parsedData.matchedCategoryId = undefined;
+    parsedData.matchedCategoryName = undefined;
   }
 
   if (!parsedData.amount && gateResult.candidateAmount) {

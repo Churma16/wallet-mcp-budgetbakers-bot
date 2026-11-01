@@ -1,3 +1,4 @@
+import path from 'node:path';
 import dotenv from 'dotenv';
 import { applicationLogger } from '../lib/logger.js';
 import { digitsOnly } from '../lib/digits.js';
@@ -89,6 +90,7 @@ export interface ApplicationEnvironmentConfiguration {
   telegramStartupRetryDelayMs: number;
   maxMediaDownloadMb: number;
   categoryContextFilePath: string;
+  pendingTransactionsStoragePath: string;
   categoryResolutionMode: 'ask' | 'auto';
   notificationWebhookEnabled: boolean;
   notificationWebhookPort: number;
@@ -299,6 +301,11 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     'config/category-context.json'
   ).trim();
 
+  const pendingTransactionsStoragePath = (
+    process.env.PENDING_TRANSACTIONS_STORAGE_PATH ||
+    path.join(whatsappSessionPath, 'pending_transactions.json')
+  ).trim();
+
 
   const rawCategoryResolutionMode = process.env.CATEGORY_RESOLUTION_MODE?.trim().toLowerCase();
   const categoryResolutionMode: 'ask' | 'auto' = rawCategoryResolutionMode === 'auto' ? 'auto' : 'ask';
@@ -347,6 +354,7 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     telegramStartupRetryDelayMs,
     maxMediaDownloadMb,
     categoryContextFilePath,
+    pendingTransactionsStoragePath,
     categoryResolutionMode,
     notificationWebhookEnabled,
     notificationWebhookPort,

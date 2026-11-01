@@ -573,14 +573,18 @@ export class CategoryClarificationHandler {
     availableCategories: WalletCategoryItem[]
   ): PendingCategorySelectionCandidate[] {
     const assignableCategories = availableCategories.filter(
-      category => category.isAssignable !== false
+      category => category.isAssignable !== false && category.group?.id !== 'system_categories'
     );
 
     if (issue.candidates && issue.candidates.length > 0) {
-      return issue.candidates.map(candidate => ({
-        id: candidate.id,
-        name: candidate.name,
-      }));
+      const assignableCategoryIds = new Set(assignableCategories.map(c => c.id));
+      const filteredCandidates = issue.candidates.filter(c => assignableCategoryIds.has(c.id));
+      if (filteredCandidates.length > 0) {
+        return filteredCandidates.map(candidate => ({
+          id: candidate.id,
+          name: candidate.name,
+        }));
+      }
     }
 
     const hintWords = issue.hint.toLowerCase().split(/\s+/).filter(Boolean);

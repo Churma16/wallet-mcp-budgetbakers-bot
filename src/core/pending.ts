@@ -1,7 +1,11 @@
+import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { SupportedMessengerChannel } from '../gateway/index.js';
 import type { CreateRecordInputPayload } from '../wallet/types.js';
 import { TicketDispatchState } from '../brain/constants.js';
 import type { InternalTransactionTypeValue } from '../wallet/constants.js';
+import { applicationLogger } from '../lib/logger.js';
 
 export interface PendingTransactionItem {
   ticketId: number;
@@ -58,6 +62,16 @@ export type PendingTransactionDispatchState =
   | TicketDispatchState.Processing
   | TicketDispatchState.Unknown;
 
+export interface PendingTransactionStorageSnapshot {
+  version: number;
+  nextTicketSequentialId: number;
+  pendingTransactions: PendingTransactionItem[];
+  pendingAccountSelectionDrafts: PendingAccountSelectionDraft[];
+  pendingCategorySelectionDrafts: PendingCategorySelectionDraft[];
+  dispatchStates: [number, PendingTransactionDispatchState][];
+  recentlyResolvedTicketIds: [number, number][];
+}
+
 type AccountSelectionDraftUpdate = Partial<Pick<
   PendingAccountSelectionDraft,
   'records' | 'pendingRecordIndex' | 'accountHint' | 'candidateAccounts' | 'sourceUserText' | 'sourceReferenceInstant'
@@ -100,8 +114,18 @@ export class PendingTransactionService {
   private readonly pendingCategorySelectionDraftMap: Map<number, PendingCategorySelectionDraft> = new Map();
   private readonly dispatchStateMap: Map<number, PendingTransactionDispatchState> = new Map();
   private readonly recentlyResolvedTicketIds: Map<number, number> = new Map();
-  private readonly defaultTimeToLiveMilliseconds: number = 24 * 60 * 60 * 1000; // 24 hours
+  private readonly defaultTimeToLiveMilliseconds: number;
   private readonly recentResolvedTtlMilliseconds: number = 5 * 60 * 1000; // 5 minutes
+
+  constructor(
+    private readonly storageFilePath?: string,
+    defaultTimeToLiveMilliseconds: number = 24 * 60 * 60 * 1000 // 24 hours (1 day)
+  ) {
+    this.defaultTimeToLiveMilliseconds = defaultTimeToLiveMilliseconds;
+    if (this.storageFilePath) {
+      this.loadFromStorage();
+    }
+  }
 
   /**
    * Registers a new pending transaction and assigns a sequential ticket ID (#1, #2, etc.)
@@ -129,6 +153,7 @@ export class PendingTransactionService {
 
     this.pendingTransactionMap.set(ticketId, pendingItem);
     this.dispatchStateMap.set(ticketId, TicketDispatchState.Pending);
+    this.saveToStorage();
     return pendingItem;
   }
 
@@ -162,6 +187,7 @@ export class PendingTransactionService {
 
     this.pendingAccountSelectionDraftMap.set(ticketId, pendingDraft);
     this.dispatchStateMap.set(ticketId, TicketDispatchState.Pending);
+    this.saveToStorage();
     return pendingDraft;
   }
 
@@ -192,6 +218,7 @@ export class PendingTransactionService {
 
     this.pendingCategorySelectionDraftMap.set(ticketId, pendingDraft);
     this.dispatchStateMap.set(ticketId, TicketDispatchState.Pending);
+    this.saveToStorage();
     return pendingDraft;
   }
 
@@ -235,6 +262,7 @@ export class PendingTransactionService {
     }
 
     this.dispatchStateMap.set(ticketId, TicketDispatchState.Processing);
+    this.saveToStorage();
     return draft;
   }
 
@@ -244,6 +272,7 @@ export class PendingTransactionService {
       this.dispatchStateMap.get(ticketId) === TicketDispatchState.Processing
     ) {
       this.dispatchStateMap.set(ticketId, TicketDispatchState.Pending);
+      this.saveToStorage();
     }
   }
 
@@ -268,12 +297,14 @@ export class PendingTransactionService {
     };
 
     this.pendingCategorySelectionDraftMap.set(ticketId, updatedDraft);
+    this.saveToStorage();
     return updatedDraft;
   }
 
   public markPendingCategorySelectionDraftUnknown(ticketId: number): void {
     if (this.pendingCategorySelectionDraftMap.has(ticketId)) {
       this.dispatchStateMap.set(ticketId, TicketDispatchState.Unknown);
+      this.saveToStorage();
     }
   }
 
@@ -413,6 +444,7 @@ export class PendingTransactionService {
     }
 
     this.dispatchStateMap.set(ticketId, TicketDispatchState.Processing);
+    this.saveToStorage();
     return item;
   }
 
@@ -424,6 +456,7 @@ export class PendingTransactionService {
     }
 
     this.dispatchStateMap.set(ticketId, TicketDispatchState.Processing);
+    this.saveToStorage();
     return draft;
   }
 
@@ -441,6 +474,10 @@ export class PendingTransactionService {
       }
     }
 
+    if (claimedItems.length > 0) {
+      this.saveToStorage();
+    }
+
     return claimedItems;
   }
 
@@ -455,6 +492,7 @@ export class PendingTransactionService {
       const [ticketId, item] = entries[index];
       if (this.dispatchStateMap.get(ticketId) === TicketDispatchState.Pending) {
         this.dispatchStateMap.set(ticketId, TicketDispatchState.Processing);
+        this.saveToStorage();
         return item;
       }
     }
@@ -472,6 +510,7 @@ export class PendingTransactionService {
     for (const [ticketId, item] of this.pendingTransactionMap.entries()) {
       if (this.dispatchStateMap.get(ticketId) === TicketDispatchState.Pending) {
         this.dispatchStateMap.set(ticketId, TicketDispatchState.Processing);
+        this.saveToStorage();
         return item;
       }
     }
@@ -488,6 +527,7 @@ export class PendingTransactionService {
       this.dispatchStateMap.get(ticketId) === TicketDispatchState.Processing
     ) {
       this.dispatchStateMap.set(ticketId, TicketDispatchState.Pending);
+      this.saveToStorage();
     }
   }
 
@@ -497,6 +537,7 @@ export class PendingTransactionService {
       this.dispatchStateMap.get(ticketId) === TicketDispatchState.Processing
     ) {
       this.dispatchStateMap.set(ticketId, TicketDispatchState.Pending);
+      this.saveToStorage();
     }
   }
 
@@ -521,6 +562,7 @@ export class PendingTransactionService {
     };
 
     this.pendingAccountSelectionDraftMap.set(ticketId, updatedDraft);
+    this.saveToStorage();
     return updatedDraft;
   }
 
@@ -567,6 +609,7 @@ export class PendingTransactionService {
     };
 
     this.pendingTransactionMap.set(ticketId, updatedItem);
+    this.saveToStorage();
     return updatedItem;
   }
 
@@ -578,12 +621,14 @@ export class PendingTransactionService {
   public markPendingTransactionUnknown(ticketId: number): void {
     if (this.pendingTransactionMap.has(ticketId)) {
       this.dispatchStateMap.set(ticketId, TicketDispatchState.Unknown);
+      this.saveToStorage();
     }
   }
 
   public markPendingAccountSelectionDraftUnknown(ticketId: number): void {
     if (this.pendingAccountSelectionDraftMap.has(ticketId)) {
       this.dispatchStateMap.set(ticketId, TicketDispatchState.Unknown);
+      this.saveToStorage();
     }
   }
 
@@ -597,6 +642,7 @@ export class PendingTransactionService {
       this.dispatchStateMap.get(ticketId) === TicketDispatchState.Unknown
     ) {
       this.dispatchStateMap.set(ticketId, TicketDispatchState.Pending);
+      this.saveToStorage();
       return true;
     }
 
@@ -605,6 +651,7 @@ export class PendingTransactionService {
       this.dispatchStateMap.get(ticketId) === TicketDispatchState.Unknown
     ) {
       this.dispatchStateMap.set(ticketId, TicketDispatchState.Pending);
+      this.saveToStorage();
       return true;
     }
     if (
@@ -612,6 +659,7 @@ export class PendingTransactionService {
       this.dispatchStateMap.get(ticketId) === TicketDispatchState.Unknown
     ) {
       this.dispatchStateMap.set(ticketId, TicketDispatchState.Pending);
+      this.saveToStorage();
       return true;
     }
 
@@ -714,7 +762,10 @@ export class PendingTransactionService {
     const now = Date.now();
     for (const ticketId of this.pendingTransactionMap.keys()) {
       this.recentlyResolvedTicketIds.set(ticketId, now);
-      this.removeTicketMetadata(ticketId);
+      this.removeTicketMetadata(ticketId, false);
+    }
+    if (items.length > 0) {
+      this.saveToStorage();
     }
     return items;
   }
@@ -753,8 +804,12 @@ export class PendingTransactionService {
     for (const [ticketId, item] of Array.from(this.pendingTransactionMap.entries())) {
       if (this.dispatchStateMap.get(ticketId) === TicketDispatchState.Pending) {
         rejectedItems.push(item);
-        this.removeTicketMetadata(ticketId);
+        this.removeTicketMetadata(ticketId, false);
       }
+    }
+
+    if (rejectedItems.length > 0) {
+      this.saveToStorage();
     }
 
     return rejectedItems;
@@ -766,12 +821,14 @@ export class PendingTransactionService {
    */
   public purgeExpiredTransactions(): void {
     const currentTime = Date.now();
+    let hasChanges = false;
     for (const [ticketId, item] of this.pendingTransactionMap.entries()) {
       if (
         item.expiresAt.getTime() < currentTime &&
         this.dispatchStateMap.get(ticketId) === TicketDispatchState.Pending
       ) {
-        this.removeTicketMetadata(ticketId);
+        this.removeTicketMetadata(ticketId, false);
+        hasChanges = true;
       }
     }
 
@@ -780,7 +837,8 @@ export class PendingTransactionService {
         draft.expiresAt.getTime() < currentTime &&
         this.dispatchStateMap.get(ticketId) === TicketDispatchState.Pending
       ) {
-        this.removeTicketMetadata(ticketId);
+        this.removeTicketMetadata(ticketId, false);
+        hasChanges = true;
       }
     }
     for (const [ticketId, draft] of this.pendingCategorySelectionDraftMap.entries()) {
@@ -788,14 +846,20 @@ export class PendingTransactionService {
         draft.expiresAt.getTime() < currentTime &&
         this.dispatchStateMap.get(ticketId) === TicketDispatchState.Pending
       ) {
-        this.removeTicketMetadata(ticketId);
+        this.removeTicketMetadata(ticketId, false);
+        hasChanges = true;
       }
     }
 
     for (const [ticketId, timestamp] of this.recentlyResolvedTicketIds.entries()) {
       if (currentTime - timestamp > this.recentResolvedTtlMilliseconds) {
         this.recentlyResolvedTicketIds.delete(ticketId);
+        hasChanges = true;
       }
+    }
+
+    if (hasChanges) {
+      this.saveToStorage();
     }
   }
 
@@ -812,7 +876,7 @@ export class PendingTransactionService {
     return this.nextTicketSequentialId;
   }
 
-  private removeTicketMetadata(ticketId: number): void {
+  private removeTicketMetadata(ticketId: number, shouldSave: boolean = true): void {
     this.pendingTransactionMap.delete(ticketId);
     this.pendingAccountSelectionDraftMap.delete(ticketId);
     this.pendingCategorySelectionDraftMap.delete(ticketId);
@@ -820,6 +884,196 @@ export class PendingTransactionService {
 
     if (this.pendingTransactionMap.size === 0 && this.pendingAccountSelectionDraftMap.size === 0 && this.pendingCategorySelectionDraftMap.size === 0) {
       this.nextTicketSequentialId = 1;
+    }
+
+    if (shouldSave) {
+      this.saveToStorage();
+    }
+  }
+
+  private parseSafeDate(value: unknown, fallback: Date): Date {
+    if (typeof value === 'string' || typeof value === 'number') {
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed;
+      }
+    }
+    return fallback;
+  }
+
+  private parseSafeOptionalDate(value: unknown): Date | undefined {
+    if (typeof value === 'string' || typeof value === 'number') {
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed;
+      }
+    }
+    return undefined;
+  }
+
+  private loadFromStorage(): void {
+    if (!this.storageFilePath || !fs.existsSync(this.storageFilePath)) {
+      return;
+    }
+
+    try {
+      const rawContent = fs.readFileSync(this.storageFilePath, 'utf-8');
+      if (!rawContent || rawContent.trim().length === 0) {
+        return;
+      }
+
+      const data = JSON.parse(rawContent) as Partial<PendingTransactionStorageSnapshot>;
+
+      if (Array.isArray(data.pendingTransactions)) {
+        for (const rawItem of data.pendingTransactions) {
+          if (!rawItem || typeof rawItem.ticketId !== 'number') continue;
+          const fallbackExpiresAt = new Date(Date.now() + this.defaultTimeToLiveMilliseconds);
+          const revivedItem: PendingTransactionItem = {
+            ...rawItem,
+            createdAt: this.parseSafeDate(rawItem.createdAt, new Date()),
+            expiresAt: this.parseSafeDate(rawItem.expiresAt, fallbackExpiresAt),
+          };
+          this.pendingTransactionMap.set(revivedItem.ticketId, revivedItem);
+        }
+      }
+
+      if (Array.isArray(data.pendingAccountSelectionDrafts)) {
+        for (const rawDraft of data.pendingAccountSelectionDrafts) {
+          if (!rawDraft || typeof rawDraft.ticketId !== 'number') continue;
+          const fallbackExpiresAt = new Date(Date.now() + this.defaultTimeToLiveMilliseconds);
+          const revivedDraft: PendingAccountSelectionDraft = {
+            ...rawDraft,
+            createdAt: this.parseSafeDate(rawDraft.createdAt, new Date()),
+            expiresAt: this.parseSafeDate(rawDraft.expiresAt, fallbackExpiresAt),
+            sourceReferenceInstant: this.parseSafeOptionalDate(rawDraft.sourceReferenceInstant),
+          };
+          this.pendingAccountSelectionDraftMap.set(revivedDraft.ticketId, revivedDraft);
+        }
+      }
+
+      if (Array.isArray(data.pendingCategorySelectionDrafts)) {
+        for (const rawDraft of data.pendingCategorySelectionDrafts) {
+          if (!rawDraft || typeof rawDraft.ticketId !== 'number') continue;
+          const fallbackExpiresAt = new Date(Date.now() + this.defaultTimeToLiveMilliseconds);
+          const revivedDraft: PendingCategorySelectionDraft = {
+            ...rawDraft,
+            createdAt: this.parseSafeDate(rawDraft.createdAt, new Date()),
+            expiresAt: this.parseSafeDate(rawDraft.expiresAt, fallbackExpiresAt),
+            sourceReferenceInstant: this.parseSafeOptionalDate(rawDraft.sourceReferenceInstant),
+          };
+          this.pendingCategorySelectionDraftMap.set(revivedDraft.ticketId, revivedDraft);
+        }
+      }
+
+      if (Array.isArray(data.dispatchStates)) {
+        for (const [ticketId, state] of data.dispatchStates) {
+          if (
+            typeof ticketId === 'number' &&
+            typeof state === 'string' &&
+            (this.pendingTransactionMap.has(ticketId) ||
+              this.pendingAccountSelectionDraftMap.has(ticketId) ||
+              this.pendingCategorySelectionDraftMap.has(ticketId))
+          ) {
+            const recoveredState: PendingTransactionDispatchState =
+              state === TicketDispatchState.Processing
+                ? TicketDispatchState.Pending
+                : (state as PendingTransactionDispatchState);
+            this.dispatchStateMap.set(ticketId, recoveredState);
+          }
+        }
+      }
+
+      for (const ticketId of this.pendingTransactionMap.keys()) {
+        if (!this.dispatchStateMap.has(ticketId)) {
+          this.dispatchStateMap.set(ticketId, TicketDispatchState.Pending);
+        }
+      }
+      for (const ticketId of this.pendingAccountSelectionDraftMap.keys()) {
+        if (!this.dispatchStateMap.has(ticketId)) {
+          this.dispatchStateMap.set(ticketId, TicketDispatchState.Pending);
+        }
+      }
+      for (const ticketId of this.pendingCategorySelectionDraftMap.keys()) {
+        if (!this.dispatchStateMap.has(ticketId)) {
+          this.dispatchStateMap.set(ticketId, TicketDispatchState.Pending);
+        }
+      }
+
+      if (Array.isArray(data.recentlyResolvedTicketIds)) {
+        for (const [ticketId, timestamp] of data.recentlyResolvedTicketIds) {
+          if (typeof ticketId === 'number' && typeof timestamp === 'number') {
+            this.recentlyResolvedTicketIds.set(ticketId, timestamp);
+          }
+        }
+      }
+
+      const allTicketIds = [
+        ...Array.from(this.pendingTransactionMap.keys()),
+        ...Array.from(this.pendingAccountSelectionDraftMap.keys()),
+        ...Array.from(this.pendingCategorySelectionDraftMap.keys()),
+      ];
+      const maxActiveId = allTicketIds.length > 0 ? Math.max(...allTicketIds) : 0;
+      if (typeof data.nextTicketSequentialId === 'number' && data.nextTicketSequentialId > maxActiveId) {
+        this.nextTicketSequentialId = data.nextTicketSequentialId;
+      } else {
+        this.nextTicketSequentialId = maxActiveId + 1;
+      }
+
+      this.purgeExpiredTransactions();
+
+      applicationLogger.info(
+        `Restored ${this.pendingTransactionMap.size} pending transaction(s), ${this.pendingAccountSelectionDraftMap.size} account draft(s), and ${this.pendingCategorySelectionDraftMap.size} category draft(s) from '${this.storageFilePath}'.`
+      );
+    } catch (error) {
+      applicationLogger.error(
+        `Failed to load pending transactions from '${this.storageFilePath}': ${error instanceof Error ? error.message : String(error)}`
+      );
+      try {
+        if (fs.existsSync(this.storageFilePath)) {
+          fs.copyFileSync(this.storageFilePath, `${this.storageFilePath}.corrupted.${Date.now()}`);
+        }
+      } catch {}
+    }
+  }
+
+  private saveToStorage(): void {
+    if (!this.storageFilePath) {
+      return;
+    }
+
+    try {
+      const storageDir = path.dirname(this.storageFilePath);
+      if (!fs.existsSync(storageDir)) {
+        fs.mkdirSync(storageDir, { recursive: true });
+      }
+
+      const snapshot: PendingTransactionStorageSnapshot = {
+        version: 1,
+        nextTicketSequentialId: this.nextTicketSequentialId,
+        pendingTransactions: Array.from(this.pendingTransactionMap.values()),
+        pendingAccountSelectionDrafts: Array.from(this.pendingAccountSelectionDraftMap.values()),
+        pendingCategorySelectionDrafts: Array.from(this.pendingCategorySelectionDraftMap.values()),
+        dispatchStates: Array.from(this.dispatchStateMap.entries()),
+        recentlyResolvedTicketIds: Array.from(this.recentlyResolvedTicketIds.entries()),
+      };
+
+      const serialized = JSON.stringify(snapshot, null, 2);
+      const tempPath = `${this.storageFilePath}.tmp.${Date.now()}.${randomUUID()}`;
+      try {
+        fs.writeFileSync(tempPath, serialized, 'utf-8');
+        fs.renameSync(tempPath, this.storageFilePath);
+      } catch (writeError) {
+        if (fs.existsSync(tempPath)) {
+          try {
+            fs.unlinkSync(tempPath);
+          } catch {}
+        }
+        throw writeError;
+      }
+    } catch (error) {
+      applicationLogger.error(
+        `Failed to persist pending transactions to '${this.storageFilePath}': ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 }

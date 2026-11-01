@@ -91,7 +91,7 @@ export function createAppContext(customConfig?: ApplicationEnvironmentConfigurat
   const semanticBoundary = new SemanticToolBoundary();
 
   const gateway = new MessagingGatewayService();
-  const pending = new PendingTransactionService();
+  const pending = new PendingTransactionService(config.pendingTransactionsStoragePath);
   const emailCorrelation = new TransactionCorrelationService();
 
   return {

@@ -368,10 +368,20 @@ export class PendingActionHandler {
       ? -Math.abs(item.amount)
       : Math.abs(item.amount);
 
+    let resolvedCategoryId = item.matchedCategoryId?.trim() || undefined;
+    if (resolvedCategoryId && this.walletCacheService) {
+      const category = this.walletCacheService
+        .getCategories()
+        .find(c => c.id === resolvedCategoryId);
+      if (category && (category.isAssignable === false || category.group?.id === 'system_categories')) {
+        resolvedCategoryId = undefined;
+      }
+    }
+
     return [
       {
         accountId: item.matchedAccountId,
-        categoryId: item.matchedCategoryId,
+        categoryId: resolvedCategoryId,
         amount: finalAmount,
         recordDate: item.recordDate,
         note: item.note,

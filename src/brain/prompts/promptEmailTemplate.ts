@@ -13,7 +13,11 @@ export function buildEmailSystemInstruction(
     .map(acc => `ID "${acc.id}": "${acc.name}"`)
     .join(', ');
 
-  const formattedCategories = availableCategoryList
+  const assignableCategoryList = availableCategoryList.filter(
+    cat => cat.isAssignable !== false && cat.group?.id !== 'system_categories'
+  );
+
+  const formattedCategories = assignableCategoryList
     .map(cat => {
       const isGeneric = isGenericParentCategory(cat);
       const roleLabel = isGeneric ? ' [General Fallback only]' : '';
