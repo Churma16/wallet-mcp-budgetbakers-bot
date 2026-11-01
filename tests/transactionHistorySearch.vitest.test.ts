@@ -11,7 +11,7 @@ import {
 import { normalizeTransactionHistoryFilters } from '../src/wallet/history/transactionHistoryFilterNormalizer.js';
 import { formatTransactionHistoryMessage } from '../src/wallet/formatters/humanResponseFormatter.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
-import type { TransactionHistoryPage } from '../src/types/walletTypes.js';
+import type { TransactionHistoryPage } from '../src/wallet/index.js';
 import {
   CANONICAL_ACCOUNTS,
   CANONICAL_CATEGORIES,

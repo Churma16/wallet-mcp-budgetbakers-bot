@@ -14,7 +14,7 @@ import {
   type AiExecutionResult,
 } from '../src/brain/index.js';
 import { AiResponseParseError } from '../src/brain/index.js';
-import { WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
+import { WalletAccountItem, WalletCategoryItem } from '../src/wallet/index.js';
 import { GateEvaluationResult } from '../src/email/index.js';
 import { GeminiAiProvider } from '../src/brain/index.js';
 import { OpenAiCompatibleAiProvider } from '../src/brain/index.js';

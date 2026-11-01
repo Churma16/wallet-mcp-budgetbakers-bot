@@ -13,7 +13,7 @@ import {
   prepareReceiptPrompt,
   postProcessReceiptVisionResponse,
 } from '../src/brain/index.js';
-import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload } from '../src/types/walletTypes.js';
+import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload } from '../src/wallet/index.js';
 import { WalletMcpClientService } from '../src/wallet/index.js';
 
 describe('Receipt Timestamp Normalization & Timezone Preservation (Issue #147)', () => {

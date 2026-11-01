@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { validateAndSanitizeFinancialRecords } from '../src/wallet/records/recordValidator.js';
 import { indonesianDictionary, englishDictionary } from '../src/i18n/index.js';
-import { CreateRecordInputPayload, WalletAccountItem } from '../src/types/walletTypes.js';
+import { CreateRecordInputPayload, WalletAccountItem } from '../src/wallet/index.js';
 
 const accounts: WalletAccountItem[] = [
   { id: 'acc-bca-personal', name: 'BCA Personal', bankAccountNumber: '1234567890' },

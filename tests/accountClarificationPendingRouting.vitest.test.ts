@@ -1,7 +1,7 @@
 import { UserMessageHandler } from '../src/core/dispatcher.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
-import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
+import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/wallet/index.js';
 import { expect, it } from 'vitest';
 
 function assertCondition(testName: string, condition: boolean): void {

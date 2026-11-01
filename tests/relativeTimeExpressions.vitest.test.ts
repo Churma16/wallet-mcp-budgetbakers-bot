@@ -16,7 +16,7 @@ import {
 } from '../src/brain/index.js';
 import { GeminiAiProvider } from '../src/brain/index.js';
 import { validateAndSanitizeFinancialRecords } from '../src/wallet/records/recordValidator.js';
-import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
+import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/wallet/index.js';
 import {
   loadEnvironmentConfiguration,
   validateApplicationConfiguration,

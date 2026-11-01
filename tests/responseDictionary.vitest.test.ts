@@ -17,7 +17,7 @@ import {
   formatCurrencyAmount,
 } from '../src/wallet/formatters/humanResponseFormatter.js';
 import { detectFastPathAction, detectPendingConfirmationAction } from '../src/brain/index.js';
-import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload, WalletBudgetItem } from '../src/types/walletTypes.js';
+import { WalletAccountItem, WalletCategoryItem, CreateRecordInputPayload, WalletBudgetItem } from '../src/wallet/index.js';
 import { PendingTransactionItem } from '../src/core/pending.js';
 
 function collectDeepKeys(obj: Record<string, unknown>, prefix = ''): string[] {

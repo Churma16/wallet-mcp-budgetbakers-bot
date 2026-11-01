@@ -16,7 +16,7 @@ import {
   WalletCategoryItem,
   WalletRecordItem,
   TransactionHistoryPage,
-} from '../src/types/walletTypes.js';
+} from '../src/wallet/index.js';
 
 // ============================================================================
 // Provenance Fixtures: Captured directly from live BudgetBakers Wallet MCP server

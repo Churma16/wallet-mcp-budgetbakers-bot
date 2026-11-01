@@ -12,7 +12,7 @@ import {
 import {
   WalletClientProfile,
   WalletMcpToolCapability,
-} from '../src/types/walletCapabilityTypes.js';
+} from '../src/wallet/index.js';
 
 describe('walletProfileNormalizer', () => {
   it('normalizes a realistic complete Wallet MCP client profile response', () => {

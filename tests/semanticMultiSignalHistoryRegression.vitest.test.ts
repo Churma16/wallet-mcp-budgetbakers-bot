@@ -10,7 +10,7 @@ import {
   extractDynamicCategoryGroups,
 } from '../src/wallet/history/transactionHistoryFilterNormalizer.js';
 import { validateSemanticHistoryQueryOptions } from '../src/brain/index.js';
-import { WalletAccountItem, WalletCategoryItem, WalletRecordItem } from '../src/types/walletTypes.js';
+import { WalletAccountItem, WalletCategoryItem, WalletRecordItem } from '../src/wallet/index.js';
 import { WalletMcpClientService } from '../src/wallet/index.js';
 import { TransactionHistoryService } from '../src/wallet/index.js';
 import { FinancialActionExecutor } from '../src/core/executor.js';

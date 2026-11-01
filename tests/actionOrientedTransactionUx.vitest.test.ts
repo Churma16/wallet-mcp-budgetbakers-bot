@@ -37,7 +37,7 @@ import {
   CreateRecordInputPayload,
   WalletCreateRecordsResponse,
   WalletAccountItem,
-} from '../src/types/walletTypes.js';
+} from '../src/wallet/index.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import {
   detectFastPathAction,

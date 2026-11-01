@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { WalletMcpClientService } from '../src/wallet/index.js';
 import { validateAndSanitizeFinancialRecords } from '../src/wallet/records/recordValidator.js';
-import type { WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
+import type { WalletAccountItem, WalletCategoryItem } from '../src/wallet/index.js';
 
 const accounts: WalletAccountItem[] = [
   { id: 'acc-jago', name: 'Jago Expense', currency: 'IDR' },

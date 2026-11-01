@@ -9,7 +9,7 @@ import {
   markSemanticToolResultUntrusted,
 } from '../src/brain/index.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
-import { WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
+import { WalletAccountItem, WalletCategoryItem } from '../src/wallet/index.js';
 
 const event: IncomingUserMessageEvent = {
   channel: 'telegram',

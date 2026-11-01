@@ -10,7 +10,7 @@ import {
   WalletBudgetProgressItem,
   TransactionHistoryPage,
   TransactionSummaryResult,
-} from '../src/types/walletTypes.js';
+} from '../src/wallet/index.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import { applicationLogger } from '../src/lib/logger.js';
 import { afterEach, test } from 'vitest';

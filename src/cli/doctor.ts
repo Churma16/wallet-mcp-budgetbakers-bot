@@ -2,7 +2,7 @@ import { loadEnvironmentConfiguration } from '../config/environmentConfig.js';
 import {
   renderDoctorResult,
   runDoctorDiagnostics,
-} from '../diagnostics/doctorService.js';
+} from './doctorService.js';
 
 async function runDoctor(): Promise<void> {
   console.log('====================================================');

@@ -6,11 +6,11 @@ import {
   collectSetupConfiguration,
   SetupChoice,
   SetupPrompter,
-} from '../setup/setupWizard.js';
+} from './setupWizard.js';
 import {
   mergeEnvFileContent,
   parseEnvFileContent,
-} from '../setup/envFileEditor.js';
+} from './envFileEditor.js';
 
 class NodeTerminalPrompter implements SetupPrompter {
   public info(message: string): void {

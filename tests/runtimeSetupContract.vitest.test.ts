@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { MINIMUM_SUPPORTED_NODE_MAJOR_VERSION } from '../src/diagnostics/doctorService.js';
+import { MINIMUM_SUPPORTED_NODE_MAJOR_VERSION } from '../src/cli/doctorService.js';
 
 interface PackageManifest {
   engines?: {
