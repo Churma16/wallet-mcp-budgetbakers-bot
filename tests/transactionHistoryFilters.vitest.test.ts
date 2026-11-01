@@ -11,7 +11,7 @@ import { detectFastPathAction } from '../src/brain/index.js';
 import {
   normalizeTransactionHistoryFilters,
   isValidCalendarDateString,
-} from '../src/wallet/history/transactionHistoryFilterNormalizer.js';
+} from '../src/wallet/index.js';
 import { formatTransactionHistoryMessage } from '../src/wallet/formatters/humanResponseFormatter.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import { buildCompactSystemInstruction } from '../src/brain/index.js';
