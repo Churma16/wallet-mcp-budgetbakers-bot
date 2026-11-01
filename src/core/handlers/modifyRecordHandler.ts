@@ -10,6 +10,12 @@ import {
   resolveAndEnsureLabels,
   TransactionMessageStore,
 } from '../../wallet/index.js';
+import {
+  formatCurrencyAmount,
+  formatTransactionDate,
+} from '../../wallet/formatters/humanResponseFormatter.js';
+import { getDefaultCurrency } from '../../config/applicationConfig.js';
+import { normalizeTransactionText } from '../../lib/textCasing.js';
 import { applicationLogger } from '../../lib/logger.js';
 
 /**
@@ -100,13 +106,22 @@ export class ModifyRecordHandler {
       }
     }
 
+    // Auto-capitalize note and counterParty using Smart Title Casing
+    const formattedNote = editCommand.note !== undefined
+      ? (normalizeTransactionText(editCommand.note) || editCommand.note)
+      : undefined;
+
+    const formattedCounterParty = editCommand.counterParty !== undefined
+      ? (normalizeTransactionText(editCommand.counterParty) || editCommand.counterParty)
+      : undefined;
+
     const patchPayload: PatchRecordInputPayload = {
       id: mapping.recordId,
       ...(resolvedCategoryId ? { categoryId: resolvedCategoryId } : {}),
       ...(resolvedLabelIds ? { labelIds: resolvedLabelIds } : {}),
-      ...(editCommand.note !== undefined ? { note: editCommand.note } : {}),
+      ...(formattedNote !== undefined ? { note: formattedNote } : {}),
       ...(resolvedAmount !== undefined ? { amount: resolvedAmount } : {}),
-      ...(editCommand.counterParty !== undefined ? { counterParty: editCommand.counterParty } : {}),
+      ...(formattedCounterParty !== undefined ? { counterParty: formattedCounterParty } : {}),
     };
 
     try {
@@ -119,27 +134,49 @@ export class ModifyRecordHandler {
       this.transactionMessageStore.updateMessageMapping(event.replyToMessageId, {
         ...(resolvedCategoryId ? { categoryId: resolvedCategoryId, categoryName: resolvedCategoryName } : {}),
         ...(resolvedLabelIds ? { labelIds: resolvedLabelIds, labels: resolvedLabelNames } : {}),
-        ...(editCommand.note !== undefined ? { note: editCommand.note } : {}),
+        ...(formattedNote !== undefined ? { note: formattedNote } : {}),
         ...(resolvedAmount !== undefined ? { amount: resolvedAmount } : {}),
-        ...(editCommand.counterParty !== undefined ? { counterParty: editCommand.counterParty } : {}),
+        ...(formattedCounterParty !== undefined ? { counterParty: formattedCounterParty } : {}),
       });
 
-      const responseLines = ['✅ *Transaksi berhasil diperbarui:*'];
-      if (resolvedCategoryName) {
-        responseLines.push(`• *Kategori:* ${resolvedCategoryName}`);
-      }
-      if (editCommand.note !== undefined) {
-        responseLines.push(`• *Catatan:* ${editCommand.note}`);
-      }
-      if (resolvedLabelNames && resolvedLabelNames.length > 0) {
-        responseLines.push(`• *Tag:* ${resolvedLabelNames.map(t => `#${t.replace(/^#/, '')}`).join(' ')}`);
-      }
-      if (resolvedAmount !== undefined) {
-        const sign = resolvedAmount < 0 ? '-' : '';
-        responseLines.push(`• *Nominal:* ${sign}Rp ${Math.abs(resolvedAmount).toLocaleString('id-ID')}`);
-      }
-      if (editCommand.counterParty !== undefined) {
-        responseLines.push(`• *Penerima/Merchant:* ${editCommand.counterParty}`);
+      // Build structured receipt response
+      const finalAmount = resolvedAmount !== undefined ? resolvedAmount : (mapping.amount ?? 0);
+      const isExpense = finalAmount < 0;
+      const transactionTypeIcon = isExpense ? '💸' : '💰';
+
+      const cachedAccounts = this.walletCacheService.getAccounts();
+      const targetAccount = cachedAccounts.find(account => account.id === mapping.accountId);
+      const resolvedCurrency = mapping.currency || targetAccount?.currency || getDefaultCurrency();
+      const formattedAmount = formatCurrencyAmount(finalAmount, resolvedCurrency, 'id');
+      const resolvedAccountName = targetAccount?.name || mapping.accountName || 'Wallet';
+
+      const cachedCategories = this.walletCacheService.getCategories();
+      const finalCategoryName =
+        resolvedCategoryName ||
+        mapping.categoryName ||
+        cachedCategories.find(c => c.id === mapping.categoryId)?.name ||
+        'Umum';
+
+      const recordTimestampDisplay = formatTransactionDate(
+        mapping.recordDate || mapping.createdAt,
+        'id'
+      );
+
+      const finalNote = formattedNote !== undefined ? formattedNote : mapping.note;
+      const finalCounterParty = formattedCounterParty !== undefined ? formattedCounterParty : mapping.counterParty;
+      const displayTitle = finalNote || finalCounterParty || (isExpense ? 'Pengeluaran' : 'Pemasukan');
+
+      const responseLines = [
+        '✅ Transaksi berhasil diperbarui:',
+        '',
+        displayTitle,
+        `${transactionTypeIcon} ${formattedAmount}  •  ${resolvedAccountName}`,
+        `🏷️ ${finalCategoryName}  •  ${recordTimestampDisplay}`,
+      ];
+
+      const finalLabels = resolvedLabelNames !== undefined ? resolvedLabelNames : mapping.labels;
+      if (finalLabels && finalLabels.length > 0) {
+        responseLines.push(`🔖 ${finalLabels.map(t => `#${t.replace(/^#/, '')}`).join(' ')}`);
       }
 
       const sendReceipt = await this.messagingGateway.sendMessage(
@@ -154,9 +191,9 @@ export class ModifyRecordHandler {
           ...mapping,
           ...(resolvedCategoryId ? { categoryId: resolvedCategoryId, categoryName: resolvedCategoryName } : {}),
           ...(resolvedLabelIds ? { labelIds: resolvedLabelIds, labels: resolvedLabelNames } : {}),
-          ...(editCommand.note !== undefined ? { note: editCommand.note } : {}),
+          ...(formattedNote !== undefined ? { note: formattedNote } : {}),
           ...(resolvedAmount !== undefined ? { amount: resolvedAmount } : {}),
-          ...(editCommand.counterParty !== undefined ? { counterParty: editCommand.counterParty } : {}),
+          ...(formattedCounterParty !== undefined ? { counterParty: formattedCounterParty } : {}),
         });
       }
 
