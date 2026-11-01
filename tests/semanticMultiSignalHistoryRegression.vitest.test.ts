@@ -8,7 +8,7 @@ import {
   normalizeTransactionHistoryFilters,
   matchDynamicCategoryGroup,
   extractDynamicCategoryGroups,
-} from '../src/wallet/history/transactionHistoryFilterNormalizer.js';
+} from '../src/wallet/index.js';
 import { validateSemanticHistoryQueryOptions } from '../src/brain/index.js';
 import { WalletAccountItem, WalletCategoryItem, WalletRecordItem } from '../src/wallet/index.js';
 import { WalletMcpClientService } from '../src/wallet/index.js';

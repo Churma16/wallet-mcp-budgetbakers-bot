@@ -176,3 +176,51 @@ export class CreateRecordActionHandler {
 ```
 
 
+
+
+## Vertical Domain Architecture & Directory Boundaries
+The codebase is strictly structured into vertical domain slices and cross-cutting infrastructure. All new files, refactors, and feature additions MUST adhere to the following directory boundaries and rules:
+
+### 1. Canonical System Map (`src/` Root Invariant)
+The root `src/` directory must strictly contain only the authorized domains below:
+
+```text
+src/
+├── app.ts                 # Thin composition root (context assembly + pipeline dispatching)
+├── brain/                 # AI Domain: providers, prompts, parsers, clarification, fast path
+├── cli/                   # Tooling: doctor diagnostics, setup wizard, env editor
+├── config/                # Shared: application & environment configuration schemas
+├── core/                  # Orchestration: shared context, message pipeline, action handlers, pending states
+├── email/                 # Email Domain: IMAP listener, bank rules, transaction correlation
+├── gateway/               # Gateway Domain: WhatsApp, Telegram, Console messaging adapters & coordinator
+├── i18n/                  # Localization: dictionaries (en, id) and human message formatters
+├── lib/                   # Infrastructure: domain-agnostic utilities (logger, resilience, textCasing)
+├── wallet/                # Wallet Domain: BudgetBakers MCP client, records, history, summary, cache
+└── index.ts               # Application entry point and process lifecycle/shutdown
+```
+
+### 2. Forbidden Horizontal Layers
+Never create or re-introduce horizontal layer folders at the `src/` root:
+- **Forbidden**: `src/actions/`, `src/handlers/`, `src/services/`, `src/constants/`, `src/utils/`, `src/types/`, `src/diagnostics/`, `src/setup/`.
+- Logic must always be assigned to its respective domain slice (`wallet/`, `brain/`, `email/`, `gateway/`, `core/`, or `cli/`).
+
+### 3. Type & Interface Colocation
+- Types and interfaces MUST be co-located within their relevant domain slice (e.g., `src/wallet/types.ts`, `src/brain/types.ts`, or local to the specific module).
+- Do NOT create a global `src/types/` directory.
+
+### 4. Domain Barrel Exports & Encapsulation Boundary
+- Top-level domain slices (`wallet/`, `brain/`, `core/`, etc.) MUST maintain an `index.ts` that acts as the authoritative public API boundary for that domain.
+- External domains, gateway adapters, and integration test suites MUST import from the domain's root entrypoint (`../src/wallet/index.js` or `../src/brain/index.js`), rather than deep-linking into private subfolders (e.g. avoid `../src/wallet/records/records.js` or `../src/brain/parsers/amountParser.js` from outside the domain unless executing an isolated white-box unit test of that pure module).
+
+### 5. 1-Level Thematic Subfolder Cap
+- In large domains (`wallet/`, `brain/`, `core/`), organize related files into 1-level thematic subfolders (e.g., `wallet/mcp/`, `wallet/records/`, `brain/parsers/`, `core/handlers/`).
+- Do NOT nest deeper than 1 level of subfolders inside any domain (avoid `domain/sub1/sub2/...`).
+- Small domains (`cli/`, `email/`, `gateway/`, `config/`, `lib/`) should remain flat unless complexity warrants grouping.
+
+### 6. Infrastructure Cleanliness (`src/lib/`)
+- `src/lib/` is reserved strictly for cross-cutting, domain-agnostic technical utilities (e.g., Pino logging, resilience exponential backoff, casing and digit formatters).
+- Zero business logic, zero financial entities, and zero AI orchestration are permitted in `src/lib/`.
+
+### 7. Thin Composition Root (`src/app.ts`)
+- `src/app.ts` must remain a thin composition root responsible only for wiring configuration, assembling context, and binding messaging gateway adapters.
+- Avoid multi-parameter constructor injection chains (anti-pattern: passing 20+ service fields). Domain operations and state must be encapsulated, executing message processing pipelines linearly through dedicated dispatching abstractions.
