@@ -891,6 +891,26 @@ export class PendingTransactionService {
     }
   }
 
+  private parseSafeDate(value: unknown, fallback: Date): Date {
+    if (typeof value === 'string' || typeof value === 'number') {
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed;
+      }
+    }
+    return fallback;
+  }
+
+  private parseSafeOptionalDate(value: unknown): Date | undefined {
+    if (typeof value === 'string' || typeof value === 'number') {
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed;
+      }
+    }
+    return undefined;
+  }
+
   private loadFromStorage(): void {
     if (!this.storageFilePath || !fs.existsSync(this.storageFilePath)) {
       return;
@@ -907,12 +927,11 @@ export class PendingTransactionService {
       if (Array.isArray(data.pendingTransactions)) {
         for (const rawItem of data.pendingTransactions) {
           if (!rawItem || typeof rawItem.ticketId !== 'number') continue;
+          const fallbackExpiresAt = new Date(Date.now() + this.defaultTimeToLiveMilliseconds);
           const revivedItem: PendingTransactionItem = {
             ...rawItem,
-            createdAt: rawItem.createdAt ? new Date(rawItem.createdAt) : new Date(),
-            expiresAt: rawItem.expiresAt
-              ? new Date(rawItem.expiresAt)
-              : new Date(Date.now() + this.defaultTimeToLiveMilliseconds),
+            createdAt: this.parseSafeDate(rawItem.createdAt, new Date()),
+            expiresAt: this.parseSafeDate(rawItem.expiresAt, fallbackExpiresAt),
           };
           this.pendingTransactionMap.set(revivedItem.ticketId, revivedItem);
         }
@@ -921,15 +940,12 @@ export class PendingTransactionService {
       if (Array.isArray(data.pendingAccountSelectionDrafts)) {
         for (const rawDraft of data.pendingAccountSelectionDrafts) {
           if (!rawDraft || typeof rawDraft.ticketId !== 'number') continue;
+          const fallbackExpiresAt = new Date(Date.now() + this.defaultTimeToLiveMilliseconds);
           const revivedDraft: PendingAccountSelectionDraft = {
             ...rawDraft,
-            createdAt: rawDraft.createdAt ? new Date(rawDraft.createdAt) : new Date(),
-            expiresAt: rawDraft.expiresAt
-              ? new Date(rawDraft.expiresAt)
-              : new Date(Date.now() + this.defaultTimeToLiveMilliseconds),
-            sourceReferenceInstant: rawDraft.sourceReferenceInstant
-              ? new Date(rawDraft.sourceReferenceInstant)
-              : undefined,
+            createdAt: this.parseSafeDate(rawDraft.createdAt, new Date()),
+            expiresAt: this.parseSafeDate(rawDraft.expiresAt, fallbackExpiresAt),
+            sourceReferenceInstant: this.parseSafeOptionalDate(rawDraft.sourceReferenceInstant),
           };
           this.pendingAccountSelectionDraftMap.set(revivedDraft.ticketId, revivedDraft);
         }
@@ -938,15 +954,12 @@ export class PendingTransactionService {
       if (Array.isArray(data.pendingCategorySelectionDrafts)) {
         for (const rawDraft of data.pendingCategorySelectionDrafts) {
           if (!rawDraft || typeof rawDraft.ticketId !== 'number') continue;
+          const fallbackExpiresAt = new Date(Date.now() + this.defaultTimeToLiveMilliseconds);
           const revivedDraft: PendingCategorySelectionDraft = {
             ...rawDraft,
-            createdAt: rawDraft.createdAt ? new Date(rawDraft.createdAt) : new Date(),
-            expiresAt: rawDraft.expiresAt
-              ? new Date(rawDraft.expiresAt)
-              : new Date(Date.now() + this.defaultTimeToLiveMilliseconds),
-            sourceReferenceInstant: rawDraft.sourceReferenceInstant
-              ? new Date(rawDraft.sourceReferenceInstant)
-              : undefined,
+            createdAt: this.parseSafeDate(rawDraft.createdAt, new Date()),
+            expiresAt: this.parseSafeDate(rawDraft.expiresAt, fallbackExpiresAt),
+            sourceReferenceInstant: this.parseSafeOptionalDate(rawDraft.sourceReferenceInstant),
           };
           this.pendingCategorySelectionDraftMap.set(revivedDraft.ticketId, revivedDraft);
         }
@@ -954,7 +967,13 @@ export class PendingTransactionService {
 
       if (Array.isArray(data.dispatchStates)) {
         for (const [ticketId, state] of data.dispatchStates) {
-          if (typeof ticketId === 'number' && typeof state === 'string') {
+          if (
+            typeof ticketId === 'number' &&
+            typeof state === 'string' &&
+            (this.pendingTransactionMap.has(ticketId) ||
+              this.pendingAccountSelectionDraftMap.has(ticketId) ||
+              this.pendingCategorySelectionDraftMap.has(ticketId))
+          ) {
             const recoveredState: PendingTransactionDispatchState =
               state === TicketDispatchState.Processing
                 ? TicketDispatchState.Pending
@@ -988,15 +1007,16 @@ export class PendingTransactionService {
         }
       }
 
-      if (typeof data.nextTicketSequentialId === 'number' && data.nextTicketSequentialId > 0) {
+      const allTicketIds = [
+        ...Array.from(this.pendingTransactionMap.keys()),
+        ...Array.from(this.pendingAccountSelectionDraftMap.keys()),
+        ...Array.from(this.pendingCategorySelectionDraftMap.keys()),
+      ];
+      const maxActiveId = allTicketIds.length > 0 ? Math.max(...allTicketIds) : 0;
+      if (typeof data.nextTicketSequentialId === 'number' && data.nextTicketSequentialId > maxActiveId) {
         this.nextTicketSequentialId = data.nextTicketSequentialId;
       } else {
-        const allTicketIds = [
-          ...Array.from(this.pendingTransactionMap.keys()),
-          ...Array.from(this.pendingAccountSelectionDraftMap.keys()),
-          ...Array.from(this.pendingCategorySelectionDraftMap.keys()),
-        ];
-        this.nextTicketSequentialId = allTicketIds.length > 0 ? Math.max(...allTicketIds) + 1 : 1;
+        this.nextTicketSequentialId = maxActiveId + 1;
       }
 
       this.purgeExpiredTransactions();
@@ -1008,6 +1028,11 @@ export class PendingTransactionService {
       applicationLogger.error(
         `Failed to load pending transactions from '${this.storageFilePath}': ${error instanceof Error ? error.message : String(error)}`
       );
+      try {
+        if (fs.existsSync(this.storageFilePath)) {
+          fs.copyFileSync(this.storageFilePath, `${this.storageFilePath}.corrupted.${Date.now()}`);
+        }
+      } catch {}
     }
   }
 
@@ -1034,8 +1059,17 @@ export class PendingTransactionService {
 
       const serialized = JSON.stringify(snapshot, null, 2);
       const tempPath = `${this.storageFilePath}.tmp.${Date.now()}.${randomUUID()}`;
-      fs.writeFileSync(tempPath, serialized, 'utf-8');
-      fs.renameSync(tempPath, this.storageFilePath);
+      try {
+        fs.writeFileSync(tempPath, serialized, 'utf-8');
+        fs.renameSync(tempPath, this.storageFilePath);
+      } catch (writeError) {
+        if (fs.existsSync(tempPath)) {
+          try {
+            fs.unlinkSync(tempPath);
+          } catch {}
+        }
+        throw writeError;
+      }
     } catch (error) {
       applicationLogger.error(
         `Failed to persist pending transactions to '${this.storageFilePath}': ${error instanceof Error ? error.message : String(error)}`

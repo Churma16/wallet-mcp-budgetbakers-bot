@@ -368,7 +368,7 @@ export class PendingActionHandler {
       ? -Math.abs(item.amount)
       : Math.abs(item.amount);
 
-    let resolvedCategoryId = item.matchedCategoryId;
+    let resolvedCategoryId = item.matchedCategoryId?.trim() || undefined;
     if (resolvedCategoryId && this.walletCacheService) {
       const category = this.walletCacheService
         .getCategories()

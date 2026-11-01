@@ -121,7 +121,7 @@ export function resolveEmailExtractedEntities(
     }
   }
 
-  if (parsedData.matchedCategoryId) {
+  if (parsedData.matchedCategoryId && parsedData.matchedCategoryId.trim().length > 0) {
     const rawCatVal = parsedData.matchedCategoryId.trim();
     const cleanCatVal = rawCatVal.replace(/\s*\[.*?\]/g, '').trim();
 
@@ -152,6 +152,9 @@ export function resolveEmailExtractedEntities(
         parsedData.matchedCategoryName = undefined;
       }
     }
+  } else if (parsedData.matchedCategoryId !== undefined) {
+    parsedData.matchedCategoryId = undefined;
+    parsedData.matchedCategoryName = undefined;
   }
 
   if (!parsedData.amount && gateResult.candidateAmount) {
