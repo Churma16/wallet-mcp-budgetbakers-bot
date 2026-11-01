@@ -43,7 +43,7 @@ export class CategoryClarificationHandler {
   private readonly recordPreparationService: WalletRecordPreparationService;
   private readonly conversationService: CategoryClarificationConversationService;
   private readonly dispatchLockedTicketIds = new Set<number>();
-  private readonly promptDeliveryPromises = new Map<number, Promise<void>>();
+  private readonly promptDeliveryPromises = new Map<number, Promise<unknown>>();
 
   constructor(
     private readonly pendingTransactionManager: PendingTransactionService,

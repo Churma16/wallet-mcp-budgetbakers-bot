@@ -21,6 +21,8 @@ import type {
   TransactionHistoryPage,
   CreateRecordInputPayload,
   WalletCreateRecordsResponse,
+  PatchRecordInputPayload,
+  WalletPatchRecordsResponse,
   WalletRecordAggregationQueryPayload,
   WalletRecordAggregationResponse,
 } from '../types.js';
@@ -47,7 +49,7 @@ import {
   type EntityCacheStore,
 } from '../entities.js';
 import { fetchRecords } from '../history/history.js';
-import { createRecords } from '../records/records.js';
+import { createRecords, patchRecords } from '../records/records.js';
 import { validateCreateRecordsResponse } from '../records/recordValidation.js';
 import {
   fetchRecordsAggregation,
@@ -317,6 +319,10 @@ export class WalletMcpClient {
 
   public createRecords(recordsPayload: CreateRecordInputPayload[]): Promise<WalletCreateRecordsResponse> {
     return createRecords(this, recordsPayload);
+  }
+
+  public patchRecords(patchesPayload: PatchRecordInputPayload[]): Promise<WalletPatchRecordsResponse> {
+    return patchRecords(this, patchesPayload);
   }
 
   public fetchRecordsAggregation(

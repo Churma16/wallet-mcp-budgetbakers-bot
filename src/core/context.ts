@@ -11,6 +11,7 @@ import {
   TransactionHistoryService,
   TransactionSummaryService,
   WalletRecordPreparationService,
+  TransactionMessageStore,
 } from '../wallet/index.js';
 import {
   createFinancialAiProvider,
@@ -41,6 +42,7 @@ export interface AppContext {
     readonly history: TransactionHistoryService;
     readonly summary: TransactionSummaryService;
     readonly recordPreparation: WalletRecordPreparationService;
+    readonly transactionMessages: TransactionMessageStore;
   };
   readonly brain: {
     readonly provider: FinancialAiProvider;
@@ -83,6 +85,7 @@ export function createAppContext(customConfig?: ApplicationEnvironmentConfigurat
     walletCapabilities
   );
   const walletRecordPreparation = new WalletRecordPreparationService(walletCache, walletClient);
+  const transactionMessages = new TransactionMessageStore(config.transactionMessageStoragePath);
 
   const categoryContext = new CategoryContextService(config.categoryContextFilePath);
   const brainProvider = createFinancialAiProvider(config, categoryContext);
@@ -103,6 +106,7 @@ export function createAppContext(customConfig?: ApplicationEnvironmentConfigurat
       history: walletHistory,
       summary: walletSummary,
       recordPreparation: walletRecordPreparation,
+      transactionMessages,
     },
     brain: {
       provider: brainProvider,

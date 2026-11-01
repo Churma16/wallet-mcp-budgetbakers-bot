@@ -10,15 +10,21 @@ export interface IncomingUserMessageEvent {
   textPayload?: string;
   imageBuffer?: Buffer;
   imageMimeType?: string;
+  replyToMessageId?: string;
+  replyToMessageText?: string;
 }
 
 export type UserMessageCallback = (incomingEvent: IncomingUserMessageEvent) => Promise<void>;
+
+export interface SentMessageReceipt {
+  readonly messageId?: string;
+}
 
 export interface MessagingAdapter {
   readonly channelName: SupportedMessengerChannel;
   startConnection(): Promise<void>;
   stopConnection?(): Promise<void>;
-  sendTextMessage(targetChatIdentifier: string, messageText: string): Promise<void>;
+  sendTextMessage(targetChatIdentifier: string, messageText: string): Promise<SentMessageReceipt | void>;
   sendTypingPresence(targetChatIdentifier: string): Promise<void>;
   clearTypingPresence(targetChatIdentifier: string): Promise<void>;
   sendBroadcastNotification(messageText: string): Promise<void>;

@@ -95,6 +95,39 @@ export interface WalletCreateRecordsResponse {
   }>;
 }
 
+export interface PatchRecordInputPayload {
+  id: string;
+  amount?: number;
+  categoryId?: string;
+  categoryName?: string;
+  labelIds?: string[];
+  labels?: string[];
+  note?: string;
+  counterParty?: string;
+  recordDate?: string;
+}
+
+export interface WalletPatchRecordsResponse {
+  summary?: {
+    total: number;
+    succeeded: number;
+    failed?: number;
+    clientErrors?: number;
+    serverErrors?: number;
+    documentsWritten?: number;
+  };
+  agentHints?: WalletAgentHint[];
+  results?: Array<{
+    id?: string;
+    inputIndex?: number;
+    success: boolean;
+    error?: string;
+    errorType?: string;
+    fields?: string[];
+    record?: Record<string, unknown>;
+  }>;
+}
+
 export interface WalletBudgetItem {
   id: string;
   name: string;

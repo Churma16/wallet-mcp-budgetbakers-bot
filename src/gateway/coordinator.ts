@@ -4,6 +4,7 @@ import {
   AdapterConnectionState,
   MessagingAdapter,
   MessagingGatewayConfiguration,
+  SentMessageReceipt,
   SupportedMessengerChannel,
 } from './types.js';
 
@@ -238,7 +239,7 @@ export class MessagingGatewayService {
     channel: SupportedMessengerChannel,
     targetChatIdentifier: string,
     messageText: string
-  ): Promise<void> {
+  ): Promise<SentMessageReceipt | void> {
     const adapter = this.adapterMap.get(channel);
     if (!adapter) {
       throw new Error(`[error] Cannot send message: adapter for channel '${channel}' is not registered.`);
@@ -254,7 +255,7 @@ export class MessagingGatewayService {
       );
     }
 
-    await adapter.sendTextMessage(targetChatIdentifier, messageText);
+    return await adapter.sendTextMessage(targetChatIdentifier, messageText);
   }
 
   public async sendTypingPresence(

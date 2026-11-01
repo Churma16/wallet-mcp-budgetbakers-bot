@@ -5,6 +5,7 @@ import {
   WalletMcpRequestError,
   isWalletMcpDefinitiveFailure,
   isWalletMcpDispatchOutcomeUnknown,
+  TransactionMessageStore,
 } from '../../wallet/index.js';
 import { MessagingGatewayService, IncomingUserMessageEvent } from '../../gateway/index.js';
 import { EmailListenerService } from '../../email/index.js';
@@ -45,7 +46,8 @@ export class PendingActionHandler {
     private readonly walletMcpClient: WalletMcpClientService,
     private readonly messagingGateway: MessagingGatewayService,
     private readonly emailListenerServiceGetter: () => EmailListenerService | null,
-    private readonly walletCacheService?: WalletCacheService
+    private readonly walletCacheService?: WalletCacheService,
+    private readonly transactionMessageStore?: TransactionMessageStore
   ) {}
 
   /**
@@ -212,11 +214,17 @@ export class PendingActionHandler {
 
     applicationLogger.mcp(`Processing ${itemsToRecord.length} claimed transaction(s) individually...`);
 
+    const createdRecordIds = new Map<number, string>();
+
     for (const item of itemsToRecord) {
       try {
         const recordsForThisTransaction = this.buildRecordsForPendingItem(item);
         applicationLogger.mcp(`[Ticket #${item.ticketId}] Submitting transaction...`);
-        await this.walletMcpClient.createRecords(recordsForThisTransaction);
+        const createResult = await this.walletMcpClient.createRecords(recordsForThisTransaction);
+        const createdId = createResult?.results?.[0]?.id;
+        if (createdId) {
+          createdRecordIds.set(item.ticketId, createdId);
+        }
 
         if (activeEmailListener) {
           const allRefs = Array.from(
@@ -273,7 +281,8 @@ export class PendingActionHandler {
       itemsToRecord,
       successfulTickets,
       retryableFailedTickets,
-      uncertainTickets
+      uncertainTickets,
+      createdRecordIds
     );
 
     applicationLogger.info(
@@ -396,7 +405,8 @@ export class PendingActionHandler {
     itemsToRecord: PendingTransactionItem[],
     successfulTickets: number[],
     retryableFailedTickets: number[],
-    uncertainTickets: number[]
+    uncertainTickets: number[],
+    createdRecordIds?: Map<number, string>
   ): Promise<void> {
     if (
       successfulTickets.length === itemsToRecord.length &&
@@ -407,7 +417,29 @@ export class PendingActionHandler {
       const replyMessage = successfulItems.length === 1
         ? formatPendingConfirmationSuccess(successfulItems[0])
         : formatBulkPendingConfirmationSuccess(successfulItems);
-      await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
+      const sendReceipt = await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
+      if (
+        sendReceipt &&
+        'messageId' in sendReceipt &&
+        sendReceipt.messageId &&
+        successfulItems.length === 1 &&
+        this.transactionMessageStore &&
+        createdRecordIds
+      ) {
+        const item = successfulItems[0];
+        const recordId = createdRecordIds.get(item.ticketId);
+        if (recordId) {
+          this.transactionMessageStore.recordMessageMapping(sendReceipt.messageId, {
+            recordId,
+            accountId: item.matchedAccountId,
+            note: item.note,
+            categoryId: item.matchedCategoryId,
+            amount: item.amount,
+            counterParty: item.counterParty,
+            channel: event.channel,
+          });
+        }
+      }
       return;
     }
 
