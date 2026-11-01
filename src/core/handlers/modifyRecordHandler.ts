@@ -10,7 +10,6 @@ import {
   resolveAndEnsureLabels,
   TransactionMessageStore,
 } from '../../wallet/index.js';
-import type { PendingTransactionService } from '../pending.js';
 import { applicationLogger } from '../../lib/logger.js';
 
 /**
@@ -22,8 +21,7 @@ export class ModifyRecordHandler {
     private readonly walletMcpClient: WalletMcpClientService,
     private readonly walletCacheService: WalletCacheService,
     private readonly messagingGateway: MessagingGatewayService,
-    private readonly transactionMessageStore: TransactionMessageStore,
-    private readonly pendingTransactionService?: PendingTransactionService
+    private readonly transactionMessageStore: TransactionMessageStore
   ) {}
 
   public async handleModifyRecordReply(
@@ -46,13 +44,6 @@ export class ModifyRecordHandler {
 
     const mapping = this.transactionMessageStore.getMessageMapping(event.replyToMessageId);
     if (!mapping) {
-      // Check if replying to a pending ticket message (e.g., "Tiket #12")
-      const pendingMatch = event.replyToMessageText?.match(/Tiket\s+#?(\d+)/i);
-      if (pendingMatch && this.pendingTransactionService) {
-        const ticketId = Number.parseInt(pendingMatch[1], 10);
-        return await this.handlePendingTicketEdit(event, ticketId, editCommand);
-      }
-
       await this.messagingGateway.sendMessage(
         event.channel,
         event.chatIdentifier,
@@ -185,97 +176,6 @@ export class ModifyRecordHandler {
       );
       return true;
     }
-  }
-
-  private async handlePendingTicketEdit(
-    event: IncomingUserMessageEvent,
-    ticketId: number,
-    editCommand: NonNullable<ReturnType<typeof parseRecordEditCommand>>
-  ): Promise<boolean> {
-    if (!this.pendingTransactionService) return false;
-
-    const pendingItem = this.pendingTransactionService.getPendingTransaction(ticketId);
-    if (!pendingItem) {
-      await this.messagingGateway.sendMessage(
-        event.channel,
-        event.chatIdentifier,
-        `⚠️ Draft Tiket #${ticketId} tidak ditemukan atau sudah diproses.`
-      );
-      return true;
-    }
-
-    let resolvedCategoryName: string | undefined;
-    if (editCommand.categoryName) {
-      const match = this.findAssignableCategory(editCommand.categoryName);
-      if (!match) {
-        await this.messagingGateway.sendMessage(
-          event.channel,
-          event.chatIdentifier,
-          `⚠️ Kategori "${editCommand.categoryName}" tidak ditemukan atau tidak dapat digunakan.`
-        );
-        return true;
-      }
-      pendingItem.matchedCategoryId = match.id;
-      pendingItem.matchedCategoryName = match.name;
-      resolvedCategoryName = match.name;
-    }
-
-    let resolvedAmount: number | undefined;
-    if (editCommand.amount !== undefined) {
-      if (editCommand.amount === 0) {
-        await this.messagingGateway.sendMessage(
-          event.channel,
-          event.chatIdentifier,
-          '⚠️ Nominal transaksi tidak boleh bernilai 0.'
-        );
-        return true;
-      }
-      if (pendingItem.amount !== undefined && pendingItem.amount < 0 && !editCommand.hasExplicitPositiveSign) {
-        resolvedAmount = -Math.abs(editCommand.amount);
-      } else {
-        resolvedAmount = editCommand.amount;
-      }
-      pendingItem.amount = resolvedAmount;
-    }
-
-    if (editCommand.note !== undefined) {
-      pendingItem.note = editCommand.note;
-    }
-    if (editCommand.counterParty !== undefined) {
-      pendingItem.counterParty = editCommand.counterParty;
-    }
-    if (editCommand.tags && editCommand.tags.length > 0) {
-      pendingItem.labels = editCommand.tags;
-    }
-
-    this.pendingTransactionService.enrichPendingTransaction(ticketId, {
-      ...(pendingItem.matchedCategoryId ? { matchedCategoryId: pendingItem.matchedCategoryId, matchedCategoryName: pendingItem.matchedCategoryName } : {}),
-      ...(editCommand.note !== undefined ? { note: editCommand.note } : {}),
-      ...(resolvedAmount !== undefined ? { amount: resolvedAmount } : {}),
-      ...(editCommand.counterParty !== undefined ? { counterParty: editCommand.counterParty } : {}),
-      ...(editCommand.tags && editCommand.tags.length > 0 ? { labels: editCommand.tags } : {}),
-    });
-
-    const lines = [`✅ *Draft Tiket #${ticketId} berhasil diperbarui:*`];
-    if (resolvedCategoryName) {
-      lines.push(`• *Kategori:* ${resolvedCategoryName}`);
-    }
-    if (editCommand.note !== undefined) {
-      lines.push(`• *Catatan:* ${editCommand.note}`);
-    }
-    if (editCommand.tags && editCommand.tags.length > 0) {
-      lines.push(`• *Tag:* ${editCommand.tags.map(t => `#${t.replace(/^#/, '')}`).join(' ')}`);
-    }
-    if (resolvedAmount !== undefined) {
-      const sign = resolvedAmount < 0 ? '-' : '';
-      lines.push(`• *Nominal:* ${sign}Rp ${Math.abs(resolvedAmount).toLocaleString('id-ID')}`);
-    }
-    if (editCommand.counterParty !== undefined) {
-      lines.push(`• *Penerima/Merchant:* ${editCommand.counterParty}`);
-    }
-
-    await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, lines.join('\n'));
-    return true;
   }
 
   private findAssignableCategory(nameOrIdHint: string): WalletCategoryItem | undefined {

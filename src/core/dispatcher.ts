@@ -318,8 +318,7 @@ export class MessageDispatcher {
           context.wallet.client,
           context.wallet.cache,
           context.gateway,
-          context.wallet.transactionMessages,
-          context.pending
+          context.wallet.transactionMessages
         );
 
       this.fastPathHandler =
@@ -468,8 +467,7 @@ export class MessageDispatcher {
         walletMcpClient as any,
         walletCacheService as any,
         messagingGateway,
-        this.context.wallet.transactionMessages,
-        pendingTransactionManager
+        this.context.wallet.transactionMessages
       );
     }
   }

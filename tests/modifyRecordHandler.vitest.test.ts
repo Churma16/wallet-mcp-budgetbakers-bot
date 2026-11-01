@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ModifyRecordHandler } from '../src/core/handlers/modifyRecordHandler.js';
 import { TransactionMessageStore } from '../src/wallet/records/transactionMessageStore.js';
-import { PendingTransactionService } from '../src/core/pending.js';
 import type { WalletCacheService, WalletMcpClientService, WalletCategoryItem } from '../src/wallet/index.js';
 import type { MessagingGatewayService, IncomingUserMessageEvent } from '../src/gateway/index.js';
 
@@ -10,7 +9,6 @@ describe('ModifyRecordHandler', () => {
   let mockCache: WalletCacheService;
   let mockGateway: MessagingGatewayService;
   let store: TransactionMessageStore;
-  let pendingService: PendingTransactionService;
   let handler: ModifyRecordHandler;
 
   const sampleCategories: WalletCategoryItem[] = [
@@ -48,14 +46,12 @@ describe('ModifyRecordHandler', () => {
     } as unknown as MessagingGatewayService;
 
     store = new TransactionMessageStore();
-    pendingService = new PendingTransactionService();
 
     handler = new ModifyRecordHandler(
       mockClient,
       mockCache,
       mockGateway,
-      store,
-      pendingService
+      store
     );
   });
 
@@ -316,61 +312,6 @@ describe('ModifyRecordHandler', () => {
 
     const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
     expect(sentMessage).toContain('tidak ditemukan atau tidak dapat digunakan');
-  });
-
-  it('edits a pending ticket when replying to a pending ticket notification with labels and sign preservation', async () => {
-    const item = pendingService.addPendingTransaction({
-      sourceType: 'EMAIL',
-      bankDisplayName: 'BCA',
-      accountNameHint: 'BCA',
-      counterParty: 'Merchant',
-      amount: -50000,
-      transactionType: 'EXPENSE',
-      matchedAccountId: 'acc-bca',
-      note: 'Old pending note',
-      recordDate: '2026-10-22T03:34:03Z',
-    });
-
-    const event: IncomingUserMessageEvent = {
-      channel: 'telegram',
-      senderIdentifier: 'user-1',
-      chatIdentifier: 'chat-1',
-      messageType: 'text',
-      textPayload: 'n: Updated note c: Transportasi t: #kantor, #operasional a: 45k',
-      replyToMessageId: 'pending-alert-msg',
-      replyToMessageText: `Konfirmasi transaksi Tiket #${item.ticketId}: Rp 50.000`,
-    };
-
-    const handled = await handler.handleModifyRecordReply(event, Date.now());
-    expect(handled).toBe(true);
-
-    const updated = pendingService.getPendingTransaction(item.ticketId);
-    expect(updated?.note).toBe('Updated note');
-    expect(updated?.matchedCategoryId).toBe('cat-transport');
-    expect(updated?.labels).toEqual(['kantor', 'operasional']);
-    // Amount preserved negative
-    expect(updated?.amount).toBe(-45000);
-
-    const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
-    expect(sentMessage).toContain(`Draft Tiket #${item.ticketId} berhasil diperbarui`);
-  });
-
-  it('warns user when editing a non-existent or settled pending ticket', async () => {
-    const event: IncomingUserMessageEvent = {
-      channel: 'telegram',
-      senderIdentifier: 'user-1',
-      chatIdentifier: 'chat-1',
-      messageType: 'text',
-      textPayload: 'c: Transportasi',
-      replyToMessageId: 'pending-old',
-      replyToMessageText: 'Konfirmasi transaksi Tiket #999',
-    };
-
-    const handled = await handler.handleModifyRecordReply(event, Date.now());
-    expect(handled).toBe(true);
-
-    const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
-    expect(sentMessage).toContain('Draft Tiket #999 tidak ditemukan atau sudah diproses');
   });
 
   it('handles MCP patch failure and informs user', async () => {
