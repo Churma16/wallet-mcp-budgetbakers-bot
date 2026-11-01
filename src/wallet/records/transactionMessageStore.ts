@@ -133,7 +133,10 @@ export class TransactionMessageStore {
       if (Array.isArray(data.mappings)) {
         for (const [msgId, mapping] of data.mappings) {
           if (typeof msgId === 'string' && mapping && typeof mapping.recordId === 'string') {
-            this.mappingMap.set(msgId, mapping);
+            this.mappingMap.set(msgId, {
+              ...mapping,
+              createdAt: typeof mapping.createdAt === 'number' && !Number.isNaN(mapping.createdAt) ? mapping.createdAt : Date.now(),
+            });
           }
         }
       }

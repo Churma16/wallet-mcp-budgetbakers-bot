@@ -280,7 +280,13 @@ export class CreateRecordActionHandler implements FinancialActionHandler<typeof 
       replyMessage.trim()
     );
 
-    if (sendReceipt && 'messageId' in sendReceipt && sendReceipt.messageId && creationResponse?.results?.[0]?.id) {
+    if (
+      sendReceipt &&
+      'messageId' in sendReceipt &&
+      sendReceipt.messageId &&
+      validRecordsToCreate.length === 1 &&
+      creationResponse?.results?.[0]?.id
+    ) {
       const firstRecord = validRecordsToCreate[0];
       this.transactionMessageStore?.recordMessageMapping(sendReceipt.messageId, {
         recordId: creationResponse.results[0].id,

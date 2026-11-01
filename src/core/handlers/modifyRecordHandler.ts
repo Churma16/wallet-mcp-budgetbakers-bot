@@ -50,7 +50,7 @@ export class ModifyRecordHandler {
       const pendingMatch = event.replyToMessageText?.match(/Tiket\s+#?(\d+)/i);
       if (pendingMatch && this.pendingTransactionService) {
         const ticketId = Number.parseInt(pendingMatch[1], 10);
-        return this.handlePendingTicketEdit(event, ticketId, editCommand);
+        return await this.handlePendingTicketEdit(event, ticketId, editCommand);
       }
 
       await this.messagingGateway.sendMessage(
@@ -91,27 +91,45 @@ export class ModifyRecordHandler {
       resolvedLabelNames = labelResolution.resolvedLabelNames;
     }
 
+    let resolvedAmount: number | undefined;
+    if (editCommand.amount !== undefined) {
+      if (editCommand.amount === 0) {
+        await this.messagingGateway.sendMessage(
+          event.channel,
+          event.chatIdentifier,
+          '⚠️ Nominal transaksi tidak boleh bernilai 0.'
+        );
+        return true;
+      }
+      // Preserve negative expense sign if original transaction was an expense and no explicit '+' was provided
+      if (mapping.amount !== undefined && mapping.amount < 0 && !editCommand.hasExplicitPositiveSign) {
+        resolvedAmount = -Math.abs(editCommand.amount);
+      } else {
+        resolvedAmount = editCommand.amount;
+      }
+    }
+
     const patchPayload: PatchRecordInputPayload = {
       id: mapping.recordId,
       ...(resolvedCategoryId ? { categoryId: resolvedCategoryId } : {}),
       ...(resolvedLabelIds ? { labelIds: resolvedLabelIds } : {}),
       ...(editCommand.note !== undefined ? { note: editCommand.note } : {}),
-      ...(editCommand.amount !== undefined ? { amount: editCommand.amount } : {}),
+      ...(resolvedAmount !== undefined ? { amount: resolvedAmount } : {}),
       ...(editCommand.counterParty !== undefined ? { counterParty: editCommand.counterParty } : {}),
     };
 
     try {
       const patchResult = await this.walletMcpClient.patchRecords([patchPayload]);
       const singleResult = patchResult.results?.[0];
-      if (singleResult && singleResult.success === false) {
-        throw new Error(singleResult.error || 'Gagal memperbarui rekor di Wallet MCP');
+      if (!singleResult || singleResult.success === false) {
+        throw new Error(singleResult?.error || 'Gagal memperbarui rekor di Wallet MCP');
       }
 
       this.transactionMessageStore.updateMessageMapping(event.replyToMessageId, {
         ...(resolvedCategoryId ? { categoryId: resolvedCategoryId, categoryName: resolvedCategoryName } : {}),
         ...(resolvedLabelIds ? { labelIds: resolvedLabelIds, labels: resolvedLabelNames } : {}),
         ...(editCommand.note !== undefined ? { note: editCommand.note } : {}),
-        ...(editCommand.amount !== undefined ? { amount: editCommand.amount } : {}),
+        ...(resolvedAmount !== undefined ? { amount: resolvedAmount } : {}),
         ...(editCommand.counterParty !== undefined ? { counterParty: editCommand.counterParty } : {}),
       });
 
@@ -125,19 +143,32 @@ export class ModifyRecordHandler {
       if (resolvedLabelNames && resolvedLabelNames.length > 0) {
         responseLines.push(`• *Tag:* ${resolvedLabelNames.map(t => `#${t.replace(/^#/, '')}`).join(' ')}`);
       }
-      if (editCommand.amount !== undefined) {
-        const sign = editCommand.amount < 0 ? '-' : '';
-        responseLines.push(`• *Nominal:* ${sign}Rp ${Math.abs(editCommand.amount).toLocaleString('id-ID')}`);
+      if (resolvedAmount !== undefined) {
+        const sign = resolvedAmount < 0 ? '-' : '';
+        responseLines.push(`• *Nominal:* ${sign}Rp ${Math.abs(resolvedAmount).toLocaleString('id-ID')}`);
       }
       if (editCommand.counterParty !== undefined) {
         responseLines.push(`• *Penerima/Merchant:* ${editCommand.counterParty}`);
       }
 
-      await this.messagingGateway.sendMessage(
+      const sendReceipt = await this.messagingGateway.sendMessage(
         event.channel,
         event.chatIdentifier,
         responseLines.join('\n')
       );
+
+      // Support chained edits by recording the new response message ID
+      if (sendReceipt && 'messageId' in sendReceipt && sendReceipt.messageId) {
+        this.transactionMessageStore.recordMessageMapping(sendReceipt.messageId, {
+          ...mapping,
+          ...(resolvedCategoryId ? { categoryId: resolvedCategoryId, categoryName: resolvedCategoryName } : {}),
+          ...(resolvedLabelIds ? { labelIds: resolvedLabelIds, labels: resolvedLabelNames } : {}),
+          ...(editCommand.note !== undefined ? { note: editCommand.note } : {}),
+          ...(resolvedAmount !== undefined ? { amount: resolvedAmount } : {}),
+          ...(editCommand.counterParty !== undefined ? { counterParty: editCommand.counterParty } : {}),
+        });
+      }
+
       return true;
     } catch (patchError) {
       applicationLogger.error(
@@ -156,43 +187,73 @@ export class ModifyRecordHandler {
     }
   }
 
-  private handlePendingTicketEdit(
+  private async handlePendingTicketEdit(
     event: IncomingUserMessageEvent,
     ticketId: number,
-    editCommand: ReturnType<typeof parseRecordEditCommand>
-  ): boolean {
-    if (!this.pendingTransactionService || !editCommand) return false;
+    editCommand: NonNullable<ReturnType<typeof parseRecordEditCommand>>
+  ): Promise<boolean> {
+    if (!this.pendingTransactionService) return false;
 
     const pendingItem = this.pendingTransactionService.getPendingTransaction(ticketId);
     if (!pendingItem) {
-      return false;
+      await this.messagingGateway.sendMessage(
+        event.channel,
+        event.chatIdentifier,
+        `⚠️ Draft Tiket #${ticketId} tidak ditemukan atau sudah diproses.`
+      );
+      return true;
     }
 
     let resolvedCategoryName: string | undefined;
     if (editCommand.categoryName) {
       const match = this.findAssignableCategory(editCommand.categoryName);
-      if (match) {
-        pendingItem.matchedCategoryId = match.id;
-        pendingItem.matchedCategoryName = match.name;
-        resolvedCategoryName = match.name;
+      if (!match) {
+        await this.messagingGateway.sendMessage(
+          event.channel,
+          event.chatIdentifier,
+          `⚠️ Kategori "${editCommand.categoryName}" tidak ditemukan atau tidak dapat digunakan.`
+        );
+        return true;
       }
+      pendingItem.matchedCategoryId = match.id;
+      pendingItem.matchedCategoryName = match.name;
+      resolvedCategoryName = match.name;
+    }
+
+    let resolvedAmount: number | undefined;
+    if (editCommand.amount !== undefined) {
+      if (editCommand.amount === 0) {
+        await this.messagingGateway.sendMessage(
+          event.channel,
+          event.chatIdentifier,
+          '⚠️ Nominal transaksi tidak boleh bernilai 0.'
+        );
+        return true;
+      }
+      if (pendingItem.amount !== undefined && pendingItem.amount < 0 && !editCommand.hasExplicitPositiveSign) {
+        resolvedAmount = -Math.abs(editCommand.amount);
+      } else {
+        resolvedAmount = editCommand.amount;
+      }
+      pendingItem.amount = resolvedAmount;
     }
 
     if (editCommand.note !== undefined) {
       pendingItem.note = editCommand.note;
     }
-    if (editCommand.amount !== undefined) {
-      pendingItem.amount = editCommand.amount;
-    }
     if (editCommand.counterParty !== undefined) {
       pendingItem.counterParty = editCommand.counterParty;
+    }
+    if (editCommand.tags && editCommand.tags.length > 0) {
+      pendingItem.labels = editCommand.tags;
     }
 
     this.pendingTransactionService.enrichPendingTransaction(ticketId, {
       ...(pendingItem.matchedCategoryId ? { matchedCategoryId: pendingItem.matchedCategoryId, matchedCategoryName: pendingItem.matchedCategoryName } : {}),
       ...(editCommand.note !== undefined ? { note: editCommand.note } : {}),
-      ...(editCommand.amount !== undefined ? { amount: editCommand.amount } : {}),
+      ...(resolvedAmount !== undefined ? { amount: resolvedAmount } : {}),
       ...(editCommand.counterParty !== undefined ? { counterParty: editCommand.counterParty } : {}),
+      ...(editCommand.tags && editCommand.tags.length > 0 ? { labels: editCommand.tags } : {}),
     });
 
     const lines = [`✅ *Draft Tiket #${ticketId} berhasil diperbarui:*`];
@@ -202,15 +263,18 @@ export class ModifyRecordHandler {
     if (editCommand.note !== undefined) {
       lines.push(`• *Catatan:* ${editCommand.note}`);
     }
-    if (editCommand.amount !== undefined) {
-      const sign = editCommand.amount < 0 ? '-' : '';
-      lines.push(`• *Nominal:* ${sign}Rp ${Math.abs(editCommand.amount).toLocaleString('id-ID')}`);
+    if (editCommand.tags && editCommand.tags.length > 0) {
+      lines.push(`• *Tag:* ${editCommand.tags.map(t => `#${t.replace(/^#/, '')}`).join(' ')}`);
+    }
+    if (resolvedAmount !== undefined) {
+      const sign = resolvedAmount < 0 ? '-' : '';
+      lines.push(`• *Nominal:* ${sign}Rp ${Math.abs(resolvedAmount).toLocaleString('id-ID')}`);
     }
     if (editCommand.counterParty !== undefined) {
       lines.push(`• *Penerima/Merchant:* ${editCommand.counterParty}`);
     }
 
-    this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, lines.join('\n'));
+    await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, lines.join('\n'));
     return true;
   }
 

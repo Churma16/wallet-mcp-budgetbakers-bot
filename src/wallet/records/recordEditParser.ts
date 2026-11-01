@@ -7,27 +7,36 @@ export interface ParsedRecordEditCommand {
   readonly tags?: string[];
   readonly note?: string;
   readonly amount?: number;
+  readonly hasExplicitPositiveSign?: boolean;
   readonly counterParty?: string;
   readonly hasModifications: boolean;
 }
 
-const EDIT_KEY_PATTERN = /(?:^|\s+)(c|cat|kategori|t|tag|tags|label|labels|n|note|d|des|deskripsi|catatan|a|amt|amount|nominal|p|payee|m|merchant):\s*([^]*?)(?=(?:\s+(?:c|cat|kategori|t|tag|tags|label|labels|n|note|d|des|deskripsi|catatan|a|amt|amount|nominal|p|payee|m|merchant):)|$)/gi;
+const KEY_NAME_REGEX = /(?:^|\s+)(c|cat|kategori|t|tag|tags|label|labels|n|note|d|des|deskripsi|catatan|a|amt|amount|nominal|p|payee|m|merchant):\s*/gi;
 
 /**
- * Normalizes an amount string, supporting formats like 25000, -25000, 25.000, or 25k.
+ * Normalizes an amount string, supporting formats like 25000, -25000, 25.000, Rp 25k, or -Rp 50rb.
  */
-function parseAmountHint(rawAmount: string): number | undefined {
+function parseAmountHint(rawAmount: string): { amount: number; hasExplicitPositiveSign: boolean } | undefined {
   const trimmed = rawAmount.trim();
   if (!trimmed) return undefined;
 
   let sign = 1;
-  let cleaned = trimmed;
+  let hasExplicitPositiveSign = false;
+
+  // Strip currency prefixes before sign (e.g. "Rp-50000" or "Rp 50000")
+  let cleaned = trimmed.replace(/^(?:rp|idr)\.?\s*/i, '').trim();
+
   if (cleaned.startsWith('-')) {
     sign = -1;
     cleaned = cleaned.slice(1).trim();
   } else if (cleaned.startsWith('+')) {
+    hasExplicitPositiveSign = true;
     cleaned = cleaned.slice(1).trim();
   }
+
+  // Also strip currency prefixes after sign (e.g. "-Rp 50000")
+  cleaned = cleaned.replace(/^(?:rp|idr)\.?\s*/i, '').trim();
 
   // Handle shorthand suffix like 25k or 25rb
   let multiplier = 1;
@@ -37,7 +46,7 @@ function parseAmountHint(rawAmount: string): number | undefined {
   } else if (/rb$/i.test(cleaned)) {
     multiplier = 1000;
     cleaned = cleaned.replace(/rb$/i, '').trim();
-  } else if (/jt$/i.test(cleaned) || /m$/i.test(cleaned)) {
+  } else if (/(?:jt|m)$/i.test(cleaned)) {
     multiplier = 1000000;
     cleaned = cleaned.replace(/(?:jt|m)$/i, '').trim();
   }
@@ -49,7 +58,10 @@ function parseAmountHint(rawAmount: string): number | undefined {
   const parsed = Number.parseFloat(cleaned);
   if (Number.isNaN(parsed)) return undefined;
 
-  return sign * parsed * multiplier;
+  return {
+    amount: sign * parsed * multiplier,
+    hasExplicitPositiveSign,
+  };
 }
 
 /**
@@ -69,6 +81,12 @@ function parseTagsHint(rawTags: string): string[] {
     }
   }
   return tags;
+}
+
+interface KeyToken {
+  key: string;
+  tokenStart: number;
+  valStart: number;
 }
 
 /**
@@ -95,8 +113,26 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
     text = text.replace(explicitPrefixPattern, '').trim();
   }
 
-  const matches = Array.from(text.matchAll(EDIT_KEY_PATTERN));
-  if (matches.length === 0) {
+  // Linear scan for key tokens without backtracking
+  const tokens: KeyToken[] = [];
+  KEY_NAME_REGEX.lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = KEY_NAME_REGEX.exec(text)) !== null) {
+    tokens.push({
+      key: match[1].toLowerCase(),
+      tokenStart: match.index,
+      valStart: match.index + match[0].length,
+    });
+  }
+
+  if (tokens.length === 0) {
+    return null;
+  }
+
+  // Shorthand commands without explicit 'e'/'edit' prefix MUST start at index 0
+  // to avoid hijacking ordinary conversational replies containing colons (e.g. smileys "c:" or "note: ...")
+  if (!hasExplicitPrefix && tokens[0].tokenStart !== 0) {
     return null;
   }
 
@@ -104,14 +140,17 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
   let tags: string[] | undefined;
   let note: string | undefined;
   let amount: number | undefined;
+  let hasExplicitPositiveSign: boolean | undefined;
   let counterParty: string | undefined;
 
-  for (const match of matches) {
-    const rawKey = match[1].toLowerCase();
-    const rawVal = match[2]?.trim();
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    const valEnd = i + 1 < tokens.length ? tokens[i + 1].tokenStart : text.length;
+    const rawVal = text.slice(token.valStart, valEnd).trim();
+
     if (!rawVal) continue;
 
-    switch (rawKey) {
+    switch (token.key) {
       case 'c':
       case 'cat':
       case 'kategori':
@@ -136,21 +175,27 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
       case 'des':
       case 'deskripsi':
       case 'catatan':
-        note = rawVal.slice(0, 255);
+        // Safeguard UTF-16 surrogate pairs during truncation
+        note = Array.from(rawVal).slice(0, 255).join('');
         break;
 
       case 'a':
       case 'amt':
       case 'amount':
-      case 'nominal':
-        amount = parseAmountHint(rawVal);
+      case 'nominal': {
+        const parsedAmount = parseAmountHint(rawVal);
+        if (parsedAmount !== undefined) {
+          amount = parsedAmount.amount;
+          hasExplicitPositiveSign = parsedAmount.hasExplicitPositiveSign;
+        }
         break;
+      }
 
       case 'p':
       case 'payee':
       case 'm':
       case 'merchant':
-        counterParty = rawVal.slice(0, 255);
+        counterParty = rawVal;
         break;
     }
   }
@@ -172,7 +217,8 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
     tags,
     note,
     amount,
+    hasExplicitPositiveSign,
     counterParty,
-    hasModifications: true,
+    hasModifications,
   };
 }

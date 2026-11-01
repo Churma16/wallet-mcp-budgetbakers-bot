@@ -155,6 +155,128 @@ describe('ModifyRecordHandler', () => {
     ]);
   });
 
+  it('preserves negative sign for expenses when amount is edited without explicit plus sign', async () => {
+    store.recordMessageMapping('bot-msg-exp', {
+      recordId: 'rec-exp-1',
+      accountId: 'acc-bca',
+      amount: -50000,
+    });
+
+    const event: IncomingUserMessageEvent = {
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: 'a: 35000',
+      replyToMessageId: 'bot-msg-exp',
+    };
+
+    const handled = await handler.handleModifyRecordReply(event, Date.now());
+    expect(handled).toBe(true);
+
+    expect(mockClient.patchRecords).toHaveBeenCalledWith([
+      {
+        id: 'rec-exp-1',
+        amount: -35000,
+      },
+    ]);
+  });
+
+  it('allows explicit positive sign on existing expense to convert it to income', async () => {
+    store.recordMessageMapping('bot-msg-exp2', {
+      recordId: 'rec-exp-2',
+      accountId: 'acc-bca',
+      amount: -50000,
+    });
+
+    const event: IncomingUserMessageEvent = {
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: 'a: +75000',
+      replyToMessageId: 'bot-msg-exp2',
+    };
+
+    const handled = await handler.handleModifyRecordReply(event, Date.now());
+    expect(handled).toBe(true);
+
+    expect(mockClient.patchRecords).toHaveBeenCalledWith([
+      {
+        id: 'rec-exp-2',
+        amount: 75000,
+      },
+    ]);
+  });
+
+  it('rejects zero amount update with human warning', async () => {
+    store.recordMessageMapping('bot-msg-zero', {
+      recordId: 'rec-zero',
+      accountId: 'acc-bca',
+      amount: -50000,
+    });
+
+    const event: IncomingUserMessageEvent = {
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: 'a: 0',
+      replyToMessageId: 'bot-msg-zero',
+    };
+
+    const handled = await handler.handleModifyRecordReply(event, Date.now());
+    expect(handled).toBe(true);
+    expect(mockClient.patchRecords).not.toHaveBeenCalled();
+
+    const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
+    expect(sentMessage).toContain('Nominal transaksi tidak boleh bernilai 0');
+  });
+
+  it('supports chained edits by recording the new confirmation message ID', async () => {
+    store.recordMessageMapping('initial-bot-msg', {
+      recordId: 'rec-chain-1',
+      accountId: 'acc-bca',
+      amount: -20000,
+    });
+
+    (mockGateway.sendMessage as any).mockResolvedValueOnce({ messageId: 'confirmation-msg-1' });
+
+    // 1st Edit
+    const event1: IncomingUserMessageEvent = {
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: 'c: Transportasi',
+      replyToMessageId: 'initial-bot-msg',
+    };
+    await handler.handleModifyRecordReply(event1, Date.now());
+
+    // 2nd Edit: user replies to confirmation-msg-1
+    const chainedMapping = store.getMessageMapping('confirmation-msg-1');
+    expect(chainedMapping).toBeDefined();
+    expect(chainedMapping?.recordId).toBe('rec-chain-1');
+    expect(chainedMapping?.categoryName).toBe('Transportasi');
+
+    const event2: IncomingUserMessageEvent = {
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: 'n: Bensin Shell',
+      replyToMessageId: 'confirmation-msg-1',
+    };
+    const handled2 = await handler.handleModifyRecordReply(event2, Date.now());
+    expect(handled2).toBe(true);
+    expect(mockClient.patchRecords).toHaveBeenCalledWith([
+      {
+        id: 'rec-chain-1',
+        note: 'Bensin Shell',
+      },
+    ]);
+  });
+
   it('sends not-found error if reply references an unknown or expired message ID', async () => {
     const event: IncomingUserMessageEvent = {
       channel: 'telegram',
@@ -196,7 +318,7 @@ describe('ModifyRecordHandler', () => {
     expect(sentMessage).toContain('tidak ditemukan atau tidak dapat digunakan');
   });
 
-  it('edits a pending ticket when replying to a pending ticket notification', async () => {
+  it('edits a pending ticket when replying to a pending ticket notification with labels and sign preservation', async () => {
     const item = pendingService.addPendingTransaction({
       sourceType: 'EMAIL',
       bankDisplayName: 'BCA',
@@ -214,7 +336,7 @@ describe('ModifyRecordHandler', () => {
       senderIdentifier: 'user-1',
       chatIdentifier: 'chat-1',
       messageType: 'text',
-      textPayload: 'n: Updated note c: Transportasi',
+      textPayload: 'n: Updated note c: Transportasi t: #kantor, #operasional a: 45k',
       replyToMessageId: 'pending-alert-msg',
       replyToMessageText: `Konfirmasi transaksi Tiket #${item.ticketId}: Rp 50.000`,
     };
@@ -225,9 +347,30 @@ describe('ModifyRecordHandler', () => {
     const updated = pendingService.getPendingTransaction(item.ticketId);
     expect(updated?.note).toBe('Updated note');
     expect(updated?.matchedCategoryId).toBe('cat-transport');
+    expect(updated?.labels).toEqual(['kantor', 'operasional']);
+    // Amount preserved negative
+    expect(updated?.amount).toBe(-45000);
 
     const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
     expect(sentMessage).toContain(`Draft Tiket #${item.ticketId} berhasil diperbarui`);
+  });
+
+  it('warns user when editing a non-existent or settled pending ticket', async () => {
+    const event: IncomingUserMessageEvent = {
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: 'c: Transportasi',
+      replyToMessageId: 'pending-old',
+      replyToMessageText: 'Konfirmasi transaksi Tiket #999',
+    };
+
+    const handled = await handler.handleModifyRecordReply(event, Date.now());
+    expect(handled).toBe(true);
+
+    const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
+    expect(sentMessage).toContain('Draft Tiket #999 tidak ditemukan atau sudah diproses');
   });
 
   it('handles MCP patch failure and informs user', async () => {

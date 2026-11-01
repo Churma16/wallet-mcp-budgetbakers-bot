@@ -78,11 +78,16 @@ describe('recordEditParser', () => {
     });
   });
 
-  describe('4. Amount Parsing Formats', () => {
+  describe('4. Amount Parsing Formats & Currency Prefixes', () => {
     it('parses numeric amounts with positive/negative signs', () => {
       expect(parseRecordEditCommand('a: 45000')?.amount).toBe(45000);
+      expect(parseRecordEditCommand('a: 45000')?.hasExplicitPositiveSign).toBe(false);
+
       expect(parseRecordEditCommand('a: -45000')?.amount).toBe(-45000);
+      expect(parseRecordEditCommand('a: -45000')?.hasExplicitPositiveSign).toBe(false);
+
       expect(parseRecordEditCommand('a: +30000')?.amount).toBe(30000);
+      expect(parseRecordEditCommand('a: +30000')?.hasExplicitPositiveSign).toBe(true);
     });
 
     it('parses shorthand amount suffixes (k, rb, jt)', () => {
@@ -94,6 +99,16 @@ describe('recordEditParser', () => {
     it('parses amounts with thousands separators', () => {
       expect(parseRecordEditCommand('amount: 150.000')?.amount).toBe(150000);
       expect(parseRecordEditCommand('amount: 1,500,000')?.amount).toBe(1500000);
+    });
+
+    it('parses amounts with Indonesian currency markers (Rp, IDR)', () => {
+      expect(parseRecordEditCommand('a: Rp 50.000')?.amount).toBe(50000);
+      expect(parseRecordEditCommand('a: rp 50k')?.amount).toBe(50000);
+      expect(parseRecordEditCommand('a: -Rp 25.000')?.amount).toBe(-25000);
+      expect(parseRecordEditCommand('a: Rp -25.000')?.amount).toBe(-25000);
+      expect(parseRecordEditCommand('a: +IDR 100.000')?.amount).toBe(100000);
+      expect(parseRecordEditCommand('a: +IDR 100.000')?.hasExplicitPositiveSign).toBe(true);
+      expect(parseRecordEditCommand('nominal: Rp25.000')?.amount).toBe(25000);
     });
   });
 
@@ -111,10 +126,17 @@ describe('recordEditParser', () => {
       expect(parseRecordEditCommand('ya')).toBeNull();
     });
 
-    it('truncates note exceeding 255 characters', () => {
-      const longNote = 'A'.repeat(300);
+    it('returns null for conversational text containing colons mid-sentence without explicit prefix', () => {
+      expect(parseRecordEditCommand('Halo min tolong note: transaksi kemarin')).toBeNull();
+      expect(parseRecordEditCommand('Terima kasih c: sudah dibantu')).toBeNull();
+      expect(parseRecordEditCommand('Bukti bayar ke p: 0812345678')).toBeNull();
+    });
+
+    it('truncates note exceeding 255 characters without corrupting surrogate pairs', () => {
+      const longNote = '🍕'.repeat(300);
       const parsed = parseRecordEditCommand(`n: ${longNote}`);
-      expect(parsed?.note).toHaveLength(255);
+      expect(parsed?.note).toBeDefined();
+      expect(Array.from(parsed!.note!)).toHaveLength(255);
     });
   });
 });
