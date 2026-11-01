@@ -7,6 +7,9 @@ export interface StoredRecordMessageMapping {
   readonly recordId: string;
   readonly accountId: string;
   readonly createdAt: number;
+  accountName?: string;
+  currency?: string;
+  recordDate?: string;
   note?: string;
   categoryId?: string;
   categoryName?: string;

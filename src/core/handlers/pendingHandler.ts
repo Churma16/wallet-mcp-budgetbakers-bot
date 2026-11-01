@@ -432,8 +432,13 @@ export class PendingActionHandler {
           this.transactionMessageStore.recordMessageMapping(sendReceipt.messageId, {
             recordId,
             accountId: item.matchedAccountId,
+            accountName: item.bankDisplayName || item.accountNameHint,
+            currency: item.currency,
+            recordDate: item.recordDate,
             note: item.note,
             categoryId: item.matchedCategoryId,
+            categoryName: item.matchedCategoryName,
+            labels: item.labels,
             amount: item.amount,
             counterParty: item.counterParty,
             channel: event.channel,

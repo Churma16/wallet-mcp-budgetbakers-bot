@@ -76,13 +76,13 @@ export function getHumanReadableTimestamp(date: Date = new Date(), languageCode?
 /**
  * Formats a transaction timestamp for human display in the configured application timezone.
  */
-export function formatTransactionDate(dateInput?: string | Date, languageCode?: SupportedLanguage): string {
+export function formatTransactionDate(dateInput?: string | number | Date, languageCode?: SupportedLanguage): string {
   const dictionary = getDictionary(languageCode);
   if (!dateInput) {
     return getHumanReadableTimestamp(new Date(), languageCode);
   }
 
-  const transactionDate = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+  const transactionDate = dateInput instanceof Date ? dateInput : new Date(dateInput);
   if (Number.isNaN(transactionDate.getTime())) {
     return getHumanReadableTimestamp(new Date(), languageCode);
   }

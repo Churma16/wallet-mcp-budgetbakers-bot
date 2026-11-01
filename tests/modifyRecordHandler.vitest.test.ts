@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ModifyRecordHandler } from '../src/core/handlers/modifyRecordHandler.js';
 import { TransactionMessageStore } from '../src/wallet/records/transactionMessageStore.js';
-import type { WalletCacheService, WalletMcpClientService, WalletCategoryItem } from '../src/wallet/index.js';
+import type { WalletCacheService, WalletMcpClientService, WalletCategoryItem, WalletAccountItem } from '../src/wallet/index.js';
 import type { MessagingGatewayService, IncomingUserMessageEvent } from '../src/gateway/index.js';
 
 describe('ModifyRecordHandler', () => {
@@ -10,6 +10,10 @@ describe('ModifyRecordHandler', () => {
   let mockGateway: MessagingGatewayService;
   let store: TransactionMessageStore;
   let handler: ModifyRecordHandler;
+
+  const sampleAccounts: WalletAccountItem[] = [
+    { id: 'acc-bca', name: 'Jago Expense', balance: 500000, currency: 'IDR' },
+  ];
 
   const sampleCategories: WalletCategoryItem[] = [
     { id: 'cat-food', name: 'Makanan & Minuman', group: { id: 'food', name: 'Food' }, isAssignable: true },
@@ -30,6 +34,7 @@ describe('ModifyRecordHandler', () => {
     } as unknown as WalletMcpClientService;
 
     mockCache = {
+      getAccounts: vi.fn(() => sampleAccounts),
       getCategories: vi.fn(() => sampleCategories),
       findLabelByName: vi.fn((nameHint: string) => {
         if (nameHint.toLowerCase() === 'jajan') {
@@ -62,7 +67,6 @@ describe('ModifyRecordHandler', () => {
       chatIdentifier: 'chat-1',
       messageType: 'text',
       textPayload: 'c: Makan',
-      // no replyToMessageId
     };
 
     const handled = await handler.handleModifyRecordReply(event, Date.now());
@@ -85,12 +89,14 @@ describe('ModifyRecordHandler', () => {
     expect(mockClient.patchRecords).not.toHaveBeenCalled();
   });
 
-  it('successfully patches a recorded transaction on reply with shorthand keys', async () => {
+  it('successfully patches a recorded transaction on reply with auto-capitalized title and formatted receipt response', async () => {
     store.recordMessageMapping('bot-msg-1', {
       recordId: 'rec-101',
       accountId: 'acc-bca',
-      note: 'Old note',
-      categoryId: 'cat-transport',
+      note: 'Tahu Goreng',
+      categoryId: 'cat-food',
+      amount: -50000,
+      recordDate: '2026-11-01T16:49:00.000Z',
     });
 
     const event: IncomingUserMessageEvent = {
@@ -98,30 +104,57 @@ describe('ModifyRecordHandler', () => {
       senderIdentifier: 'user-1',
       chatIdentifier: 'chat-1',
       messageType: 'text',
-      textPayload: 'c: Makanan & Minuman t: #jajan, #baru n: Kopi Kenangan a: -28000',
+      textPayload: 'n: tahu risol',
       replyToMessageId: 'bot-msg-1',
     };
 
     const handled = await handler.handleModifyRecordReply(event, Date.now());
     expect(handled).toBe(true);
 
-    expect(mockClient.patchRecords).toHaveBeenCalledTimes(1);
+    // Verifies Smart Title Casing auto-capitalization: 'tahu risol' -> 'Tahu Risol'
     expect(mockClient.patchRecords).toHaveBeenCalledWith([
       {
         id: 'rec-101',
-        categoryId: 'cat-food',
-        labelIds: ['lbl-jajan', 'lbl-baru'],
-        note: 'Kopi Kenangan',
-        amount: -28000,
+        note: 'Tahu Risol',
       },
     ]);
 
     expect(mockGateway.sendMessage).toHaveBeenCalledTimes(1);
     const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
-    expect(sentMessage).toContain('Transaksi berhasil diperbarui');
-    expect(sentMessage).toContain('Makanan & Minuman');
-    expect(sentMessage).toContain('Kopi Kenangan');
-    expect(sentMessage).toContain('#jajan');
+    
+    // Verifies receipt card format requested by user
+    expect(sentMessage).toContain('✅ Transaksi berhasil diperbarui:');
+    expect(sentMessage).toContain('Tahu Risol');
+    expect(sentMessage).toContain('💸 Rp 50.000  •  Jago Expense');
+    expect(sentMessage).toContain('🏷️ Makanan & Minuman');
+    // No tags were present, so no 🔖 line
+    expect(sentMessage).not.toContain('🔖');
+  });
+
+  it('displays 🔖 tags line if tags are present or edited, and hides 🔖 if no tags', async () => {
+    store.recordMessageMapping('bot-msg-tags', {
+      recordId: 'rec-102',
+      accountId: 'acc-bca',
+      note: 'Kopi Susu',
+      categoryId: 'cat-food',
+      amount: -25000,
+    });
+
+    const event: IncomingUserMessageEvent = {
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: 't: #jajan, #kopi',
+      replyToMessageId: 'bot-msg-tags',
+    };
+
+    const handled = await handler.handleModifyRecordReply(event, Date.now());
+    expect(handled).toBe(true);
+
+    const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
+    expect(sentMessage).toContain('✅ Transaksi berhasil diperbarui:');
+    expect(sentMessage).toContain('🔖 #jajan #kopi');
   });
 
   it('supports explicit prefix `e` on reply', async () => {
@@ -135,7 +168,7 @@ describe('ModifyRecordHandler', () => {
       senderIdentifier: 'user-1',
       chatIdentifier: 'chat-1',
       messageType: 'text',
-      textPayload: 'e c: Transportasi n: Bensin motor',
+      textPayload: 'e c: Transportasi n: bensin motor',
       replyToMessageId: 'bot-msg-2',
     };
 
@@ -146,7 +179,7 @@ describe('ModifyRecordHandler', () => {
       {
         id: 'rec-202',
         categoryId: 'cat-transport',
-        note: 'Bensin motor',
+        note: 'Bensin Motor',
       },
     ]);
   });
@@ -260,7 +293,7 @@ describe('ModifyRecordHandler', () => {
       senderIdentifier: 'user-1',
       chatIdentifier: 'chat-1',
       messageType: 'text',
-      textPayload: 'n: Bensin Shell',
+      textPayload: 'n: bensin shell',
       replyToMessageId: 'confirmation-msg-1',
     };
     const handled2 = await handler.handleModifyRecordReply(event2, Date.now());

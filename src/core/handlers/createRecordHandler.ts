@@ -288,11 +288,20 @@ export class CreateRecordActionHandler implements FinancialActionHandler<typeof 
       creationResponse?.results?.[0]?.id
     ) {
       const firstRecord = validRecordsToCreate[0];
+      const targetAccount = cachedAccounts.find(account => account.id === firstRecord.accountId);
+      const targetCategory = cachedCategories.find(category => category.id === firstRecord.categoryId);
+
       this.transactionMessageStore?.recordMessageMapping(sendReceipt.messageId, {
         recordId: creationResponse.results[0].id,
         accountId: firstRecord.accountId,
+        accountName: targetAccount?.name,
+        currency: targetAccount?.currency,
+        recordDate: firstRecord.recordDate,
         note: firstRecord.note,
         categoryId: firstRecord.categoryId,
+        categoryName: targetCategory?.name,
+        labelIds: firstRecord.labelIds,
+        labels: firstRecord.labels,
         amount: firstRecord.amount,
         counterParty: firstRecord.counterParty,
         channel: event.channel,
