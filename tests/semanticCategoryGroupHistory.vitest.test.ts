@@ -23,7 +23,7 @@ import {
   WalletAccountItem,
   WalletCategoryItem,
   WalletRecordItem,
-} from '../src/types/walletTypes.js';
+} from '../src/wallet/index.js';
 
 describe('Issue 160: Semantic Category Group Matching for History', () => {
   const MOCK_ACCOUNTS: WalletAccountItem[] = [

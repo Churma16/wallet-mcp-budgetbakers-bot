@@ -6,7 +6,7 @@ import {
   formatCompactTransactionDate,
   MAX_TRANSACTION_HISTORY_TITLE_LENGTH,
 } from '../src/wallet/formatters/humanResponseFormatter.js';
-import type { TransactionHistoryPage } from '../src/types/walletTypes.js';
+import type { TransactionHistoryPage } from '../src/wallet/index.js';
 
 describe('Transaction History Formatting (Issue #115)', () => {
   describe('Title Truncation (Unicode- and line-safe)', () => {

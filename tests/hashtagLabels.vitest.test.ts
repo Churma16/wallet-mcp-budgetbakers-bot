@@ -11,7 +11,7 @@ import {
   WalletCategoryItem,
   WalletLabelItem,
   CreateRecordInputPayload,
-} from '../src/types/walletTypes.js';
+} from '../src/wallet/index.js';
 import { UserMessageHandler } from '../src/core/dispatcher.js';
 import { AccountClarificationHandler } from '../src/core/handlers/accountClarificationHandler.js';
 import { PendingTransactionService } from '../src/core/pending.js';

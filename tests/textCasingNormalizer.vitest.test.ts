@@ -7,7 +7,7 @@ import { validateAndSanitizeFinancialRecords } from '../src/wallet/records/recor
 import {
   buildCompactSystemInstruction,
 } from '../src/brain/index.js';
-import { CreateRecordInputPayload, WalletAccountItem } from '../src/types/walletTypes.js';
+import { CreateRecordInputPayload, WalletAccountItem } from '../src/wallet/index.js';
 
 describe('textCasingNormalizer unit tests', () => {
   it('formats transit routes with uppercase transit acronyms and "ke" preposition', () => {

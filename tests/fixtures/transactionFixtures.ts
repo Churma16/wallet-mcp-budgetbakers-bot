@@ -9,7 +9,7 @@ import type {
   WalletRecordItem,
   WalletRecordAggregationQueryPayload,
   WalletRecordAggregationResponse,
-} from '../../src/types/walletTypes.js';
+} from '../../src/wallet/index.js';
 
 export const CANONICAL_ACCOUNTS: WalletAccountItem[] = [
   { id: 'acc-bca', name: 'BCA Tabungan', currency: 'IDR', bankAccountNumber: '1234567890' },

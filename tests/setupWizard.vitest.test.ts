@@ -7,11 +7,11 @@ import {
   collectSetupConfiguration,
   SetupChoice,
   SetupPrompter,
-} from '../src/setup/setupWizard.js';
+} from '../src/cli/setupWizard.js';
 import {
   mergeEnvFileContent,
   parseEnvFileContent,
-} from '../src/setup/envFileEditor.js';
+} from '../src/cli/envFileEditor.js';
 
 interface FakePrompterOptions {
   readonly secrets?: Record<string, string>;

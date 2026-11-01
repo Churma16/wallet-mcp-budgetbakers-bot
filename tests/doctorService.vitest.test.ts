@@ -10,7 +10,7 @@ import {
   DoctorDependencies,
   renderDoctorResult,
   runDoctorDiagnostics,
-} from '../src/diagnostics/doctorService.js';
+} from '../src/cli/doctorService.js';
 import { WalletMcpClientService } from '../src/wallet/index.js';
 
 function createConfiguration(): ApplicationEnvironmentConfiguration {

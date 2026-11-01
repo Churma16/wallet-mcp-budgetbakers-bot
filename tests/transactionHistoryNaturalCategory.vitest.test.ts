@@ -4,7 +4,7 @@ import {
   FastPathTransactionHistoryAction,
 } from '../src/brain/index.js';
 import { normalizeTransactionHistoryFilters } from '../src/wallet/history/transactionHistoryFilterNormalizer.js';
-import { WalletCategoryItem } from '../src/types/walletTypes.js';
+import { WalletCategoryItem } from '../src/wallet/index.js';
 
 const CATEGORY_FIXTURES: WalletCategoryItem[] = [
   { id: 'cat-hangout', name: 'Makan Hangout' },

@@ -8,7 +8,7 @@ import {
 } from '../src/brain/index.js';
 import { resolveSemanticCategoryHint } from '../src/brain/semantic/semanticEntityResolver.js';
 import { TransactionCorrelationService } from '../src/email/index.js';
-import { WalletCategoryItem, WalletAccountItem } from '../src/types/walletTypes.js';
+import { WalletCategoryItem, WalletAccountItem } from '../src/wallet/index.js';
 
 describe('Universal Specific Subcategory Prioritization Across All Categories', () => {
   const mockCategories: WalletCategoryItem[] = [

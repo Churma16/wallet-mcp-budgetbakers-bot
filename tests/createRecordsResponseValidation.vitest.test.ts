@@ -5,7 +5,7 @@ import {
   isWalletMcpDefinitiveFailure,
   isWalletMcpDispatchOutcomeUnknown,
 } from '../src/wallet/index.js';
-import { CreateRecordInputPayload, WalletCreateRecordsResponse } from '../src/types/walletTypes.js';
+import { CreateRecordInputPayload, WalletCreateRecordsResponse } from '../src/wallet/index.js';
 
 describe('Wallet MCP create_records Response Validation (Issue #146)', () => {
   const dummyBaseUrl = 'https://example.invalid';

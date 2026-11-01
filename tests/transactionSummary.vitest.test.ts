@@ -5,7 +5,7 @@ import { setActiveLanguage } from '../src/i18n/index.js';
 import type {
   TransactionHistoryPage,
   TransactionHistoryQueryOptions,
-} from '../src/types/walletTypes.js';
+} from '../src/wallet/index.js';
 import {
   createSummaryExecutionContext,
   type SummaryExecutionContext,

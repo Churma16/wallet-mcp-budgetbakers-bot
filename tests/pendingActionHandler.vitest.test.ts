@@ -5,7 +5,7 @@ import {
   WalletMcpRequestError,
   isWalletMcpDispatchOutcomeUnknown,
 } from '../src/wallet/index.js';
-import { CreateRecordInputPayload, WalletCreateRecordsResponse } from '../src/types/walletTypes.js';
+import { CreateRecordInputPayload, WalletCreateRecordsResponse } from '../src/wallet/index.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { PendingConfirmationIntent } from '../src/brain/index.js';
 import { describe, expect, it, vi } from 'vitest';

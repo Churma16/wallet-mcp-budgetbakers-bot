@@ -1,4 +1,4 @@
-import type { TransactionSortOrder, UnresolvedFilterIssue } from '../types/walletTypes.js';
+import type { TransactionSortOrder, UnresolvedFilterIssue } from '../wallet/index.js';
 
 export type SupportedLanguage = 'id' | 'en';
 export type { TransactionSortOrder, UnresolvedFilterIssue };

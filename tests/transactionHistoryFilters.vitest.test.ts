@@ -20,7 +20,7 @@ import {
   WalletAccountItem,
   WalletCategoryItem,
   WalletRecordItem,
-} from '../src/types/walletTypes.js';
+} from '../src/wallet/index.js';
 import {
   CANONICAL_FILTER_ACCOUNTS as MOCK_ACCOUNTS,
   CANONICAL_FILTER_CATEGORIES as MOCK_CATEGORIES,

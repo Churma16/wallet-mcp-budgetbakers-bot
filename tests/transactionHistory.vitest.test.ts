@@ -14,7 +14,7 @@ import type {
   TransactionHistoryPage,
   WalletAccountItem,
   WalletCategoryItem,
-} from '../src/types/walletTypes.js';
+} from '../src/wallet/index.js';
 import {
   createQueryExecutionContext,
   type QueryExecutionContext,

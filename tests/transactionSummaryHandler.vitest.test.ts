@@ -13,7 +13,7 @@ import type {
   WalletCategoryItem,
   WalletRecordAggregationQueryPayload,
   WalletRecordAggregationResponse,
-} from '../src/types/walletTypes.js';
+} from '../src/wallet/index.js';
 
 describe('Transaction Summary Fast-Path Handler Tests (Issue #103 & #140)', () => {
   beforeEach(() => {

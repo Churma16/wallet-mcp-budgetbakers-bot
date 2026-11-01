@@ -2,7 +2,7 @@ import { UserMessageHandler } from '../src/core/dispatcher.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
-import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
+import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/wallet/index.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 

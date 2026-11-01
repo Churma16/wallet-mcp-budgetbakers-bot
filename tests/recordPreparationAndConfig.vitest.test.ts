@@ -37,7 +37,7 @@ import { UserMessageHandler } from '../src/core/dispatcher.js';
 import { FastPathHandler } from '../src/core/handlers/fastPathHandler.js';
 import { PendingActionHandler } from '../src/core/handlers/pendingHandler.js';
 import { FinancialAiProvider } from '../src/brain/index.js';
-import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem, WalletLabelItem } from '../src/types/walletTypes.js';
+import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem, WalletLabelItem } from '../src/wallet/index.js';
 import { IncomingUserMessageEvent } from '../src/gateway/types.js';
 
 describe('Centralized Record Preparation (Issue #110 Part A)', () => {

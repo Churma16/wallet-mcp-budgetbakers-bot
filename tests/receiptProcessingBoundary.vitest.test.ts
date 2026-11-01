@@ -5,7 +5,7 @@ import { AccountClarificationHandler } from '../src/core/handlers/accountClarifi
 import { PendingTransactionService } from '../src/core/pending.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
-import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
+import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/wallet/index.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import { AiResponseParseError } from '../src/brain/index.js';
 import { ExtractedFinancialIntent, FinancialAiProvider } from '../src/brain/index.js';

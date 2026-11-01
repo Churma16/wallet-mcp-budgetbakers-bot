@@ -16,7 +16,7 @@ import {
 import { OpenAiCompatibleAiProvider } from '../src/brain/index.js';
 import { extractAndParseJsonObject } from '../src/brain/index.js';
 import { ApplicationEnvironmentConfiguration } from '../src/config/environmentConfig.js';
-import { WalletAccountItem, WalletCategoryItem } from '../src/types/walletTypes.js';
+import { WalletAccountItem, WalletCategoryItem } from '../src/wallet/index.js';
 
 class MockFinancialAiProvider implements FinancialAiProvider {
   public callCount = 0;

@@ -16,7 +16,7 @@ import { FinancialActionExecutor } from '../src/core/executor.js';
 import { FastPathHandler } from '../src/core/handlers/fastPathHandler.js';
 import { UserMessageHandler } from '../src/core/dispatcher.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
-import { WalletAccountItem, WalletCategoryItem, WalletBudgetProgressItem } from '../src/types/walletTypes.js';
+import { WalletAccountItem, WalletCategoryItem, WalletBudgetProgressItem } from '../src/wallet/index.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 
 function createMockIncomingEvent(textPayload: string): IncomingUserMessageEvent {
