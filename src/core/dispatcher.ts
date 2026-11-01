@@ -23,6 +23,7 @@ import { FinancialActionExecutor } from './executor.js';
 import { AccountClarificationHandler } from './handlers/accountClarificationHandler.js';
 import { CategoryClarificationHandler } from './handlers/categoryClarificationHandler.js';
 import { CreateRecordActionHandler } from './handlers/createRecordHandler.js';
+import { ModifyRecordHandler } from './handlers/modifyRecordHandler.js';
 import {
   FinancialActionRegistry,
 } from './handlers/financialActionRegistry.js';
@@ -45,6 +46,7 @@ import {
   WalletRecordPreparationService,
   WalletCacheService,
   WalletMcpClientService,
+  TransactionMessageStore,
 } from '../wallet/index.js';
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../lib/logger.js';
@@ -116,6 +118,7 @@ export interface DefaultFinancialActionRegistryDependencies {
   readonly categoryClarificationHandler?: CategoryClarificationHandler;
   readonly categoryResolutionMode?: 'ask' | 'auto';
   readonly categoryClarificationConversationService?: AppContext['brain']['categoryClarification'];
+  readonly transactionMessageStore?: AppContext['wallet']['transactionMessages'];
 }
 
 export function createDefaultFinancialActionRegistry(
@@ -148,7 +151,8 @@ export function createDefaultFinancialActionRegistry(
       dependencies.categoryContextService,
       dependencies.categoryClarificationHandler,
       dependencies.categoryResolutionMode,
-      dependencies.categoryClarificationConversationService
+      dependencies.categoryClarificationConversationService,
+      dependencies.transactionMessageStore
     )
   );
 
@@ -166,6 +170,7 @@ export class MessageDispatcher {
   public readonly pendingActionHandler: PendingActionHandler;
   public readonly fastPathHandler: FastPathHandler;
   public readonly financialActionRegistry: FinancialActionRegistry;
+  public readonly modifyRecordHandler: ModifyRecordHandler;
   public readonly semanticToolBoundary: SemanticToolBoundary;
   public readonly semanticToolAuthorizationResolver: SemanticToolAuthorizationResolver;
 
@@ -185,6 +190,7 @@ export class MessageDispatcher {
       semanticToolBoundary?: SemanticToolBoundary;
       semanticToolAuthorizationResolver?: SemanticToolAuthorizationResolver;
       categoryResolutionMode?: 'ask' | 'auto';
+      modifyRecordHandler?: ModifyRecordHandler;
     }
   );
   constructor(
@@ -236,6 +242,7 @@ export class MessageDispatcher {
         semanticToolBoundary?: SemanticToolBoundary;
         semanticToolAuthorizationResolver?: SemanticToolAuthorizationResolver;
         categoryResolutionMode?: 'ask' | 'auto';
+        modifyRecordHandler?: ModifyRecordHandler;
       } | undefined;
 
       this.context = context;
@@ -285,7 +292,8 @@ export class MessageDispatcher {
           context.wallet.client,
           context.gateway,
           () => context.email.listener,
-          context.wallet.cache
+          context.wallet.cache,
+          context.wallet.transactionMessages
         );
 
       this.financialActionRegistry =
@@ -301,7 +309,17 @@ export class MessageDispatcher {
           categoryContextService: context.brain.categoryContext,
           categoryResolutionMode: overrides?.categoryResolutionMode,
           pendingTransactionService: context.pending,
+          transactionMessageStore: context.wallet.transactionMessages,
         });
+
+      this.modifyRecordHandler =
+        overrides?.modifyRecordHandler ||
+        new ModifyRecordHandler(
+          context.wallet.client,
+          context.wallet.cache,
+          context.gateway,
+          context.wallet.transactionMessages
+        );
 
       this.fastPathHandler =
         overrides?.fastPathHandler ||
@@ -351,6 +369,7 @@ export class MessageDispatcher {
           history: historyService,
           summary: summaryService,
           capabilities: undefined as any,
+          transactionMessages: new TransactionMessageStore(),
         },
         brain: {
           provider: financialAiProvider as any,
@@ -443,6 +462,13 @@ export class MessageDispatcher {
           this.financialActionRegistry,
           pendingTransactionManager
         );
+
+      this.modifyRecordHandler = new ModifyRecordHandler(
+        walletMcpClient as any,
+        walletCacheService as any,
+        messagingGateway,
+        this.context.wallet.transactionMessages
+      );
     }
   }
 
@@ -469,6 +495,21 @@ export class MessageDispatcher {
     await this.context.gateway.sendTypingPresence(event.channel, event.chatIdentifier);
 
     try {
+      // 0. Reply-to-message transaction edit command (e.g. "c: Makan t: #jajan n: Kopi" or "e c:...")
+      if (
+        event.messageType === 'text' &&
+        event.textPayload &&
+        event.replyToMessageId
+      ) {
+        const handledEdit = await this.modifyRecordHandler.handleModifyRecordReply(
+          event,
+          processingStartTimestamp
+        );
+        if (handledEdit) {
+          return;
+        }
+      }
+
       // 1. Pending cancellation disambiguation
       if (
         event.messageType === 'text' &&

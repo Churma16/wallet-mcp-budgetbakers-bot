@@ -2,6 +2,7 @@ import {
   WalletMcpClientService,
   WalletCacheService,
   WalletRecordPreparationService,
+  TransactionMessageStore,
 } from '../../wallet/index.js';
 
 import { MessagingGatewayService } from '../../gateway/index.js';
@@ -59,7 +60,8 @@ export class CreateRecordActionHandler implements FinancialActionHandler<typeof 
     private readonly categoryContextService?: CategoryContextService,
     private readonly categoryClarificationHandler?: CategoryClarificationHandler,
     private readonly categoryResolutionMode?: 'ask' | 'auto',
-    categoryClarificationConversationService?: CategoryClarificationConversationService
+    categoryClarificationConversationService?: CategoryClarificationConversationService,
+    private readonly transactionMessageStore?: TransactionMessageStore
   ) {
     this.categoryClarificationConversationService =
       categoryClarificationConversationService ||
@@ -258,7 +260,7 @@ export class CreateRecordActionHandler implements FinancialActionHandler<typeof 
       records: validRecordsToCreate,
     });
 
-    await this.walletMcpClient.createRecords(validRecordsToCreate);
+    const creationResponse = await this.walletMcpClient.createRecords(validRecordsToCreate);
 
     const replyMessage = formatRecordSuccessMessage(
       validRecordsToCreate,
@@ -272,7 +274,30 @@ export class CreateRecordActionHandler implements FinancialActionHandler<typeof 
       replyText: replyMessage,
     });
 
-    await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage.trim());
+    const sendReceipt = await this.messagingGateway.sendMessage(
+      event.channel,
+      event.chatIdentifier,
+      replyMessage.trim()
+    );
+
+    if (
+      sendReceipt &&
+      'messageId' in sendReceipt &&
+      sendReceipt.messageId &&
+      validRecordsToCreate.length === 1 &&
+      creationResponse?.results?.[0]?.id
+    ) {
+      const firstRecord = validRecordsToCreate[0];
+      this.transactionMessageStore?.recordMessageMapping(sendReceipt.messageId, {
+        recordId: creationResponse.results[0].id,
+        accountId: firstRecord.accountId,
+        note: firstRecord.note,
+        categoryId: firstRecord.categoryId,
+        amount: firstRecord.amount,
+        counterParty: firstRecord.counterParty,
+        channel: event.channel,
+      });
+    }
     const processingDurationMs = Date.now() - processingStartTimestamp;
     applicationLogger.success(
       `[${event.channel.toUpperCase()}] Successfully recorded ${validRecordsToCreate.length} transaction(s) to Wallet & sent confirmation (${processingDurationMs}ms).`

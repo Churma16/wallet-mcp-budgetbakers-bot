@@ -6,6 +6,7 @@ import {
   AdapterConnectionState,
   MediaRejectionStage,
   MessagingAdapter,
+  SentMessageReceipt,
   SupportedMessengerChannel,
   TelegramSafeguardConfiguration,
   UserMessageCallback,
@@ -294,7 +295,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     return this.isRunning ? 'connected' : 'idle';
   }
 
-  public async sendTextMessage(targetChatIdentifier: string, messageText: string): Promise<void> {
+  public async sendTextMessage(targetChatIdentifier: string, messageText: string): Promise<SentMessageReceipt> {
     if (!this.botInstance) {
       throw new Error('[error] Telegram bot is not initialized');
     }
@@ -302,7 +303,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     const formattedHtmlText = convertWhatsAppMarkupToTelegramHtml(messageText);
 
     try {
-      await this.botInstance.api.sendMessage(targetChatIdentifier, formattedHtmlText, {
+      const sentMessage = await this.botInstance.api.sendMessage(targetChatIdentifier, formattedHtmlText, {
         parse_mode: 'HTML',
       });
 
@@ -311,6 +312,8 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
         messageLength: messageText.length,
         preview: messageText.substring(0, 120),
       });
+
+      return { messageId: String(sentMessage.message_id) };
     } catch (htmlSendError: unknown) {
       // Fallback: If HTML formatting throws parse error (e.g. unclosed tag), send plain text
       applicationLogger.warn(
@@ -318,11 +321,13 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       );
 
       try {
-        await this.botInstance.api.sendMessage(targetChatIdentifier, messageText);
+        const fallbackSent = await this.botInstance.api.sendMessage(targetChatIdentifier, messageText);
         applicationLogger.fileDetail('telegram', 'Dispatched Telegram Plain Text Message (Fallback)', {
           targetChatIdentifier,
           messageLength: messageText.length,
         });
+
+        return { messageId: String(fallbackSent.message_id) };
       } catch (fallbackError: unknown) {
         applicationLogger.error(`Failed to send Telegram message to ${targetChatIdentifier}: ${fallbackError}`);
         throw fallbackError;
@@ -373,6 +378,9 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
 
       const chatId = String(ctx.chat.id);
       const senderIdentifier = ctx.from?.id ? String(ctx.from.id) : chatId;
+      const replyTo = ctx.message.reply_to_message;
+      const replyToMessageId = replyTo ? String(replyTo.message_id) : undefined;
+      const replyToMessageText = replyTo?.text || replyTo?.caption || undefined;
 
       await this.onUserMessageReceived({
         channel: 'telegram',
@@ -380,6 +388,8 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
         senderIdentifier,
         messageType: 'text',
         textPayload: textContent,
+        replyToMessageId,
+        replyToMessageText,
       });
     });
 
@@ -481,8 +491,9 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
           chatIdentifier: chatId,
           senderIdentifier,
           downloadError,
-          sendTextMessage: (targetChatIdentifier, messageText) =>
-            this.sendTextMessage(targetChatIdentifier, messageText),
+          sendTextMessage: async (targetChatIdentifier, messageText) => {
+            await this.sendTextMessage(targetChatIdentifier, messageText);
+          },
           redactToken: this.botToken,
         });
       }
@@ -513,8 +524,9 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       maxMediaDownloadBytes: this.maxMediaDownloadBytes,
       actualBytes,
       rejectionStage,
-      sendTextMessage: (targetChatIdentifier, messageText) =>
-        this.sendTextMessage(targetChatIdentifier, messageText),
+      sendTextMessage: async (targetChatIdentifier, messageText) => {
+        await this.sendTextMessage(targetChatIdentifier, messageText);
+      },
       additionalMetadata,
     });
   }

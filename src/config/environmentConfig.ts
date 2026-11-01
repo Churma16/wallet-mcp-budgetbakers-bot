@@ -91,6 +91,7 @@ export interface ApplicationEnvironmentConfiguration {
   maxMediaDownloadMb: number;
   categoryContextFilePath: string;
   pendingTransactionsStoragePath: string;
+  transactionMessageStoragePath: string;
   categoryResolutionMode: 'ask' | 'auto';
   notificationWebhookEnabled: boolean;
   notificationWebhookPort: number;
@@ -306,6 +307,11 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     path.join(whatsappSessionPath, 'pending_transactions.json')
   ).trim();
 
+  const transactionMessageStoragePath = (
+    process.env.TRANSACTION_MESSAGE_STORAGE_PATH ||
+    path.join(whatsappSessionPath, 'transaction_message_mappings.json')
+  ).trim();
+
 
   const rawCategoryResolutionMode = process.env.CATEGORY_RESOLUTION_MODE?.trim().toLowerCase();
   const categoryResolutionMode: 'ask' | 'auto' = rawCategoryResolutionMode === 'auto' ? 'auto' : 'ask';
@@ -355,6 +361,7 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     maxMediaDownloadMb,
     categoryContextFilePath,
     pendingTransactionsStoragePath,
+    transactionMessageStoragePath,
     categoryResolutionMode,
     notificationWebhookEnabled,
     notificationWebhookPort,

@@ -313,6 +313,27 @@ export interface CreateRecordsToolArgs {
 export type RawCreateRecordsResponse = unknown;
 
 // ---------------------------------------------------------------------------
+// 9. patch_records types
+// ---------------------------------------------------------------------------
+
+export interface SanitizedPatchRecordItem {
+  readonly id: string;
+  readonly amount?: number;
+  readonly categoryId?: string;
+  readonly labelIds?: readonly string[];
+  readonly note?: string;
+  readonly counterParty?: string;
+  readonly recordDate?: string;
+}
+
+export interface PatchRecordsToolArgs {
+  readonly records: readonly SanitizedPatchRecordItem[];
+  readonly returnData?: boolean;
+}
+
+export type RawPatchRecordsResponse = unknown;
+
+// ---------------------------------------------------------------------------
 // 9. get_records_aggregation types
 // ---------------------------------------------------------------------------
 
@@ -471,6 +492,19 @@ export async function callCreateRecords(
 ): Promise<RawCreateRecordsResponse> {
   return client.callMcpTool<RawCreateRecordsResponse>(
     WALLET_MCP_TOOL_NAMES.CREATE_RECORDS,
+    serializeToolArguments(args)
+  );
+}
+
+/**
+ * Dispatches patch_records to the Wallet MCP server with strictly typed patch payload.
+ */
+export async function callPatchRecords(
+  client: WalletToolCaller,
+  args: PatchRecordsToolArgs
+): Promise<RawPatchRecordsResponse> {
+  return client.callMcpTool<RawPatchRecordsResponse>(
+    WALLET_MCP_TOOL_NAMES.PATCH_RECORDS,
     serializeToolArguments(args)
   );
 }
