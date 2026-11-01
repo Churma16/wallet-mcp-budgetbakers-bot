@@ -35,7 +35,8 @@ import {
   TransactionSummaryActionHandler,
 } from './handlers/readActionHandlers.js';
 import { coordinateInboundTransactionCandidate } from './inboundCoordinator.js';
-import { evaluateNotificationThroughGate } from '../config/notificationRules.js';
+import { NotificationTransactionHandler } from './handlers/inboundHandlers.js';
+import { TransactionCorrelationService } from '../email/index.js';
 import {
   normalizeTransactionHistoryFilters,
   formatErrorMessageForHuman,
@@ -1016,70 +1017,16 @@ export class MessageDispatcher {
    * Processes mobile push notifications from the webhook receiver.
    */
   public async handleNotificationReceived(payload: PushNotificationPayload): Promise<void> {
-    applicationLogger.info(`[NotificationWebhook] Processing notification from package: ${payload.packageName}`);
-    applicationLogger.fileDetail('notification', 'Detected Push Notification Candidate', {
-      packageName: payload.packageName,
-      title: payload.title,
-      text: payload.text,
-      timestamp: payload.timestamp,
-    });
-
-    const gateResult = evaluateNotificationThroughGate(payload);
-    if (!gateResult.passed) {
-      applicationLogger.info(`[Gate 1 Skip] Push notification rejected: ${gateResult.reason}`);
-      return;
-    }
-
-    applicationLogger.info(
-      `[Gate 1 Passed] Matched package rule: ${gateResult.matchedBankRule?.displayName || payload.packageName}`
+    const handler = new NotificationTransactionHandler(
+      this.context.brain.provider,
+      this.context.wallet.cache,
+      this.context.pending,
+      this.context.gateway,
+      this.context.config.defaultCurrency,
+      this.context.email?.correlation || new TransactionCorrelationService(),
+      this.context.wallet.client
     );
-
-    const cachedAccounts = this.context.wallet.cache.getAccounts();
-    const cachedCategories = this.context.wallet.cache.getCategories();
-    const notificationDate = gateResult.originalDate || (payload.timestamp ? new Date(payload.timestamp) : new Date());
-
-    const parsedData = await this.context.brain.provider.processEmailTransactionMessage(
-      gateResult,
-      payload.title,
-      payload.packageName,
-      payload.text,
-      notificationDate,
-      cachedAccounts,
-      cachedCategories
-    );
-
-    if (!parsedData.isTransaction) {
-      applicationLogger.info('[Gate 2 Filtered Out] Notification classified as non-transaction.');
-      return;
-    }
-
-    const evidenceSourceType = 'PUSH_NOTIFICATION';
-
-    await coordinateInboundTransactionCandidate(
-      {
-        parsedData,
-        gateResult,
-        sourceType: 'PUSH_NOTIFICATION',
-        evidenceSourceType,
-        sourceId: `notif-${payload.packageName}-${notificationDate.getTime()}-${Math.abs(parsedData.amount)}`,
-        sourceDate: notificationDate,
-        sourceDisplayName: gateResult.matchedBankRule?.displayName || payload.packageName,
-        fallbackNote: payload.title ? `${payload.title} - ${payload.text}` : payload.text,
-        onRecordProcessed: ref => {
-          if (this.context.email.listener) {
-            this.context.email.listener.recordProcessedTransaction(undefined, ref);
-          }
-        },
-      },
-      {
-        walletCacheService: this.context.wallet.cache,
-        pendingTransactionManager: this.context.pending,
-        messagingGateway: this.context.gateway,
-        defaultCurrency: this.context.config.defaultCurrency,
-        correlationService: this.context.email.correlation,
-        walletMcpClient: this.context.wallet.client,
-      }
-    );
+    await handler.handleNotificationReceived(payload);
   }
 }
 
