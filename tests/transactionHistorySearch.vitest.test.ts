@@ -21,7 +21,7 @@ import {
   type QueryExecutionContext,
 } from './fixtures/transactionFixtures.js';
 
-describe('Transaction History Text Search Tests (Issue #102 & #177)', () => {
+describe('Transaction History Text Search Tests', () => {
   beforeEach(() => {
     setActiveLanguage('id');
   });

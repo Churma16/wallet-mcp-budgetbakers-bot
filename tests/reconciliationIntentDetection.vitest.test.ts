@@ -4,7 +4,7 @@ import {
   detectReconciliationAction,
 } from '../src/brain/index.js';
 
-describe('PR #155 reconciliation detector coverage', () => {
+describe('reconciliation intent detection and pattern matching', () => {
   it.each([
     ['sudah ada', 'CONFIRM_RECORDED', undefined],
     ['sudah ada #7', 'CONFIRM_RECORDED', 7],

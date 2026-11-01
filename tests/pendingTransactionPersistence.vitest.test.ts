@@ -27,7 +27,7 @@ describe('Pending Transaction Queue Persistence & Category Safeguards', () => {
     }
   });
 
-  describe('1. Storage Initialization and Lifecycle Persistence', () => {
+  describe('Storage Initialization and Lifecycle Persistence', () => {
     it('initializes cleanly when storage file does not exist', () => {
       const service = new PendingTransactionService(storageFile);
       expect(service.hasPendingTransactions()).toBe(false);
@@ -408,7 +408,7 @@ describe('Pending Transaction Queue Persistence & Category Safeguards', () => {
     });
   });
 
-  describe('2. Category Safeguards & System Category Filtering', () => {
+  describe('Category Safeguards & System Category Filtering', () => {
     const mockAccounts: WalletAccountItem[] = [
       { id: 'acc-jago', name: 'Jago Expense', currency: 'IDR' },
     ];

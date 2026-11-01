@@ -29,7 +29,7 @@ import {
   type QueryExecutionContext,
 } from './fixtures/transactionFixtures.js';
 
-describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () => {
+describe('Composable Transaction History Filters Tests', () => {
   beforeEach(() => {
     setActiveLanguage('id');
   });
@@ -38,7 +38,7 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
     setActiveLanguage('id');
   });
 
-  describe('Suite 1: Account Filtering & Resolution', () => {
+  describe('Account Filtering & Resolution', () => {
     let queryContext: QueryExecutionContext;
 
     beforeEach(() => {
@@ -84,7 +84,7 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
     });
   });
 
-  describe('Suite 2: Category Filtering & Resolution', () => {
+  describe('Category Filtering & Resolution', () => {
     let queryContext: QueryExecutionContext;
 
     beforeEach(() => {
@@ -194,7 +194,7 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
     });
   });
 
-  describe('Suite 3: Record Type Filtering', () => {
+  describe('Record Type Filtering', () => {
     let queryContext: QueryExecutionContext;
 
     beforeEach(() => {
@@ -234,7 +234,7 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
     });
   });
 
-  describe('Suite 4: Date & Date Range Filtering', () => {
+  describe('Date & Date Range Filtering', () => {
     let queryContext: QueryExecutionContext;
 
     beforeEach(() => {
@@ -878,7 +878,7 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
     });
   });
 
-  describe('Suite 5: Composable Multi-Filter Queries', () => {
+  describe('Composable Multi-Filter Queries', () => {
     let queryContext: QueryExecutionContext;
 
     beforeEach(() => {
@@ -925,7 +925,7 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
     });
   });
 
-  describe('Suite 6: Empty Matches & Filtered State Handling', () => {
+  describe('Empty Matches & Filtered State Handling', () => {
     let queryContext: QueryExecutionContext;
 
     beforeEach(() => {
@@ -952,7 +952,7 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
     });
   });
 
-  describe('Suite 7: Human-Facing Response Formatting & i18n', () => {
+  describe('Human-Facing Response Formatting & i18n', () => {
     it('formats localized headers, badges, warnings, and navigation hints properly', () => {
 
   // 7.1 Filter badges in Indonesian header
@@ -1495,7 +1495,7 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
     });
   });
 
-  describe('Suite 8: Fast-Path Intent Detection with Composable Filters', () => {
+  describe('Fast-Path Intent Detection with Composable Filters', () => {
     it('correctly identifies composable history filter commands and preserves datetime across pagination', () => {
 
   // 8.1 Single filters
@@ -1631,7 +1631,7 @@ describe('Composable Transaction History Filters Tests (Issue #101 & #177)', () 
     });
   });
 
-  describe('Suite 9: FastPathHandler Integration with Filters', () => {
+  describe('FastPathHandler Integration with Filters', () => {
     it('verifies FastPathHandler integration with filters end-to-end', async () => {
       const queryContext = createQueryExecutionContext({
         accounts: MOCK_ACCOUNTS,

@@ -8,7 +8,7 @@ const accounts: WalletAccountItem[] = [
   { id: 'acc-gopay', name: 'GoPay', currency: 'IDR' },
 ];
 
-describe('native paired transfers (issue #143)', () => {
+describe('native paired transfers', () => {
   it('normalizes current category hierarchy and writable-state metadata', async () => {
     const client = new WalletMcpClientService('https://example.invalid', 'test-token');
     vi.spyOn(client, 'callMcpTool').mockResolvedValue({

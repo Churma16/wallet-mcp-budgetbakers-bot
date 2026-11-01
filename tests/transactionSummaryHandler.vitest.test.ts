@@ -15,7 +15,7 @@ import type {
   WalletRecordAggregationResponse,
 } from '../src/wallet/index.js';
 
-describe('Transaction Summary Fast-Path Handler Tests (Issue #103 & #140)', () => {
+describe('Transaction Summary Fast-Path Handler Tests', () => {
   beforeEach(() => {
     setActiveLanguage('id');
   });
@@ -25,7 +25,7 @@ describe('Transaction Summary Fast-Path Handler Tests (Issue #103 & #140)', () =
     vi.restoreAllMocks();
   });
 
-  describe('Suite 1: FastPathHandler dispatches transaction summaries end-to-end', () => {
+  describe('FastPathHandler dispatches transaction summaries end-to-end', () => {
     it('handles summary dispatch and formats outbound message', async () => {
       setActiveLanguage('en');
 
@@ -111,7 +111,7 @@ describe('Transaction Summary Fast-Path Handler Tests (Issue #103 & #140)', () =
     });
   });
 
-  describe('Suite 2: FastPathHandler handles empty summary results gracefully', () => {
+  describe('FastPathHandler handles empty summary results gracefully', () => {
     it('formats and sends empty-state response when no transactions match', async () => {
       setActiveLanguage('id');
 
@@ -163,7 +163,7 @@ describe('Transaction Summary Fast-Path Handler Tests (Issue #103 & #140)', () =
     });
   });
 
-  describe('Suite 3: FastPathHandler handles unresolved summary filters', () => {
+  describe('FastPathHandler handles unresolved summary filters', () => {
     it('formats and sends unresolved filter warnings without throwing', async () => {
       setActiveLanguage('id');
 
@@ -223,7 +223,7 @@ describe('Transaction Summary Fast-Path Handler Tests (Issue #103 & #140)', () =
     });
   });
 
-  describe('Suite 4: FastPathHandler formats multi-currency summary breakdown', () => {
+  describe('FastPathHandler formats multi-currency summary breakdown', () => {
     it('formats multi-currency summaries with isolated currency blocks', async () => {
       setActiveLanguage('en');
 
@@ -292,7 +292,7 @@ describe('Transaction Summary Fast-Path Handler Tests (Issue #103 & #140)', () =
     });
   });
 
-  describe('Suite 5: FastPathHandler native integration executes without invoking history pagination', () => {
+  describe('FastPathHandler native integration executes without invoking history pagination', () => {
     it('dispatches native aggregation through FastPathHandler and never calls getTransactionHistory', async () => {
       setActiveLanguage('en');
 

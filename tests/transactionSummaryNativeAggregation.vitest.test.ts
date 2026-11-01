@@ -23,7 +23,7 @@ import type {
   WalletMcpTransportDependencies,
 } from '../src/wallet/index.js';
 
-describe('native Wallet MCP summary aggregation (Issue #161)', () => {
+describe('native Wallet MCP summary aggregation', () => {
   const cachedAccounts: WalletAccountItem[] = [
     { id: 'acc-bca', name: 'BCA Account', currency: 'IDR' },
     { id: 'acc-jago', name: 'Jago Account', currency: 'IDR' },
@@ -1127,7 +1127,7 @@ describe('native Wallet MCP summary aggregation (Issue #161)', () => {
     });
   });
 
-  describe('WalletMcpCapabilityService consultation (Issue #163)', () => {
+  describe('WalletMcpCapabilityService consultation', () => {
     it('bypasses native aggregation immediately when capabilityService reports unsupported tool', async () => {
       const mockClient = {
         fetchRecordsAggregation: vi.fn(),

@@ -103,7 +103,7 @@ function createHandler(options: {
   return { handler, gateway, pending, pendingAction, fastPath, accountClarification, ai, messages };
 }
 
-describe('PR #155 UserMessageHandler routing branch coverage', () => {
+describe('MessageDispatcher user message routing branch coverage', () => {
   beforeEach(() => setActiveLanguage('id'));
 
   it('falls back safely when a partial pending manager has no hasPendingTransactions method', async () => {

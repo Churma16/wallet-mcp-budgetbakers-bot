@@ -288,7 +288,7 @@ function createHarness(
   };
 }
 
-describe('Account Clarification Conversation Layer (Issue #120)', () => {
+describe('Account Clarification Conversation Layer', () => {
   beforeEach(() => {
     setActiveLanguage('id');
   });

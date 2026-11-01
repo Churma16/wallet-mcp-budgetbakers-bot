@@ -37,7 +37,7 @@ const categories = [
   { id: 'transport-id', name: 'Transport' },
 ] as any;
 
-describe('PR #155 account clarification formatter changed branches', () => {
+describe('account clarification formatter response formatting', () => {
   beforeEach(() => setActiveLanguage('id'));
 
   it('covers Indonesian prompt with invalid selection, batch line, candidate currency suffixes, and exact category id', () => {

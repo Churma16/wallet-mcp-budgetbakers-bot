@@ -49,7 +49,7 @@ afterEach(() => {
 });
 
 describe('natural-language relative time parsing', () => {
-  it('1. extracts local date/time and previous-date boundaries', () => {
+  it('extracts local date/time and previous-date boundaries', () => {
     const localParts = getLocalTimeParts(fixedReferenceUtc, defaultTimezone);
     expect(localParts.dateString).toBe('2026-09-11');
     expect(localParts.hour).toBe(14);
@@ -60,7 +60,7 @@ describe('natural-language relative time parsing', () => {
     expect(getPreviousLocalDateString('2027-01-01')).toBe('2026-12-31');
   });
 
-  it('2. parses Indonesian tadi + period expressions using representative times', () => {
+  it('parses Indonesian tadi + period expressions using representative times', () => {
     const tadiPagi = parseRelativeTime('tadi pagi beli bensin 30rb', fixedReferenceUtc, defaultTimezone);
     expect(tadiPagi).not.toBeNull();
     expect(tadiPagi?.resolvedUtcIso).toBe('2026-09-11T01:00:00.000Z');
@@ -75,7 +75,7 @@ describe('natural-language relative time parsing', () => {
       .toBe('2026-09-10T22:00:00.000Z');
   });
 
-  it('3. parses kemarin, semalam, colloquial variants, and tadi malam correctly', () => {
+  it('parses kemarin, semalam, colloquial variants, and tadi malam correctly', () => {
     const semalam = parseRelativeTime('semalam makan sate 50rb', fixedReferenceUtc, defaultTimezone);
     expect(semalam?.resolvedUtcIso).toBe('2026-09-10T13:00:00.000Z');
     expect(semalam?.dayReference).toBe('yesterday');
@@ -95,7 +95,7 @@ describe('natural-language relative time parsing', () => {
       .toBe('2026-09-10T01:00:00.000Z');
   });
 
-  it('4. lets explicit user clocks override representative period times', () => {
+  it('lets explicit user clocks override representative period times', () => {
     const tadiPagiJam7 = parseRelativeTime('tadi pagi jam 7 beli bensin 30rb', fixedReferenceUtc, defaultTimezone);
     expect(tadiPagiJam7?.hasExplicitTime).toBe(true);
     expect(tadiPagiJam7?.resolvedUtcIso).toBe('2026-09-11T00:00:00.000Z');
@@ -107,7 +107,7 @@ describe('natural-language relative time parsing', () => {
       .toBe('2026-09-11T07:00:00.000Z');
   });
 
-  it('5. parses equivalent English relative-time expressions', () => {
+  it('parses equivalent English relative-time expressions', () => {
     expect(parseRelativeTime('this morning bought gas 30k', fixedReferenceUtc, defaultTimezone)?.resolvedUtcIso)
       .toBe('2026-09-11T01:00:00.000Z');
     expect(parseRelativeTime('this afternoon lunch 50k', fixedReferenceUtc, defaultTimezone)?.resolvedUtcIso)
@@ -122,14 +122,14 @@ describe('natural-language relative time parsing', () => {
       .toBe('2026-09-10T08:00:00.000Z');
   });
 
-  it('6. converts representative times correctly in WITA and WIT', () => {
+  it('converts representative times correctly in WITA and WIT', () => {
     expect(parseRelativeTime('tadi pagi sarapan coto 30rb', fixedReferenceUtc, 'Asia/Makassar')?.resolvedUtcIso)
       .toBe('2026-09-11T00:00:00.000Z');
     expect(parseRelativeTime('tadi pagi sarapan papeda 25rb', fixedReferenceUtc, 'Asia/Jayapura')?.resolvedUtcIso)
       .toBe('2026-09-10T23:00:00.000Z');
   });
 
-  it('7. normalizes record dates from relative source text without changing ordinary transactions', () => {
+  it('normalizes record dates from relative source text without changing ordinary transactions', () => {
     process.env.APP_TIMEZONE = 'Asia/Jakarta';
 
     const kemarin = validateAndSanitizeFinancialRecords(
@@ -161,7 +161,7 @@ describe('natural-language relative time parsing', () => {
     expect(standard.sanitizedRecords[0].recordDate).toBe('2026-09-11T07:15:00.000Z');
   });
 
-  it('8. grounds system instructions and text prompts with representative times and local-date anchors', () => {
+  it('grounds system instructions and text prompts with representative times and local-date anchors', () => {
     setActiveLanguage('id');
     const idInstruction = buildCompactSystemInstruction(mockAccounts, mockCategories, '2026-09-11', 'Asia/Jakarta');
     expect(idInstruction).toContain('pagi / morning: 08:00');
@@ -183,7 +183,7 @@ describe('natural-language relative time parsing', () => {
     expect(prompt).toContain('Yesterday: 2026-09-10');
   });
 
-  it('9. preserves distinct dates in multi-record batches and uses record-local relative expressions', () => {
+  it('preserves distinct dates in multi-record batches and uses record-local relative expressions', () => {
     const caseA = validateAndSanitizeFinancialRecords(
       [
         { accountId: 'acc-cash', amount: -30000, recordDate: '2026-09-11T01:00:00.000Z', note: 'beli bensin' },
@@ -213,7 +213,7 @@ describe('natural-language relative time parsing', () => {
     expect(caseB.sanitizedRecords[1].recordDate).toBe('2026-09-10T05:30:00.000Z');
   });
 
-  it('10. preserves request-scoped date and hashtags through account clarification across midnight', async () => {
+  it('preserves request-scoped date and hashtags through account clarification across midnight', async () => {
     const ambiguousAccounts: WalletAccountItem[] = [
       { id: 'acc-bca-1', name: 'BCA Personal', currency: 'IDR', accountType: 'General' },
       { id: 'acc-bca-2', name: 'BCA Business', currency: 'IDR', accountType: 'General' },
@@ -290,7 +290,7 @@ describe('natural-language relative time parsing', () => {
     expect(dispatchedMcpRecords[0][0].labels).toContain('dinner');
   });
 
-  it('11. resolves DST fall-back and spring-forward target dates using the target-date offset', () => {
+  it('resolves DST fall-back and spring-forward target dates using the target-date offset', () => {
     const timezone = 'America/New_York';
     expect(parseRelativeTime('yesterday at 8pm groceries $50', new Date('2026-11-01T17:00:00.000Z'), timezone)?.resolvedUtcIso)
       .toBe('2026-11-01T00:00:00.000Z');
@@ -300,7 +300,7 @@ describe('natural-language relative time parsing', () => {
     expect(resolveTargetLocalToUtcIso('2026-03-07', 20, 0, timezone)).toBe('2026-03-08T01:00:00.000Z');
   });
 
-  it('12. parses bare 24-hour clocks while excluding monetary numbers', () => {
+  it('parses bare 24-hour clocks while excluding monetary numbers', () => {
     const dot = parseRelativeTime('kemarin 15.30 beli makan', fixedReferenceUtc, defaultTimezone);
     expect(dot?.hasExplicitTime).toBe(true);
     expect(dot?.targetHour).toBe(15);
@@ -327,7 +327,7 @@ describe('natural-language relative time parsing', () => {
     expect(mixed?.targetMinute).toBe(30);
   });
 
-  it('13. excludes decimal currency values while preserving positive bare-clock contexts', () => {
+  it('excludes decimal currency values while preserving positive bare-clock contexts', () => {
     const currencyLikeInputs = [
       ['yesterday spent USD 15.30 on lunch', 'USD 15.30'],
       ['kemarin bayar $ 15.30', '$ 15.30'],
@@ -381,7 +381,7 @@ describe('natural-language relative time parsing', () => {
     expect(yesterdayDawn?.resolvedUtcIso).toBe('2026-09-09T22:30:00.000Z');
   });
 
-  it('14. derives current date from local timezone and invalidates Gemini cache across local midnight', () => {
+  it('derives current date from local timezone and invalidates Gemini cache across local midnight', () => {
     const positiveInstant = new Date('2026-09-11T18:00:00.000Z');
     const jakartaDate = getCurrentLocalDateString(positiveInstant, 'Asia/Jakarta');
     expect(jakartaDate).toBe('2026-09-12');
@@ -411,7 +411,7 @@ describe('natural-language relative time parsing', () => {
     expect(after).not.toBe(before);
   });
 
-  it('15. keeps tadi malam on the current local date while semalam targets yesterday', () => {
+  it('keeps tadi malam on the current local date while semalam targets yesterday', () => {
     const eveningReference = new Date('2026-09-11T15:30:00.000Z');
     const tadiMalam = parseRelativeTime('tadi malam makan 50rb', eveningReference, defaultTimezone);
     expect(tadiMalam).not.toBeNull();
@@ -427,7 +427,7 @@ describe('natural-language relative time parsing', () => {
     expect(semalam?.resolvedUtcIso).toBe('2026-09-10T13:00:00.000Z');
   });
 
-  it('16. anchors relative time to the request instant across a local-midnight boundary', () => {
+  it('anchors relative time to the request instant across a local-midnight boundary', () => {
     const requestStart = new Date('2026-09-11T16:59:55.000Z');
     const validationCompleted = new Date('2026-09-11T17:00:05.000Z');
     const records = [{
@@ -450,7 +450,7 @@ describe('natural-language relative time parsing', () => {
     expect(anchored.sanitizedRecords[0].recordDate).not.toBe(drifted.sanitizedRecords[0].recordDate);
   });
 
-  it('17. invalidates Gemini system-instruction cache when DST offset changes on the same local date', () => {
+  it('invalidates Gemini system-instruction cache when DST offset changes on the same local date', () => {
     process.env.APP_TIMEZONE = 'America/New_York';
     const provider = new GeminiAiProvider('test-api-key', 'gemini-3.6-flash', []);
     const beforeInstant = new Date('2026-11-01T05:30:00.000Z');
@@ -469,7 +469,7 @@ describe('natural-language relative time parsing', () => {
     expect(after).not.toBe(before);
   });
 
-  it('18. validates APP_TIMEZONE fail-closed while keeping the unset default', () => {
+  it('validates APP_TIMEZONE fail-closed while keeping the unset default', () => {
     const baseConfig: ApplicationEnvironmentConfiguration = {
       aiProvider: 'gemini',
       aiProviders: ['gemini'],
@@ -520,7 +520,7 @@ describe('natural-language relative time parsing', () => {
     expect(typo.errors.some(issue => issue.variableName === 'APP_TIMEZONE')).toBe(true);
   });
 
-  it('19. resolves local timestamps with target-date DST offsets independently of request date and preserves explicit offsets', () => {
+  it('resolves local timestamps with target-date DST offsets independently of request date and preserves explicit offsets', () => {
     process.env.APP_TIMEZONE = 'America/New_York';
     const estRequest = new Date('2026-11-15T15:00:00.000Z');
     const edtRequest = new Date('2026-07-15T15:00:00.000Z');
@@ -567,7 +567,7 @@ describe('natural-language relative time parsing', () => {
     expect(resolveTargetLocalToUtcIso('2026-11-15', 11, 54, 'America/New_York')).toBe('2026-11-15T16:54:00.000Z');
   });
 
-  it('20. fails closed for nonexistent DST-gap wall clocks while accepting neighboring and deterministic overlap times', () => {
+  it('fails closed for nonexistent DST-gap wall clocks while accepting neighboring and deterministic overlap times', () => {
     process.env.APP_TIMEZONE = 'America/New_York';
     let error: Error | null = null;
     try {
@@ -618,7 +618,7 @@ describe('natural-language relative time parsing', () => {
     expect(resolveTargetLocalToUtcIso('2026-11-01', 1, 30, 'America/New_York')).toBe('2026-11-01T06:30:00.000Z');
   });
 
-  it('21. provides shared calendar-day/range helpers with half-open UTC interval invariants', () => {
+  it('provides shared calendar-day/range helpers with half-open UTC interval invariants', () => {
     expect(getNextLocalDateString('2026-09-11')).toBe('2026-09-12');
     expect(getNextLocalDateString('2026-09-30')).toBe('2026-10-01');
     expect(getNextLocalDateString('2024-02-28')).toBe('2024-02-29');

@@ -107,7 +107,7 @@ function createPendingHandler(
   return { handler, messages, createRecords };
 }
 
-describe('PR #155 final changed-branch coverage', () => {
+describe('transaction status formatting, view model edge states, and pending action boundaries', () => {
   beforeEach(() => setActiveLanguage('id'));
 
   describe('transaction status formatter matrix', () => {

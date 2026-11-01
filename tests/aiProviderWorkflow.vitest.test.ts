@@ -19,7 +19,7 @@ import { GateEvaluationResult } from '../src/email/index.js';
 import { GeminiAiProvider } from '../src/brain/index.js';
 import { OpenAiCompatibleAiProvider } from '../src/brain/index.js';
 
-describe('AI Provider Workflow (Issue #108)', () => {
+describe('AI Provider Workflow', () => {
   const mockAccountList: WalletAccountItem[] = [
     { id: 'account-cash-id', name: 'Cash Wallet', currency: 'IDR' },
     { id: 'account-bca-id', name: 'BCA Account', currency: 'IDR' },

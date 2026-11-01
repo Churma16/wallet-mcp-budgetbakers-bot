@@ -18,7 +18,7 @@ import { MessageIdTracker } from '../src/gateway/whatsapp.js';
 import { setActiveLanguage, getActiveLanguage, SupportedLanguage } from '../src/i18n/index.js';
 import { applicationLogger } from '../src/lib/logger.js';
 
-describe('Cross-Channel Media Handling (Issue #109)', () => {
+describe('Cross-Channel Media Handling', () => {
   let originalLanguage: SupportedLanguage;
 
   beforeEach(() => {

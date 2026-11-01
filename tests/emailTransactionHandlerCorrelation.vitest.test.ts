@@ -5,7 +5,7 @@ import { TransactionCorrelationService } from '../src/email/index.js';
 import { EmailTransactionDetectedEvent } from '../src/email/index.js';
 import { BANK_EMAIL_RULES } from '../src/email/index.js';
 
-describe('EmailTransactionHandler Multi-Source Correlation Integration (Issue #153)', () => {
+describe('EmailTransactionHandler Multi-Source Correlation Integration', () => {
   const mandiriRule = BANK_EMAIL_RULES.find(r => r.bankKey === 'mandiri')!;
   const blibliRule = BANK_EMAIL_RULES.find(r => r.bankKey === 'blibli')!;
 

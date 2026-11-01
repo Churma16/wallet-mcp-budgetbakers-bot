@@ -159,8 +159,8 @@ const sampleRecord: CreateRecordInputPayload = {
   recordDate: '2026-09-10',
 };
 
-describe('Pending Transaction Data Integrity and MCP Failure Recovery (Issue #72)', () => {
-  runCase('Suite 1: single confirmation succeeds and removes the ticket', async () => {
+describe('Pending Transaction Data Integrity and MCP Failure Recovery', () => {
+  runCase('single confirmation succeeds and removes the ticket', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -174,7 +174,7 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery (Issue #72
     assertCondition('Success response was sent to the user', messaging.messages.length === 1);
   });
 
-  runCase('Suite 2: bulk partial definitive failures keep only failed tickets retryable', async () => {
+  runCase('bulk partial definitive failures keep only failed tickets retryable', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -211,7 +211,7 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery (Issue #72
     assertCondition('Bulk retry guidance does not suggest ambiguous bare ya', !retryMessage.includes('Ketik "ya"'));
   });
 
-  runCase('Suite 3: transfer uses one native paired-transfer input', async () => {
+  runCase('transfer uses one native paired-transfer input', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -249,7 +249,7 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery (Issue #72
     assertCondition('Transfer ticket removed after retry succeeds', pendingService.getPendingTransaction(1) === undefined);
   });
 
-  runCase('Suite 4: ambiguous timeout becomes UNKNOWN and is not automatically retried', async () => {
+  runCase('ambiguous timeout becomes UNKNOWN and is not automatically retried', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -269,7 +269,7 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery (Issue #72
     assertCondition('Second confirmation did not redispatch UNKNOWN ticket', walletMcp.calls.length === 1);
   });
 
-  runCase('Suite 5: concurrent confirmations cannot double-dispatch one ticket', async () => {
+  runCase('concurrent confirmations cannot double-dispatch one ticket', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -288,7 +288,7 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery (Issue #72
     assertCondition('Both confirmation attempts received deterministic responses', messaging.messages.length === 2);
   });
 
-  runCase('Suite 6: email reference is recorded only after the native transfer succeeds', async () => {
+  runCase('email reference is recorded only after the native transfer succeeds', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -326,7 +326,7 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery (Issue #72
     assertCondition('Email reference marked once after full success', recordedReferences.join(',') === 'REF-12345');
   });
 
-  runCase('Suite 7: backend error details stay in logs and are not exposed to chat', async () => {
+  runCase('backend error details stay in logs and are not exposed to chat', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -343,7 +343,7 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery (Issue #72
     assertCondition('Backend token is not exposed', !chatMessage.includes('secret-123'));
   });
 
-  runCase('Suite 8: PROCESSING and UNKNOWN tickets cannot be cancelled concurrently or before reconciliation', () => {
+  runCase('PROCESSING and UNKNOWN tickets cannot be cancelled concurrently or before reconciliation', () => {
     const pendingService = new PendingTransactionService();
     addExpense(pendingService);
 
@@ -363,7 +363,7 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery (Issue #72
     assertCondition('UNKNOWN ticket remains available for reconciliation', pendingService.getPendingTransactionState(1) === 'UNKNOWN');
   });
 
-  runCase('Suite 9: create_records per-item rejection is treated as definitive failure', async () => {
+  runCase('create_records per-item rejection is treated as definitive failure', async () => {
     const client = new WalletMcpClientService('https://example.invalid', 'test-token');
     vi.spyOn(client, 'callMcpTool').mockResolvedValue({
       summary: { total: 1, succeeded: 0, failed: 1 },
@@ -376,7 +376,7 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery (Issue #72
     );
   });
 
-  runCase('Suite 10: transport timeout is classified UNKNOWN', async () => {
+  runCase('transport timeout is classified UNKNOWN', async () => {
     const client = new WalletMcpClientService('https://example.invalid', 'test-token');
     vi.spyOn(client, 'callMcpTool').mockRejectedValue(
       new WalletMcpRequestError('request timed out', 'UNKNOWN')
@@ -389,7 +389,7 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery (Issue #72
     assertCondition('UNKNOWN helper recognizes real client transport error', isWalletMcpDispatchOutcomeUnknown(error));
   });
 
-  runCase('Suite 11: explicit HTTP 400 is definitive while HTTP 503 is ambiguous', async () => {
+  runCase('explicit HTTP 400 is definitive while HTTP 503 is ambiguous', async () => {
     const definitiveClient = new WalletMcpClientService('https://example.invalid', 'test-token');
     vi.spyOn(definitiveClient, 'callMcpTool').mockRejectedValue(
       new WalletMcpRequestError('bad request', 'DEFINITIVE_FAILURE')
@@ -411,7 +411,7 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery (Issue #72
     );
   });
 
-  runCase('Suite 12: create_records requires positive and internally consistent success evidence', async () => {
+  runCase('create_records requires positive and internally consistent success evidence', async () => {
     const nullClient = createWalletClientWithToolResult(null);
     await expectWalletMcpRequestError(() => nullClient.createRecords([sampleRecord]), 'UNKNOWN');
 
@@ -541,7 +541,7 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery (Issue #72
     await expectWalletMcpRequestError(() => mismatchedTotalClient.createRecords([sampleRecord]), 'UNKNOWN');
   });
 
-  runCase('Suite 13: generic unclassified handler errors become UNKNOWN instead of retryable', async () => {
+  runCase('generic unclassified handler errors become UNKNOWN instead of retryable', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();

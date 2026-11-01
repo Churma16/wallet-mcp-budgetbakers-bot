@@ -31,7 +31,7 @@ function addUnknownDraft(service: PendingTransactionService) {
   return draft;
 }
 
-describe('PR #155 remaining changed branches', () => {
+describe('clarification draft cancellation fall-through and queue registry integration', () => {
   it('lets generic cancel fall through when UNKNOWN account draft competes with a standard pending transaction', async () => {
     const service = new PendingTransactionService();
     const draft = addUnknownDraft(service);

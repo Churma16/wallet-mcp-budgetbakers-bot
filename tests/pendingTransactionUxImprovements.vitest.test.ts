@@ -16,7 +16,7 @@ function createMockEvent(text: string): IncomingUserMessageEvent {
 }
 
 describe('Pending Transaction UX & Concurrency Improvements', () => {
-  describe('1. Single Notification Badging and Prompts', () => {
+  describe('Single Notification Badging and Prompts', () => {
     it('always includes ticketId badge (#1) and prompt hints in Indonesian', () => {
       const output = indonesianDictionary.emailPending.formatNotification({
         ticketId: 1,
@@ -52,7 +52,7 @@ describe('Pending Transaction UX & Concurrency Improvements', () => {
     });
   });
 
-  describe('2. FIFO Resolution for Sequential Unnumbered Ya and Numbered Ya N', () => {
+  describe('FIFO Resolution for Sequential Unnumbered Ya and Numbered Ya N', () => {
     it('resolves bare Ya to oldest ticket and Ya 2 to second ticket without race condition', async () => {
       const pendingService = new PendingTransactionService();
       const sentMessages: string[] = [];
@@ -134,7 +134,7 @@ describe('Pending Transaction UX & Concurrency Improvements', () => {
     });
   });
 
-  describe('3. Friendly Contextual Feedback for In-Flight and Duplicate Actions', () => {
+  describe('Friendly Contextual Feedback for In-Flight and Duplicate Actions', () => {
     it('replies with friendly in-progress status when ticket is already PROCESSING', async () => {
       const pendingService = new PendingTransactionService();
       const sentMessages: string[] = [];
@@ -276,7 +276,7 @@ describe('Pending Transaction UX & Concurrency Improvements', () => {
     });
   });
 
-  describe('4. Friendly Rejection Handling', () => {
+  describe('Friendly Rejection Handling', () => {
     it('prevents cancellation and sends friendly notice when ticket is PROCESSING', async () => {
       const pendingService = new PendingTransactionService();
       const sentMessages: string[] = [];

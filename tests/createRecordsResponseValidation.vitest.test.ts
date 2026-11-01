@@ -7,7 +7,7 @@ import {
 } from '../src/wallet/index.js';
 import { CreateRecordInputPayload, WalletCreateRecordsResponse } from '../src/wallet/index.js';
 
-describe('Wallet MCP create_records Response Validation (Issue #146)', () => {
+describe('Wallet MCP create_records Response Validation', () => {
   const dummyBaseUrl = 'https://example.invalid';
   const dummyToken = 'test-token';
 

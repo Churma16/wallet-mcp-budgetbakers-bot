@@ -64,7 +64,7 @@ const mockSampleBudgets: WalletBudgetProgressItem[] = [
 ];
 
 // -----------------------------------------------------------------------------
-// Suite 1: FinancialActionExecutor Direct Unit Execution
+// FinancialActionExecutor Direct Unit Execution
 // -----------------------------------------------------------------------------
 test('FinancialActionExecutor directly executes balance, budget, and help actions', async () => {
   setActiveLanguage('id');
@@ -125,7 +125,7 @@ test('FinancialActionExecutor directly executes balance, budget, and help action
 });
 
 // -----------------------------------------------------------------------------
-// Suite 2: FastPathHandler Delegation to Shared Executor
+// FastPathHandler Delegation to Shared Executor
 // -----------------------------------------------------------------------------
 test('FastPathHandler delegates supported actions to FinancialActionExecutor', async () => {
   setActiveLanguage('id');
@@ -183,7 +183,7 @@ test('FastPathHandler delegates supported actions to FinancialActionExecutor', a
 });
 
 // -----------------------------------------------------------------------------
-// Suite 3: UserMessageHandler (AI-Path) Delegation to Shared Executor
+// UserMessageHandler (AI-Path) Delegation to Shared Executor
 // -----------------------------------------------------------------------------
 test('UserMessageHandler delegates AI-routed actions to FinancialActionExecutor', async () => {
   setActiveLanguage('id');
@@ -346,7 +346,7 @@ test('deferred category authority rejects unresolved categories and action switc
 });
 
 // -----------------------------------------------------------------------------
-// Suite 4: End-to-End Equivalence Between Fast-Path and AI Routes
+// End-to-End Equivalence Between Fast-Path and AI Routes
 // -----------------------------------------------------------------------------
 test('Fast-Path and AI routes produce equivalent balance and budget outputs', async () => {
   setActiveLanguage('id');
@@ -439,7 +439,7 @@ test('Fast-Path and AI routes produce equivalent balance and budget outputs', as
 });
 
 // -----------------------------------------------------------------------------
-// Suite 5: Fallback Start Timestamp Resolution Without Context (Review Feedback)
+// Fallback Start Timestamp Resolution Without Context (Review Feedback)
 // -----------------------------------------------------------------------------
 test('executor methods establish a fallback timestamp before awaited work begins', async () => {
   setActiveLanguage('id');

@@ -74,7 +74,7 @@ async function dispatchIfAccepted(
   }
 }
 
-describe('SemanticToolBoundary (Issue #117)', () => {
+describe('SemanticToolBoundary', () => {
   it('accepts a bounded native transfer proposal and clones its nested amount', () => {
     const decision = evaluate({
       tool: 'propose_transaction',
