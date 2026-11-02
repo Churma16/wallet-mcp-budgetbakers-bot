@@ -281,7 +281,7 @@ export class MessageDispatcher {
     await this.context.gateway.sendTypingPresence(event.channel, event.chatIdentifier);
 
     try {
-      // 0. Reply-to-message transaction deletion or modification command
+      // 0. Reply-to-message transaction deletion (e.g. "hapus", "delete") or edit command (e.g. "c: Makan t: #jajan n: Kopi" or "e c:...")
       if (
         event.messageType === 'text' &&
         event.textPayload &&

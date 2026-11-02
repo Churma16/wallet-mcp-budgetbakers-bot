@@ -320,4 +320,35 @@ describe('MessageDispatcher delete routing integration', () => {
       expect.stringContaining('Transaksi berhasil dihapus:')
     );
   });
+  it('passes through edit commands like "c: Makan t: #jajan n: Kopi" to modifyRecordHandler', async () => {
+    const mockModifyRecordHandler = {
+      handleModifyRecordReply: vi.fn().mockResolvedValue(true),
+    };
+
+    const mockGateway = {
+      sendMessage: vi.fn().mockResolvedValue({ messageId: 'reply-edit' } as any),
+      sendTypingPresence: vi.fn().mockResolvedValue(undefined),
+      clearTypingPresence: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const context = createTestAppContext({
+      gateway: mockGateway,
+    });
+
+    const dispatcher = new MessageDispatcher(context, {
+      modifyRecordHandler: mockModifyRecordHandler as any,
+    });
+
+    await dispatcher.handleIncomingUserMessage({
+      channel: 'whatsapp',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: 'c: Makan t: #jajan n: Kopi',
+      replyToMessageId: 'receipt-msg-101',
+    });
+
+    expect(mockModifyRecordHandler.handleModifyRecordReply).toHaveBeenCalled();
+  });
+
 });
