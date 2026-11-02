@@ -20,11 +20,20 @@ export interface SentMessageReceipt {
   readonly messageId?: string;
 }
 
+export interface SendTextMessageOptions {
+  readonly isHelpMenu?: boolean;
+  readonly replyMarkup?: unknown;
+}
+
 export interface MessagingAdapter {
   readonly channelName: SupportedMessengerChannel;
   startConnection(): Promise<void>;
   stopConnection?(): Promise<void>;
-  sendTextMessage(targetChatIdentifier: string, messageText: string): Promise<SentMessageReceipt | void>;
+  sendTextMessage(
+    targetChatIdentifier: string,
+    messageText: string,
+    options?: SendTextMessageOptions
+  ): Promise<SentMessageReceipt | void>;
   sendTypingPresence(targetChatIdentifier: string): Promise<void>;
   clearTypingPresence(targetChatIdentifier: string): Promise<void>;
   sendBroadcastNotification(messageText: string): Promise<void>;

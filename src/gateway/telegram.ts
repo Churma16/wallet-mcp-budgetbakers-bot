@@ -6,6 +6,7 @@ import {
   AdapterConnectionState,
   MediaRejectionStage,
   MessagingAdapter,
+  SendTextMessageOptions,
   SentMessageReceipt,
   SupportedMessengerChannel,
   TelegramSafeguardConfiguration,
@@ -17,6 +18,12 @@ import {
   isMediaSizeExceeded,
   rejectOversizedMedia,
 } from './mediaPolicy.js';
+import {
+  createTelegramGuideInlineKeyboard,
+  createTelegramMainReplyKeyboard,
+  getTelegramBotCommands,
+  getTelegramGuideTopicContent,
+} from './telegramMenu.js';
 
 export type { TelegramSafeguardConfiguration };
 
@@ -62,7 +69,7 @@ export function convertWhatsAppMarkupToTelegramHtml(sourceText: string): string 
 
 /**
  * Messaging adapter integrating the Telegram Bot API via Grammy, enforcing fail-closed
- * user authorization, long-polling resilience, and media download protections.
+ * user authorization, long-polling resilience, interactive menus, and media download protections.
  */
 export class TelegramMessagingAdapter implements MessagingAdapter {
   public readonly channelName: SupportedMessengerChannel = 'telegram';
@@ -112,6 +119,14 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
           `[SECURITY] Telegram ignored message from unauthorized user: ${senderUserId} (@${ctx.from?.username || 'unknown'})`
         );
       }
+
+      if (ctx.callbackQuery) {
+        try {
+          await ctx.answerCallbackQuery({ text: 'Akses ditolak / Unauthorized', show_alert: true });
+        } catch {
+          // Ignore failure to answer unauthorized callback
+        }
+      }
       return;
     }
 
@@ -141,6 +156,20 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       applicationLogger.success(
         `Telegram Bot connected successfully as @${safeBotUsername} (${safeBotFirstName})`
       );
+
+      // Register official bot commands menu
+      try {
+        const botCommands = getTelegramBotCommands();
+        await this.executeWithStartupRetry(
+          () => this.botInstance!.api.setMyCommands(botCommands),
+          'Telegram api.setMyCommands()'
+        );
+        applicationLogger.info(`[INFO] Registered ${botCommands.length} Telegram bot commands successfully.`);
+      } catch (setCommandsError: unknown) {
+        applicationLogger.warn(
+          `[WARN] Failed to register Telegram bot commands: ${setCommandsError instanceof Error ? setCommandsError.message : String(setCommandsError)}`
+        );
+      }
 
       if (this.normalizedAllowedUserId) {
         applicationLogger.security(`Telegram whitelist active. Only responding to: ${this.normalizedAllowedUserId}`);
@@ -295,16 +324,53 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     return this.isRunning ? 'connected' : 'idle';
   }
 
-  public async sendTextMessage(targetChatIdentifier: string, messageText: string): Promise<SentMessageReceipt> {
+  public async sendTextMessage(
+    targetChatIdentifier: string,
+    messageText: string,
+    options?: SendTextMessageOptions
+  ): Promise<SentMessageReceipt> {
     if (!this.botInstance) {
       throw new Error('[error] Telegram bot is not initialized');
     }
 
+    if (options?.isHelpMenu) {
+      const formattedHtmlText = convertWhatsAppMarkupToTelegramHtml(messageText);
+      const replyKeyboard = createTelegramMainReplyKeyboard();
+
+      try {
+        const sentMenu = await this.botInstance.api.sendMessage(targetChatIdentifier, formattedHtmlText, {
+          parse_mode: 'HTML',
+          reply_markup: replyKeyboard,
+        });
+
+        const guideOverview = getTelegramGuideTopicContent('home');
+        if (guideOverview) {
+          await this.botInstance.api.sendMessage(targetChatIdentifier, guideOverview.text, {
+            parse_mode: 'HTML',
+            reply_markup: guideOverview.replyMarkup,
+          });
+        }
+
+        return { messageId: String(sentMenu.message_id) };
+      } catch (htmlSendError: unknown) {
+        applicationLogger.warn(
+          `Telegram HTML parse failed for help menu, falling back to plain text for chat ${targetChatIdentifier}: ${htmlSendError}`
+        );
+
+        const fallbackSent = await this.botInstance.api.sendMessage(targetChatIdentifier, messageText, {
+          reply_markup: replyKeyboard,
+        });
+        return { messageId: String(fallbackSent.message_id) };
+      }
+    }
+
     const formattedHtmlText = convertWhatsAppMarkupToTelegramHtml(messageText);
+    const replyMarkup = options?.replyMarkup as any;
 
     try {
       const sentMessage = await this.botInstance.api.sendMessage(targetChatIdentifier, formattedHtmlText, {
         parse_mode: 'HTML',
+        ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
       });
 
       applicationLogger.fileDetail('telegram', 'Dispatched Telegram HTML Message', {
@@ -321,7 +387,9 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       );
 
       try {
-        const fallbackSent = await this.botInstance.api.sendMessage(targetChatIdentifier, messageText);
+        const fallbackSent = await this.botInstance.api.sendMessage(targetChatIdentifier, messageText, {
+          ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+        });
         applicationLogger.fileDetail('telegram', 'Dispatched Telegram Plain Text Message (Fallback)', {
           targetChatIdentifier,
           messageLength: messageText.length,
@@ -369,7 +437,34 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       await this.handleInboundMiddleware(ctx, next);
     });
 
-    // 2. Handle Text Messages
+    // 2. Handle Interactive Guide Callback Queries
+    bot.on('callback_query:data', async ctx => {
+      const callbackData = ctx.callbackQuery.data;
+      if (!callbackData) {
+        await ctx.answerCallbackQuery();
+        return;
+      }
+
+      if (callbackData.startsWith('guide:')) {
+        const topic = callbackData.replace('guide:', '');
+        const guideContent = getTelegramGuideTopicContent(topic);
+        if (guideContent) {
+          try {
+            await ctx.editMessageText(guideContent.text, {
+              parse_mode: 'HTML',
+              reply_markup: guideContent.replyMarkup,
+            });
+          } catch (editError: unknown) {
+            applicationLogger.fileDetail('telegram', 'Guide message edit unchanged or ignored', {
+              error: editError instanceof Error ? editError.message : String(editError),
+            });
+          }
+        }
+        await ctx.answerCallbackQuery();
+      }
+    });
+
+    // 3. Handle Text Messages
     bot.on('message:text', async ctx => {
       const textContent = ctx.message.text?.trim();
       if (!textContent) {
@@ -393,7 +488,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       });
     });
 
-    // 3. Handle Photo Messages (e.g. Receipt Photo for Vision)
+    // 4. Handle Photo Messages (e.g. Receipt Photo for Vision)
     bot.on('message:photo', async ctx => {
       const photoVariants = ctx.message.photo;
       if (!photoVariants || photoVariants.length === 0) {
@@ -470,13 +565,16 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
           imageMimeType: 'image/jpeg',
         });
       } catch (downloadError: unknown) {
-        if (isMediaPayloadSizeLimitExceeded(downloadError)) {
-          await this.rejectOversizedPhoto(
-            chatId,
-            senderIdentifier,
-            undefined,
-            'download_stream',
+        if (
+          downloadError instanceof Error &&
+          downloadError.message.includes('Telegram file size limit exceeded')
+        ) {
+          applicationLogger.fileDetail(
+            'security',
+            'Telegram Image Rejection: Exceeded Payload Limit',
             {
+              chatIdentifier: chatId,
+              senderIdentifier,
               error:
                 downloadError instanceof Error
                   ? { name: downloadError.name, message: downloadError.message }

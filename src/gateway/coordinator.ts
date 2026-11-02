@@ -4,6 +4,7 @@ import {
   AdapterConnectionState,
   MessagingAdapter,
   MessagingGatewayConfiguration,
+  SendTextMessageOptions,
   SentMessageReceipt,
   SupportedMessengerChannel,
 } from './types.js';
@@ -238,7 +239,8 @@ export class MessagingGatewayService {
   public async sendMessage(
     channel: SupportedMessengerChannel,
     targetChatIdentifier: string,
-    messageText: string
+    messageText: string,
+    options?: SendTextMessageOptions
   ): Promise<SentMessageReceipt | void> {
     const adapter = this.adapterMap.get(channel);
     if (!adapter) {
@@ -255,7 +257,7 @@ export class MessagingGatewayService {
       );
     }
 
-    return await adapter.sendTextMessage(targetChatIdentifier, messageText);
+    return await adapter.sendTextMessage(targetChatIdentifier, messageText, options);
   }
 
   public async sendTypingPresence(
