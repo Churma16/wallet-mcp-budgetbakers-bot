@@ -171,7 +171,7 @@ The bot can monitor bank and e-wallet notification emails in real time via IMAP 
 - **Two-Stage Filtering**:
   1. *Stage 1 (Rule-based)*: Validates headers, sender domains, and regex signatures while discarding promotional emails, OTPs, and login alerts without spending AI tokens.
   2. *Stage 2 (AI Extraction)*: Formats verified financial bodies into structured transaction payloads.
-- **Setup**: Set `EMAIL_SYNC_ENABLED=true` in `.env` with your Gmail address and 16-character Google App Password. See [Credential Setup Guide](docs/setup-credentials.md#gmail-imap-sync) for details.
+- **Setup**: Set `EMAIL_SYNC_ENABLED=true` in `.env` with your Gmail address and 16-character Google App Password. See [Credential Setup Guide](docs/setup-credentials.md#gmail-imap) for details.
 
 ### Android Push Notification Forwarder
 
