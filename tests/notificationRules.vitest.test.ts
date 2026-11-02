@@ -31,7 +31,7 @@ describe('notificationRules', () => {
 
     it('rejects blacklisted keywords like OTP and promo', () => {
       const resultOtp = evaluateNotificationThroughGate({
-        packageName: 'com.jago',
+        packageName: 'com.jago.digitalbanking',
         title: 'Kode OTP Rahasia',
         text: 'Jangan bagikan kode verifikasi 123456 kepada siapapun',
       });
@@ -49,7 +49,7 @@ describe('notificationRules', () => {
 
     it('accepts and correctly maps Bank Jago notification', () => {
       const result = evaluateNotificationThroughGate({
-        packageName: 'com.jago',
+        packageName: 'com.jago.digitalbanking',
         title: 'Transaksi Berhasil',
         text: 'Pembayaran Rp 15.799 menggunakan Kartu Debit Jago di Tabucci Snack berhasil',
         timestamp: 1730335000000,
@@ -82,15 +82,48 @@ describe('notificationRules', () => {
       expect(result.candidateAmount).toBe(89000);
     });
 
-    it('accepts and correctly maps Bank Jago digital notification', () => {
-      const result = evaluateNotificationThroughGate({
-        packageName: 'com.jago.digital',
+    it('accepts and correctly maps Bank Jago digitalBanking package and lowercase variant', () => {
+      const resultPascalCase = evaluateNotificationThroughGate({
+        packageName: 'com.jago.digitalBanking',
         title: 'Transaksi Berhasil',
-        text: 'Pembayaran Rp 25.000 ke Gopay berhasil',
+        text: 'Pembayaran Rp 15.799 menggunakan Kartu Debit Jago berhasil',
       });
-      expect(result.passed).toBe(true);
-      expect(result.matchedBankRule?.displayName).toBe('Bank Jago');
-      expect(result.candidateAmount).toBe(25000);
+      expect(resultPascalCase.passed).toBe(true);
+      expect(resultPascalCase.matchedBankRule?.displayName).toBe('Bank Jago');
+      expect(resultPascalCase.candidateAmount).toBe(15799);
+
+      const resultLowercase = evaluateNotificationThroughGate({
+        packageName: 'com.jago.digitalbanking',
+        title: 'Transaksi Berhasil',
+        text: 'Pembayaran Rp 15.799 menggunakan Kartu Debit Jago berhasil',
+      });
+      expect(resultLowercase.passed).toBe(true);
+      expect(resultLowercase.matchedBankRule?.displayName).toBe('Bank Jago');
+      expect(resultLowercase.candidateAmount).toBe(15799);
+    });
+
+    it('accepts and correctly maps verified package IDs for Mandiri, myBCA, wondr, Jenius, Flip, and ShopeePay', () => {
+      const packageTestCases = [
+        { packageName: 'id.bmri.livin', title: 'Transaksi Sukses', text: 'Transfer Rp 100.000 berhasil', expectedBank: 'Bank Mandiri (Livin)', expectedAmount: 100000 },
+        { packageName: 'id.co.bankmandiri', title: 'Transaksi Sukses', text: 'Debit rekening Rp 200.000', expectedBank: 'Bank Mandiri (Livin)', expectedAmount: 200000 },
+        { packageName: 'com.bca.mybca.omni.android', title: 'myBCA Transaksi', text: 'Pembayaran QRIS Rp 45.000 berhasil', expectedBank: 'BCA', expectedAmount: 45000 },
+        { packageName: 'id.bni.wondr', title: 'wondr by BNI', text: 'Transfer dana Rp 350.000 berhasil', expectedBank: 'wondr by BNI', expectedAmount: 350000 },
+        { packageName: 'id.co.bni.tapcashgo', title: 'TapCash Update', text: 'Top up saldo Rp 50.000 berhasil', expectedBank: 'BNI TapCash Go', expectedAmount: 50000 },
+        { packageName: 'com.btpn.jenius.dc', title: 'Uang Keluar', text: 'Pembayaran Rp 75.000 di merchant berhasil', expectedBank: 'Jenius', expectedAmount: 75000 },
+        { packageName: 'id.flip', title: 'Flip Transaksi Berhasil', text: 'Transfer Rp 150.000 telah terkirim', expectedBank: 'Flip', expectedAmount: 150000 },
+        { packageName: 'com.shopeepay.id', title: 'ShopeePay Berhasil', text: 'Pembayaran Rp 30.000 di toko offline', expectedBank: 'ShopeePay', expectedAmount: 30000 },
+      ];
+
+      for (const testCase of packageTestCases) {
+        const evaluation = evaluateNotificationThroughGate({
+          packageName: testCase.packageName,
+          title: testCase.title,
+          text: testCase.text,
+        });
+        expect(evaluation.passed).toBe(true);
+        expect(evaluation.matchedBankRule?.displayName).toBe(testCase.expectedBank);
+        expect(evaluation.candidateAmount).toBe(testCase.expectedAmount);
+      }
     });
 
     it('accepts and correctly maps Tokopedia payment notification', () => {

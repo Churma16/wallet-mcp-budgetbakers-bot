@@ -20,32 +20,31 @@ type PackageRuleTuple = [
 
 const RAW_PACKAGE_RULES: readonly PackageRuleTuple[] = [
   // Bank Jago
-  ['com.jago.digital', 'Bank Jago', 'Jago', 'jago', 'BANK'],
-  ['com.jago', 'Bank Jago', 'Jago', 'jago', 'BANK'],
+  ['com.jago.digitalbanking', 'Bank Jago', 'Jago', 'jago', 'BANK'],
 
   // Bank Mandiri (Livin')
-  ['id.co.bankmandiri.livin', 'Bank Mandiri (Livin)', 'Mandiri', 'mandiri', 'BANK'],
-  ['com.bankmandiri.livin', 'Bank Mandiri (Livin)', 'Mandiri', 'mandiri', 'BANK'],
+  ['id.bmri.livin', 'Bank Mandiri (Livin)', 'Mandiri', 'mandiri', 'BANK'],
+  ['id.co.bankmandiri', 'Bank Mandiri (Livin)', 'Mandiri', 'mandiri', 'BANK'],
 
   // BCA (BCA mobile, myBCA)
   ['com.bca', 'BCA', 'BCA', 'bca', 'BANK'],
   ['com.bca.mobile', 'BCA', 'BCA', 'bca', 'BANK'],
-  ['com.bca.mybca', 'BCA', 'BCA', 'bca', 'BANK'],
-  ['id.co.bca.mybca', 'BCA', 'BCA', 'bca', 'BANK'],
+  ['com.bca.mybca.omni.android', 'BCA', 'BCA', 'bca', 'BANK'],
 
   // BRI (BRImo)
   ['id.co.bri.brimo', 'BRI (BRImo)', 'BRI', 'bri', 'BANK'],
 
-  // BNI (BNI Mobile & wondr)
+  // BNI (BNI Mobile, wondr & TapCash)
+  ['id.bni.wondr', 'wondr by BNI', 'BNI', 'bni', 'BANK'],
+  ['id.co.bni.tapcashgo', 'BNI TapCash Go', 'BNI', 'bni', 'BANK'],
   ['com.bni', 'BNI Mobile Banking', 'BNI', 'bni', 'BANK'],
-  ['co.id.bni.wondr', 'wondr by BNI', 'BNI', 'bni', 'BANK'],
 
   // Blu by BCA Digital
   ['com.bcadigital.blu', 'blu by BCA Digital', 'blu', 'blu', 'BANK'],
 
   // Jenius
+  ['com.btpn.jenius.dc', 'Jenius', 'Jenius', 'jenius', 'BANK'],
   ['com.btpn.jenius', 'Jenius', 'Jenius', 'jenius', 'BANK'],
-  ['com.btpn.sinaya', 'Jenius', 'Jenius', 'jenius', 'BANK'],
 
   // SeaBank
   ['com.seabank.seabankid', 'SeaBank', 'SeaBank', 'seabank', 'BANK'],
@@ -56,13 +55,14 @@ const RAW_PACKAGE_RULES: readonly PackageRuleTuple[] = [
   ['id.co.cimbniaga.octomobile', 'CIMB Niaga OCTO Mobile', 'CIMB', 'cimb', 'BANK'],
 
   // Flip
-  ['id.co.flip', 'Flip', 'Flip', 'flip', 'BANK'],
+  ['id.flip', 'Flip', 'Flip', 'flip', 'BANK'],
 
   // Gojek / GoPay
   ['com.gojek.app', 'GoPay / Gojek', 'GoPay', 'gopay', 'E_WALLET'],
   ['com.gojek.gopay', 'GoPay', 'GoPay', 'gopay', 'E_WALLET'],
 
   // Shopee / ShopeePay
+  ['com.shopeepay.id', 'ShopeePay', 'ShopeePay', 'shopeepay', 'E_WALLET'],
   ['com.shopee.id', 'ShopeePay', 'ShopeePay', 'shopeepay', 'E_WALLET'],
 
   // DANA
