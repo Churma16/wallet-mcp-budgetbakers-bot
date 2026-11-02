@@ -95,8 +95,17 @@ export interface WalletCreateRecordsResponse {
   }>;
 }
 
+export type ClearableRecordField =
+  | 'categoryId'
+  | 'labelIds'
+  | 'note'
+  | 'counterParty'
+  | 'place'
+  | 'transfer';
+
 export interface PatchRecordInputPayload {
   id: string;
+  accountId?: string;
   amount?: number;
   categoryId?: string;
   categoryName?: string;
@@ -105,6 +114,7 @@ export interface PatchRecordInputPayload {
   note?: string;
   counterParty?: string;
   recordDate?: string;
+  $clear?: ClearableRecordField[];
 }
 
 export interface WalletPatchRecordsResponse {

@@ -9,7 +9,9 @@ import {
   parseRecordEditCommand,
   resolveAndEnsureLabels,
   TransactionMessageStore,
+  FILTER_ERROR_REASONS,
 } from '../../wallet/index.js';
+import { resolveSemanticAccountHint } from '../../brain/index.js';
 import {
   formatCurrencyAmount,
   formatTransactionDate,
@@ -17,10 +19,15 @@ import {
 import { getDefaultCurrency } from '../../config/applicationConfig.js';
 import { normalizeTransactionText } from '../../lib/textCasing.js';
 import { applicationLogger } from '../../lib/logger.js';
+import { getDictionary } from '../../i18n/index.js';
 
 /**
- * Handles conversational transaction edit commands triggered when a user
- * replies to a previously recorded transaction message in Telegram.
+ * Coordinates conversational transaction edit commands triggered when a user
+ * replies to a previously recorded transaction confirmation message.
+ *
+ * Validates entity references, enforces upstream currency compatibility and bank-sync
+ * immutability guards, handles field clearing via native $clear, and dispatches
+ * atomic patch updates to the Wallet MCP client.
  */
 export class ModifyRecordHandler {
   constructor(
@@ -48,26 +55,139 @@ export class ModifyRecordHandler {
       editCommand,
     });
 
+    const dictionary = getDictionary();
     const mapping = this.transactionMessageStore.getMessageMapping(event.replyToMessageId);
     if (!mapping) {
       await this.messagingGateway.sendMessage(
         event.channel,
         event.chatIdentifier,
-        '⚠️ Transaksi tidak ditemukan atau pesan yang dibalas sudah kedaluwarsa.'
+        dictionary.errors.recordEditNotFound
       );
       return true;
+    }
+
+    const cachedAccounts = this.walletCacheService.getAccounts();
+    const sourceAccount = cachedAccounts.find(account => account.id === mapping.accountId);
+
+    let movedFromAccountName: string | undefined;
+    let resolvedTargetAccountId: string | undefined;
+    let resolvedTargetAccountName: string | undefined;
+    let resolvedTargetCurrency: string | undefined;
+
+    if (editCommand.targetAccountHint) {
+      if (sourceAccount?.isBankSynced === true) {
+        await this.messagingGateway.sendMessage(
+          event.channel,
+          event.chatIdentifier,
+          dictionary.errors.recordEditSourceBankSynced(sourceAccount.name)
+        );
+        return true;
+      }
+
+      const accountResolution = resolveSemanticAccountHint(
+        editCommand.targetAccountHint,
+        cachedAccounts
+      );
+
+      if (accountResolution.status === 'CLARIFICATION_REQUIRED') {
+        if (accountResolution.reason === FILTER_ERROR_REASONS.AMBIGUOUS) {
+          await this.messagingGateway.sendMessage(
+            event.channel,
+            event.chatIdentifier,
+            dictionary.errors.recordEditAccountAmbiguous(
+              editCommand.targetAccountHint,
+              accountResolution.candidates.map(candidate => candidate.name)
+            )
+          );
+        } else {
+          await this.messagingGateway.sendMessage(
+            event.channel,
+            event.chatIdentifier,
+            dictionary.errors.recordEditAccountNotFound(editCommand.targetAccountHint)
+          );
+        }
+        return true;
+      }
+
+      const targetAccount = cachedAccounts.find(account => account.id === accountResolution.id);
+      if (!targetAccount) {
+        await this.messagingGateway.sendMessage(
+          event.channel,
+          event.chatIdentifier,
+          dictionary.errors.recordEditAccountNotFound(editCommand.targetAccountHint)
+        );
+        return true;
+      }
+
+      if (targetAccount.isBankSynced === true) {
+        await this.messagingGateway.sendMessage(
+          event.channel,
+          event.chatIdentifier,
+          dictionary.errors.recordEditTargetBankSynced(targetAccount.name)
+        );
+        return true;
+      }
+
+      const sourceCurrency = (
+        sourceAccount?.currency ||
+        mapping.currency ||
+        getDefaultCurrency()
+      )
+        .trim()
+        .toUpperCase();
+      const targetCurrency = (targetAccount.currency || getDefaultCurrency()).trim().toUpperCase();
+
+      if (sourceCurrency !== targetCurrency) {
+        await this.messagingGateway.sendMessage(
+          event.channel,
+          event.chatIdentifier,
+          dictionary.errors.recordEditCurrencyMismatch(
+            sourceAccount?.name || mapping.accountName || 'Sumber',
+            sourceCurrency,
+            targetAccount.name,
+            targetCurrency
+          )
+        );
+        return true;
+      }
+
+      if (targetAccount.id !== mapping.accountId) {
+        resolvedTargetAccountId = targetAccount.id;
+        resolvedTargetAccountName = targetAccount.name;
+        resolvedTargetCurrency = targetCurrency;
+        movedFromAccountName = sourceAccount?.name || mapping.accountName;
+      }
+    }
+
+    const clearFields = editCommand.clearFields ? [...editCommand.clearFields] : [];
+    const clearedFieldLabels: string[] = [];
+
+    if (clearFields.includes('note')) {
+      clearedFieldLabels.push('Catatan');
+    }
+    if (clearFields.includes('labelIds')) {
+      clearedFieldLabels.push('Tag / Label');
+    }
+    if (clearFields.includes('counterParty')) {
+      clearedFieldLabels.push('Merchant / Payee');
+    }
+    if (clearFields.includes('categoryId')) {
+      clearedFieldLabels.push('Kategori');
+    }
+    if (clearFields.includes('transfer')) {
+      clearedFieldLabels.push('Status Transfer');
     }
 
     let resolvedCategoryId: string | undefined;
     let resolvedCategoryName: string | undefined;
 
-    if (editCommand.categoryName) {
+    if (editCommand.categoryName && !clearFields.includes('categoryId')) {
       const match = this.findAssignableCategory(editCommand.categoryName);
       if (!match) {
         await this.messagingGateway.sendMessage(
           event.channel,
           event.chatIdentifier,
-          `⚠️ Kategori "${editCommand.categoryName}" tidak ditemukan atau tidak dapat digunakan.`
+          dictionary.errors.recordEditCategoryNotFound(editCommand.categoryName)
         );
         return true;
       }
@@ -78,7 +198,7 @@ export class ModifyRecordHandler {
     let resolvedLabelIds: string[] | undefined;
     let resolvedLabelNames: string[] | undefined;
 
-    if (editCommand.tags && editCommand.tags.length > 0) {
+    if (editCommand.tags && editCommand.tags.length > 0 && !clearFields.includes('labelIds')) {
       const labelResolution = await resolveAndEnsureLabels(
         editCommand.tags,
         this.walletCacheService,
@@ -94,7 +214,7 @@ export class ModifyRecordHandler {
         await this.messagingGateway.sendMessage(
           event.channel,
           event.chatIdentifier,
-          '⚠️ Nominal transaksi tidak boleh bernilai 0.'
+          dictionary.errors.recordEditZeroAmount
         );
         return true;
       }
@@ -107,21 +227,27 @@ export class ModifyRecordHandler {
     }
 
     // Auto-capitalize note and counterParty using Smart Title Casing
-    const formattedNote = editCommand.note !== undefined
-      ? (normalizeTransactionText(editCommand.note) || editCommand.note)
-      : undefined;
+    const formattedNote =
+      editCommand.note !== undefined && !clearFields.includes('note')
+        ? normalizeTransactionText(editCommand.note) || editCommand.note
+        : undefined;
 
-    const formattedCounterParty = editCommand.counterParty !== undefined
-      ? (normalizeTransactionText(editCommand.counterParty) || editCommand.counterParty)
-      : undefined;
+    const formattedCounterParty =
+      editCommand.counterParty !== undefined && !clearFields.includes('counterParty')
+        ? normalizeTransactionText(editCommand.counterParty) || editCommand.counterParty
+        : undefined;
 
     const patchPayload: PatchRecordInputPayload = {
       id: mapping.recordId,
-      ...(resolvedCategoryId ? { categoryId: resolvedCategoryId } : {}),
-      ...(resolvedLabelIds ? { labelIds: resolvedLabelIds } : {}),
-      ...(formattedNote !== undefined ? { note: formattedNote } : {}),
+      ...(resolvedTargetAccountId ? { accountId: resolvedTargetAccountId } : {}),
+      ...(resolvedCategoryId && !clearFields.includes('categoryId') ? { categoryId: resolvedCategoryId } : {}),
+      ...(resolvedLabelIds && !clearFields.includes('labelIds') ? { labelIds: resolvedLabelIds } : {}),
+      ...(formattedNote !== undefined && !clearFields.includes('note') ? { note: formattedNote } : {}),
       ...(resolvedAmount !== undefined ? { amount: resolvedAmount } : {}),
-      ...(formattedCounterParty !== undefined ? { counterParty: formattedCounterParty } : {}),
+      ...(formattedCounterParty !== undefined && !clearFields.includes('counterParty')
+        ? { counterParty: formattedCounterParty }
+        : {}),
+      ...(clearFields.length > 0 ? { $clear: clearFields } : {}),
     };
 
     try {
@@ -132,11 +258,22 @@ export class ModifyRecordHandler {
       }
 
       this.transactionMessageStore.updateMessageMapping(event.replyToMessageId, {
+        ...(resolvedTargetAccountId
+          ? {
+              accountId: resolvedTargetAccountId,
+              accountName: resolvedTargetAccountName,
+              currency: resolvedTargetCurrency,
+            }
+          : {}),
         ...(resolvedCategoryId ? { categoryId: resolvedCategoryId, categoryName: resolvedCategoryName } : {}),
+        ...(clearFields.includes('categoryId') ? { categoryId: undefined, categoryName: undefined } : {}),
         ...(resolvedLabelIds ? { labelIds: resolvedLabelIds, labels: resolvedLabelNames } : {}),
+        ...(clearFields.includes('labelIds') ? { labelIds: [], labels: [] } : {}),
         ...(formattedNote !== undefined ? { note: formattedNote } : {}),
+        ...(clearFields.includes('note') ? { note: undefined } : {}),
         ...(resolvedAmount !== undefined ? { amount: resolvedAmount } : {}),
         ...(formattedCounterParty !== undefined ? { counterParty: formattedCounterParty } : {}),
+        ...(clearFields.includes('counterParty') ? { counterParty: undefined } : {}),
       });
 
       // Build structured receipt response
@@ -144,56 +281,94 @@ export class ModifyRecordHandler {
       const isExpense = finalAmount < 0;
       const transactionTypeIcon = isExpense ? '💸' : '💰';
 
-      const cachedAccounts = this.walletCacheService.getAccounts();
-      const targetAccount = cachedAccounts.find(account => account.id === mapping.accountId);
-      const resolvedCurrency = mapping.currency || targetAccount?.currency || getDefaultCurrency();
+      const finalAccountId = resolvedTargetAccountId || mapping.accountId;
+      const targetAccount = cachedAccounts.find(account => account.id === finalAccountId);
+      const resolvedCurrency =
+        resolvedTargetCurrency ||
+        mapping.currency ||
+        targetAccount?.currency ||
+        getDefaultCurrency();
       const formattedAmount = formatCurrencyAmount(finalAmount, resolvedCurrency, 'id');
-      const resolvedAccountName = targetAccount?.name || mapping.accountName || 'Wallet';
+      const resolvedAccountName =
+        resolvedTargetAccountName ||
+        targetAccount?.name ||
+        mapping.accountName ||
+        'Wallet';
 
       const cachedCategories = this.walletCacheService.getCategories();
-      const finalCategoryName =
-        resolvedCategoryName ||
-        mapping.categoryName ||
-        cachedCategories.find(c => c.id === mapping.categoryId)?.name ||
-        'Umum';
+      let finalCategoryName: string;
+      if (clearFields.includes('categoryId') || clearFields.includes('transfer')) {
+        finalCategoryName = 'Umum';
+      } else {
+        finalCategoryName =
+          resolvedCategoryName ||
+          mapping.categoryName ||
+          cachedCategories.find(category => category.id === mapping.categoryId)?.name ||
+          'Umum';
+      }
 
       const recordTimestampDisplay = formatTransactionDate(
         mapping.recordDate || mapping.createdAt,
         'id'
       );
 
-      const finalNote = formattedNote !== undefined ? formattedNote : mapping.note;
-      const finalCounterParty = formattedCounterParty !== undefined ? formattedCounterParty : mapping.counterParty;
+      const finalNote = clearFields.includes('note')
+        ? undefined
+        : formattedNote !== undefined
+          ? formattedNote
+          : mapping.note;
+      const finalCounterParty = clearFields.includes('counterParty')
+        ? undefined
+        : formattedCounterParty !== undefined
+          ? formattedCounterParty
+          : mapping.counterParty;
       const displayTitle = finalNote || finalCounterParty || (isExpense ? 'Pengeluaran' : 'Pemasukan');
 
-      const responseLines = [
-        '✅ Transaksi berhasil diperbarui:',
-        '',
-        displayTitle,
-        `${transactionTypeIcon} ${formattedAmount}  •  ${resolvedAccountName}`,
-        `🏷️ ${finalCategoryName}  •  ${recordTimestampDisplay}`,
-      ];
-
-      const finalLabels = resolvedLabelNames !== undefined ? resolvedLabelNames : mapping.labels;
-      if (finalLabels && finalLabels.length > 0) {
-        responseLines.push(`🔖 ${finalLabels.map(t => `#${t.replace(/^#/, '')}`).join(' ')}`);
+      let finalLabels: string[] | undefined;
+      if (clearFields.includes('labelIds')) {
+        finalLabels = undefined;
+      } else {
+        finalLabels = resolvedLabelNames !== undefined ? resolvedLabelNames : mapping.labels;
       }
+
+      const receiptMessage = dictionary.records.editSuccess({
+        transactionTitle: displayTitle,
+        formattedAmount,
+        accountName: resolvedAccountName,
+        categoryName: finalCategoryName,
+        recordTimestampDisplay,
+        transactionTypeIcon,
+        labels: finalLabels,
+        movedFromAccountName,
+        clearedFieldLabels: clearedFieldLabels.length > 0 ? clearedFieldLabels : undefined,
+      });
 
       const sendReceipt = await this.messagingGateway.sendMessage(
         event.channel,
         event.chatIdentifier,
-        responseLines.join('\n')
+        receiptMessage
       );
 
       // Support chained edits by recording the new response message ID
       if (sendReceipt && 'messageId' in sendReceipt && sendReceipt.messageId) {
         this.transactionMessageStore.recordMessageMapping(sendReceipt.messageId, {
           ...mapping,
+          ...(resolvedTargetAccountId
+            ? {
+                accountId: resolvedTargetAccountId,
+                accountName: resolvedTargetAccountName,
+                currency: resolvedTargetCurrency,
+              }
+            : {}),
           ...(resolvedCategoryId ? { categoryId: resolvedCategoryId, categoryName: resolvedCategoryName } : {}),
+          ...(clearFields.includes('categoryId') ? { categoryId: undefined, categoryName: undefined } : {}),
           ...(resolvedLabelIds ? { labelIds: resolvedLabelIds, labels: resolvedLabelNames } : {}),
+          ...(clearFields.includes('labelIds') ? { labelIds: [], labels: [] } : {}),
           ...(formattedNote !== undefined ? { note: formattedNote } : {}),
+          ...(clearFields.includes('note') ? { note: undefined } : {}),
           ...(resolvedAmount !== undefined ? { amount: resolvedAmount } : {}),
           ...(formattedCounterParty !== undefined ? { counterParty: formattedCounterParty } : {}),
+          ...(clearFields.includes('counterParty') ? { counterParty: undefined } : {}),
         });
       }
 
@@ -207,9 +382,9 @@ export class ModifyRecordHandler {
       await this.messagingGateway.sendMessage(
         event.channel,
         event.chatIdentifier,
-        `❌ Gagal memperbarui transaksi: ${
+        dictionary.errors.recordEditFailed(
           patchError instanceof Error ? patchError.message : String(patchError)
-        }`
+        )
       );
       return true;
     }

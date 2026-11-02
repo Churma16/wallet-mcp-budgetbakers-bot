@@ -1,3 +1,5 @@
+import type { ClearableRecordField } from '../types.js';
+
 /**
  * Parsed record edit command representing user-requested modifications
  * to an existing Wallet transaction.
@@ -9,10 +11,26 @@ export interface ParsedRecordEditCommand {
   readonly amount?: number;
   readonly hasExplicitPositiveSign?: boolean;
   readonly counterParty?: string;
+  readonly targetAccountHint?: string;
+  readonly clearFields?: ClearableRecordField[];
   readonly hasModifications: boolean;
 }
 
-const KEY_NAME_REGEX = /(?:^|\s+)(c|cat|kategori|t|tag|tags|label|labels|n|note|d|des|deskripsi|catatan|a|amt|amount|nominal|p|payee|m|merchant):\s*/gi;
+const KEY_NAME_REGEX =
+  /(?:^|\s+)(c|cat|kategori|t|tag|tags|label|labels|n|note|d|des|deskripsi|catatan|a|amt|amount|nominal|p|payee|m|merchant|rek|acc|rekening|account|tf|transfer):\s*/gi;
+
+const CLEAR_VALUE_PATTERN = /^[-–—]$|^(?:none|kosong|hapus|clear|remove|delete)$/i;
+const TRANSFER_UNLINK_PATTERN = /^[-–—]$|^(?:none|kosong|hapus|clear|unlink|lepas|batal|cancel)$/i;
+const NATURAL_TRANSFER_UNLINK_COMMAND =
+  /^(?:(?:e|edit)\s+)?(?:unlink(?:\s+transfer)?|(?:lepas|batal|hapus)\s+transfer)$/i;
+
+function isClearToken(val: string): boolean {
+  return CLEAR_VALUE_PATTERN.test(val.trim());
+}
+
+function isTransferClearToken(val: string): boolean {
+  return TRANSFER_UNLINK_PATTERN.test(val.trim());
+}
 
 /**
  * Normalizes an amount string, supporting formats like 25000, -25000, 25.000, Rp 25k, or -Rp 50rb.
@@ -96,7 +114,9 @@ interface KeyToken {
  * - With prefix: `e c: Makan t: #jajan n: Kopi`
  * - With prefix: `edit cat: Makanan tag: #jajan note: Kopi`
  * - Directly without prefix: `c: Makan t: #jajan n: Kopi`
- * - Partial: `c: Transport` or `n: Kopi Kenangan`
+ * - Account move: `rek: BCA` or `acc: Mandiri`
+ * - Clear field: `n: -` or `note: clear` or `t: none`
+ * - Unlink transfer: `tf: -` or `unlink transfer`
  *
  * Returns null if the text does not match any recognized edit pattern.
  */
@@ -106,11 +126,27 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
   let text = inputText.trim();
   if (!text) return null;
 
+  // Natural transfer unlink command fast-path without colons
+  if (NATURAL_TRANSFER_UNLINK_COMMAND.test(text)) {
+    return {
+      clearFields: ['transfer'],
+      hasModifications: true,
+    };
+  }
+
   // Strip leading 'e ' or 'edit ' prefix if present
   const explicitPrefixPattern = /^(?:e|edit)\s+/i;
   const hasExplicitPrefix = explicitPrefixPattern.test(text);
   if (hasExplicitPrefix) {
     text = text.replace(explicitPrefixPattern, '').trim();
+  }
+
+  // Check again after prefix stripping in case of "e unlink transfer"
+  if (NATURAL_TRANSFER_UNLINK_COMMAND.test(text)) {
+    return {
+      clearFields: ['transfer'],
+      hasModifications: true,
+    };
   }
 
   // Linear scan for key tokens without backtracking
@@ -142,6 +178,8 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
   let amount: number | undefined;
   let hasExplicitPositiveSign: boolean | undefined;
   let counterParty: string | undefined;
+  let targetAccountHint: string | undefined;
+  const clearFieldsSet = new Set<ClearableRecordField>();
 
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
@@ -154,7 +192,13 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
       case 'c':
       case 'cat':
       case 'kategori':
-        categoryName = rawVal;
+        if (isClearToken(rawVal)) {
+          clearFieldsSet.add('categoryId');
+          categoryName = undefined;
+        } else {
+          categoryName = rawVal;
+          clearFieldsSet.delete('categoryId');
+        }
         break;
 
       case 't':
@@ -162,9 +206,15 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
       case 'tags':
       case 'label':
       case 'labels': {
-        const parsedTags = parseTagsHint(rawVal);
-        if (parsedTags.length > 0) {
-          tags = parsedTags;
+        if (isClearToken(rawVal)) {
+          clearFieldsSet.add('labelIds');
+          tags = undefined;
+        } else {
+          const parsedTags = parseTagsHint(rawVal);
+          if (parsedTags.length > 0) {
+            tags = parsedTags;
+            clearFieldsSet.delete('labelIds');
+          }
         }
         break;
       }
@@ -175,8 +225,14 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
       case 'des':
       case 'deskripsi':
       case 'catatan':
-        // Safeguard UTF-16 surrogate pairs during truncation
-        note = Array.from(rawVal).slice(0, 255).join('');
+        if (isClearToken(rawVal)) {
+          clearFieldsSet.add('note');
+          note = undefined;
+        } else {
+          // Safeguard UTF-16 surrogate pairs during truncation
+          note = Array.from(rawVal).slice(0, 255).join('');
+          clearFieldsSet.delete('note');
+        }
         break;
 
       case 'a':
@@ -195,17 +251,41 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
       case 'payee':
       case 'm':
       case 'merchant':
-        counterParty = rawVal;
+        if (isClearToken(rawVal)) {
+          clearFieldsSet.add('counterParty');
+          counterParty = undefined;
+        } else {
+          counterParty = rawVal;
+          clearFieldsSet.delete('counterParty');
+        }
+        break;
+
+      case 'rek':
+      case 'acc':
+      case 'rekening':
+      case 'account':
+        targetAccountHint = rawVal;
+        break;
+
+      case 'tf':
+      case 'transfer':
+        if (isTransferClearToken(rawVal)) {
+          clearFieldsSet.add('transfer');
+        }
         break;
     }
   }
+
+  const clearFields = clearFieldsSet.size > 0 ? Array.from(clearFieldsSet) : undefined;
 
   const hasModifications = Boolean(
     categoryName ||
     (tags && tags.length > 0) ||
     note !== undefined ||
     amount !== undefined ||
-    counterParty !== undefined
+    counterParty !== undefined ||
+    targetAccountHint !== undefined ||
+    (clearFields && clearFields.length > 0)
   );
 
   if (!hasModifications) {
@@ -219,6 +299,8 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
     amount,
     hasExplicitPositiveSign,
     counterParty,
+    targetAccountHint,
+    clearFields,
     hasModifications,
   };
 }

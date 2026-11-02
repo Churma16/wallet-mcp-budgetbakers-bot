@@ -13,6 +13,18 @@ export interface RecordMessageParams {
   labels?: string[];
 }
 
+export interface RecordEditSuccessParams {
+  transactionTitle: string;
+  formattedAmount: string;
+  accountName: string;
+  categoryName: string;
+  recordTimestampDisplay: string;
+  transactionTypeIcon: string;
+  labels?: string[];
+  movedFromAccountName?: string;
+  clearedFieldLabels?: string[];
+}
+
 export interface MultipleRecordsItemParams {
   itemIndex: number;
   transactionTypeIcon: string;
@@ -95,6 +107,7 @@ export interface ResponseDictionary {
     singleSuccess(params: RecordMessageParams): string;
     multipleSuccessHeader(totalRecordsCount: number, currentTimestamp: string): string;
     multipleRecordItem(params: MultipleRecordsItemParams): string;
+    editSuccess(params: RecordEditSuccessParams): string;
   };
 
   balance: {
@@ -203,5 +216,19 @@ export interface ResponseDictionary {
     accountResolutionFallback: string;
     mediaTooLarge(maxMegabytes: number): string;
     mediaDownloadFailed(channelDisplayName: string): string;
+    recordEditAccountNotFound(accountHint: string): string;
+    recordEditAccountAmbiguous(accountHint: string, candidates: string[]): string;
+    recordEditSourceBankSynced(accountName: string): string;
+    recordEditTargetBankSynced(accountName: string): string;
+    recordEditCurrencyMismatch(
+      sourceAccount: string,
+      sourceCurrency: string,
+      targetAccount: string,
+      targetCurrency: string
+    ): string;
+    recordEditZeroAmount: string;
+    recordEditCategoryNotFound(categoryHint: string): string;
+    recordEditNotFound: string;
+    recordEditFailed(reason: string): string;
   };
 }

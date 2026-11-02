@@ -13,6 +13,9 @@ describe('ModifyRecordHandler', () => {
 
   const sampleAccounts: WalletAccountItem[] = [
     { id: 'acc-bca', name: 'Jago Expense', balance: 500000, currency: 'IDR' },
+    { id: 'acc-mandiri', name: 'Mandiri Checking', balance: 1000000, currency: 'IDR' },
+    { id: 'acc-sync', name: 'BCA Bank Sync', balance: 2000000, currency: 'IDR', isBankSynced: true },
+    { id: 'acc-usd', name: 'USD Savings', balance: 100, currency: 'USD' },
   ];
 
   const sampleCategories: WalletCategoryItem[] = [
@@ -370,5 +373,218 @@ describe('ModifyRecordHandler', () => {
     const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
     expect(sentMessage).toContain('Gagal memperbarui transaksi');
     expect(sentMessage).toContain('records.update scope missing');
+  });
+
+  describe('Account Moving Capabilities (Issue #261)', () => {
+    it('successfully moves a record to another account sharing the same currency', async () => {
+      store.recordMessageMapping('msg-move-1', {
+        recordId: 'rec-move-1',
+        accountId: 'acc-bca',
+        accountName: 'Jago Expense',
+        currency: 'IDR',
+        note: 'Belanja Supermarket',
+        amount: -150000,
+      });
+
+      const event: IncomingUserMessageEvent = {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-1',
+        messageType: 'text',
+        textPayload: 'rek: Mandiri Checking',
+        replyToMessageId: 'msg-move-1',
+      };
+
+      const handled = await handler.handleModifyRecordReply(event, Date.now());
+      expect(handled).toBe(true);
+
+      expect(mockClient.patchRecords).toHaveBeenCalledWith([
+        {
+          id: 'rec-move-1',
+          accountId: 'acc-mandiri',
+        },
+      ]);
+
+      const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
+      expect(sentMessage).toContain('✅ Transaksi berhasil diperbarui:');
+      expect(sentMessage).toContain('🏦 Akun dipindahkan dari: Jago Expense ➔ Mandiri Checking');
+
+      const updated = store.getMessageMapping('msg-move-1');
+      expect(updated?.accountId).toBe('acc-mandiri');
+      expect(updated?.accountName).toBe('Mandiri Checking');
+    });
+
+    it('rejects moving when source account is bank-synced', async () => {
+      store.recordMessageMapping('msg-sync-src', {
+        recordId: 'rec-sync-1',
+        accountId: 'acc-sync',
+        accountName: 'BCA Bank Sync',
+        currency: 'IDR',
+      });
+
+      const event: IncomingUserMessageEvent = {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-1',
+        messageType: 'text',
+        textPayload: 'rek: Mandiri Checking',
+        replyToMessageId: 'msg-sync-src',
+      };
+
+      const handled = await handler.handleModifyRecordReply(event, Date.now());
+      expect(handled).toBe(true);
+      expect(mockClient.patchRecords).not.toHaveBeenCalled();
+
+      const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
+      expect(sentMessage).toContain('Transaksi pada akun bank-sync (BCA Bank Sync) tidak dapat dipindahkan');
+    });
+
+    it('rejects moving when target account is bank-synced', async () => {
+      store.recordMessageMapping('msg-sync-dest', {
+        recordId: 'rec-dest-1',
+        accountId: 'acc-bca',
+        accountName: 'Jago Expense',
+        currency: 'IDR',
+      });
+
+      const event: IncomingUserMessageEvent = {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-1',
+        messageType: 'text',
+        textPayload: 'rek: BCA Bank Sync',
+        replyToMessageId: 'msg-sync-dest',
+      };
+
+      const handled = await handler.handleModifyRecordReply(event, Date.now());
+      expect(handled).toBe(true);
+      expect(mockClient.patchRecords).not.toHaveBeenCalled();
+
+      const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
+      expect(sentMessage).toContain('Tidak dapat memindahkan transaksi ke akun bank-sync (BCA Bank Sync)');
+    });
+
+    it('rejects moving when currencies do not match', async () => {
+      store.recordMessageMapping('msg-curr-diff', {
+        recordId: 'rec-curr-1',
+        accountId: 'acc-bca',
+        accountName: 'Jago Expense',
+        currency: 'IDR',
+      });
+
+      const event: IncomingUserMessageEvent = {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-1',
+        messageType: 'text',
+        textPayload: 'rek: USD Savings',
+        replyToMessageId: 'msg-curr-diff',
+      };
+
+      const handled = await handler.handleModifyRecordReply(event, Date.now());
+      expect(handled).toBe(true);
+      expect(mockClient.patchRecords).not.toHaveBeenCalled();
+
+      const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
+      expect(sentMessage).toContain('Mata uang Jago Expense (IDR) berbeda dengan USD Savings (USD)');
+    });
+
+    it('handles same-account move without redundant accountId in patch payload', async () => {
+      store.recordMessageMapping('msg-same-acc', {
+        recordId: 'rec-same-1',
+        accountId: 'acc-bca',
+        accountName: 'Jago Expense',
+        currency: 'IDR',
+        note: 'Old Note',
+      });
+
+      const event: IncomingUserMessageEvent = {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-1',
+        messageType: 'text',
+        textPayload: 'rek: Jago Expense n: New Note',
+        replyToMessageId: 'msg-same-acc',
+      };
+
+      const handled = await handler.handleModifyRecordReply(event, Date.now());
+      expect(handled).toBe(true);
+
+      expect(mockClient.patchRecords).toHaveBeenCalledWith([
+        {
+          id: 'rec-same-1',
+          note: 'New Note',
+        },
+      ]);
+    });
+  });
+
+  describe('Field Clearing and Transfer Unlinking ($clear)', () => {
+    it('clears note and tags via $clear and updates message store', async () => {
+      store.recordMessageMapping('msg-clear-1', {
+        recordId: 'rec-clear-1',
+        accountId: 'acc-bca',
+        note: 'Existing Note',
+        labels: ['existing-tag'],
+      });
+
+      const event: IncomingUserMessageEvent = {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-1',
+        messageType: 'text',
+        textPayload: 'n: - t: -',
+        replyToMessageId: 'msg-clear-1',
+      };
+
+      const handled = await handler.handleModifyRecordReply(event, Date.now());
+      expect(handled).toBe(true);
+
+      expect(mockClient.patchRecords).toHaveBeenCalledWith([
+        {
+          id: 'rec-clear-1',
+          $clear: ['note', 'labelIds'],
+        },
+      ]);
+
+      const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
+      expect(sentMessage).toContain('🧹 Bidang dibersihkan: Catatan, Tag / Label');
+
+      const updated = store.getMessageMapping('msg-clear-1');
+      expect(updated?.note).toBeUndefined();
+      expect(updated?.labels).toEqual([]);
+    });
+
+    it('unlinks transfer via $clear: ["transfer"] on natural command', async () => {
+      store.recordMessageMapping('msg-tf-1', {
+        recordId: 'rec-tf-1',
+        accountId: 'acc-bca',
+        categoryId: 'cat-transfer-id',
+        categoryName: 'Transfer',
+      });
+
+      const event: IncomingUserMessageEvent = {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-1',
+        messageType: 'text',
+        textPayload: 'unlink transfer',
+        replyToMessageId: 'msg-tf-1',
+      };
+
+      const handled = await handler.handleModifyRecordReply(event, Date.now());
+      expect(handled).toBe(true);
+
+      expect(mockClient.patchRecords).toHaveBeenCalledWith([
+        {
+          id: 'rec-tf-1',
+          $clear: ['transfer'],
+        },
+      ]);
+
+      const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
+      expect(sentMessage).toContain('🧹 Bidang dibersihkan: Status Transfer');
+      expect(sentMessage).toContain('🏷️ Umum');
+    });
   });
 });

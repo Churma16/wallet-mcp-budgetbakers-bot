@@ -1,5 +1,8 @@
 import { WALLET_MCP_TOOL_NAMES } from '../constants.js';
-import type { WalletRecordAggregationQueryPayload } from '../types.js';
+import type {
+  WalletRecordAggregationQueryPayload,
+  ClearableRecordField,
+} from '../types.js';
 
 /**
  * Minimal tool caller interface required by the typed MCP wrappers.
@@ -318,12 +321,14 @@ export type RawCreateRecordsResponse = unknown;
 
 export interface SanitizedPatchRecordItem {
   readonly id: string;
+  readonly accountId?: string;
   readonly amount?: number;
   readonly categoryId?: string;
   readonly labelIds?: readonly string[];
   readonly note?: string;
   readonly counterParty?: string;
   readonly recordDate?: string;
+  readonly $clear?: readonly ClearableRecordField[];
 }
 
 export interface PatchRecordsToolArgs {
