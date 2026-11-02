@@ -293,6 +293,7 @@ src/
 
 ## Security, Privacy & Limitations
 
+- **Security Policy & Vulnerability Reporting**: For supported versions, trust boundaries, and instructions on how to report a vulnerability privately, read our [Security Policy](SECURITY.md).
 - **Self-Hosted, Direct Communication**: This is a self-hosted client application with no intermediary proxy servers. Your financial data travels directly between your machine, your chosen AI provider, and the BudgetBakers MCP server. Note that AI parsing and receipt OCR do require sending message text or images to your configured AI provider as part of the API call.
 - **Strict Sender Whitelist**: Incoming messages from unapproved phone numbers or Telegram accounts are rejected immediately before reaching the AI or MCP layers.
 - **Local Multi-Device Sessions**: WhatsApp connection tokens and cryptographic keys are stored in the local `./auth_session` folder and excluded from version control.

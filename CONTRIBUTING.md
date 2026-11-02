@@ -19,6 +19,7 @@ Please take a few moments to review this guide before submitting your pull reque
 - [Testing & Quality Verification](#testing--quality-verification)
 - [Commit Message Conventions](#commit-message-conventions)
 - [Pull Request Process](#pull-request-process)
+- [Security Vulnerabilities](#security-vulnerabilities)
 
 ---
 
@@ -284,3 +285,9 @@ Pull requests must target `main`, keep a focused scope, and pass the mandatory C
    - **`## Test Verification & Quality Assurance`**: Explicit verification evidence - the test suites executed and their results, the TypeScript build check, and confirmation that zero raw emojis exist in internal code or console output.
    - **`## Related Issues`**: Links to related issues using closing keywords (e.g., `Closes #123`, `Fixes #456`).
 5. **Code Review**: Address reviewer feedback promptly. Once approved, commits will be squashed or merged into `main`.
+
+---
+
+## Security Vulnerabilities
+
+If you discover a security vulnerability, please do not open a public issue. Follow the reporting instructions in our [Security Policy](SECURITY.md).
