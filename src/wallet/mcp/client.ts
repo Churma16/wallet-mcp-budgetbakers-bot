@@ -46,7 +46,6 @@ import {
   fetchLabels,
   createLabel,
   fetchBudgets,
-  type EntityCacheStore,
 } from '../entities.js';
 import { fetchRecords } from '../history/history.js';
 import { createRecords, patchRecords } from '../records/records.js';
@@ -87,17 +86,19 @@ import {
 
 export interface WalletMcpClientOptions {
   readonly transportDependencies?: WalletMcpTransportDependencies;
-  readonly cacheDurationMilliseconds?: number;
   readonly profileCacheDurationMilliseconds?: number;
 }
 
 /**
  * Official MCP client facade managing streamable transport lifecycle, application allowlists,
  * tool invocation, and authoritative entity access for BudgetBakers Wallet.
+ *
+ * In accordance with consolidated cache ownership (Issue #182), application metadata caching
+ * (accounts, categories, labels) and freshness is exclusively owned by WalletCacheService.
+ * Retained internal state in this client is strictly scoped to transport, client profile, and search scan caches.
  */
 export class WalletMcpClient {
   private readonly mcpTransport: WalletMcpTransport;
-  private readonly cacheStore: EntityCacheStore;
   private readonly profileCacheDurationMilliseconds: number;
   private readonly responseMetadataByOperation = new Map<WalletMcpOperationName, WalletMcpResponseMetadata>();
   private cachedClientProfile: WalletClientProfile | undefined;
@@ -113,32 +114,20 @@ export class WalletMcpClient {
   constructor(
     baseUrl: string,
     private readonly accessToken: string,
-    optionsOrDependencies: WalletMcpTransportDependencies | WalletMcpClientOptions = {},
-    legacyOptions: { cacheDurationMilliseconds?: number; profileCacheDurationMilliseconds?: number } = {}
+    optionsOrDependencies: WalletMcpTransportDependencies | WalletMcpClientOptions = {}
   ) {
     let transportDependencies: WalletMcpTransportDependencies | undefined;
-    let cacheDurationMilliseconds: number | undefined;
     let profileCacheDurationMilliseconds: number | undefined;
 
     if ('createClient' in optionsOrDependencies || 'createTransport' in optionsOrDependencies) {
       transportDependencies = optionsOrDependencies;
-      cacheDurationMilliseconds = legacyOptions.cacheDurationMilliseconds;
-      profileCacheDurationMilliseconds = legacyOptions.profileCacheDurationMilliseconds;
     } else {
       const opts = optionsOrDependencies as WalletMcpClientOptions;
       transportDependencies = opts.transportDependencies;
-      cacheDurationMilliseconds = opts.cacheDurationMilliseconds;
       profileCacheDurationMilliseconds = opts.profileCacheDurationMilliseconds;
     }
 
     this.mcpTransport = new WalletMcpTransport(baseUrl, accessToken, transportDependencies);
-    this.cacheStore = {
-      cachedAccountList: [],
-      cachedCategoryList: [],
-      cachedLabelList: [],
-      cacheLastUpdatedTimestamp: 0,
-      cacheDurationMilliseconds: cacheDurationMilliseconds ?? 60 * 60 * 1000,
-    };
     this.profileCacheDurationMilliseconds = profileCacheDurationMilliseconds ?? 10 * 60 * 1000;
   }
 
@@ -289,20 +278,20 @@ export class WalletMcpClient {
     return callGetRecordsAggregation(this, args);
   }
 
-  public fetchAccounts(forceRefresh: boolean = false): Promise<WalletAccountItem[]> {
-    return fetchAccounts(this, this.cacheStore, forceRefresh);
+  public fetchAccounts(): Promise<WalletAccountItem[]> {
+    return fetchAccounts(this);
   }
 
-  public fetchCategories(forceRefresh: boolean = false): Promise<WalletCategoryItem[]> {
-    return fetchCategories(this, this.cacheStore, forceRefresh);
+  public fetchCategories(): Promise<WalletCategoryItem[]> {
+    return fetchCategories(this);
   }
 
-  public fetchLabels(forceRefresh: boolean = false): Promise<WalletLabelItem[]> {
-    return fetchLabels(this, this.cacheStore, forceRefresh);
+  public fetchLabels(): Promise<WalletLabelItem[]> {
+    return fetchLabels(this);
   }
 
   public createLabel(labelName: string): Promise<WalletLabelItem | null> {
-    return createLabel(this, labelName, this.cacheStore);
+    return createLabel(this, labelName);
   }
 
   public fetchBudgets(includeClosed: boolean = false): Promise<WalletBudgetItem[]> {
@@ -361,4 +350,3 @@ export class WalletMcpClient {
 
 export const WalletMcpClientService = WalletMcpClient;
 export type WalletMcpClientService = WalletMcpClient;
-

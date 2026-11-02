@@ -23,8 +23,8 @@ async function runAiProviderVerification(): Promise<void> {
         environmentConfig.walletMcpBaseUrl,
         environmentConfig.walletMcpAccessToken
       );
-      accountList = await walletMcpClient.fetchAccounts(true);
-      categoryList = await walletMcpClient.fetchCategories(true);
+      accountList = await walletMcpClient.fetchAccounts();
+      categoryList = await walletMcpClient.fetchCategories();
       applicationLogger.success(`Fetched ${accountList.length} accounts & ${categoryList.length} categories from Wallet MCP.`);
     } catch (mcpError: any) {
       applicationLogger.warn(`Wallet MCP fetch failed (${mcpError.message}). Using mock accounts & categories for test.`);

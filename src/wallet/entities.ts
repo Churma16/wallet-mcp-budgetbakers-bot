@@ -21,30 +21,13 @@ import { applicationLogger } from '../lib/logger.js';
 
 export type ToolInvoker = WalletToolCaller;
 
-export interface EntityCacheStore {
-  cachedAccountList?: WalletAccountItem[];
-  cachedCategoryList?: WalletCategoryItem[];
-  cachedLabelList?: WalletLabelItem[];
-  cacheLastUpdatedTimestamp?: number;
-  cacheDurationMilliseconds?: number;
-}
-
 export async function fetchAccounts(
-  client: ToolInvoker,
-  cacheStore?: EntityCacheStore,
-  forceRefresh: boolean = false
+  client: ToolInvoker
 ): Promise<WalletAccountItem[]> {
-  const cacheDuration = cacheStore?.cacheDurationMilliseconds ?? 60 * 60 * 1000;
-  const isCacheExpired = Date.now() - (cacheStore?.cacheLastUpdatedTimestamp ?? 0) > cacheDuration;
-
-  if (!forceRefresh && (cacheStore?.cachedAccountList?.length ?? 0) > 0 && !isCacheExpired) {
-    return cacheStore!.cachedAccountList!;
-  }
-
   const fetchedAccountData = await callGetAccounts(client);
   const rawAccountArray = extractRawArray<RawAccountItem>(fetchedAccountData, 'accounts', 'items');
 
-  const accounts = rawAccountArray.map(item => {
+  return rawAccountArray.map(item => {
     let resolvedBalance: number | undefined = undefined;
     let resolvedCurrency: string | undefined = item.currency || item.currencyCode;
 
@@ -78,30 +61,15 @@ export async function fetchAccounts(
       ),
     };
   });
-
-  if (cacheStore) {
-    cacheStore.cachedAccountList = accounts;
-    cacheStore.cacheLastUpdatedTimestamp = Date.now();
-  }
-  return accounts;
 }
 
 export async function fetchCategories(
-  client: ToolInvoker,
-  cacheStore?: EntityCacheStore,
-  forceRefresh: boolean = false
+  client: ToolInvoker
 ): Promise<WalletCategoryItem[]> {
-  const cacheDuration = cacheStore?.cacheDurationMilliseconds ?? 60 * 60 * 1000;
-  const isCacheExpired = Date.now() - (cacheStore?.cacheLastUpdatedTimestamp ?? 0) > cacheDuration;
-
-  if (!forceRefresh && (cacheStore?.cachedCategoryList?.length ?? 0) > 0 && !isCacheExpired) {
-    return cacheStore!.cachedCategoryList!;
-  }
-
   const fetchedCategoryData = await callGetCategories(client);
   const rawCategoryArray = extractRawArray<RawCategoryItem>(fetchedCategoryData, 'categories', 'items');
 
-  const categories = rawCategoryArray.map(item => {
+  return rawCategoryArray.map(item => {
     const rawGroup = item.group;
     const categoryGroupObject = typeof rawGroup === 'object' && rawGroup !== null
       ? {
@@ -132,47 +100,25 @@ export async function fetchCategories(
             groupRecord?.id !== 'system_categories',
     };
   });
-
-  if (cacheStore) {
-    cacheStore.cachedCategoryList = categories;
-    cacheStore.cacheLastUpdatedTimestamp = Date.now();
-  }
-  return categories;
 }
 
 export async function fetchLabels(
-  client: ToolInvoker,
-  cacheStore?: EntityCacheStore,
-  forceRefresh: boolean = false
+  client: ToolInvoker
 ): Promise<WalletLabelItem[]> {
-  const cacheDuration = cacheStore?.cacheDurationMilliseconds ?? 60 * 60 * 1000;
-  const isCacheExpired = Date.now() - (cacheStore?.cacheLastUpdatedTimestamp ?? 0) > cacheDuration;
-
-  if (!forceRefresh && (cacheStore?.cachedLabelList?.length ?? 0) > 0 && !isCacheExpired) {
-    return cacheStore!.cachedLabelList!;
-  }
-
   const fetchedLabelData = await callGetLabels(client);
   const rawLabelArray = extractRawArray<RawLabelItem>(fetchedLabelData, 'labels', 'items');
 
-  const labels = rawLabelArray.map(item => ({
+  return rawLabelArray.map(item => ({
     id: String(item.id || item.labelId || ''),
     name: String(item.name || item.labelName || item.title || '').trim(),
     color: item.color,
     icon: item.icon,
   })).filter(item => item.id.length > 0 && item.name.length > 0);
-
-  if (cacheStore) {
-    cacheStore.cachedLabelList = labels;
-    cacheStore.cacheLastUpdatedTimestamp = Date.now();
-  }
-  return labels;
 }
 
 export async function createLabel(
   client: ToolInvoker,
-  labelName: string,
-  cacheStore?: EntityCacheStore
+  labelName: string
 ): Promise<WalletLabelItem | null> {
   const sanitizedLabelName = labelName.replace(/^#/, '').trim();
   if (!sanitizedLabelName) return null;
@@ -188,21 +134,12 @@ export async function createLabel(
     ) as RawLabelItem | undefined;
 
     if (labelPayload && (labelPayload.id || labelPayload.labelId)) {
-      const createdLabel: WalletLabelItem = {
+      return {
         id: String(labelPayload.id || labelPayload.labelId),
         name: String(labelPayload.name || sanitizedLabelName),
         color: labelPayload.color,
         icon: labelPayload.icon,
       };
-      if (cacheStore?.cachedLabelList) {
-        const existingIndex = cacheStore.cachedLabelList.findIndex(item => item.id === createdLabel.id);
-        if (existingIndex >= 0) {
-          cacheStore.cachedLabelList[existingIndex] = createdLabel;
-        } else {
-          cacheStore.cachedLabelList.push(createdLabel);
-        }
-      }
-      return createdLabel;
     }
     return null;
   } catch (error) {
@@ -261,4 +198,3 @@ export async function fetchBudgets(
     };
   });
 }
-

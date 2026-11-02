@@ -38,7 +38,7 @@ describe('native paired transfers', () => {
       ],
     });
 
-    const categories = await client.fetchCategories(true);
+    const categories = await client.fetchCategories();
     expect(categories[0]).toMatchObject({
       group: { id: 'food_and_drinks', name: 'Food and drinks' },
       systemId: 'food_and_drinks__groceries',

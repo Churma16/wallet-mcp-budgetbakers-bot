@@ -370,7 +370,7 @@ test('integrates label caching between WalletMcpClientService and WalletCacheSer
     return {} as any;
   };
 
-  const fetchedLabels = await realMcpClient.fetchLabels(true);
+  const fetchedLabels = await realMcpClient.fetchLabels();
   assert.equal(fetchedLabels.length, 2);
   assert.equal(fetchedLabels[0].id, 'lbl-1');
   assert.equal(fetchedLabels[0].name, 'makan');
@@ -384,13 +384,14 @@ test('integrates label caching between WalletMcpClientService and WalletCacheSer
     callToolInvoked = true;
     return originalCallMcp(toolName, args);
   };
-  const cachedLabels = await realMcpClient.fetchLabels(false);
-  assert.equal(callToolInvoked, false);
-  assert.equal(cachedLabels.length, 2);
+  // In the consolidated architecture (Issue #182), WalletMcpClientService is a pure transport client
+  const directLabels = await realMcpClient.fetchLabels();
+  assert.equal(callToolInvoked, true);
+  assert.equal(directLabels.length, 2);
   realMcpClient.callMcpTool = originalCallMcp;
 
   mockToolResponse = { labels: [{ id: 'lbl-3', title: 'proyek' }] };
-  const wrappedLabels = await realMcpClient.fetchLabels(true);
+  const wrappedLabels = await realMcpClient.fetchLabels();
   assert.equal(wrappedLabels.length, 1);
   assert.equal(wrappedLabels[0].id, 'lbl-3');
   assert.equal(wrappedLabels[0].name, 'proyek');
@@ -399,7 +400,7 @@ test('integrates label caching between WalletMcpClientService and WalletCacheSer
     if (toolName === 'get_labels') throw new Error('Network timeout');
     return {} as any;
   };
-  await assert.rejects(async () => realMcpClient.fetchLabels(true), /Network timeout/);
+  await assert.rejects(async () => realMcpClient.fetchLabels(), /Network timeout/);
 
   const emptyResult = await realMcpClient.createLabel('  #   ');
   assert.equal(emptyResult, null);
