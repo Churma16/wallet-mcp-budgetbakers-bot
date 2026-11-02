@@ -1,7 +1,7 @@
 import type { TransactionSortOrder, UnresolvedFilterIssue, ClearableRecordField } from '../wallet/index.js';
 
 export type SupportedLanguage = 'id' | 'en';
-export type { TransactionSortOrder, UnresolvedFilterIssue };
+export type { TransactionSortOrder, UnresolvedFilterIssue, ClearableRecordField };
 
 export interface RecordMessageParams {
   transactionTitle: string;

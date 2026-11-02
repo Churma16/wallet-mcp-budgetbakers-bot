@@ -17,7 +17,7 @@ export interface ParsedRecordEditCommand {
 }
 
 const KEY_NAME_REGEX =
-  /(?:^|\s+)(c|cat|kategori|t|tag|tags|label|labels|n|note|d|des|deskripsi|catatan|a|amt|amount|nominal|p|payee|m|merchant|rek|acc|rekening|account|tf|transfer):\s*/gi;
+  /(?<=^|\s)(c|cat|kategori|t|tag|tags|label|labels|n|note|d|des|deskripsi|catatan|a|amt|amount|nominal|p|payee|m|merchant|rek|acc|rekening|account|tf|transfer):\s*/gi;
 
 const CLEAR_VALUE_PATTERN = /^[-–—]$|^(?:none|kosong|hapus|clear|remove|delete)$/i;
 const TRANSFER_UNLINK_PATTERN = /^[-–—]$|^(?:none|kosong|hapus|clear|unlink|lepas|batal|cancel)$/i;
@@ -139,14 +139,6 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
   const hasExplicitPrefix = explicitPrefixPattern.test(text);
   if (hasExplicitPrefix) {
     text = text.replace(explicitPrefixPattern, '').trim();
-  }
-
-  // Check again after prefix stripping in case of "e unlink transfer"
-  if (NATURAL_TRANSFER_UNLINK_COMMAND.test(text)) {
-    return {
-      clearFields: ['transfer'],
-      hasModifications: true,
-    };
   }
 
   // Linear scan for key tokens without backtracking

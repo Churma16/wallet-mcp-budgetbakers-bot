@@ -1,3 +1,4 @@
+import { formatEditSuccessReceipt, type EditReceiptLocaleConfig } from '../editReceiptFormatter.js';
 import {
   ResponseDictionary,
   RecordMessageParams,
@@ -28,6 +29,21 @@ export function formatPendingConfirmationPromptEn(params: PendingConfirmationPro
   }
   return lines.join('\n');
 }
+
+
+const englishEditReceiptConfig: EditReceiptLocaleConfig = {
+  header: '✅ Transaction updated successfully:',
+  accountMoved: (from, to) => `🏦 Account moved from: ${from} ➔ ${to}`,
+  clearedFieldsHeader: '🧹 Cleared fields:',
+  fieldNames: {
+    note: 'Note',
+    labelIds: 'Tags / Labels',
+    counterParty: 'Merchant / Payee',
+    categoryId: 'Category',
+    transfer: 'Transfer Link',
+    place: 'Place',
+  },
+};
 
 export const englishDictionary: ResponseDictionary = {
   languageCode: 'en',
@@ -77,37 +93,7 @@ export const englishDictionary: ResponseDictionary = {
     },
 
     editSuccess(params: RecordEditSuccessParams): string {
-      const lines = [
-        '✅ Transaction updated successfully:',
-        '',
-        params.transactionTitle,
-        `${params.transactionTypeIcon} ${params.formattedAmount}  •  ${params.accountName}`,
-        `🏷️ ${params.categoryName}  •  ${params.recordTimestampDisplay}`,
-      ];
-      if (params.labels && params.labels.length > 0) {
-        lines.push(`🔖 ${params.labels.map((t: string) => `#${t.replace(/^#/, '')}`).join(' ')}`);
-      }
-      if (params.movedFromAccountName) {
-        lines.push(`🏦 Account moved from: ${params.movedFromAccountName} ➔ ${params.accountName}`);
-      }
-      const clearedLabels = [
-        ...(params.clearedFieldLabels || []),
-        ...((params.clearedFields || []).map(field => {
-          switch (field) {
-            case 'note': return 'Note';
-            case 'labelIds': return 'Tags / Labels';
-            case 'counterParty': return 'Merchant / Payee';
-            case 'categoryId': return 'Category';
-            case 'transfer': return 'Transfer Link';
-            case 'place': return 'Place';
-            default: return field;
-          }
-        })),
-      ];
-      if (clearedLabels.length > 0) {
-        lines.push(`🧹 Cleared fields: ${Array.from(new Set(clearedLabels)).join(', ')}`);
-      }
-      return lines.join('\n');
+      return formatEditSuccessReceipt(params, englishEditReceiptConfig);
     },
   },
 

@@ -1,8 +1,9 @@
-﻿import { SupportedLanguage, ResponseDictionary } from './types.js';
+import { SupportedLanguage, ResponseDictionary } from './types.js';
 import { indonesianDictionary } from './locales/id.js';
 import { englishDictionary } from './locales/en.js';
 
 export * from './types.js';
+export * from './editReceiptFormatter.js';
 export { indonesianDictionary } from './locales/id.js';
 export { englishDictionary } from './locales/en.js';
 

@@ -1,3 +1,4 @@
+import { formatEditSuccessReceipt, type EditReceiptLocaleConfig } from '../editReceiptFormatter.js';
 import {
   ResponseDictionary,
   RecordMessageParams,
@@ -28,6 +29,21 @@ export function formatPendingConfirmationPromptId(params: PendingConfirmationPro
   }
   return lines.join('\n');
 }
+
+
+const indonesianEditReceiptConfig: EditReceiptLocaleConfig = {
+  header: '✅ Transaksi berhasil diperbarui:',
+  accountMoved: (from, to) => `🏦 Akun dipindahkan dari: ${from} ➔ ${to}`,
+  clearedFieldsHeader: '🧹 Bidang dibersihkan:',
+  fieldNames: {
+    note: 'Catatan',
+    labelIds: 'Tag / Label',
+    counterParty: 'Merchant / Payee',
+    categoryId: 'Kategori',
+    transfer: 'Status Transfer',
+    place: 'Lokasi',
+  },
+};
 
 export const indonesianDictionary: ResponseDictionary = {
   languageCode: 'id',
@@ -77,37 +93,7 @@ export const indonesianDictionary: ResponseDictionary = {
     },
 
     editSuccess(params: RecordEditSuccessParams): string {
-      const lines = [
-        '✅ Transaksi berhasil diperbarui:',
-        '',
-        params.transactionTitle,
-        `${params.transactionTypeIcon} ${params.formattedAmount}  •  ${params.accountName}`,
-        `🏷️ ${params.categoryName}  •  ${params.recordTimestampDisplay}`,
-      ];
-      if (params.labels && params.labels.length > 0) {
-        lines.push(`🔖 ${params.labels.map((t: string) => `#${t.replace(/^#/, '')}`).join(' ')}`);
-      }
-      if (params.movedFromAccountName) {
-        lines.push(`🏦 Akun dipindahkan dari: ${params.movedFromAccountName} ➔ ${params.accountName}`);
-      }
-      const clearedLabels = [
-        ...(params.clearedFieldLabels || []),
-        ...((params.clearedFields || []).map(field => {
-          switch (field) {
-            case 'note': return 'Catatan';
-            case 'labelIds': return 'Tag / Label';
-            case 'counterParty': return 'Merchant / Payee';
-            case 'categoryId': return 'Kategori';
-            case 'transfer': return 'Status Transfer';
-            case 'place': return 'Lokasi';
-            default: return field;
-          }
-        })),
-      ];
-      if (clearedLabels.length > 0) {
-        lines.push(`🧹 Bidang dibersihkan: ${Array.from(new Set(clearedLabels)).join(', ')}`);
-      }
-      return lines.join('\n');
+      return formatEditSuccessReceipt(params, indonesianEditReceiptConfig);
     },
   },
 

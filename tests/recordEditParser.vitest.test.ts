@@ -209,5 +209,9 @@ describe('recordEditParser', () => {
       expect(parsed?.clearFields).toEqual(['labelIds']);
       expect(parsed?.note).toBe('Bensin');
     });
+    it('returns null when tokens have invalid or empty values', () => {
+      expect(parseRecordEditCommand('a: bukanAngka')).toBeNull();
+      expect(parseRecordEditCommand('tf: invalid')).toBeNull();
+    });
   });
 });

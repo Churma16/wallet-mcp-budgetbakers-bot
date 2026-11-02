@@ -489,6 +489,62 @@ describe('ModifyRecordHandler', () => {
       expect(sentMessage).toContain('Mata uang Jago Expense (IDR) berbeda dengan USD Savings (USD)');
     });
 
+    it('rejects moving when target account is not found', async () => {
+      store.recordMessageMapping('msg-acc-not-found', {
+        recordId: 'rec-nf-1',
+        accountId: 'acc-bca',
+        accountName: 'Jago Expense',
+        currency: 'IDR',
+      });
+
+      const event: IncomingUserMessageEvent = {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-1',
+        messageType: 'text',
+        textPayload: 'rek: AkunGaib',
+        replyToMessageId: 'msg-acc-not-found',
+      };
+
+      const handled = await handler.handleModifyRecordReply(event, Date.now());
+      expect(handled).toBe(true);
+      expect(mockClient.patchRecords).not.toHaveBeenCalled();
+
+      const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
+      expect(sentMessage).toContain('Akun "AkunGaib" tidak ditemukan.');
+    });
+
+    it('rejects moving when target account hint is ambiguous', async () => {
+      // Add a second Jago account to trigger ambiguity
+      (mockCache.getAccounts as any).mockReturnValue([
+        ...sampleAccounts,
+        { id: 'acc-jago-2', name: 'Jago Savings', balance: 1000000, currency: 'IDR' },
+      ]);
+
+      store.recordMessageMapping('msg-acc-ambig', {
+        recordId: 'rec-ambig-1',
+        accountId: 'acc-mandiri',
+        accountName: 'Mandiri Checking',
+        currency: 'IDR',
+      });
+
+      const event: IncomingUserMessageEvent = {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-1',
+        messageType: 'text',
+        textPayload: 'rek: Jago',
+        replyToMessageId: 'msg-acc-ambig',
+      };
+
+      const handled = await handler.handleModifyRecordReply(event, Date.now());
+      expect(handled).toBe(true);
+      expect(mockClient.patchRecords).not.toHaveBeenCalled();
+
+      const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
+      expect(sentMessage).toContain('Akun "Jago" ambigu: cocok dengan');
+    });
+
     it('handles same-account move without redundant accountId in patch payload', async () => {
       store.recordMessageMapping('msg-same-acc', {
         recordId: 'rec-same-1',
