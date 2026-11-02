@@ -94,14 +94,14 @@ describe('container workflow manual GHCR promotions', () => {
     expect(workflowContent).toContain('type=raw,value=sha-${{ steps.source.outputs.short_sha }}');
   });
 
-  it('publishes mutable aliases only for the selected manual channel', () => {
+  it('publishes mutable aliases for push events and manual promotion channels', () => {
     const workflowContent = getWorkflowContent();
 
     expect(workflowContent).toContain(
-      "type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' && inputs.channel == 'latest' }}"
+      "type=raw,value=latest,enable=${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.channel == 'latest') }}"
     );
     expect(workflowContent).toContain(
-      "type=raw,value=stable,enable=${{ github.event_name == 'workflow_dispatch' && inputs.channel == 'stable' }}"
+      "type=raw,value=stable,enable=${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-snapshot.')) || (github.event_name == 'workflow_dispatch' && inputs.channel == 'stable') }}"
     );
     expect(workflowContent).toContain(
       "type=raw,value=${{ inputs.version || 'unused-stable-version' }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.channel == 'stable' }}"

@@ -124,9 +124,9 @@ jobs:
           tags: |
             type=raw,value=sha-${{ steps.source.outputs.short_sha }}
             type=ref,event=tag
-            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' && inputs.channel == 'latest' }}
+            type=raw,value=latest,enable=${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.channel == 'latest') }}
             type=raw,value=${{ inputs.version || 'unused-stable-version' }},enable=${{ github.event_name == 'workflow_dispatch' && inputs.channel == 'stable' }}
-            type=raw,value=stable,enable=${{ github.event_name == 'workflow_dispatch' && inputs.channel == 'stable' }}
+            type=raw,value=stable,enable=${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-snapshot.')) || (github.event_name == 'workflow_dispatch' && inputs.channel == 'stable') }}
 
       - name: Build and optionally publish image
         uses: docker/build-push-action@v6
