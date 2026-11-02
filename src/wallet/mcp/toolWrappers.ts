@@ -275,7 +275,7 @@ export interface GetRecordsToolArgs {
   readonly offset?: number;
   readonly sortBy?: readonly string[];
   readonly accountId?: string;
-  readonly categoryId?: readonly string[];
+  readonly categoryId?: readonly string[] | 'unknown';
   readonly categoryGroup?: string;
   readonly recordType?: string;
   readonly recordDate?: readonly [string, string] | readonly string[];

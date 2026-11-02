@@ -13,7 +13,7 @@ export const KNOWN_CATEGORY_KEYWORDS = new Set([
   'kesehatan', 'health', 'pulsa', 'listrik', 'kendaraan', 'rumah', 'housing',
   'pendidikan', 'education', 'communication_pc', 'financial_expenses',
   'food_and_drinks', 'income', 'investments', 'life_entertainment',
-  'others', 'shopping', 'system_categories', 'transportation', 'unknown_records', 'vehicle',
+  'others', 'shopping', 'system_categories', 'transportation', 'unknown_records', 'unknown', 'uncategorized', 'vehicle',
 ]);
 
 /**
