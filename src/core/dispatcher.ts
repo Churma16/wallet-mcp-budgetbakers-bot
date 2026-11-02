@@ -1,5 +1,8 @@
 import { AppContext } from './context.js';
-import { IncomingUserMessageEvent, PushNotificationPayload, MessagingGatewayService } from '../gateway/index.js';
+import {
+  IncomingUserMessageEvent,
+  PushNotificationPayload,
+} from '../gateway/index.js';
 import { EmailTransactionDetectedEvent } from '../email/index.js';
 import {
   ExtractedFinancialIntent,
@@ -11,9 +14,6 @@ import {
   FastPathTransactionHistoryAction,
   detectPendingConfirmationAction,
   detectReconciliationAction,
-  FinancialAiProvider,
-  CategoryContextService,
-  ClarificationService,
 } from '../brain/index.js';
 import { FINANCIAL_ACTION_TYPES } from '../brain/constants.js';
 import { PendingTransactionService } from './pending.js';
@@ -22,19 +22,12 @@ import { FastPathHandler } from './handlers/fastPathHandler.js';
 import { FinancialActionExecutor } from './executor.js';
 import { AccountClarificationHandler } from './handlers/accountClarificationHandler.js';
 import { CategoryClarificationHandler } from './handlers/categoryClarificationHandler.js';
-import { CreateRecordActionHandler } from './handlers/createRecordHandler.js';
 import { ModifyRecordHandler } from './handlers/modifyRecordHandler.js';
 import {
   FinancialActionRegistry,
+  createDefaultFinancialActionRegistry,
+  DefaultFinancialActionRegistryDependencies,
 } from './handlers/financialActionRegistry.js';
-import {
-  CheckBalanceActionHandler,
-  CheckBudgetActionHandler,
-  CheckQueueActionHandler,
-  HelpMenuActionHandler,
-  TransactionHistoryActionHandler,
-  TransactionSummaryActionHandler,
-} from './handlers/readActionHandlers.js';
 import { coordinateInboundTransactionCandidate } from './inboundCoordinator.js';
 import { NotificationTransactionHandler } from './handlers/inboundHandlers.js';
 import { TransactionCorrelationService } from '../email/index.js';
@@ -44,12 +37,15 @@ import {
   getHumanReadableTimestamp,
   TransactionHistoryQueryOptions,
   WalletRecordPreparationService,
-  WalletCacheService,
-  WalletMcpClientService,
-  TransactionMessageStore,
 } from '../wallet/index.js';
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../lib/logger.js';
+
+export {
+  FinancialActionRegistry,
+  createDefaultFinancialActionRegistry,
+  DefaultFinancialActionRegistryDependencies,
+};
 
 export type SemanticToolAuthorizationResolver = (
   event: IncomingUserMessageEvent
@@ -106,57 +102,21 @@ export function shouldDeferHistoryCategoryToSemanticResolver(
   );
 }
 
-export interface DefaultFinancialActionRegistryDependencies {
-  readonly financialActionExecutor: FinancialActionExecutor;
-  readonly walletMcpClient: AppContext['wallet']['client'];
-  readonly walletCacheService: AppContext['wallet']['cache'];
-  readonly messagingGateway: AppContext['gateway'];
-  readonly recordPreparationService: AppContext['wallet']['recordPreparation'];
-  readonly accountClarificationHandler: AccountClarificationHandler;
-  readonly pendingTransactionService?: PendingTransactionService;
-  readonly categoryContextService?: AppContext['brain']['categoryContext'];
-  readonly categoryClarificationHandler?: CategoryClarificationHandler;
-  readonly categoryResolutionMode?: 'ask' | 'auto';
-  readonly categoryClarificationConversationService?: AppContext['brain']['categoryClarification'];
-  readonly transactionMessageStore?: AppContext['wallet']['transactionMessages'];
-}
-
-export function createDefaultFinancialActionRegistry(
-  dependencies: DefaultFinancialActionRegistryDependencies
-): FinancialActionRegistry {
-  const registry = new FinancialActionRegistry();
-
-  registry.register(new CheckBalanceActionHandler(dependencies.financialActionExecutor));
-  registry.register(new CheckBudgetActionHandler(dependencies.financialActionExecutor));
-  registry.register(new HelpMenuActionHandler(dependencies.financialActionExecutor));
-  registry.register(new TransactionHistoryActionHandler(dependencies.financialActionExecutor));
-  registry.register(new TransactionSummaryActionHandler(dependencies.financialActionExecutor));
-
-  if (dependencies.pendingTransactionService) {
-    registry.register(
-      new CheckQueueActionHandler(
-        dependencies.pendingTransactionService,
-        dependencies.messagingGateway
-      )
-    );
-  }
-
-  registry.register(
-    new CreateRecordActionHandler(
-      dependencies.walletMcpClient,
-      dependencies.walletCacheService,
-      dependencies.messagingGateway,
-      dependencies.recordPreparationService,
-      dependencies.accountClarificationHandler,
-      dependencies.categoryContextService,
-      dependencies.categoryClarificationHandler,
-      dependencies.categoryResolutionMode,
-      dependencies.categoryClarificationConversationService,
-      dependencies.transactionMessageStore
-    )
-  );
-
-  return registry;
+/**
+ * Optional handler and service overrides for MessageDispatcher dependency injection.
+ */
+export interface DispatcherOverrides {
+  pendingActionHandler?: PendingActionHandler;
+  fastPathHandler?: FastPathHandler;
+  financialActionExecutor?: FinancialActionExecutor;
+  recordPreparationService?: AppContext['wallet']['recordPreparation'];
+  financialActionRegistry?: FinancialActionRegistry;
+  accountClarificationHandler?: AccountClarificationHandler;
+  categoryClarificationHandler?: CategoryClarificationHandler;
+  semanticToolBoundary?: SemanticToolBoundary;
+  semanticToolAuthorizationResolver?: SemanticToolAuthorizationResolver;
+  categoryResolutionMode?: 'ask' | 'auto';
+  modifyRecordHandler?: ModifyRecordHandler;
 }
 
 /**
@@ -179,297 +139,111 @@ export class MessageDispatcher {
 
   constructor(
     context: AppContext,
-    overrides?: {
-      pendingActionHandler?: PendingActionHandler;
-      fastPathHandler?: FastPathHandler;
-      financialActionExecutor?: FinancialActionExecutor;
-      recordPreparationService?: AppContext['wallet']['recordPreparation'];
-      financialActionRegistry?: FinancialActionRegistry;
-      accountClarificationHandler?: AccountClarificationHandler;
-      categoryClarificationHandler?: CategoryClarificationHandler;
-      semanticToolBoundary?: SemanticToolBoundary;
-      semanticToolAuthorizationResolver?: SemanticToolAuthorizationResolver;
-      categoryResolutionMode?: 'ask' | 'auto';
-      modifyRecordHandler?: ModifyRecordHandler;
-    }
-  );
-  constructor(
-    messagingGateway: MessagingGatewayService,
-    pendingTransactionManager: PendingTransactionService,
-    pendingActionHandler?: PendingActionHandler,
-    fastPathHandler?: FastPathHandler,
-    financialAiProvider?: FinancialAiProvider,
-    walletCacheService?: WalletCacheService,
-    walletMcpClient?: WalletMcpClientService,
-    financialActionExecutor?: FinancialActionExecutor,
-    recordPreparationService?: WalletRecordPreparationService,
-    financialActionRegistry?: FinancialActionRegistry,
-    accountClarificationHandler?: AccountClarificationHandler,
-    semanticToolBoundary?: SemanticToolBoundary,
-    semanticToolAuthorizationResolver?: SemanticToolAuthorizationResolver,
-    categoryClarificationHandler?: CategoryClarificationHandler,
-    categoryResolutionMode?: 'ask' | 'auto',
-    categoryContextService?: CategoryContextService
-  );
-  constructor(
-    contextOrGateway: AppContext | MessagingGatewayService,
-    pendingOrOverrides?: any,
-    pendingActionHandler?: PendingActionHandler,
-    fastPathHandler?: FastPathHandler,
-    financialAiProvider?: FinancialAiProvider,
-    walletCacheService?: WalletCacheService,
-    walletMcpClient?: WalletMcpClientService,
-    financialActionExecutor?: FinancialActionExecutor,
-    recordPreparationService?: WalletRecordPreparationService,
-    financialActionRegistry?: FinancialActionRegistry,
-    accountClarificationHandler?: AccountClarificationHandler,
-    semanticToolBoundary?: SemanticToolBoundary,
-    semanticToolAuthorizationResolver?: SemanticToolAuthorizationResolver,
-    categoryClarificationHandler?: CategoryClarificationHandler,
-    categoryResolutionMode?: 'ask' | 'auto',
-    categoryContextService?: CategoryContextService
+    overrides?: Partial<DispatcherOverrides>
   ) {
-    if (contextOrGateway && 'wallet' in contextOrGateway && 'gateway' in contextOrGateway) {
-      const context = contextOrGateway as AppContext;
-      const overrides = pendingOrOverrides as {
-        pendingActionHandler?: PendingActionHandler;
-        fastPathHandler?: FastPathHandler;
-        financialActionExecutor?: FinancialActionExecutor;
-        recordPreparationService?: AppContext['wallet']['recordPreparation'];
-        financialActionRegistry?: FinancialActionRegistry;
-        accountClarificationHandler?: AccountClarificationHandler;
-        categoryClarificationHandler?: CategoryClarificationHandler;
-        semanticToolBoundary?: SemanticToolBoundary;
-        semanticToolAuthorizationResolver?: SemanticToolAuthorizationResolver;
-        categoryResolutionMode?: 'ask' | 'auto';
-        modifyRecordHandler?: ModifyRecordHandler;
-      } | undefined;
+    this.context = context;
 
-      this.context = context;
-
-      this.financialActionExecutor =
-        overrides?.financialActionExecutor ||
-        new FinancialActionExecutor(
-          context.wallet.client,
-          context.wallet.cache,
-          context.gateway,
-          context.wallet.history,
-          context.wallet.summary
-        );
-
-      const recordPrep =
-        overrides?.recordPreparationService || context.wallet.recordPreparation;
-      this.recordPreparationService = recordPrep;
-
-      this.accountClarificationHandler =
-        overrides?.accountClarificationHandler ||
-        new AccountClarificationHandler(
-          context.pending,
-          context.wallet.client,
-          context.wallet.cache,
-          context.gateway,
-          recordPrep,
-          context.brain.categoryContext,
-          context.brain.accountClarification
-        );
-
-      this.categoryClarificationHandler =
-        overrides?.categoryClarificationHandler ||
-        new CategoryClarificationHandler(
-          context.pending,
-          context.wallet.client,
-          context.wallet.cache,
-          context.gateway,
-          recordPrep,
-          context.brain.categoryContext,
-          context.brain.categoryClarification
-        );
-
-      this.pendingActionHandler =
-        overrides?.pendingActionHandler ||
-        new PendingActionHandler(
-          context.pending,
-          context.wallet.client,
-          context.gateway,
-          () => context.email.listener,
-          context.wallet.cache,
-          context.wallet.transactionMessages
-        );
-
-      this.financialActionRegistry =
-        overrides?.financialActionRegistry ||
-        createDefaultFinancialActionRegistry({
-          financialActionExecutor: this.financialActionExecutor,
-          walletMcpClient: context.wallet.client,
-          walletCacheService: context.wallet.cache,
-          messagingGateway: context.gateway,
-          recordPreparationService: recordPrep,
-          accountClarificationHandler: this.accountClarificationHandler,
-          categoryClarificationHandler: this.categoryClarificationHandler,
-          categoryContextService: context.brain.categoryContext,
-          categoryResolutionMode: overrides?.categoryResolutionMode,
-          pendingTransactionService: context.pending,
-          transactionMessageStore: context.wallet.transactionMessages,
-        });
-
-      this.modifyRecordHandler =
-        overrides?.modifyRecordHandler ||
-        new ModifyRecordHandler(
-          context.wallet.client,
-          context.wallet.cache,
-          context.gateway,
-          context.wallet.transactionMessages
-        );
-
-      this.fastPathHandler =
-        overrides?.fastPathHandler ||
-        new FastPathHandler(
-          context.wallet.client,
-          context.wallet.cache,
-          context.gateway,
-          context.wallet.history,
-          context.wallet.summary,
-          this.financialActionExecutor,
-          this.financialActionRegistry,
-          context.pending
-        );
-
-      this.semanticToolBoundary =
-        overrides?.semanticToolBoundary || context.brain.semanticBoundary;
-      this.semanticToolAuthorizationResolver =
-        overrides?.semanticToolAuthorizationResolver || resolveGatewayAuthorization;
-    } else {
-      const messagingGateway = contextOrGateway as MessagingGatewayService;
-      const pendingTransactionManager = pendingOrOverrides as PendingTransactionService;
-
-      const recordPrep =
-        recordPreparationService ||
-        (walletCacheService && walletMcpClient
-          ? new WalletRecordPreparationService(walletCacheService, walletMcpClient)
-          : ({} as any));
-      this.recordPreparationService = recordPrep;
-
-      const historyService =
-        (financialActionExecutor as any)?.transactionHistoryService ||
-        (fastPathHandler as any)?.transactionHistoryService;
-      const summaryService =
-        (financialActionExecutor as any)?.transactionSummaryService ||
-        (fastPathHandler as any)?.transactionSummaryService;
-
-      const clarificationService = new ClarificationService(financialAiProvider);
-
-      this.context = {
-        config: { defaultCurrency: 'IDR' } as any,
-        gateway: messagingGateway,
-        pending: pendingTransactionManager,
-        wallet: {
-          client: walletMcpClient as any,
-          cache: walletCacheService as any,
-          recordPreparation: recordPrep,
-          history: historyService,
-          summary: summaryService,
-          capabilities: undefined as any,
-          transactionMessages: new TransactionMessageStore(),
-        },
-        brain: {
-          provider: financialAiProvider as any,
-          categoryContext: categoryContextService as any,
-          semanticBoundary: semanticToolBoundary || new SemanticToolBoundary(),
-          accountClarification: clarificationService,
-          categoryClarification: clarificationService,
-        },
-        email: {
-          listener: null,
-          correlation: undefined as any,
-        },
-        webhook: null,
-      };
-
-      this.financialActionExecutor =
-        financialActionExecutor ||
-        new FinancialActionExecutor(
-          walletMcpClient as any,
-          walletCacheService as any,
-          messagingGateway,
-          historyService,
-          summaryService
-        );
-
-      this.accountClarificationHandler =
-        accountClarificationHandler ||
-        new AccountClarificationHandler(
-          pendingTransactionManager,
-          walletMcpClient as any,
-          walletCacheService as any,
-          messagingGateway,
-          recordPrep,
-          categoryContextService,
-          clarificationService
-        );
-
-      this.categoryClarificationHandler =
-        categoryClarificationHandler ||
-        new CategoryClarificationHandler(
-          pendingTransactionManager,
-          walletMcpClient as any,
-          walletCacheService as any,
-          messagingGateway,
-          recordPrep,
-          categoryContextService,
-          clarificationService
-        );
-
-      this.pendingActionHandler =
-        pendingActionHandler ||
-        new PendingActionHandler(
-          pendingTransactionManager,
-          walletMcpClient as any,
-          messagingGateway,
-          () => null,
-          walletCacheService as any
-        );
-
-      this.semanticToolBoundary = semanticToolBoundary || new SemanticToolBoundary();
-      this.semanticToolAuthorizationResolver =
-        semanticToolAuthorizationResolver || resolveGatewayAuthorization;
-
-      if (financialActionRegistry) {
-        this.financialActionRegistry = financialActionRegistry;
-      } else {
-        this.financialActionRegistry = createDefaultFinancialActionRegistry({
-          financialActionExecutor: this.financialActionExecutor,
-          walletMcpClient: walletMcpClient as any,
-          walletCacheService: walletCacheService as any,
-          messagingGateway,
-          recordPreparationService: recordPrep,
-          accountClarificationHandler: this.accountClarificationHandler,
-          categoryClarificationHandler: this.categoryClarificationHandler,
-          categoryResolutionMode,
-          categoryContextService,
-          pendingTransactionService: pendingTransactionManager,
-        });
-      }
-
-      this.fastPathHandler =
-        fastPathHandler ||
-        new FastPathHandler(
-          walletMcpClient as any,
-          walletCacheService as any,
-          messagingGateway,
-          historyService,
-          summaryService,
-          this.financialActionExecutor,
-          this.financialActionRegistry,
-          pendingTransactionManager
-        );
-
-      this.modifyRecordHandler = new ModifyRecordHandler(
-        walletMcpClient as any,
-        walletCacheService as any,
-        messagingGateway,
-        this.context.wallet.transactionMessages
+    this.financialActionExecutor =
+      overrides?.financialActionExecutor ||
+      new FinancialActionExecutor(
+        context.wallet.client,
+        context.wallet.cache,
+        context.gateway,
+        context.wallet.history,
+        context.wallet.summary
       );
-    }
+
+    const recordPrep =
+      overrides?.recordPreparationService ||
+      context.wallet?.recordPreparation ||
+      (context.wallet?.cache && context.wallet?.client
+        ? new WalletRecordPreparationService(context.wallet.cache, context.wallet.client)
+        : ({
+            prepareRecordsForDispatch: async (records: any) => records,
+          } as any));
+    this.recordPreparationService = recordPrep;
+
+    this.accountClarificationHandler =
+      overrides?.accountClarificationHandler ||
+      new AccountClarificationHandler(
+        context.pending,
+        context.wallet.client,
+        context.wallet.cache,
+        context.gateway,
+        recordPrep,
+        context.brain?.categoryContext,
+        context.brain?.accountClarification
+      );
+
+    this.categoryClarificationHandler =
+      overrides?.categoryClarificationHandler ||
+      new CategoryClarificationHandler(
+        context.pending,
+        context.wallet.client,
+        context.wallet.cache,
+        context.gateway,
+        recordPrep,
+        context.brain?.categoryContext,
+        context.brain?.categoryClarification
+      );
+
+    this.pendingActionHandler =
+      overrides?.pendingActionHandler ||
+      new PendingActionHandler(
+        context.pending,
+        context.wallet.client,
+        context.gateway,
+        () => context.email?.listener ?? null,
+        context.wallet.cache,
+        context.wallet.transactionMessages
+      );
+
+    this.financialActionRegistry =
+      overrides?.financialActionRegistry ||
+      createDefaultFinancialActionRegistry({
+        financialActionExecutor: this.financialActionExecutor,
+        walletMcpClient: context.wallet.client,
+        walletCacheService: context.wallet.cache,
+        messagingGateway: context.gateway,
+        recordPreparationService: recordPrep,
+        accountClarificationHandler: this.accountClarificationHandler,
+        categoryClarificationHandler: this.categoryClarificationHandler,
+        categoryContextService: context.brain?.categoryContext,
+        categoryResolutionMode: overrides?.categoryResolutionMode,
+        categoryClarificationConversationService: context.brain?.categoryClarification,
+        pendingTransactionService: context.pending,
+        transactionMessageStore: context.wallet?.transactionMessages,
+      });
+
+    this.modifyRecordHandler =
+      overrides?.modifyRecordHandler ||
+      new ModifyRecordHandler(
+        context.wallet.client,
+        context.wallet.cache,
+        context.gateway,
+        context.wallet.transactionMessages
+      );
+
+    this.fastPathHandler =
+      overrides?.fastPathHandler ||
+      new FastPathHandler(
+        context.wallet.client,
+        context.wallet.cache,
+        context.gateway,
+        context.wallet.history,
+        context.wallet.summary,
+        this.financialActionExecutor,
+        this.financialActionRegistry,
+        context.pending
+      );
+
+    this.semanticToolBoundary =
+      overrides?.semanticToolBoundary ||
+      context.brain?.semanticBoundary ||
+      new SemanticToolBoundary();
+
+    this.semanticToolAuthorizationResolver =
+      overrides?.semanticToolAuthorizationResolver || resolveGatewayAuthorization;
   }
 
   /**
@@ -571,8 +345,8 @@ export class MessageDispatcher {
               if (clarificationDraft && clarificationIsPending && standardPendingItem) {
                 const dictionary = getDictionary();
                 const disambiguationMessage = dictionary.languageCode === 'id'
-                  ? `⚠️ Ada dua transaksi yang bisa dibatalkan. Tidak ada yang dibatalkan.\nBalas *batal #${clarificationDraft.ticketId}* untuk membatalkan draft klarifikasi, atau *batal #${standardPendingItem.ticketId}* untuk membatalkan tiket transaksi.`
-                  : `⚠️ Two transactions can be cancelled. Nothing was cancelled.\nReply *cancel #${clarificationDraft.ticketId}* to cancel the clarification draft, or *cancel #${standardPendingItem.ticketId}* to cancel the pending transaction ticket.`;
+                  ? `[WARN] Ada dua transaksi yang bisa dibatalkan. Tidak ada yang dibatalkan.\nBalas *batal #${clarificationDraft.ticketId}* untuk membatalkan draft klarifikasi, atau *batal #${standardPendingItem.ticketId}* untuk membatalkan tiket transaksi.`
+                  : `[WARN] Two transactions can be cancelled. Nothing was cancelled.\nReply *cancel #${clarificationDraft.ticketId}* to cancel the clarification draft, or *cancel #${standardPendingItem.ticketId}* to cancel the pending transaction ticket.`;
                 await this.context.gateway.sendMessage(
                   event.channel,
                   event.chatIdentifier,

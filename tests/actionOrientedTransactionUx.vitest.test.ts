@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { UserMessageHandler } from '../src/core/dispatcher.js';
+import { createTestUserMessageHandler } from './fixtures/testContext.js';
 import {
   setActiveLanguage,
   getDictionary,
@@ -1473,19 +1474,14 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
       const mockPendingActionHandler = {
         handleReconciliationAction: vi.fn().mockResolvedValue(true),
       };
-      const userMessageHandler = new UserMessageHandler(
-        new MockMessagingGateway() as any,
-        new PendingTransactionService() as any,
-        mockPendingActionHandler as any,
-        {} as any,
-        {} as any,
-        { getAccounts: () => [], getCategories: () => [] } as any,
-        {} as any,
-        undefined,
-        undefined,
-        { execute: vi.fn() } as any,
-        { handlePendingAccountSelectionReply: vi.fn().mockResolvedValue(false) } as any
-      );
+      const userMessageHandler = createTestUserMessageHandler({
+        messagingGateway: new MockMessagingGateway() as any,
+        pendingTransactionManager: new PendingTransactionService() as any,
+        pendingActionHandler: mockPendingActionHandler as any,
+        walletCacheService: { getAccounts: () => [], getCategories: () => [] } as any,
+        financialActionRegistry: { execute: vi.fn() } as any,
+        accountClarificationHandler: { handlePendingAccountSelectionReply: vi.fn().mockResolvedValue(false) } as any,
+      });
 
       const event = createMockEvent('sudah ada #123');
       await userMessageHandler.handleIncomingUserMessage(event);
@@ -1502,19 +1498,14 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
       const mockPendingActionHandler = {
         handleReconciliationAction: vi.fn().mockResolvedValue(true),
       };
-      const userMessageHandler = new UserMessageHandler(
-        new MockMessagingGateway() as any,
-        new PendingTransactionService() as any,
-        mockPendingActionHandler as any,
-        {} as any,
-        {} as any,
-        { getAccounts: () => [], getCategories: () => [] } as any,
-        {} as any,
-        undefined,
-        undefined,
-        { execute: vi.fn() } as any,
-        { handlePendingAccountSelectionReply: vi.fn().mockResolvedValue(false) } as any
-      );
+      const userMessageHandler = createTestUserMessageHandler({
+        messagingGateway: new MockMessagingGateway() as any,
+        pendingTransactionManager: new PendingTransactionService() as any,
+        pendingActionHandler: mockPendingActionHandler as any,
+        walletCacheService: { getAccounts: () => [], getCategories: () => [] } as any,
+        financialActionRegistry: { execute: vi.fn() } as any,
+        accountClarificationHandler: { handlePendingAccountSelectionReply: vi.fn().mockResolvedValue(false) } as any,
+      });
 
       const event = createMockEvent('belum ada');
       await userMessageHandler.handleIncomingUserMessage(event);

@@ -3,6 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { CategoryContextService } from '../src/brain/category/categoryContext.js';
 import { UserMessageHandler } from '../src/core/dispatcher.js';
+import { createTestUserMessageHandler } from './fixtures/testContext.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
@@ -144,23 +145,16 @@ describe('Category Clarification and Auto Mode', () => {
       ],
     });
 
-    const handler = new UserMessageHandler(
-      gateway as any,
-      pendingManager,
-      new MockPendingActionHandler() as any,
-      new MockFastPathHandler() as any,
-      aiProvider as any,
-      cache as any,
-      mcpClient as any,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      'ask'
-    );
+    const handler = createTestUserMessageHandler({
+      messagingGateway: gateway as any,
+      pendingTransactionManager: pendingManager,
+      pendingActionHandler: new MockPendingActionHandler() as any,
+      fastPathHandler: new MockFastPathHandler() as any,
+      financialAiProvider: aiProvider as any,
+      walletCacheService: cache as any,
+      walletMcpClient: mcpClient as any,
+      categoryResolutionMode: 'ask',
+    });
 
     await handler.handleIncomingUserMessage(createEvent('Beli paracetamol 50rb cat:obat'));
 
@@ -198,23 +192,16 @@ describe('Category Clarification and Auto Mode', () => {
       ],
     });
 
-    const handler = new UserMessageHandler(
-      gateway as any,
-      pendingManager,
-      new MockPendingActionHandler() as any,
-      new MockFastPathHandler() as any,
-      aiProvider as any,
-      cache as any,
-      mcpClient as any,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      'ask'
-    );
+    const handler = createTestUserMessageHandler({
+      messagingGateway: gateway as any,
+      pendingTransactionManager: pendingManager,
+      pendingActionHandler: new MockPendingActionHandler() as any,
+      fastPathHandler: new MockFastPathHandler() as any,
+      financialAiProvider: aiProvider as any,
+      walletCacheService: cache as any,
+      walletMcpClient: mcpClient as any,
+      categoryResolutionMode: 'ask',
+    });
 
     await handler.handleIncomingUserMessage(createEvent('Beli vitamin C 35rb cat:vitamin'));
     expect(gateway.messages.length).toBe(1);
@@ -240,23 +227,16 @@ describe('Category Clarification and Auto Mode', () => {
       ],
     });
 
-    const handler = new UserMessageHandler(
-      gateway as any,
-      pendingManager,
-      new MockPendingActionHandler() as any,
-      new MockFastPathHandler() as any,
-      aiProvider as any,
-      cache as any,
-      mcpClient as any,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      'ask'
-    );
+    const handler = createTestUserMessageHandler({
+      messagingGateway: gateway as any,
+      pendingTransactionManager: pendingManager,
+      pendingActionHandler: new MockPendingActionHandler() as any,
+      fastPathHandler: new MockFastPathHandler() as any,
+      financialAiProvider: aiProvider as any,
+      walletCacheService: cache as any,
+      walletMcpClient: mcpClient as any,
+      categoryResolutionMode: 'ask',
+    });
 
     await handler.handleIncomingUserMessage(createEvent('Betadine 25rb cat:antiseptik'));
     expect(gateway.messages.length).toBe(1);
@@ -286,23 +266,16 @@ describe('Category Clarification and Auto Mode', () => {
       ],
     });
 
-    const handler = new UserMessageHandler(
-      gateway as any,
-      pendingManager,
-      new MockPendingActionHandler() as any,
-      new MockFastPathHandler() as any,
-      aiProvider as any,
-      cache as any,
-      mcpClient as any,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      'ask'
-    );
+    const handler = createTestUserMessageHandler({
+      messagingGateway: gateway as any,
+      pendingTransactionManager: pendingManager,
+      pendingActionHandler: new MockPendingActionHandler() as any,
+      fastPathHandler: new MockFastPathHandler() as any,
+      financialAiProvider: aiProvider as any,
+      walletCacheService: cache as any,
+      walletMcpClient: mcpClient as any,
+      categoryResolutionMode: 'ask',
+    });
 
     await handler.handleIncomingUserMessage(createEvent('Kasa perban 15rb cat:perban'));
     expect(gateway.messages.length).toBe(1);
@@ -332,23 +305,16 @@ describe('Category Clarification and Auto Mode', () => {
       ],
     });
 
-    const handler = new UserMessageHandler(
-      gateway as any,
-      pendingManager,
-      new MockPendingActionHandler() as any,
-      new MockFastPathHandler() as any,
-      aiProvider as any,
-      cache as any,
-      mcpClient as any,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      'auto'
-    );
+    const handler = createTestUserMessageHandler({
+      messagingGateway: gateway as any,
+      pendingTransactionManager: pendingManager,
+      pendingActionHandler: new MockPendingActionHandler() as any,
+      fastPathHandler: new MockFastPathHandler() as any,
+      financialAiProvider: aiProvider as any,
+      walletCacheService: cache as any,
+      walletMcpClient: mcpClient as any,
+      categoryResolutionMode: 'auto',
+    });
 
     await handler.handleIncomingUserMessage(createEvent('Beli obat flu 75rb cat:obat'));
 
@@ -379,23 +345,16 @@ describe('Category Clarification and Auto Mode', () => {
       ],
     });
 
-    const handler = new UserMessageHandler(
-      gateway as any,
-      pendingManager,
-      new MockPendingActionHandler() as any,
-      new MockFastPathHandler() as any,
-      aiProvider as any,
-      cache as any,
-      mcpClient as any,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      'ask'
-    );
+    const handler = createTestUserMessageHandler({
+      messagingGateway: gateway as any,
+      pendingTransactionManager: pendingManager,
+      pendingActionHandler: new MockPendingActionHandler() as any,
+      fastPathHandler: new MockFastPathHandler() as any,
+      financialAiProvider: aiProvider as any,
+      walletCacheService: cache as any,
+      walletMcpClient: mcpClient as any,
+      categoryResolutionMode: 'ask',
+    });
 
     await handler.handleIncomingUserMessage(createEvent('Beli obat 50rb cat:obat'));
     expect(gateway.messages.length).toBe(1);
@@ -430,23 +389,16 @@ describe('Category Clarification and Auto Mode', () => {
       ],
     });
 
-    const handler = new UserMessageHandler(
-      gateway as any,
-      pendingManager,
-      new MockPendingActionHandler() as any,
-      new MockFastPathHandler() as any,
-      aiProvider as any,
-      cache as any,
-      mcpClient as any,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      'ask'
-    );
+    const handler = createTestUserMessageHandler({
+      messagingGateway: gateway as any,
+      pendingTransactionManager: pendingManager,
+      pendingActionHandler: new MockPendingActionHandler() as any,
+      fastPathHandler: new MockFastPathHandler() as any,
+      financialAiProvider: aiProvider as any,
+      walletCacheService: cache as any,
+      walletMcpClient: mcpClient as any,
+      categoryResolutionMode: 'ask',
+    });
 
     await handler.handleIncomingUserMessage(createEvent('Beli obat 50rb cat:obat'));
     expect(gateway.messages.length).toBe(1);
@@ -470,23 +422,16 @@ describe('Category Clarification and Auto Mode', () => {
       ],
     });
 
-    const handler = new UserMessageHandler(
-      gateway as any,
-      pendingManager,
-      new MockPendingActionHandler() as any,
-      new MockFastPathHandler() as any,
-      accountProvider as any,
-      cache as any,
-      mcpClient as any,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      'ask'
-    );
+    const handler = createTestUserMessageHandler({
+      messagingGateway: gateway as any,
+      pendingTransactionManager: pendingManager,
+      pendingActionHandler: new MockPendingActionHandler() as any,
+      fastPathHandler: new MockFastPathHandler() as any,
+      financialAiProvider: accountProvider as any,
+      walletCacheService: cache as any,
+      walletMcpClient: mcpClient as any,
+      categoryResolutionMode: 'ask',
+    });
 
     // 1. First transaction creates an account clarification draft (#1)
     await handler.handleIncomingUserMessage(createEvent('Makan 20rb'));
@@ -544,23 +489,16 @@ describe('Category Clarification and Auto Mode', () => {
       ],
     });
 
-    const handler = new UserMessageHandler(
-      gateway as any,
-      pendingManager,
-      new MockPendingActionHandler() as any,
-      new MockFastPathHandler() as any,
-      mixedProvider as any,
-      cache as any,
-      mcpClient as any,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      'ask'
-    );
+    const handler = createTestUserMessageHandler({
+      messagingGateway: gateway as any,
+      pendingTransactionManager: pendingManager,
+      pendingActionHandler: new MockPendingActionHandler() as any,
+      fastPathHandler: new MockFastPathHandler() as any,
+      financialAiProvider: mixedProvider as any,
+      walletCacheService: cache as any,
+      walletMcpClient: mcpClient as any,
+      categoryResolutionMode: 'ask',
+    });
 
     await handler.handleIncomingUserMessage(createEvent('Makan 20rb dan Beli obat 50rb'));
 
@@ -602,24 +540,16 @@ describe('Category Clarification and Auto Mode', () => {
 
       // 1. When categoryResolutionMode is not explicitly passed to UserMessageHandler,
       // it delegates resolution to CategoryContextService which resolves 'auto' from settings JSON
-      const handlerWithService = new UserMessageHandler(
-        gateway as any,
-        pendingManager,
-        new MockPendingActionHandler() as any,
-        new MockFastPathHandler() as any,
-        aiProvider as any,
-        cache as any,
-        mcpClient as any,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        contextService
-      );
+      const handlerWithService = createTestUserMessageHandler({
+        messagingGateway: gateway as any,
+        pendingTransactionManager: pendingManager,
+        pendingActionHandler: new MockPendingActionHandler() as any,
+        fastPathHandler: new MockFastPathHandler() as any,
+        financialAiProvider: aiProvider as any,
+        walletCacheService: cache as any,
+        walletMcpClient: mcpClient as any,
+        categoryContextService: contextService,
+      });
 
       await handlerWithService.handleIncomingUserMessage(createEvent('Paracetamol 30rb cat:obat'));
       expect(mcpClient.calls.length).toBe(1);

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { UserMessageHandler } from '../src/core/dispatcher.js';
+import { createTestUserMessageHandler } from './fixtures/testContext.js';
 import { FastPathHandler } from '../src/core/handlers/fastPathHandler.js';
 import { detectFastPathAction } from '../src/brain/index.js';
 import {
@@ -149,19 +150,15 @@ function createRegressionHandler(
         )
       : { handleFastPath: vi.fn().mockResolvedValue(Boolean(fastPathMode)) };
 
-  const handler = new UserMessageHandler(
-    gateway as any,
-    { hasPendingTransactions: vi.fn().mockReturnValue(false) } as any,
-    {} as any,
-    fastPath as any,
-    aiProvider,
-    walletCacheService as any,
-    {} as any,
-    {} as any,
-    {} as any,
-    registry as any,
-    { handlePendingAccountSelectionReply: vi.fn().mockResolvedValue(false) } as any
-  );
+  const handler = createTestUserMessageHandler({
+    messagingGateway: gateway as any,
+    pendingTransactionManager: { hasPendingTransactions: vi.fn().mockReturnValue(false) } as any,
+    fastPathHandler: fastPath as any,
+    financialAiProvider: aiProvider,
+    walletCacheService: walletCacheService as any,
+    financialActionRegistry: registry as any,
+    accountClarificationHandler: { handlePendingAccountSelectionReply: vi.fn().mockResolvedValue(false) } as any,
+  });
   return { handler, gateway, registry, fastPath, walletCacheService };
 }
 

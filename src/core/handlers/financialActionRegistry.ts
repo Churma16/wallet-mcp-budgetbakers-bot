@@ -5,6 +5,20 @@ import {
   UnknownFinancialActionError,
 } from '../types.js';
 import { applicationLogger } from '../../lib/logger.js';
+import { AppContext } from '../context.js';
+import { FinancialActionExecutor } from '../executor.js';
+import { PendingTransactionService } from '../pending.js';
+import { AccountClarificationHandler } from './accountClarificationHandler.js';
+import { CategoryClarificationHandler } from './categoryClarificationHandler.js';
+import { CreateRecordActionHandler } from './createRecordHandler.js';
+import {
+  CheckBalanceActionHandler,
+  CheckBudgetActionHandler,
+  CheckQueueActionHandler,
+  HelpMenuActionHandler,
+  TransactionHistoryActionHandler,
+  TransactionSummaryActionHandler,
+} from './readActionHandlers.js';
 
 /**
  * Registry and dispatcher for financial actions.
@@ -88,4 +102,64 @@ export class FinancialActionRegistry {
     await handler.execute(context);
     return true;
   }
+}
+
+/**
+ * Dependencies required to construct the standard financial action registry.
+ */
+export interface DefaultFinancialActionRegistryDependencies {
+  readonly financialActionExecutor: FinancialActionExecutor;
+  readonly walletMcpClient: AppContext['wallet']['client'];
+  readonly walletCacheService: AppContext['wallet']['cache'];
+  readonly messagingGateway: AppContext['gateway'];
+  readonly recordPreparationService: AppContext['wallet']['recordPreparation'];
+  readonly accountClarificationHandler: AccountClarificationHandler;
+  readonly pendingTransactionService?: PendingTransactionService;
+  readonly categoryContextService?: AppContext['brain']['categoryContext'];
+  readonly categoryClarificationHandler?: CategoryClarificationHandler;
+  readonly categoryResolutionMode?: 'ask' | 'auto';
+  readonly categoryClarificationConversationService?: AppContext['brain']['categoryClarification'];
+  readonly transactionMessageStore?: AppContext['wallet']['transactionMessages'];
+}
+
+/**
+ * Creates and populates the default FinancialActionRegistry with standard handlers
+ * for balance, budget, help, history, summary, queue, and record creation actions.
+ */
+export function createDefaultFinancialActionRegistry(
+  dependencies: DefaultFinancialActionRegistryDependencies
+): FinancialActionRegistry {
+  const registry = new FinancialActionRegistry();
+
+  registry.register(new CheckBalanceActionHandler(dependencies.financialActionExecutor));
+  registry.register(new CheckBudgetActionHandler(dependencies.financialActionExecutor));
+  registry.register(new HelpMenuActionHandler(dependencies.financialActionExecutor));
+  registry.register(new TransactionHistoryActionHandler(dependencies.financialActionExecutor));
+  registry.register(new TransactionSummaryActionHandler(dependencies.financialActionExecutor));
+
+  if (dependencies.pendingTransactionService) {
+    registry.register(
+      new CheckQueueActionHandler(
+        dependencies.pendingTransactionService,
+        dependencies.messagingGateway
+      )
+    );
+  }
+
+  registry.register(
+    new CreateRecordActionHandler(
+      dependencies.walletMcpClient,
+      dependencies.walletCacheService,
+      dependencies.messagingGateway,
+      dependencies.recordPreparationService,
+      dependencies.accountClarificationHandler,
+      dependencies.categoryContextService,
+      dependencies.categoryClarificationHandler,
+      dependencies.categoryResolutionMode,
+      dependencies.categoryClarificationConversationService,
+      dependencies.transactionMessageStore
+    )
+  );
+
+  return registry;
 }

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { UserMessageHandler } from '../src/core/dispatcher.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
+import { createTestUserMessageHandler } from './fixtures/testContext.js';
 
 function event(text: string) {
   return {
@@ -86,19 +87,16 @@ function createHandler(options: {
     execute: vi.fn(),
   };
 
-  const handler = new UserMessageHandler(
-    gateway as any,
-    pending as any,
-    pendingAction as any,
-    fastPath as any,
-    ai as any,
-    cache as any,
-    {} as any,
-    {} as any,
-    {} as any,
-    registry as any,
-    accountClarification as any
-  );
+  const handler = createTestUserMessageHandler({
+    messagingGateway: gateway,
+    pendingTransactionManager: pending,
+    pendingActionHandler: pendingAction,
+    fastPathHandler: fastPath,
+    financialAiProvider: ai,
+    walletCacheService: cache,
+    financialActionRegistry: registry,
+    accountClarificationHandler: accountClarification,
+  });
 
   return { handler, gateway, pending, pendingAction, fastPath, accountClarification, ai, messages };
 }

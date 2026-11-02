@@ -3,6 +3,7 @@ import { PendingActionHandler } from '../src/core/handlers/pendingHandler.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';
 import { UserMessageHandler } from '../src/core/dispatcher.js';
+import { createTestUserMessageHandler } from './fixtures/testContext.js';
 import { setActiveLanguage, englishDictionary, indonesianDictionary } from '../src/i18n/index.js';
 import { formatAccountSelectionUnknownOutcome } from '../src/brain/clarification/accountClarificationFormatter.js';
 
@@ -345,19 +346,16 @@ describe('pending action outcomes, reconciliation combinations, and routing cond
         processTextMessage: vi.fn().mockResolvedValue({ action: 'GENERAL_REPLY', explanation: 'ok' }),
         processImageMessage: vi.fn().mockResolvedValue({ action: 'GENERAL_REPLY', explanation: 'image ok' }),
       };
-      const handler = new UserMessageHandler(
-        { sendTypingPresence: vi.fn(), clearTypingPresence: vi.fn(), sendMessage: vi.fn() } as any,
-        new PendingTransactionService(),
-        pendingAction as any,
-        fastPath as any,
-        ai as any,
-        { getAccounts: () => [], getCategories: () => [] } as any,
-        {} as any,
-        {} as any,
-        {} as any,
-        { hasHandler: () => false, execute: vi.fn() } as any,
-        clarification as any
-      );
+      const handler = createTestUserMessageHandler({
+        messagingGateway: { sendTypingPresence: vi.fn(), clearTypingPresence: vi.fn(), sendMessage: vi.fn() } as any,
+        pendingTransactionManager: new PendingTransactionService(),
+        pendingActionHandler: pendingAction as any,
+        fastPathHandler: fastPath as any,
+        financialAiProvider: ai as any,
+        walletCacheService: { getAccounts: () => [], getCategories: () => [] } as any,
+        financialActionRegistry: { hasHandler: () => false, execute: vi.fn() } as any,
+        accountClarificationHandler: clarification as any,
+      });
       return { handler, pendingAction, clarification, fastPath, ai };
     }
 
