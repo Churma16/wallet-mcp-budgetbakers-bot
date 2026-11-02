@@ -56,14 +56,27 @@ export function convertWhatsAppMarkupToTelegramHtml(sourceText: string): string 
   // 3. Single-line inline code: `code` -> <code>code</code>
   transformedText = transformedText.replace(/`([^`\n]+)`/g, '<code>$1</code>');
 
+  // Allowed delimiter/punctuation boundaries around formatted markup
+  const boundaryBefore = '(?<=^|[\\s([{<"\'“‘/•—–;\\-])';
+  const boundaryAfter = '(?=$|[\\s)\\]}>"\'”’.,!?:;&/•—–;\\-])';
+
   // 4. Bold: *text* -> <b>text</b> (ensures not matching across lines unnecessarily)
-  transformedText = transformedText.replace(/(?<=^|[\s(])\*([^*\n]+)\*(?=$|[\s),.!?])/gm, '<b>$1</b>');
+  transformedText = transformedText.replace(
+    new RegExp(`${boundaryBefore}\\*([^\\s*\\n](?:[^*\\n]*[^\\s*\\n])?)\\*${boundaryAfter}`, 'gm'),
+    '<b>$1</b>'
+  );
 
   // 5. Italic: _text_ -> <i>text</i>
-  transformedText = transformedText.replace(/(?<=^|[\s(])_([^_\n]+)_(?=$|[\s),.!?])/gm, '<i>$1</i>');
+  transformedText = transformedText.replace(
+    new RegExp(`${boundaryBefore}_([^\\s_\\n](?:[^_\\n]*[^\\s_\\n])?)_${boundaryAfter}`, 'gm'),
+    '<i>$1</i>'
+  );
 
   // 6. Strikethrough: ~text~ -> <s>text</s>
-  transformedText = transformedText.replace(/(?<=^|[\s(])~([^~\n]+)~(?=$|[\s),.!?])/gm, '<s>$1</s>');
+  transformedText = transformedText.replace(
+    new RegExp(`${boundaryBefore}~([^\\s~\\n](?:[^~\\n]*[^\\s~\\n])?)~${boundaryAfter}`, 'gm'),
+    '<s>$1</s>'
+  );
 
   return transformedText;
 }
