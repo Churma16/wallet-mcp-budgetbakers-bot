@@ -109,6 +109,9 @@ export async function fetchRecords(
     ...(queryOptions?.searchQuery && queryOptions?.searchScanFallback === false
       ? { query: queryOptions.searchQuery }
       : {}),
+    ...(queryOptions?.convertTo
+      ? { convertTo: queryOptions.convertTo.trim() }
+      : {}),
   };
 
   const callRecordsTool = (payload: GetRecordsToolArgs): Promise<RawRecordsResponse> =>

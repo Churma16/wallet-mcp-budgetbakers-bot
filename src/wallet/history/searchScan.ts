@@ -96,6 +96,7 @@ export async function executeSearchScanCompatibilityShim(
     recordDate: mcpCallPayload.recordDate,
     counterParty: mcpCallPayload.counterParty,
     note: mcpCallPayload.note,
+    convertTo: mcpCallPayload.convertTo,
     sortBy: upstreamSortBy,
   });
 

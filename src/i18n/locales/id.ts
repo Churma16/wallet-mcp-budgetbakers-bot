@@ -236,6 +236,9 @@ export const indonesianDictionary: ResponseDictionary = {
     searchBadge(keyword: string): string {
       return `Cari: "${keyword}"`;
     },
+    convertToBadge(currencyCode: string): string {
+      return `Konversi: ${currencyCode.toUpperCase()}`;
+    },
   },
 
   emailPending: {

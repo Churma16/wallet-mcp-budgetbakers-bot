@@ -219,6 +219,14 @@ export interface RawRecordTransfer {
   readonly mirrorRecord?: unknown;
 }
 
+export interface RawRecordConvertedAmount {
+  readonly value?: number;
+  readonly ratio?: number;
+  readonly currencyCode?: string;
+  readonly conversionPair?: string;
+  readonly error?: string;
+}
+
 export interface RawRecordItem {
   readonly id?: string;
   readonly recordId?: string;
@@ -258,6 +266,7 @@ export interface RawRecordItem {
   readonly source?: string;
   readonly createdAt?: string;
   readonly updatedAt?: string;
+  readonly convertedAmount?: RawRecordConvertedAmount;
 }
 
 export interface RawRecordsEnvelope {
@@ -282,6 +291,7 @@ export interface GetRecordsToolArgs {
   readonly counterParty?: string;
   readonly note?: string;
   readonly query?: string;
+  readonly convertTo?: string;
 }
 
 // ---------------------------------------------------------------------------

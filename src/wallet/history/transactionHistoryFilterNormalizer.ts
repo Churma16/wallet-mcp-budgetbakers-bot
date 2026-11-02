@@ -1056,8 +1056,20 @@ export function normalizeTransactionHistoryFilters(
     }
   }
 
+  const rawConvertTo = queryOptions.convertTo;
+  const trimmedConvertTo = typeof rawConvertTo === 'string' && rawConvertTo.trim().length > 0
+    ? rawConvertTo.trim()
+    : undefined;
+  if (trimmedConvertTo) {
+    appliedFilters.convertTo = trimmedConvertTo;
+  }
+
+  const optionsToMerge = { ...queryOptions };
+  delete optionsToMerge.convertTo;
+
   const normalizedOptions: TransactionHistoryQueryOptions = {
-    ...queryOptions,
+    ...optionsToMerge,
+    ...(trimmedConvertTo ? { convertTo: trimmedConvertTo } : {}),
     accountId: upstreamAccountId,
     categoryId: upstreamCategoryId,
     categoryGroup: upstreamCategoryGroup,

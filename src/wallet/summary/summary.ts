@@ -117,6 +117,7 @@ async function getNativeTransactionSummary(
     categoryGroup: normalizationResult.upstreamCategoryGroup,
     recordType: normalizationResult.upstreamRecordType,
     recordDate: normalizationResult.upstreamRecordDate,
+    ...(queryOptions?.convertTo ? { convertTo: queryOptions.convertTo.trim() } : {}),
   };
 
   const transferCountPayload: WalletRecordAggregationQueryPayload = {
@@ -126,6 +127,7 @@ async function getNativeTransactionSummary(
     categoryGroup: normalizationResult.upstreamCategoryGroup,
     recordType: normalizationResult.upstreamRecordType,
     recordDate: normalizationResult.upstreamRecordDate,
+    ...(queryOptions?.convertTo ? { convertTo: queryOptions.convertTo.trim() } : {}),
   };
 
   const doFetch = (p: WalletRecordAggregationQueryPayload) =>

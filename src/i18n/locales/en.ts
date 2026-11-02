@@ -238,6 +238,9 @@ export const englishDictionary: ResponseDictionary = {
     searchBadge(keyword: string): string {
       return `Search: "${keyword}"`;
     },
+    convertToBadge(currencyCode: string): string {
+      return `Converted: ${currencyCode.toUpperCase()}`;
+    },
   },
 
   emailPending: {

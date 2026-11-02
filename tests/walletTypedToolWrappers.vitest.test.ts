@@ -162,6 +162,39 @@ describe('Wallet Typed MCP Tool Wrappers', () => {
       );
       expect(result).toEqual(mockRecords);
     });
+
+    it('serializes convertTo parameter when specified in GetRecordsToolArgs', async () => {
+      const mockRecords = [
+        {
+          id: 'rec-1',
+          accountId: 'acc-1',
+          amount: -10,
+          currency: 'USD',
+          recordDate: '2026-10-31',
+          convertedAmount: {
+            value: -155000,
+            ratio: 15500,
+            currencyCode: 'IDR',
+            conversionPair: 'USD:IDR',
+          },
+        },
+      ];
+      const { caller, mockCallMcpTool } = createMockToolCaller(mockRecords);
+
+      const result = await callGetRecords(caller, {
+        limit: 10,
+        convertTo: 'base',
+      });
+
+      expect(mockCallMcpTool).toHaveBeenCalledWith(
+        WALLET_MCP_TOOL_NAMES.GET_RECORDS,
+        {
+          limit: 10,
+          convertTo: 'base',
+        }
+      );
+      expect(result).toEqual(mockRecords);
+    });
   });
 
   describe('callCreateRecords', () => {

@@ -88,6 +88,7 @@ export const ALLOWED_HISTORY_ARGUMENT_KEYS = new Set([
   'limit',
   'page',
   'sort',
+  'convertTo',
 ]);
 export const ALLOWED_RECORD_KEYS = new Set([
   'accountId',

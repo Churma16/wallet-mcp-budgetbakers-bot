@@ -151,6 +151,7 @@ export interface ResponseDictionary {
     typeExpense: string;
     typeIncome: string;
     searchBadge(keyword: string): string;
+    convertToBadge(currencyCode: string): string;
   };
 
   emailPending: {

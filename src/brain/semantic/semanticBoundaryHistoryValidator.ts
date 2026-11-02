@@ -39,12 +39,16 @@ export function validateSemanticHistoryQueryOptions(
     return rejectSemanticBoundary('INVALID_ARGUMENTS', 'Transaction-history proposal contains unsupported fields.');
   }
 
-  const stringFields = ['accountName', 'categoryName', 'categoryGroup', 'startDate', 'endDate', 'searchQuery'] as const;
+  const stringFields = ['accountName', 'categoryName', 'categoryGroup', 'startDate', 'endDate', 'searchQuery', 'convertTo'] as const;
   for (const field of stringFields) {
     const value = rawArguments[field];
     if (value !== undefined && (!isBoundedString(value) || value.length > 200)) {
       return rejectSemanticBoundary('INVALID_ARGUMENTS', `Transaction-history ${field} is malformed or too large.`);
     }
+  }
+
+  if (rawArguments.convertTo !== undefined && (!isBoundedString(rawArguments.convertTo) || rawArguments.convertTo.length > 20)) {
+    return rejectSemanticBoundary('INVALID_ARGUMENTS', 'Transaction-history convertTo is malformed or too large.');
   }
 
   if (rawArguments.isGroupQuery !== undefined && typeof rawArguments.isGroupQuery !== 'boolean') {
