@@ -1,4 +1,5 @@
 import { UserMessageHandler } from '../src/core/dispatcher.js';
+import { createTestUserMessageHandler } from './fixtures/testContext.js';
 import { AccountClarificationHandler } from '../src/core/handlers/accountClarificationHandler.js';
 import { AccountClarificationConversationService } from '../src/brain/index.js';
 import { PendingTransactionService } from '../src/core/pending.js';
@@ -263,19 +264,16 @@ function createHarness(
     conversationService
   );
 
-  const userMessageHandler = new UserMessageHandler(
-    messagingGateway as any,
+  const userMessageHandler = createTestUserMessageHandler({
+    messagingGateway: messagingGateway as any,
     pendingTransactionManager,
     pendingActionHandler,
     fastPathHandler,
     financialAiProvider,
-    walletCacheService as any,
-    walletMcpClient as any,
-    undefined,
-    undefined,
-    undefined,
-    accountClarificationHandler
-  );
+    walletCacheService: walletCacheService as any,
+    walletMcpClient: walletMcpClient as any,
+    accountClarificationHandler,
+  });
 
   return {
     userMessageHandler,
@@ -370,19 +368,16 @@ describe('Account Clarification Conversation Layer', () => {
         conversationService
       );
 
-      const userMessageHandler = new UserMessageHandler(
-        messagingGateway as any,
+      const userMessageHandler = createTestUserMessageHandler({
+        messagingGateway: messagingGateway as any,
         pendingTransactionManager,
-        new MockPendingActionHandler() as any,
-        new MockFastPathHandler() as any,
-        minimalAiProvider as any,
-        walletCacheService as any,
-        walletMcpClient as any,
-        undefined,
-        undefined,
-        undefined,
-        accountClarificationHandler
-      );
+        pendingActionHandler: new MockPendingActionHandler() as any,
+        fastPathHandler: new MockFastPathHandler() as any,
+        financialAiProvider: minimalAiProvider as any,
+        walletCacheService: walletCacheService as any,
+        walletMcpClient: walletMcpClient as any,
+        accountClarificationHandler,
+      });
 
       await userMessageHandler.handleIncomingUserMessage(
         createIncomingEvent('Makan siang 75rb pakai BCA')

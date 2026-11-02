@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { UserMessageHandler } from '../src/core/dispatcher.js';
+import { createTestUserMessageHandler } from './fixtures/testContext.js';
 import { PendingActionHandler } from '../src/core/handlers/pendingHandler.js';
 import { AccountClarificationHandler } from '../src/core/handlers/accountClarificationHandler.js';
 import { PendingTransactionService } from '../src/core/pending.js';
@@ -87,26 +88,23 @@ describe('reconciliation protocol regressions and edge cases', () => {
       accountClarificationHandler = vi.fn().mockResolvedValue(true)
     ): UserMessageHandler {
       const gateway = new MockMessagingGateway();
-      return new UserMessageHandler(
-        gateway as any,
-        pendingService,
-        {
+      return createTestUserMessageHandler({
+        messagingGateway: gateway as any,
+        pendingTransactionManager: pendingService,
+        pendingActionHandler: {
           handlePendingAction: vi.fn().mockResolvedValue(false),
           handleReconciliationAction: reconciliationHandler,
         } as any,
-        { handleFastPath: vi.fn().mockResolvedValue(false) } as any,
-        {
+        fastPathHandler: { handleFastPath: vi.fn().mockResolvedValue(false) } as any,
+        financialAiProvider: {
           providerName: 'mock',
           processTextMessage: vi.fn(),
           processImageMessage: vi.fn(),
         } as any,
-        { getAccounts: () => [], getCategories: () => [] } as any,
-        {} as any,
-        {} as any,
-        {} as any,
-        { execute: vi.fn(), hasHandler: vi.fn().mockReturnValue(false) } as any,
-        { handlePendingAccountSelectionReply: accountClarificationHandler } as any
-      );
+        walletCacheService: { getAccounts: () => [], getCategories: () => [] } as any,
+        financialActionRegistry: { execute: vi.fn(), hasHandler: vi.fn().mockReturnValue(false) } as any,
+        accountClarificationHandler: { handlePendingAccountSelectionReply: accountClarificationHandler } as any,
+      });
     }
 
     it.each(['ada', 'sudah', 'belum', 'missing', 'not yet'])(

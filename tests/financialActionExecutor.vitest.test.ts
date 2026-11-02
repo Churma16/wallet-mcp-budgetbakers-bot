@@ -2,6 +2,7 @@ import assert from 'node:assert';
 import { FinancialActionExecutor } from '../src/core/executor.js';
 import { FastPathHandler } from '../src/core/handlers/fastPathHandler.js';
 import { UserMessageHandler } from '../src/core/dispatcher.js';
+import { createTestUserMessageHandler } from './fixtures/testContext.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { TransactionHistoryService } from '../src/wallet/index.js';
 import { TransactionSummaryService } from '../src/wallet/index.js';
@@ -222,16 +223,14 @@ test('UserMessageHandler delegates AI-routed actions to FinancialActionExecutor'
     handleFastPath: async () => false,
   };
 
-  const userMessageHandler = new UserMessageHandler(
-    mockGateway as any,
-    mockPendingManager as any,
-    {} as any,
-    mockFastPath as any,
-    mockAiProvider as any,
-    mockWalletCache as any,
-    {} as any,
-    mockExecutor
-  );
+  const userMessageHandler = createTestUserMessageHandler({
+    messagingGateway: mockGateway as any,
+    pendingTransactionManager: mockPendingManager as any,
+    fastPathHandler: mockFastPath as any,
+    financialAiProvider: mockAiProvider as any,
+    walletCacheService: mockWalletCache as any,
+    financialActionExecutor: mockExecutor,
+  });
 
   // 3.1 AI returns CHECK_BALANCE
   configuredAiAction = 'CHECK_BALANCE';
@@ -264,24 +263,20 @@ test('deferred category authority rejects unresolved categories and action switc
       executedContexts.push(context);
     },
   };
-  const handler = new UserMessageHandler(
-    mockGateway as any,
-    { hasPendingTransactions: () => false } as any,
-    {} as any,
-    { handleFastPath: async () => false } as any,
-    {
+  const handler = createTestUserMessageHandler({
+    messagingGateway: mockGateway as any,
+    pendingTransactionManager: { hasPendingTransactions: () => false } as any,
+    fastPathHandler: { handleFastPath: async () => false } as any,
+    financialAiProvider: {
       providerName: 'mock-ai',
       processTextMessage: async () => aiResponse,
     } as any,
-    {
+    walletCacheService: {
       getAccounts: () => [],
       getCategories: () => categories,
     } as any,
-    {} as any,
-    {} as any,
-    {} as any,
-    registry as any
-  );
+    financialActionRegistry: registry as any,
+  });
 
   await handler.handleIncomingUserMessage(createMockIncomingEvent('riwayat beli obat bulan lalu'));
   assert.strictEqual(executedContexts.length, 1);
@@ -321,27 +316,23 @@ test('deferred category authority rejects unresolved categories and action switc
     'Rejected transaction proposal should return validation guidance'
   );
 
-  const missingHandler = new UserMessageHandler(
-    mockGateway as any,
-    { hasPendingTransactions: () => false } as any,
-    {} as any,
-    { handleFastPath: async () => false } as any,
-    {
+  const missingHandler = createTestUserMessageHandler({
+    messagingGateway: mockGateway as any,
+    pendingTransactionManager: { hasPendingTransactions: () => false } as any,
+    fastPathHandler: { handleFastPath: async () => false } as any,
+    financialAiProvider: {
       providerName: 'mock-ai',
       processTextMessage: async () => ({
         action: 'TRANSACTION_HISTORY',
         queryOptions: { categoryId: 'cat-health' },
       }),
     } as any,
-    {
+    walletCacheService: {
       getAccounts: () => [],
       getCategories: () => categories,
     } as any,
-    {} as any,
-    {} as any,
-    {} as any,
-    { hasHandler: () => false, execute: async () => undefined } as any
-  );
+    financialActionRegistry: { hasHandler: () => false, execute: async () => undefined } as any,
+  });
   await missingHandler.handleIncomingUserMessage(createMockIncomingEvent('riwayat beli obat'));
 });
 
@@ -395,16 +386,15 @@ test('Fast-Path and AI routes produce equivalent balance and budget outputs', as
     }),
   };
 
-  const userMessageHandler = new UserMessageHandler(
-    aiPathGateway as any,
-    { hasPendingTransactions: () => false } as any,
-    {} as any,
-    { handleFastPath: async () => false } as any,
-    aiProvider as any,
-    sharedWalletCache as any,
-    sharedWalletMcpClient as any,
-    aiPathExecutor
-  );
+  const userMessageHandler = createTestUserMessageHandler({
+    messagingGateway: aiPathGateway as any,
+    pendingTransactionManager: { hasPendingTransactions: () => false } as any,
+    fastPathHandler: { handleFastPath: async () => false } as any,
+    financialAiProvider: aiProvider as any,
+    walletCacheService: sharedWalletCache as any,
+    walletMcpClient: sharedWalletMcpClient as any,
+    financialActionExecutor: aiPathExecutor,
+  });
 
   // 4.1 Balance Equivalence:
   const balanceEvent = createMockIncomingEvent('saldo');

@@ -1,6 +1,7 @@
 import assert from 'node:assert';
 import { afterEach, test } from 'vitest';
 import { UserMessageHandler } from '../src/core/dispatcher.js';
+import { createTestUserMessageHandler } from './fixtures/testContext.js';
 import { AccountClarificationHandler } from '../src/core/handlers/accountClarificationHandler.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';
@@ -190,15 +191,15 @@ function buildTestHarness(
     mockGateway as any
   );
 
-  const userMessageHandler = new UserMessageHandler(
-    mockGateway as any,
-    pendingTransactionService,
-    new MockPendingActionHandler() as any,
-    new MockFastPathHandler() as any,
-    effectiveAiProvider,
-    mockCache as any,
-    mockMcpClient as any
-  );
+  const userMessageHandler = createTestUserMessageHandler({
+    messagingGateway: mockGateway as any,
+    pendingTransactionManager: pendingTransactionService,
+    pendingActionHandler: new MockPendingActionHandler() as any,
+    fastPathHandler: new MockFastPathHandler() as any,
+    financialAiProvider: effectiveAiProvider,
+    walletCacheService: mockCache as any,
+    walletMcpClient: mockMcpClient as any,
+  });
 
   return {
     userMessageHandler,

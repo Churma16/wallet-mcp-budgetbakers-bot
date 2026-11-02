@@ -13,6 +13,7 @@ import {
   CreateRecordInputPayload,
 } from '../src/wallet/index.js';
 import { UserMessageHandler } from '../src/core/dispatcher.js';
+import { createTestUserMessageHandler } from './fixtures/testContext.js';
 import { AccountClarificationHandler } from '../src/core/handlers/accountClarificationHandler.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
@@ -517,15 +518,15 @@ test('resolves hashtags and labels through UserMessageHandler fallback', async (
   } as unknown as WalletMcpClientService;
   const testCache = new WalletCacheService(mockClient);
   await testCache.initialize();
-  const handler = new UserMessageHandler(
-    mockMessagingGateway as any,
-    mockPendingService as any,
-    mockPendingActionHandler as any,
-    mockFastPathHandler as any,
-    mockAiProvider as any,
-    testCache,
-    mockClient
-  );
+  const handler = createTestUserMessageHandler({
+    messagingGateway: mockMessagingGateway as any,
+    pendingTransactionManager: mockPendingService as any,
+    pendingActionHandler: mockPendingActionHandler as any,
+    fastPathHandler: mockFastPathHandler as any,
+    financialAiProvider: mockAiProvider as any,
+    walletCacheService: testCache,
+    walletMcpClient: mockClient,
+  });
 
   aiRecordOutput = [{
     accountId: 'acc-bca', amount: -25000, recordDate: '2026-09-11T12:00:00Z',
