@@ -87,6 +87,12 @@ export const CATEGORY_GROUP_ALIASES: Readonly<Record<string, string>> = {
   'belum_dikategorikan': 'unknown_records',
   'belum ada kategori': 'unknown_records',
   'tidak ada kategori': 'unknown_records',
+  'uncategorized records': 'unknown_records',
+  'uncategorized record': 'unknown_records',
+  'uncategorized transactions': 'unknown_records',
+  'uncategorized transaction': 'unknown_records',
+  'unknown transactions': 'unknown_records',
+  'unknown transaction': 'unknown_records',
 };
 
 export const NATIVE_UNKNOWN_CATEGORY_FILTER = 'unknown' as const;
@@ -110,7 +116,13 @@ export function isUnknownCategoryQuery(categoryOrGroupHint: string): boolean {
     cleanHint === 'transaksi belum dikategorikan' ||
     cleanHint === 'transaksi tanpa kategori' ||
     cleanHint === 'transaksi uncategorized' ||
-    cleanHint === 'transaksi unknown'
+    cleanHint === 'transaksi unknown' ||
+    cleanHint === 'uncategorized transactions' ||
+    cleanHint === 'uncategorized transaction' ||
+    cleanHint === 'unknown transactions' ||
+    cleanHint === 'unknown transaction' ||
+    cleanHint === 'uncategorized records' ||
+    cleanHint === 'uncategorized record'
   ) {
     return true;
   }
@@ -123,7 +135,13 @@ export function isUnknownCategoryQuery(categoryOrGroupHint: string): boolean {
     standardizedHint === 'belum ada kategori' ||
     standardizedHint === 'tidak ada kategori' ||
     standardizedHint === 'transaksi belum dikategorikan' ||
-    standardizedHint === 'transaksi tanpa kategori'
+    standardizedHint === 'transaksi tanpa kategori' ||
+    standardizedHint === 'uncategorized transactions' ||
+    standardizedHint === 'uncategorized transaction' ||
+    standardizedHint === 'unknown transactions' ||
+    standardizedHint === 'unknown transaction' ||
+    standardizedHint === 'uncategorized records' ||
+    standardizedHint === 'uncategorized record'
   ) {
     return true;
   }
@@ -133,7 +151,13 @@ export function isUnknownCategoryQuery(categoryOrGroupHint: string): boolean {
     slugifiedHint === 'uncategorized' ||
     slugifiedHint === 'unknown_records' ||
     slugifiedHint === 'tanpa_kategori' ||
-    slugifiedHint === 'belum_dikategorikan'
+    slugifiedHint === 'belum_dikategorikan' ||
+    slugifiedHint === 'uncategorized_transactions' ||
+    slugifiedHint === 'uncategorized_transaction' ||
+    slugifiedHint === 'unknown_transactions' ||
+    slugifiedHint === 'unknown_transaction' ||
+    slugifiedHint === 'uncategorized_records' ||
+    slugifiedHint === 'uncategorized_record'
   ) {
     return true;
   }

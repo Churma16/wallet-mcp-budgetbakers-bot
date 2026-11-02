@@ -63,11 +63,11 @@ export function parseTransactionHistoryIntent(userMessageText: string): FastPath
   }
 
   const uncategorizedTransactionPattern =
-    /^(?:cek|lihat|info|daftar|show|view|check|get)?\s*(?:riwayat\s+|daftar\s+)?transaksi\s+(belum\s+dikategorikan|tanpa\s+kategori|uncategorized|unknown)(?:\s+(.*))?$/i;
+    /^(?:cek|lihat|info|daftar|show|view|check|get|list)?\s*(?:(?:riwayat\s+|daftar\s+)?(?:transaksi|transactions?)\s+(belum\s+dikategorikan|tanpa\s+kategori|uncategorized|unknown)|(uncategorized|unknown)\s+(?:transactions?|records?))(?:\s+(.*))?$/i;
   const uncategorizedMatch = trimmedLowerText.match(uncategorizedTransactionPattern);
   if (uncategorizedMatch) {
-    const rawCategory = uncategorizedMatch[1];
-    const trailingTokens = (uncategorizedMatch[2] || '').trim();
+    const rawCategory = uncategorizedMatch[1] || uncategorizedMatch[2];
+    const trailingTokens = (uncategorizedMatch[3] || '').trim();
     const baseOptions = { sort: 'newest' as const, categoryName: rawCategory };
     if (!trailingTokens) {
       return { type: FINANCIAL_ACTION_TYPES.TRANSACTION_HISTORY, options: baseOptions };

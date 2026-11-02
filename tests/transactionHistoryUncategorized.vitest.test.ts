@@ -55,6 +55,12 @@ describe('Issue 262: Native categoryId "unknown" Filter for Uncategorized Querie
       ['daftar transaksi belum dikategorikan', 'belum dikategorikan'],
       ['cek transaksi belum dikategorikan', 'belum dikategorikan'],
       ['lihat transaksi tanpa kategori', 'tanpa kategori'],
+      ['show uncategorized transactions', 'uncategorized'],
+      ['uncategorized transactions', 'uncategorized'],
+      ['check unknown transactions', 'unknown'],
+      ['unknown transactions', 'unknown'],
+      ['view uncategorized records', 'uncategorized'],
+      ['list unknown records', 'unknown'],
     ])('recognizes natural uncategorized intent: %s', (prompt, expectedCategoryName) => {
       const action = detectFastPathAction(prompt);
 
@@ -73,6 +79,16 @@ describe('Issue 262: Native categoryId "unknown" Filter for Uncategorized Querie
       expect(historyAction.options.categoryName).toBe('belum dikategorikan');
       expect(historyAction.options.datePeriod).toBe('this_month');
     });
+
+    it('composes English uncategorized query with date period', () => {
+      const action = detectFastPathAction('uncategorized transactions this month');
+
+      expect(action).not.toBeNull();
+      expect(action?.type).toBe('TRANSACTION_HISTORY');
+      const historyAction = action as FastPathTransactionHistoryAction;
+      expect(historyAction.options.categoryName).toBe('uncategorized');
+      expect(historyAction.options.datePeriod).toBe('this_month');
+    });
   });
 
   describe('Part 2: Category Group Resolver Unknown Delegation', () => {
@@ -89,6 +105,12 @@ describe('Issue 262: Native categoryId "unknown" Filter for Uncategorized Querie
       'tidak ada kategori',
       'transaksi belum dikategorikan',
       'transaksi tanpa kategori',
+      'uncategorized transactions',
+      'uncategorized transaction',
+      'unknown transactions',
+      'unknown transaction',
+      'uncategorized records',
+      'uncategorized record',
     ])('isUnknownCategoryQuery matches alias: %s', (alias) => {
       expect(isUnknownCategoryQuery(alias)).toBe(true);
     });
@@ -133,6 +155,12 @@ describe('Issue 262: Native categoryId "unknown" Filter for Uncategorized Querie
       'unknown',
       'transaksi belum dikategorikan',
       'transaksi tanpa kategori',
+      'uncategorized transactions',
+      'uncategorized transaction',
+      'unknown transactions',
+      'unknown transaction',
+      'uncategorized records',
+      'uncategorized record',
     ])('normalizes categoryName "%s" to upstream categoryId ["unknown"]', (categoryHint) => {
       const result = normalizeTransactionHistoryFilters(
         { categoryName: categoryHint },
@@ -261,6 +289,29 @@ describe('Issue 262: Native categoryId "unknown" Filter for Uncategorized Querie
 
       expect(capturedToolCalls).toHaveLength(1);
       expect(capturedToolCalls[0].args.categoryId).toBe('unknown');
+    });
+
+    it('handles uppercase and mixed-case categoryId and categoryGroup without leaking categoryGroup', async () => {
+      const capturedToolCalls: Array<{ toolName: string; args: Record<string, unknown> }> = [];
+
+      const mockToolCaller: WalletToolCaller = {
+        callMcpTool: vi.fn().mockImplementation(async <T>(toolName: string, args: Record<string, unknown> = {}): Promise<T> => {
+          capturedToolCalls.push({ toolName, args });
+          return { records: [], total: 0 } as unknown as T;
+        }),
+      };
+
+      const historyService = new TransactionHistoryService(mockToolCaller);
+
+      await historyService.getTransactionHistory({
+        categoryId: 'UNKNOWN',
+        categoryGroup: 'UNKNOWN_RECORDS',
+        limit: 10,
+      });
+
+      expect(capturedToolCalls).toHaveLength(1);
+      expect(capturedToolCalls[0].args.categoryId).toBe('unknown');
+      expect(capturedToolCalls[0].args.categoryGroup).toBeUndefined();
     });
 
     it('callGetRecords wrapper serializes categoryId: "unknown" cleanly', async () => {
