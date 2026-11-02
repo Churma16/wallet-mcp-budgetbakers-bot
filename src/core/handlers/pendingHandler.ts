@@ -442,6 +442,7 @@ export class PendingActionHandler {
             amount: item.amount,
             counterParty: item.counterParty,
             channel: event.channel,
+            isTransfer: item.transactionType === 'TRANSFER',
           });
         }
       }

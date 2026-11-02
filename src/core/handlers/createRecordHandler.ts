@@ -305,6 +305,8 @@ export class CreateRecordActionHandler implements FinancialActionHandler<typeof 
         amount: firstRecord.amount,
         counterParty: firstRecord.counterParty,
         channel: event.channel,
+        partnerRecordId: firstRecord.transfer ? creationResponse.results[1]?.id : undefined,
+        isTransfer: Boolean(firstRecord.transfer),
       });
     }
     const processingDurationMs = Date.now() - processingStartTimestamp;

@@ -23,6 +23,7 @@ import type {
   WalletCreateRecordsResponse,
   PatchRecordInputPayload,
   WalletPatchRecordsResponse,
+  WalletDeleteRecordsResponse,
   WalletRecordAggregationQueryPayload,
   WalletRecordAggregationResponse,
 } from '../types.js';
@@ -48,7 +49,7 @@ import {
   fetchBudgets,
 } from '../entities.js';
 import { fetchRecords } from '../history/history.js';
-import { createRecords, patchRecords } from '../records/records.js';
+import { createRecords, patchRecords, deleteRecords } from '../records/records.js';
 import { validateCreateRecordsResponse } from '../records/recordValidation.js';
 import {
   fetchRecordsAggregation,
@@ -82,6 +83,9 @@ import {
   callGetRecords,
   callCreateRecords,
   callGetRecordsAggregation,
+  callDeleteDocuments,
+  type DeleteDocumentsToolArgs,
+  type RawDeleteDocumentsResponse,
 } from './toolWrappers.js';
 
 export interface WalletMcpClientOptions {
@@ -278,6 +282,12 @@ export class WalletMcpClient {
     return callGetRecordsAggregation(this, args);
   }
 
+public callDeleteDocuments(
+    args: DeleteDocumentsToolArgs
+  ): Promise<RawDeleteDocumentsResponse> {
+    return callDeleteDocuments(this, args);
+  }
+
   public fetchAccounts(): Promise<WalletAccountItem[]> {
     return fetchAccounts(this);
   }
@@ -312,6 +322,12 @@ export class WalletMcpClient {
 
   public patchRecords(patchesPayload: PatchRecordInputPayload[]): Promise<WalletPatchRecordsResponse> {
     return patchRecords(this, patchesPayload);
+  }
+
+public deleteRecords(
+    recordIds: string | readonly string[] | string[]
+  ): Promise<WalletDeleteRecordsResponse> {
+    return deleteRecords(this, recordIds);
   }
 
   public fetchRecordsAggregation(

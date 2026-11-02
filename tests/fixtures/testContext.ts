@@ -96,6 +96,7 @@ export interface LegacyTestHandlerArgs {
   categoryClarificationHandler?: any;
   categoryResolutionMode?: 'ask' | 'auto';
   categoryContextService?: any;
+  deleteRecordHandler?: any;
   modifyRecordHandler?: any;
 }
 
@@ -131,6 +132,7 @@ export function createTestUserMessageHandler(
   if (args.semanticToolBoundary) overrides.semanticToolBoundary = args.semanticToolBoundary;
   if (args.semanticToolAuthorizationResolver) overrides.semanticToolAuthorizationResolver = args.semanticToolAuthorizationResolver;
   if (args.categoryResolutionMode) overrides.categoryResolutionMode = args.categoryResolutionMode;
+  if (args.deleteRecordHandler) overrides.deleteRecordHandler = args.deleteRecordHandler;
   if (args.modifyRecordHandler) overrides.modifyRecordHandler = args.modifyRecordHandler;
 
   return new UserMessageHandler(context, overrides);

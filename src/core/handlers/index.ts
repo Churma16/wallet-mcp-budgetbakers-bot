@@ -6,3 +6,5 @@ export * from './financialActionRegistry.js';
 export * from './pendingHandler.js';
 export * from './fastPathHandler.js';
 export * from './inboundHandlers.js';
+export * from './modifyRecordHandler.js';
+export * from './deleteRecordHandler.js';

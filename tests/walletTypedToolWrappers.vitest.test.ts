@@ -10,6 +10,7 @@ import {
   callGetRecords,
   callCreateRecords,
   callGetRecordsAggregation,
+  callDeleteDocuments,
   extractRawArray,
   WALLET_MCP_TOOL_NAMES,
   WalletMcpClientService,
@@ -239,6 +240,30 @@ describe('Wallet Typed MCP Tool Wrappers', () => {
     });
   });
 
+describe('callDeleteDocuments', () => {
+    it('dispatches delete_documents with entity type and id array', async () => {
+      const expectedResponse = {
+        summary: { total: 1, succeeded: 1 },
+        results: [{ id: 'rec-123', success: true }],
+      };
+      const { caller, mockCallMcpTool } = createMockToolCaller(expectedResponse);
+
+      const result = await callDeleteDocuments(caller, {
+        type: 'records',
+        ids: ['rec-123'],
+      });
+
+      expect(mockCallMcpTool).toHaveBeenCalledWith(
+        WALLET_MCP_TOOL_NAMES.DELETE_DOCUMENTS,
+        {
+          type: 'records',
+          ids: ['rec-123'],
+        }
+      );
+      expect(result).toEqual(expectedResponse);
+    });
+  });
+
   describe('WalletMcpClient typed method delegation', () => {
     it('delegates typed operations through WalletMcpClient methods', async () => {
       const client = new WalletMcpClientService('https://wallet.example.com', 'dummy-token');
@@ -284,6 +309,12 @@ describe('Wallet Typed MCP Tool Wrappers', () => {
       expect(spyCallMcpTool).toHaveBeenCalledWith(
         WALLET_MCP_TOOL_NAMES.GET_CLIENT_PROFILE
       );
+      await client.callDeleteDocuments({ type: 'records', ids: ['rec-del'] });
+      expect(spyCallMcpTool).toHaveBeenCalledWith(
+        WALLET_MCP_TOOL_NAMES.DELETE_DOCUMENTS,
+        { type: 'records', ids: ['rec-del'] }
+      );
+
     });
   });
 });

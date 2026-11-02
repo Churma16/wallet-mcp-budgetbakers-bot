@@ -13,7 +13,7 @@ export const WALLET_MCP_TOOL_NAMES = {
   CREATE_RECORDS: 'create_records',
   PATCH_RECORDS: 'patch_records',
   GET_RECORDS_AGGREGATION: 'get_records_aggregation',
-  DELETE_RECORDS: 'delete_records',
+  DELETE_DOCUMENTS: 'delete_documents',
 } as const;
 
 export type WalletMcpToolName =
@@ -30,6 +30,7 @@ export const WALLET_MCP_ALLOWED_TOOL_NAMES = [
   'create_records',
   'patch_records',
   'get_records_aggregation',
+  'delete_documents',
 ] as const;
 
 export const INTERNAL_TRANSACTION_TYPES = {

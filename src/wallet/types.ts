@@ -128,6 +128,27 @@ export interface WalletPatchRecordsResponse {
   }>;
 }
 
+
+export interface WalletDeleteRecordsResponse {
+  summary?: {
+    total: number;
+    succeeded: number;
+    failed?: number;
+    clientErrors?: number;
+    serverErrors?: number;
+    documentsWritten?: number;
+  };
+  agentHints?: WalletAgentHint[];
+  results?: Array<{
+    id?: string;
+    inputIndex?: number;
+    success: boolean;
+    error?: string;
+    errorType?: string;
+    fields?: string[];
+  }>;
+}
+
 export interface WalletBudgetItem {
   id: string;
   name: string;

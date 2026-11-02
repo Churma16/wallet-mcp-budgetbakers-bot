@@ -109,10 +109,24 @@ When inspecting SonarCloud status, quality gate results, or review feedback on P
 ## MCP Capability and Protocol Audit Before Implementation
 For changes to Wallet-domain operations, Wallet MCP adapters, capability/tool discovery, generic MCP transport/protocol plumbing, or Wallet metadata sources of truth, audit upstream capabilities before adding local behavior. This operationalizes the native-first architecture in #121, typed capability discovery in #163, and official-client migration in #165 without duplicating those designs.
 
+### 0. Authoritative Upstream Documentation & Reference Files
+Always consult the authoritative documentation before designing, adding, or refactoring Wallet domain logic to prevent reinventing capabilities already provided natively:
+- **Local Offline References (Fast & Authoritative)**:
+  - `references/mcp/budgetbakers-mcp-docs.md`: Comprehensive guide for all 20 MCP tools, rate limits, batch semantics, constraints, `$clear` reset fields, and agent hints.
+  - `references/mcp/budgetbakers-openapi.json`: Authoritative OpenAPI 2.1.0 schema containing exact endpoint query parameters, payload shapes, and field definitions.
+- **Live Upstream Endpoints**:
+  - MCP Documentation: `https://mcp.wallet.budgetbakers.com/docs`
+  - REST OpenAPI Schema: `https://rest.budgetbakers.com/wallet/openapi`
+  - Interactive Swagger UI: `https://rest.budgetbakers.com/wallet/openapi/ui`
+- **Reference Freshness Policy**: Re-download and update `references/mcp/` when:
+  1. BudgetBakers announces a Wallet MCP / REST API version update.
+  2. An agent or developer encounters a behavior mismatch between local reference specs and the live server.
+  3. Periodically per major feature milestone.
+
 ### 1. Required Capability Audit
 Before implementation:
 1. Inspect the current repository adapter and its existing contracts.
-2. Inspect current Wallet MCP tools and schemas for relevant native filtering/search, aggregation/grouping, transfers, CRUD, entity/reference access, metadata, rollback, and delete behavior.
+2. Inspect local offline documentation (`references/mcp/`) and upstream MCP schemas for relevant native filtering/search, aggregation/grouping, transfers, CRUD, entity/reference access, metadata, rollback, and delete behavior.
 3. When transport or protocol behavior is involved, inspect the current official MCP SDK/protocol support for transport, protocol-version negotiation, tool discovery and invocation, lifecycle, and session mechanics.
 4. Verify ambiguous contracts with focused documentation, contract, or test evidence before adding a broad fallback. Live external checks must remain explicit and outside default CI.
 

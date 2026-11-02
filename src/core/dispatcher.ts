@@ -22,6 +22,7 @@ import { FastPathHandler } from './handlers/fastPathHandler.js';
 import { FinancialActionExecutor } from './executor.js';
 import { AccountClarificationHandler } from './handlers/accountClarificationHandler.js';
 import { CategoryClarificationHandler } from './handlers/categoryClarificationHandler.js';
+import { DeleteRecordHandler } from './handlers/deleteRecordHandler.js';
 import { ModifyRecordHandler } from './handlers/modifyRecordHandler.js';
 import {
   FinancialActionRegistry,
@@ -116,6 +117,7 @@ export interface DispatcherOverrides {
   semanticToolBoundary?: SemanticToolBoundary;
   semanticToolAuthorizationResolver?: SemanticToolAuthorizationResolver;
   categoryResolutionMode?: 'ask' | 'auto';
+  deleteRecordHandler?: DeleteRecordHandler;
   modifyRecordHandler?: ModifyRecordHandler;
 }
 
@@ -130,6 +132,7 @@ export class MessageDispatcher {
   public readonly pendingActionHandler: PendingActionHandler;
   public readonly fastPathHandler: FastPathHandler;
   public readonly financialActionRegistry: FinancialActionRegistry;
+  public readonly deleteRecordHandler: DeleteRecordHandler;
   public readonly modifyRecordHandler: ModifyRecordHandler;
   public readonly semanticToolBoundary: SemanticToolBoundary;
   public readonly semanticToolAuthorizationResolver: SemanticToolAuthorizationResolver;
@@ -215,6 +218,15 @@ export class MessageDispatcher {
         transactionMessageStore: context.wallet?.transactionMessages,
       });
 
+    this.deleteRecordHandler =
+      overrides?.deleteRecordHandler ||
+      new DeleteRecordHandler(
+        context.wallet.client,
+        context.wallet.cache,
+        context.gateway,
+        context.wallet.transactionMessages
+      );
+
     this.modifyRecordHandler =
       overrides?.modifyRecordHandler ||
       new ModifyRecordHandler(
@@ -269,12 +281,20 @@ export class MessageDispatcher {
     await this.context.gateway.sendTypingPresence(event.channel, event.chatIdentifier);
 
     try {
-      // 0. Reply-to-message transaction edit command (e.g. "c: Makan t: #jajan n: Kopi" or "e c:...")
+      // 0. Reply-to-message transaction deletion (e.g. "hapus", "delete") or edit command (e.g. "c: Makan t: #jajan n: Kopi" or "e c:...")
       if (
         event.messageType === 'text' &&
         event.textPayload &&
         event.replyToMessageId
       ) {
+        const handledDelete = await this.deleteRecordHandler.handleDeleteRecordReply(
+          event,
+          processingStartTimestamp
+        );
+        if (handledDelete) {
+          return;
+        }
+
         const handledEdit = await this.modifyRecordHandler.handleModifyRecordReply(
           event,
           processingStartTimestamp
