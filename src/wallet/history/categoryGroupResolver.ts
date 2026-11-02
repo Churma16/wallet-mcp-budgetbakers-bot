@@ -77,7 +77,72 @@ export const CATEGORY_GROUP_ALIASES: Readonly<Record<string, string>> = {
   'communication and pc': 'communication_pc',
   'komunikasi & pc': 'communication_pc',
   'komunikasi dan pc': 'communication_pc',
+  unknown: 'unknown_records',
+  uncategorized: 'unknown_records',
+  'unknown records': 'unknown_records',
+  'unknown record': 'unknown_records',
+  'tanpa kategori': 'unknown_records',
+  'tanpa_kategori': 'unknown_records',
+  'belum dikategorikan': 'unknown_records',
+  'belum_dikategorikan': 'unknown_records',
+  'belum ada kategori': 'unknown_records',
+  'tidak ada kategori': 'unknown_records',
 };
+
+export const NATIVE_UNKNOWN_CATEGORY_FILTER = 'unknown' as const;
+export const UNKNOWN_CATEGORY_GROUP_SLUG = 'unknown_records';
+
+export function isUnknownCategoryQuery(categoryOrGroupHint: string): boolean {
+  if (!categoryOrGroupHint) {
+    return false;
+  }
+  const cleanHint = categoryOrGroupHint.trim().toLowerCase();
+  const standardizedHint = normalizeGroupMatchingText(cleanHint);
+  const slugifiedHint = cleanHint.replace(/[\s&_-]+/g, '_');
+
+  if (
+    cleanHint === 'unknown' ||
+    cleanHint === 'uncategorized' ||
+    cleanHint === 'tanpa kategori' ||
+    cleanHint === 'belum dikategorikan' ||
+    cleanHint === 'belum ada kategori' ||
+    cleanHint === 'tidak ada kategori' ||
+    cleanHint === 'transaksi belum dikategorikan' ||
+    cleanHint === 'transaksi tanpa kategori' ||
+    cleanHint === 'transaksi uncategorized' ||
+    cleanHint === 'transaksi unknown'
+  ) {
+    return true;
+  }
+
+  if (
+    standardizedHint === 'unknown' ||
+    standardizedHint === 'uncategorized' ||
+    standardizedHint === 'tanpa kategori' ||
+    standardizedHint === 'belum dikategorikan' ||
+    standardizedHint === 'belum ada kategori' ||
+    standardizedHint === 'tidak ada kategori' ||
+    standardizedHint === 'transaksi belum dikategorikan' ||
+    standardizedHint === 'transaksi tanpa kategori'
+  ) {
+    return true;
+  }
+
+  if (
+    slugifiedHint === 'unknown' ||
+    slugifiedHint === 'uncategorized' ||
+    slugifiedHint === 'unknown_records' ||
+    slugifiedHint === 'tanpa_kategori' ||
+    slugifiedHint === 'belum_dikategorikan'
+  ) {
+    return true;
+  }
+
+  return (
+    CATEGORY_GROUP_ALIASES[cleanHint] === UNKNOWN_CATEGORY_GROUP_SLUG ||
+    CATEGORY_GROUP_ALIASES[standardizedHint] === UNKNOWN_CATEGORY_GROUP_SLUG
+  );
+}
 
 export function normalizeGroupMatchingText(text: string): string {
   return text
@@ -142,6 +207,16 @@ export function extractDynamicCategoryGroups(
       dynamicGroupMap.set(normalizedGroupId, existingGroup);
     }
 
+    // For unknown_records or any unknown category group, delegate to the native upstream filter
+    // instead of collecting and expanding multiple internal category IDs.
+    if (isUnknownCategoryQuery(normalizedGroupId) || isUnknownCategoryQuery(rawGroupName)) {
+      if (!existingGroup.categoryIds.includes(NATIVE_UNKNOWN_CATEGORY_FILTER)) {
+        existingGroup.categoryIds = [NATIVE_UNKNOWN_CATEGORY_FILTER];
+      }
+      existingGroup.categories.push(categoryItem);
+      continue;
+    }
+
     if (!existingGroup.categoryIds.includes(categoryItem.id)) {
       existingGroup.categoryIds.push(categoryItem.id);
       existingGroup.categories.push(categoryItem);
@@ -162,6 +237,23 @@ export function matchDynamicCategoryGroup(
   dynamicGroupMap: Map<string, DynamicCategoryGroupInfo>
 ): DynamicCategoryGroupMatchResult {
   const normalizedHint = groupHint.toLowerCase().trim();
+
+  // Directly delegate unknown / uncategorized queries to the native upstream filter
+  if (isUnknownCategoryQuery(normalizedHint)) {
+    const existingUnknownGroup =
+      dynamicGroupMap.get('unknown_records') ||
+      dynamicGroupMap.get('unknown') ||
+      dynamicGroupMap.get('uncategorized');
+    return {
+      status: 'EXACT_MATCH',
+      group: {
+        id: existingUnknownGroup ? existingUnknownGroup.id : 'unknown_records',
+        name: existingUnknownGroup ? existingUnknownGroup.name : 'Unknown Records',
+        categoryIds: [NATIVE_UNKNOWN_CATEGORY_FILTER],
+        categories: existingUnknownGroup ? existingUnknownGroup.categories : [],
+      },
+    };
+  }
   const standardizedHint = normalizeGroupMatchingText(normalizedHint);
 
   // 1. Direct match on group id

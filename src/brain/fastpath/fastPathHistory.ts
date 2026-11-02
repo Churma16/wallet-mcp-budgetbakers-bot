@@ -62,6 +62,30 @@ export function parseTransactionHistoryIntent(userMessageText: string): FastPath
     };
   }
 
+  const uncategorizedTransactionPattern =
+    /^(?:cek|lihat|info|daftar|show|view|check|get)?\s*(?:riwayat\s+|daftar\s+)?transaksi\s+(belum\s+dikategorikan|tanpa\s+kategori|uncategorized|unknown)(?:\s+(.*))?$/i;
+  const uncategorizedMatch = trimmedLowerText.match(uncategorizedTransactionPattern);
+  if (uncategorizedMatch) {
+    const rawCategory = uncategorizedMatch[1];
+    const trailingTokens = (uncategorizedMatch[2] || '').trim();
+    const baseOptions = { sort: 'newest' as const, categoryName: rawCategory };
+    if (!trailingTokens) {
+      return { type: FINANCIAL_ACTION_TYPES.TRANSACTION_HISTORY, options: baseOptions };
+    }
+    const parsedOptions = extractHistoryQueryOptionsFromTokens(
+      trailingTokens,
+      baseOptions,
+      false,
+      false
+    );
+    if (parsedOptions) {
+      return {
+        type: FINANCIAL_ACTION_TYPES.TRANSACTION_HISTORY,
+        options: { ...parsedOptions, categoryName: rawCategory },
+      };
+    }
+  }
+
   const historyCommandPattern =
     /^(?:cek|lihat|info|daftar|show|view|check|get|my|semua|all)?\s*(?:riwayat\s+transaksi|transaction\s+history|daftar\s+transaksi|transaksi\s+terakhir|last\s+transactions?|recent\s+transactions?|riwayat|history)(?:\s+(.*))?$/i;
   const historyMatch = trimmedLowerText.match(historyCommandPattern);

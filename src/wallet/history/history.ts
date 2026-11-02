@@ -71,13 +71,23 @@ export async function fetchRecords(
       : {}),
     ...(queryOptions?.categoryId
       ? {
-          categoryId: Array.isArray(queryOptions.categoryId)
+          categoryId:
+            queryOptions.categoryId === 'unknown' ||
+            (Array.isArray(queryOptions.categoryId) &&
+              queryOptions.categoryId.length === 1 &&
+              queryOptions.categoryId[0].toLowerCase() === 'unknown')
+              ? 'unknown'
+              : Array.isArray(queryOptions.categoryId)
             ? queryOptions.categoryId
             : [queryOptions.categoryId],
         }
       : {}),
     ...(queryOptions?.categoryGroup &&
-    (!Array.isArray(queryOptions?.categoryId) || queryOptions.categoryId.length <= 1)
+    queryOptions.categoryGroup !== 'unknown' &&
+    queryOptions.categoryGroup !== 'unknown_records' &&
+    queryOptions.categoryId !== 'unknown' &&
+    (!Array.isArray(queryOptions?.categoryId) ||
+      (queryOptions.categoryId.length <= 1 && queryOptions.categoryId[0] !== 'unknown'))
       ? { categoryGroup: queryOptions.categoryGroup }
       : {}),
     ...(queryOptions?.recordType ? { recordType: queryOptions.recordType } : {}),
