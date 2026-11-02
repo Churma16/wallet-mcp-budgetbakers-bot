@@ -42,7 +42,7 @@ This application runs self-hosted and handles personal financial records, messag
 
 ### Local Environment and Credentials
 - All secrets live on your host machine in `.env` and local directories such as `./auth_session`.
-- Anyone with read access to your host machine can read your `.env` file, WhatsApp session keys, and database tokens.
+- Anyone with read access to your host machine can read your `.env` file, WhatsApp session keys, and MCP/API tokens.
 - Restrict filesystem permissions on your deployment machine and never commit `.env` or `./auth_session` to version control.
 
 ### BudgetBakers MCP Permissions
