@@ -528,6 +528,99 @@ describe('TransactionCorrelationService', () => {
       expect(result.confidence).toBe('HIGH');
     });
 
+    it('proposes binding an incoming transfer to an existing unlinked counterpart record via pairingMode existing', () => {
+      const existingBcaCreditRecord: WalletRecordItem = {
+        id: 'rec-bca-credit-1',
+        accountId: 'acc-bca-456',
+        amount: 250000,
+        currency: 'IDR',
+        recordDate: '2026-10-14T10:00:00.000Z',
+        recordType: 'income',
+        counterParty: 'Transfer Masuk dari Mandiri',
+        source: 'bank_sync',
+      };
+
+      const transferDebitEvidence = createEvidence({
+        transactionType: 'TRANSFER',
+        amount: -250000,
+        currency: 'IDR',
+        accountId: 'acc-mandiri-123',
+        destinationAccountId: 'acc-bca-456',
+        occurredAt: '2026-10-14T10:02:00.000Z',
+        referenceNumbers: ['TRF-MANDIRI-BCA-999'],
+      });
+
+      const result = service.correlateEvidence(transferDebitEvidence, [], [existingBcaCreditRecord]);
+
+      expect(result.suggestedAction).toBe('PAIR_TRANSFER_EXISTING');
+      expect(result.confidence).toBe('HIGH');
+      expect(result.matchTarget.type).toBe('WALLET_RECORD');
+      if (result.matchTarget.type === 'WALLET_RECORD') {
+        expect(result.matchTarget.record.id).toBe('rec-bca-credit-1');
+      }
+      expect(result.proposedTransfer).toEqual({
+        pairingMode: 'existing',
+        recordId: 'rec-bca-credit-1',
+        accountId: 'acc-bca-456',
+      });
+      expect(result.fusedPendingItem?.transfer).toEqual({
+        pairingMode: 'existing',
+        recordId: 'rec-bca-credit-1',
+        accountId: 'acc-bca-456',
+      });
+      expect(result.fusedPendingItem?.matchedDestinationAccountId).toBe('acc-bca-456');
+    });
+
+    it('does not propose pairingMode existing if the existing counterpart record is on the same account', () => {
+      const sameAccountCreditRecord: WalletRecordItem = {
+        id: 'rec-mandiri-credit-1',
+        accountId: 'acc-mandiri-123',
+        amount: 250000,
+        currency: 'IDR',
+        recordDate: '2026-10-14T10:00:00.000Z',
+        recordType: 'income',
+      };
+
+      const transferDebitEvidence = createEvidence({
+        transactionType: 'TRANSFER',
+        amount: -250000,
+        currency: 'IDR',
+        accountId: 'acc-mandiri-123',
+        destinationAccountId: 'acc-bca-456',
+        occurredAt: '2026-10-14T10:02:00.000Z',
+      });
+
+      const result = service.correlateEvidence(transferDebitEvidence, [], [sameAccountCreditRecord]);
+      expect(result.suggestedAction).not.toBe('PAIR_TRANSFER_EXISTING');
+    });
+
+    it('does not propose pairingMode existing if the counterpart record is already a paired transfer', () => {
+      const alreadyPairedRecord: WalletRecordItem = {
+        id: 'rec-bca-paired-1',
+        accountId: 'acc-bca-456',
+        amount: 250000,
+        currency: 'IDR',
+        recordDate: '2026-10-14T10:00:00.000Z',
+        recordType: 'transfer',
+        transfer: {
+          type: 'transfer',
+          transferId: 'trf-existing-1',
+        },
+      };
+
+      const transferDebitEvidence = createEvidence({
+        transactionType: 'TRANSFER',
+        amount: -250000,
+        currency: 'IDR',
+        accountId: 'acc-mandiri-123',
+        destinationAccountId: 'acc-bca-456',
+        occurredAt: '2026-10-14T10:02:00.000Z',
+      });
+
+      const result = service.correlateEvidence(transferDebitEvidence, [], [alreadyPairedRecord]);
+      expect(result.suggestedAction).not.toBe('PAIR_TRANSFER_EXISTING');
+    });
+
     it('does not match non-transfer expense evidence against a transfer record (Finding 2)', () => {
       const transferRecord: WalletRecordItem = {
         id: 'rec-transfer-1',

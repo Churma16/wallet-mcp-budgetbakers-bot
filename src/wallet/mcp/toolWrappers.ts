@@ -329,6 +329,7 @@ export interface SanitizedPatchRecordItem {
   readonly counterParty?: string;
   readonly recordDate?: string;
   readonly $clear?: readonly ClearableRecordField[];
+  readonly transfer?: SanitizedRecordTransferPayload;
 }
 
 export interface PatchRecordsToolArgs {

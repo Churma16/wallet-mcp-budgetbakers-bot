@@ -189,4 +189,91 @@ describe('wallet/records/records - patchRecords and preparePatchRecordsForDispat
     expect(patches[0].labelIds).toBeUndefined();
     expect(patches[0].labels).toBeUndefined();
   });
+
+  it('serializes transfer with pairingMode existing and recordId in patchRecords payload', async () => {
+    const mockClient = {
+      callMcpTool: vi.fn(async () => ({
+        summary: { total: 1, succeeded: 1 },
+        results: [{ id: 'rec-1', success: true }],
+      })),
+      createLabel: vi.fn(),
+    } as unknown as RecordsClient;
+
+    await patchRecords(mockClient, [
+      {
+        id: 'rec-1',
+        transfer: {
+          pairingMode: 'existing',
+          recordId: 'rec-counterpart-2',
+        },
+      },
+    ]);
+
+    expect(mockClient.callMcpTool).toHaveBeenCalledWith(
+      'patch_records',
+      {
+        records: [
+          {
+            id: 'rec-1',
+            transfer: {
+              pairingMode: 'existing',
+              recordId: 'rec-counterpart-2',
+            },
+          },
+        ],
+      }
+    );
+  });
+
+  it('rejects patchRecords with pairingMode existing when recordId is missing', async () => {
+    const mockClient = {
+      callMcpTool: vi.fn(),
+      createLabel: vi.fn(),
+    } as unknown as RecordsClient;
+
+    await expect(
+      patchRecords(mockClient, [
+        {
+          id: 'rec-1',
+          transfer: {
+            pairingMode: 'existing',
+            recordId: '',
+          } as any,
+        },
+      ])
+    ).rejects.toThrow(/requires a valid target recordId/);
+  });
+
+  it('omits transfer when $clear includes transfer in patchRecords payload', async () => {
+    const mockClient = {
+      callMcpTool: vi.fn(async () => ({
+        summary: { total: 1, succeeded: 1 },
+        results: [{ id: 'rec-1', success: true }],
+      })),
+      createLabel: vi.fn(),
+    } as unknown as RecordsClient;
+
+    await patchRecords(mockClient, [
+      {
+        id: 'rec-1',
+        $clear: ['transfer'],
+        transfer: {
+          pairingMode: 'existing',
+          recordId: 'rec-counterpart-2',
+        },
+      },
+    ]);
+
+    expect(mockClient.callMcpTool).toHaveBeenCalledWith(
+      'patch_records',
+      {
+        records: [
+          {
+            id: 'rec-1',
+            $clear: ['transfer'],
+          },
+        ],
+      }
+    );
+  });
 });

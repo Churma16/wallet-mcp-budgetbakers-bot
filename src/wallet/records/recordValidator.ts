@@ -361,58 +361,79 @@ export function validateAndSanitizeFinancialRecords(
         validationErrors.push(`${recordLabel}: Transfer tidak boleh menggunakan kategori transaksi biasa.`);
         continue;
       }
-      if (currentRecord.transfer.pairingMode !== 'new') {
-        validationErrors.push(`${recordLabel}: Hanya transfer berpasangan baru yang didukung.`);
-        continue;
-      }
-      const destinationHint = String(
-        currentRecord.transfer.accountHint ?? currentRecord.transfer.accountId ?? ''
-      ).trim();
-      const destinationResolution = resolveSemanticAccountHint(destinationHint, availableAccountList);
-      if (destinationResolution.status !== 'RESOLVED') {
-        validationErrors.push(`${recordLabel}: Akun tujuan transfer belum dapat dipastikan.`);
-        entityResolutionIssues.push({
-          recordIndex,
-          entityType: 'ACCOUNT',
-          hint: destinationHint,
-          reason: destinationResolution.reason,
-          candidates: destinationResolution.candidates,
-        });
-        continue;
-      }
-      if (destinationResolution.id === resolvedAccountId) {
-        validationErrors.push(`${recordLabel}: Akun sumber dan tujuan transfer harus berbeda.`);
-        continue;
-      }
-      resolvedTransfer = {
-        pairingMode: 'new',
-        accountId: destinationResolution.id,
-      };
-      if (currentRecord.transfer.counterAmount) {
-        const destinationAccount = availableAccountList.find(
-          account => account.id === destinationResolution.id
-        )!;
-        const counterAmount = currentRecord.transfer.counterAmount;
-        const destinationCurrency = destinationAccount.currency?.trim().toUpperCase();
-        const sourceCurrency = resolvedAccount.currency?.trim().toUpperCase();
-        const counterCurrency = counterAmount.currencyCode?.trim().toUpperCase();
-        if (
-          !Number.isFinite(counterAmount.value) ||
-          counterAmount.value === 0 ||
-          Math.sign(counterAmount.value) === Math.sign(parsedAmount) ||
-          !counterCurrency ||
-          counterCurrency !== destinationCurrency ||
-          sourceCurrency === destinationCurrency
-        ) {
-          validationErrors.push(`${recordLabel}: Nominal pasangan transfer lintas mata uang tidak valid.`);
+      if (currentRecord.transfer.pairingMode === 'existing') {
+        const targetRecordId = typeof currentRecord.transfer.recordId === 'string'
+          ? currentRecord.transfer.recordId.trim()
+          : '';
+        if (!targetRecordId) {
+          validationErrors.push(`${recordLabel}: ID transaksi tujuan (recordId) wajib diisi untuk pairingMode 'existing'.`);
           continue;
         }
-        resolvedTransfer.counterAmount = {
-          value: counterAmount.value,
-          currencyCode: counterCurrency,
+        resolvedTransfer = {
+          pairingMode: 'existing',
+          recordId: targetRecordId,
+          ...(currentRecord.transfer.accountId ? { accountId: currentRecord.transfer.accountId } : {}),
         };
+        resolvedCategoryId = undefined;
+      } else if (currentRecord.transfer.pairingMode === 'unpaired') {
+        resolvedTransfer = {
+          pairingMode: 'unpaired',
+          ...(currentRecord.transfer.accountId ? { accountId: currentRecord.transfer.accountId } : {}),
+        };
+        resolvedCategoryId = undefined;
+      } else if (currentRecord.transfer.pairingMode === 'new') {
+        const destinationHint = String(
+          currentRecord.transfer.accountHint ?? currentRecord.transfer.accountId ?? ''
+        ).trim();
+        const destinationResolution = resolveSemanticAccountHint(destinationHint, availableAccountList);
+        if (destinationResolution.status !== 'RESOLVED') {
+          validationErrors.push(`${recordLabel}: Akun tujuan transfer belum dapat dipastikan.`);
+          entityResolutionIssues.push({
+            recordIndex,
+            entityType: 'ACCOUNT',
+            hint: destinationHint,
+            reason: destinationResolution.reason,
+            candidates: destinationResolution.candidates,
+          });
+          continue;
+        }
+        if (destinationResolution.id === resolvedAccountId) {
+          validationErrors.push(`${recordLabel}: Akun sumber dan tujuan transfer harus berbeda.`);
+          continue;
+        }
+        resolvedTransfer = {
+          pairingMode: 'new',
+          accountId: destinationResolution.id,
+        };
+        if (currentRecord.transfer.counterAmount) {
+          const destinationAccount = availableAccountList.find(
+            account => account.id === destinationResolution.id
+          )!;
+          const counterAmount = currentRecord.transfer.counterAmount;
+          const destinationCurrency = destinationAccount.currency?.trim().toUpperCase();
+          const sourceCurrency = resolvedAccount.currency?.trim().toUpperCase();
+          const counterCurrency = counterAmount.currencyCode?.trim().toUpperCase();
+          if (
+            !Number.isFinite(counterAmount.value) ||
+            counterAmount.value === 0 ||
+            Math.sign(counterAmount.value) === Math.sign(parsedAmount) ||
+            !counterCurrency ||
+            counterCurrency !== destinationCurrency ||
+            sourceCurrency === destinationCurrency
+          ) {
+            validationErrors.push(`${recordLabel}: Nominal pasangan transfer lintas mata uang tidak valid.`);
+            continue;
+          }
+          resolvedTransfer.counterAmount = {
+            value: counterAmount.value,
+            currencyCode: counterCurrency,
+          };
+        }
+        resolvedCategoryId = undefined;
+      } else {
+        validationErrors.push(`${recordLabel}: Mode transfer '${(currentRecord.transfer as any).pairingMode}' tidak didukung.`);
+        continue;
       }
-      resolvedCategoryId = undefined;
     }
 
     // 4. Record Date Validation (already normalized into immutable UTC ISO string upfront)

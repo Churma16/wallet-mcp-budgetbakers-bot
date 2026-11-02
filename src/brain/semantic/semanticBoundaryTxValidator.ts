@@ -124,14 +124,22 @@ export function validateAndCloneRecord(
   }
 
   if (rawRecord.transfer !== undefined) {
+    const validPairingModes = new Set(['new', 'existing', 'unpaired']);
     if (
       !isPlainObject(rawRecord.transfer) ||
       !containsOnlyAllowedKeys(rawRecord.transfer, ALLOWED_TRANSFER_KEYS) ||
-      rawRecord.transfer.pairingMode !== 'new'
+      typeof rawRecord.transfer.pairingMode !== 'string' ||
+      !validPairingModes.has(rawRecord.transfer.pairingMode)
     ) {
       return rejectSemanticBoundary('INVALID_ARGUMENTS', 'Transaction proposal transfer shape is unsupported.');
     }
-    for (const fieldName of ['accountId', 'accountHint'] as const) {
+    if (rawRecord.transfer.pairingMode === 'existing') {
+      const recordId = rawRecord.transfer.recordId;
+      if (typeof recordId !== 'string' || !isBoundedString(recordId, true)) {
+        return rejectSemanticBoundary('INVALID_ARGUMENTS', 'Transaction proposal transfer recordId is malformed.');
+      }
+    }
+    for (const fieldName of ['accountId', 'accountHint', 'recordId'] as const) {
       const fieldValue = rawRecord.transfer[fieldName];
       if (fieldValue !== undefined && !isBoundedString(fieldValue, true)) {
         return rejectSemanticBoundary('INVALID_ARGUMENTS', 'Transaction proposal transfer account reference is malformed.');

@@ -240,6 +240,37 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery', () => {
     expect(pendingService.getPendingTransaction(1) === undefined, 'Transfer ticket removed after retry succeeds').toBe(true);
   });
 
+  it('transfer with pairingMode existing binds to target recordId', async () => {
+    const pendingService = new PendingTransactionService();
+    const walletMcp = new MockWalletMcpClient();
+    const messaging = new MockMessagingGateway();
+    const handler = createHandler(pendingService, walletMcp, messaging);
+
+    pendingService.addPendingTransaction({
+      sourceType: 'WHATSAPP',
+      bankDisplayName: 'BCA',
+      accountNameHint: 'Checking',
+      counterParty: 'Savings',
+      amount: 500000,
+      transactionType: 'TRANSFER',
+      matchedAccountId: 'acc-source',
+      transfer: {
+        pairingMode: 'existing',
+        recordId: 'rec-target-123',
+      },
+      note: 'Pair with existing savings record',
+      recordDate: '2026-09-10',
+    });
+
+    await handler.handlePendingAction(createMockEvent(), confirmTicketOne, Date.now());
+
+    expect(pendingService.getPendingTransaction(1) === undefined).toBe(true);
+    expect(walletMcp.calls.length === 1).toBe(true);
+    expect(walletMcp.calls[0][0].accountId === 'acc-source').toBe(true);
+    expect(walletMcp.calls[0][0].transfer?.pairingMode === 'existing').toBe(true);
+    expect(walletMcp.calls[0][0].transfer?.recordId === 'rec-target-123').toBe(true);
+  });
+
   it('ambiguous timeout becomes UNKNOWN and is not automatically retried', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
