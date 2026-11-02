@@ -86,6 +86,36 @@ export interface PendingCancellationParams {
   formattedAmount?: string;
 }
 
+export interface TelegramMenuDictionary {
+  buttonBalance: string;
+  buttonBudget: string;
+  buttonHistory: string;
+  buttonGuide: string;
+
+  commandBalanceDescription: string;
+  commandBudgetDescription: string;
+  commandHistoryDescription: string;
+  commandSummaryDescription: string;
+  commandMenuDescription: string;
+
+  topicRecord: string;
+  topicTransfer: string;
+  topicEditDelete: string;
+  topicReceipt: string;
+  topicSummaryFilter: string;
+  topicFastCommands: string;
+  buttonBack: string;
+
+  guideHomeTitle: string;
+  guideHomeSubtitle: string;
+  guideRecordContent: string;
+  guideTransferContent: string;
+  guideEditDeleteContent: string;
+  guideReceiptContent: string;
+  guideSummaryFilterContent: string;
+  guideFastCommandsContent: string;
+}
+
 export interface ResponseDictionary {
   languageCode: SupportedLanguage;
   localeIdentifier: string;
@@ -205,6 +235,8 @@ export interface ResponseDictionary {
     commandHistory: string;
     commandMenu: string;
   };
+
+  telegramMenu: TelegramMenuDictionary;
 
   errors: {
     aiBusy(timestampString: string): string;

@@ -169,7 +169,9 @@ export class FinancialActionExecutor {
       dictionary.help.commandMenu,
     ].join('\n');
 
-    await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, menuText);
+    await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, menuText, {
+      isHelpMenu: true,
+    });
 
     const executionDurationMilliseconds = Date.now() - processingStartTimestamp;
     applicationLogger.success(
