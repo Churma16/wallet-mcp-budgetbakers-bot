@@ -3,6 +3,7 @@ import type {
   WalletCreateRecordsResponse,
   PatchRecordInputPayload,
   WalletPatchRecordsResponse,
+  WalletDeleteRecordsResponse,
 } from '../types.js';
 import {
   type WalletToolCaller,
@@ -11,9 +12,13 @@ import {
   type SanitizedPatchRecordItem,
   callCreateRecords,
   callPatchRecords,
+  callDeleteDocuments,
 } from '../mcp/toolWrappers.js';
 import { WalletMcpRequestError } from '../mcp/errors.js';
-import { validateCreateRecordsResponse } from './recordValidation.js';
+import {
+  validateCreateRecordsResponse,
+  validateDeleteRecordsResponse,
+} from './recordValidation.js';
 import {
   resolveAndEnsureLabels,
   type LabelResolverCache,
@@ -152,6 +157,118 @@ export async function patchRecords(
     summary: { total: sanitizedPatchList.length, succeeded: sanitizedPatchList.length },
     results: sanitizedPatchList.map((p, idx) => ({ id: p.id, inputIndex: idx, success: true })),
   };
+}
+
+
+/**
+ * Deletes one or more transaction records in BudgetBakers Wallet cloud using the official delete_documents tool.
+ * Handles referential validation, empty input guards, batch limits, and paired transfer atomic deletion.
+ */
+export async function deleteRecords(
+  client: WalletToolCaller,
+  recordIds: string | readonly string[] | string[]
+): Promise<WalletDeleteRecordsResponse> {
+  const rawList = Array.isArray(recordIds) ? recordIds : [recordIds];
+  const sanitizedList = Array.from(
+    new Set(
+      rawList
+        .map(id => (typeof id === 'string' ? id.trim() : ''))
+        .filter(id => id.length > 0)
+    )
+  );
+
+  if (sanitizedList.length === 0) {
+    throw new WalletMcpRequestError(
+      "[error] Referential validation error: No valid record IDs provided for deletion",
+      'DEFINITIVE_FAILURE'
+    );
+  }
+
+  if (sanitizedList.length > 20) {
+    throw new WalletMcpRequestError(
+      `[error] Referential validation error: Maximum 20 record IDs allowed per deletion request, received ${sanitizedList.length}`,
+      'DEFINITIVE_FAILURE'
+    );
+  }
+
+  applicationLogger.fileDetail('mcp', `Prepared ${sanitizedList.length} Record ID(s) for MCP Delete Dispatch`, {
+    ids: sanitizedList,
+  });
+
+  const extractPartnerLegId = (errorText: string): string | null => {
+    const uuidMatch = errorText.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    if (!uuidMatch) return null;
+    const partnerId = uuidMatch[0];
+    return sanitizedList.includes(partnerId) ? null : partnerId;
+  };
+
+  let deleteResult: unknown;
+  try {
+    deleteResult = await callDeleteDocuments(client, {
+      type: 'records',
+      ids: sanitizedList,
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const partnerId = extractPartnerLegId(errorMessage);
+
+    if (partnerId) {
+      applicationLogger.info(
+        `[INFO] Detected paired transfer partner leg '${partnerId}' from upstream error, retrying atomic deletion...`
+      );
+      try {
+        const retryResult = await callDeleteDocuments(client, {
+          type: 'records',
+          ids: [...sanitizedList, partnerId],
+        });
+        return validateDeleteRecordsResponse(retryResult, sanitizedList.length + 1);
+      } catch (retryError) {
+        if (retryError instanceof WalletMcpRequestError) {
+          throw retryError;
+        }
+        throw new WalletMcpRequestError(
+          `[error] MCP Tool 'delete_documents' failed during paired transfer atomic retry: ${
+            retryError instanceof Error ? retryError.message : String(retryError)
+          }`,
+          'UNKNOWN'
+        );
+      }
+    }
+
+    if (error instanceof WalletMcpRequestError) {
+      throw error;
+    }
+
+    throw new WalletMcpRequestError(
+      `[error] MCP Tool 'delete_documents' returned an unclassified result-processing failure: ${errorMessage}`,
+      'UNKNOWN'
+    );
+  }
+
+  if (
+    deleteResult &&
+    typeof deleteResult === 'object' &&
+    'results' in deleteResult &&
+    Array.isArray((deleteResult as { results: unknown[] }).results)
+  ) {
+    const results = (deleteResult as { results: Array<{ success?: boolean; error?: string }> }).results;
+    const failedItem = results.find(r => r.success === false && typeof r.error === 'string');
+    if (failedItem?.error) {
+      const partnerId = extractPartnerLegId(failedItem.error);
+      if (partnerId) {
+        applicationLogger.info(
+          `[INFO] Detected paired transfer partner leg '${partnerId}' from result error, retrying atomic deletion...`
+        );
+        const retryResult = await callDeleteDocuments(client, {
+          type: 'records',
+          ids: [...sanitizedList, partnerId],
+        });
+        return validateDeleteRecordsResponse(retryResult, sanitizedList.length + 1);
+      }
+    }
+  }
+
+  return validateDeleteRecordsResponse(deleteResult, sanitizedList.length);
 }
 
 /**

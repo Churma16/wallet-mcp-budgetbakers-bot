@@ -363,6 +363,26 @@ export interface RawRecordAggregationResponse {
 }
 
 // ---------------------------------------------------------------------------
+// 11. delete_documents types
+// ---------------------------------------------------------------------------
+
+export type DeleteDocumentsEntityType =
+  | 'records'
+  | 'accounts'
+  | 'budgets'
+  | 'categories'
+  | 'labels'
+  | 'standing-orders'
+  | 'record-rules'
+  | string;
+
+export interface DeleteDocumentsToolArgs {
+  readonly type: DeleteDocumentsEntityType;
+  readonly ids: readonly string[];
+}
+
+export type RawDeleteDocumentsResponse = unknown;
+// ---------------------------------------------------------------------------
 // Internal Helper & Array Extractor
 // ---------------------------------------------------------------------------
 
@@ -522,3 +542,16 @@ export async function callGetRecordsAggregation(
   );
 }
 
+
+/**
+ * Dispatches delete_documents to the Wallet MCP server with strictly typed payload.
+ */
+export async function callDeleteDocuments(
+  client: WalletToolCaller,
+  args: DeleteDocumentsToolArgs
+): Promise<RawDeleteDocumentsResponse> {
+  return client.callMcpTool<RawDeleteDocumentsResponse>(
+    WALLET_MCP_TOOL_NAMES.DELETE_DOCUMENTS,
+    serializeToolArguments(args)
+  );
+}

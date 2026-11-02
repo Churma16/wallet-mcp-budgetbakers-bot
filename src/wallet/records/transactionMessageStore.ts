@@ -18,6 +18,8 @@ export interface StoredRecordMessageMapping {
   amount?: number;
   counterParty?: string;
   channel?: string;
+  partnerRecordId?: string;
+  isTransfer?: boolean;
 }
 
 export interface TransactionMessageStoreSnapshot {
@@ -75,6 +77,15 @@ export class TransactionMessageStore {
     }
 
     return found;
+  }
+
+  public deleteMessageMapping(messageId: string): boolean {
+    if (!messageId) return false;
+    const deleted = this.mappingMap.delete(messageId);
+    if (deleted) {
+      this.saveToStorage();
+    }
+    return deleted;
   }
 
   public updateMessageMapping(
