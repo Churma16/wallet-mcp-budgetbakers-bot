@@ -29,16 +29,46 @@ export interface WalletCategoryItem {
   isAssignable?: boolean;
 }
 
-export interface WalletTransferInput {
-  pairingMode: 'new' | 'existing' | 'unpaired';
+export type WalletTransferPairingMode = 'new' | 'existing' | 'unpaired';
+
+export interface WalletTransferBaseInput {
   accountId?: string;
   accountHint?: string;
-  recordId?: string;
   counterAmount?: {
     value: number;
     currencyCode: string;
   };
 }
+
+export interface WalletTransferNewInput extends WalletTransferBaseInput {
+  pairingMode: 'new';
+  recordId?: never;
+}
+
+export interface WalletTransferExistingInput extends WalletTransferBaseInput {
+  pairingMode: 'existing';
+  recordId: string;
+}
+
+export interface WalletTransferUnpairedInput extends WalletTransferBaseInput {
+  pairingMode: 'unpaired';
+  recordId?: never;
+}
+
+export type WalletTransferInput =
+  | WalletTransferNewInput
+  | WalletTransferExistingInput
+  | WalletTransferUnpairedInput
+  | {
+      pairingMode: WalletTransferPairingMode;
+      accountId?: string;
+      accountHint?: string;
+      recordId?: string;
+      counterAmount?: {
+        value: number;
+        currencyCode: string;
+      };
+    };
 
 export interface WalletLabelItem {
   id: string;
@@ -115,6 +145,7 @@ export interface PatchRecordInputPayload {
   counterParty?: string;
   recordDate?: string;
   $clear?: ClearableRecordField[];
+  transfer?: WalletTransferInput;
 }
 
 export interface WalletPatchRecordsResponse {

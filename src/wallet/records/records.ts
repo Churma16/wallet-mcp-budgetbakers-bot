@@ -5,6 +5,7 @@ import type {
   WalletPatchRecordsResponse,
   WalletDeleteRecordsResponse,
   ClearableRecordField,
+  WalletTransferInput,
 } from '../types.js';
 import {
   type WalletToolCaller,
@@ -36,6 +37,29 @@ export function normalizeRecordDate(recordDateString?: string): string {
   return normalizeTransactionRecordDate(recordDateString);
 }
 
+export function sanitizeTransferPayload(
+  transfer: WalletTransferInput
+): SanitizedRecordTransferPayload {
+  if (
+    transfer.pairingMode === 'existing' &&
+    (!transfer.recordId || typeof transfer.recordId !== 'string' || !transfer.recordId.trim())
+  ) {
+    throw new WalletMcpRequestError(
+      '[error] Transfer pairingMode \'existing\' requires a valid target recordId',
+      'DEFINITIVE_FAILURE'
+    );
+  }
+
+  return {
+    pairingMode: transfer.pairingMode,
+    ...(transfer.accountId ? { accountId: transfer.accountId } : {}),
+    ...(transfer.recordId ? { recordId: transfer.recordId.trim() } : {}),
+    ...(transfer.counterAmount !== undefined
+      ? { counterAmount: transfer.counterAmount }
+      : {}),
+  };
+}
+
 export function sanitizeRecordPayload(
   recordsPayload: CreateRecordInputPayload[]
 ): SanitizedRecordPayloadItem[] {
@@ -43,14 +67,7 @@ export function sanitizeRecordPayload(
     let sanitizedTransfer: SanitizedRecordTransferPayload | undefined = undefined;
 
     if (recordItem.transfer) {
-      sanitizedTransfer = {
-        pairingMode: recordItem.transfer.pairingMode,
-        ...(recordItem.transfer.accountId ? { accountId: recordItem.transfer.accountId } : {}),
-        ...(recordItem.transfer.recordId ? { recordId: recordItem.transfer.recordId } : {}),
-        ...(recordItem.transfer.counterAmount !== undefined
-          ? { counterAmount: recordItem.transfer.counterAmount }
-          : {}),
-      };
+      sanitizedTransfer = sanitizeTransferPayload(recordItem.transfer);
     }
 
     const sanitizedRecordItem: SanitizedRecordPayloadItem = {
@@ -131,6 +148,11 @@ export async function patchRecords(
 
     const hasClear = (field: ClearableRecordField) => Boolean(clearFields?.includes(field));
 
+    let sanitizedTransfer: SanitizedRecordTransferPayload | undefined = undefined;
+    if (item.transfer && !hasClear('transfer')) {
+      sanitizedTransfer = sanitizeTransferPayload(item.transfer);
+    }
+
     return {
       id: item.id,
       ...(item.accountId ? { accountId: item.accountId } : {}),
@@ -143,6 +165,7 @@ export async function patchRecords(
       ...(item.counterParty !== undefined && !hasClear('counterParty') ? { counterParty: item.counterParty } : {}),
       ...(item.recordDate ? { recordDate: normalizeRecordDate(item.recordDate) } : {}),
       ...(clearFields ? { $clear: clearFields } : {}),
+      ...(sanitizedTransfer ? { transfer: sanitizedTransfer } : {}),
     };
   });
 

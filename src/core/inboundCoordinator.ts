@@ -164,6 +164,14 @@ export async function coordinateInboundTransactionCandidate(
     return;
   }
 
+  // Case 1.5: Correlates with an existing unlinked record as a paired transfer counterpart
+  if (correlationResult.suggestedAction === 'PAIR_TRANSFER_EXISTING') {
+    const matchedRecord = (correlationResult.matchTarget as { type: 'WALLET_RECORD'; record: any }).record;
+    applicationLogger.info(
+      `[Correlation Paired Transfer] ${sourceType} correlates with existing unlinked Wallet record (${matchedRecord.id}). Proposing transfer binding via pairingMode: 'existing'.`
+    );
+  }
+
   // Case 2: Correlates with an existing pending candidate (field fusion)
   if (correlationResult.suggestedAction === 'MERGE_PENDING') {
     const existingPending = (
@@ -222,11 +230,18 @@ export async function coordinateInboundTransactionCandidate(
     accountNameHint: resolvedAccountName,
     matchedAccountId: resolvedAccountId,
     destinationAccountNameHint: resolvedDestinationAccountName,
-    matchedDestinationAccountId: resolvedDestinationAccountId,
     counterParty: parsedData.counterParty || '',
     amount: parsedData.amount,
     currency: resolvedCurrency,
-    transactionType: parsedData.transactionType,
+    transactionType: correlationResult.suggestedAction === 'PAIR_TRANSFER_EXISTING'
+      ? 'TRANSFER'
+      : parsedData.transactionType,
+    matchedDestinationAccountId: correlationResult.suggestedAction === 'PAIR_TRANSFER_EXISTING' && correlationResult.matchTarget.type === 'WALLET_RECORD'
+      ? correlationResult.matchTarget.record.accountId
+      : resolvedDestinationAccountId,
+    transfer: correlationResult.proposedTransfer || (correlationResult.suggestedAction === 'PAIR_TRANSFER_EXISTING' && correlationResult.matchTarget.type === 'WALLET_RECORD'
+      ? { pairingMode: 'existing', recordId: correlationResult.matchTarget.record.id, accountId: correlationResult.matchTarget.record.accountId }
+      : undefined),
     matchedCategoryId: parsedData.matchedCategoryId,
     matchedCategoryName: parsedData.matchedCategoryName,
     note: initialNote,

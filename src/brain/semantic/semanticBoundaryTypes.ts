@@ -103,7 +103,7 @@ export const ALLOWED_RECORD_KEYS = new Set([
   'currency',
   'transfer',
 ]);
-export const ALLOWED_TRANSFER_KEYS = new Set(['pairingMode', 'accountId', 'accountHint', 'counterAmount']);
+export const ALLOWED_TRANSFER_KEYS = new Set(['pairingMode', 'accountId', 'accountHint', 'counterAmount', 'recordId']);
 export const ALLOWED_COUNTER_AMOUNT_KEYS = new Set(['value', 'currencyCode']);
 export const MAXIMUM_PROPOSED_RECORDS = 20;
 export const MAXIMUM_TEXT_FIELD_LENGTH = 2_000;
