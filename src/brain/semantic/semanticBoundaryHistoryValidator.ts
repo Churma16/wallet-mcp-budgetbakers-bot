@@ -39,7 +39,7 @@ export function validateSemanticHistoryQueryOptions(
     return rejectSemanticBoundary('INVALID_ARGUMENTS', 'Transaction-history proposal contains unsupported fields.');
   }
 
-  const stringFields = ['accountName', 'categoryName', 'categoryGroup', 'startDate', 'endDate', 'searchQuery', 'convertTo'] as const;
+  const stringFields = ['accountName', 'categoryName', 'categoryGroup', 'startDate', 'endDate', 'searchQuery'] as const;
   for (const field of stringFields) {
     const value = rawArguments[field];
     if (value !== undefined && (!isBoundedString(value) || value.length > 200)) {

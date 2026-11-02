@@ -614,7 +614,7 @@ export function formatTransactionHistoryMessage(
           ? `conversion unavailable: ${recordItem.convertedAmount.error}`
           : `konversi tidak tersedia: ${recordItem.convertedAmount.error}`;
         amountLine = `*${formattedAmount}* (${errorSuffix}) • ${accountDisplay}`;
-      } else if (typeof recordItem.convertedAmount.value === 'number') {
+      } else if (typeof recordItem.convertedAmount.value === 'number' && Number.isFinite(recordItem.convertedAmount.value)) {
         const targetCurrency = recordItem.convertedAmount.currencyCode || 'UNKNOWN';
         const isSameCurrency = recordItem.currency.trim().toUpperCase() === targetCurrency.trim().toUpperCase();
         if (!isSameCurrency || (typeof recordItem.convertedAmount.ratio === 'number' && recordItem.convertedAmount.ratio !== 1)) {
@@ -628,9 +628,9 @@ export function formatTransactionHistoryMessage(
           if (typeof recordItem.convertedAmount.ratio === 'number' && Number.isFinite(recordItem.convertedAmount.ratio)) {
             const rateLabel = activeLanguage === 'en' ? 'rate' : 'kurs';
             const ratioNumber = recordItem.convertedAmount.ratio;
-            const formattedRatio = ratioNumber >= 100
-              ? new Intl.NumberFormat(activeLanguage === 'en' ? 'en-US' : 'id-ID', { maximumFractionDigits: 2 }).format(ratioNumber)
-              : ratioNumber.toLocaleString(activeLanguage === 'en' ? 'en-US' : 'id-ID', { maximumFractionDigits: 6 });
+            const formattedRatio = new Intl.NumberFormat(activeLanguage === 'en' ? 'en-US' : 'id-ID', {
+              maximumFractionDigits: ratioNumber >= 100 ? 2 : 6,
+            }).format(ratioNumber);
             rateSuffix = ` • ${rateLabel} ${formattedRatio}`;
           }
           amountLine = `*${formattedAmount}* (~${formattedConvertedAmount}${rateSuffix}) • ${accountDisplay}`;
