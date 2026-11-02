@@ -47,6 +47,10 @@ export function validateSemanticHistoryQueryOptions(
     }
   }
 
+  if (rawArguments.convertTo !== undefined && (!isBoundedString(rawArguments.convertTo) || rawArguments.convertTo.length > 20)) {
+    return rejectSemanticBoundary('INVALID_ARGUMENTS', 'Transaction-history convertTo is malformed or too large.');
+  }
+
   if (rawArguments.isGroupQuery !== undefined && typeof rawArguments.isGroupQuery !== 'boolean') {
     return rejectSemanticBoundary('INVALID_ARGUMENTS', 'Transaction-history isGroupQuery is invalid.');
   }

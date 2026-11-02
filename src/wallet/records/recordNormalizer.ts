@@ -53,6 +53,17 @@ export function normalizeRawRecord(item: RawRecordItem): WalletRecordItem {
     };
   }
 
+  let convertedAmountObject: WalletRecordItem['convertedAmount'] = undefined;
+  if (item.convertedAmount && typeof item.convertedAmount === 'object') {
+    convertedAmountObject = {
+      value: typeof item.convertedAmount.value === 'number' ? item.convertedAmount.value : undefined,
+      ratio: typeof item.convertedAmount.ratio === 'number' ? item.convertedAmount.ratio : undefined,
+      currencyCode: item.convertedAmount.currencyCode,
+      conversionPair: item.convertedAmount.conversionPair,
+      error: item.convertedAmount.error,
+    };
+  }
+
   return {
     id: item.id || item.recordId || '',
     accountId: item.accountId || '',
@@ -68,6 +79,7 @@ export function normalizeRawRecord(item: RawRecordItem): WalletRecordItem {
     recordState: item.recordState,
     source: item.source,
     transfer: transferObject,
+    convertedAmount: convertedAmountObject,
   };
 }
 

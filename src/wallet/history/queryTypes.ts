@@ -33,6 +33,7 @@ export interface TransactionHistoryFilters {
   searchQuery?: string;
   counterParty?: string;
   note?: string;
+  convertTo?: string;
 }
 
 export interface TransactionHistoryQueryOptions extends TransactionHistoryFilters {
@@ -66,6 +67,7 @@ export interface AppliedTransactionHistoryFilters {
   };
   searchQuery?: string;
   navigationTokens?: string[];
+  convertTo?: string;
 }
 
 export interface UnresolvedFilterIssue {

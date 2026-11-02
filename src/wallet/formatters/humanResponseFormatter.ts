@@ -535,6 +535,10 @@ export function formatTransactionHistoryMessage(
   const filterBadges: string[] = [];
   const appliedFilters = historyPage.appliedFilters;
 
+  if (appliedFilters?.convertTo) {
+    filterBadges.push(dictionary.history.convertToBadge(appliedFilters.convertTo));
+  }
+
   if (appliedFilters?.searchQuery) {
     filterBadges.push(dictionary.history.searchBadge(appliedFilters.searchQuery));
   }
@@ -603,6 +607,36 @@ export function formatTransactionHistoryMessage(
     const displayTitle = truncateTransactionTitle(rawTitle, MAX_TRANSACTION_HISTORY_TITLE_LENGTH);
     const formattedAmount = formatCompactTransactionAmount(recordItem.amount, recordItem.recordType, recordItem.currency, activeLanguage);
     const accountDisplay = recordItem.accountName || dictionary.labels.defaultAccount;
+    let amountLine = `*${formattedAmount}* • ${accountDisplay}`;
+    if (recordItem.convertedAmount) {
+      if (recordItem.convertedAmount.error) {
+        const errorSuffix = activeLanguage === 'en'
+          ? `conversion unavailable: ${recordItem.convertedAmount.error}`
+          : `konversi tidak tersedia: ${recordItem.convertedAmount.error}`;
+        amountLine = `*${formattedAmount}* (${errorSuffix}) • ${accountDisplay}`;
+      } else if (typeof recordItem.convertedAmount.value === 'number' && Number.isFinite(recordItem.convertedAmount.value)) {
+        const targetCurrency = recordItem.convertedAmount.currencyCode || 'UNKNOWN';
+        const isSameCurrency = recordItem.currency.trim().toUpperCase() === targetCurrency.trim().toUpperCase();
+        if (!isSameCurrency || (typeof recordItem.convertedAmount.ratio === 'number' && recordItem.convertedAmount.ratio !== 1)) {
+          const formattedConvertedAmount = formatCompactTransactionAmount(
+            recordItem.convertedAmount.value,
+            recordItem.recordType,
+            targetCurrency,
+            activeLanguage
+          );
+          let rateSuffix = '';
+          if (typeof recordItem.convertedAmount.ratio === 'number' && Number.isFinite(recordItem.convertedAmount.ratio)) {
+            const rateLabel = activeLanguage === 'en' ? 'rate' : 'kurs';
+            const ratioNumber = recordItem.convertedAmount.ratio;
+            const formattedRatio = new Intl.NumberFormat(activeLanguage === 'en' ? 'en-US' : 'id-ID', {
+              maximumFractionDigits: ratioNumber >= 100 ? 2 : 6,
+            }).format(ratioNumber);
+            rateSuffix = ` • ${rateLabel} ${formattedRatio}`;
+          }
+          amountLine = `*${formattedAmount}* (~${formattedConvertedAmount}${rateSuffix}) • ${accountDisplay}`;
+        }
+      }
+    }
     const defaultCategory = isTransfer ? dictionary.labels.transfer : dictionary.labels.defaultCategory;
     const categoryDisplay = recordItem.category?.name || defaultCategory;
     const timestampDisplay = formatCompactTransactionDate(recordItem.recordDate, activeLanguage);
@@ -613,7 +647,7 @@ export function formatTransactionHistoryMessage(
 
     return [
       `${globalItemIndex}. ${displayTitle}`,
-      `*${formattedAmount}* • ${accountDisplay}`,
+      amountLine,
       `${categoryDisplay} • ${timestampDisplay}${labelSuffix}`,
     ].join('\n');
   });
@@ -684,7 +718,15 @@ export function formatTransactionHistoryMessage(
         filterTokens.push(appliedFilters.dateRange.label.toLowerCase());
       }
 
-      if (appliedFilters?.searchQuery) {
+      if (appliedFilters?.convertTo) {
+        filterTokens.push(
+          activeLanguage === 'en'
+            ? `in ${appliedFilters.convertTo.toUpperCase()}`
+            : `dalam ${appliedFilters.convertTo.toUpperCase()}`
+        );
+      }
+
+  if (appliedFilters?.searchQuery) {
         filterTokens.push(
           activeLanguage === 'en'
             ? `search "${appliedFilters.searchQuery}"`

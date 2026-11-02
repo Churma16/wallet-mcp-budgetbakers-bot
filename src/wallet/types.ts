@@ -193,6 +193,14 @@ export interface WalletBudgetItem {
   isOverspent?: boolean;
 }
 
+export interface WalletRecordConvertedAmount {
+  readonly value?: number;
+  readonly ratio?: number;
+  readonly currencyCode?: string;
+  readonly conversionPair?: string;
+  readonly error?: string;
+}
+
 export interface WalletRecordItem {
   id: string;
   accountId: string;
@@ -222,6 +230,7 @@ export interface WalletRecordItem {
     transferId?: string;
     mirrorRecord?: unknown;
   } | null;
+  convertedAmount?: WalletRecordConvertedAmount;
 }
 
 export interface WalletRecordAggregationQueryPayload {
@@ -242,6 +251,7 @@ export interface WalletRecordAggregationQueryPayload {
   counterParty?: string;
   limit?: number;
   offset?: number;
+  convertTo?: string;
 }
 
 export interface WalletRecordAggregationResultItem {
