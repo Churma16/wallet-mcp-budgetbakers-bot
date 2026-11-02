@@ -1,6 +1,8 @@
+import { formatEditSuccessReceipt, type EditReceiptLocaleConfig } from '../editReceiptFormatter.js';
 import {
   ResponseDictionary,
   RecordMessageParams,
+  RecordEditSuccessParams,
   MultipleRecordsItemParams,
   PendingEmailNotificationParams,
   PendingConfirmationPromptParams,
@@ -27,6 +29,21 @@ export function formatPendingConfirmationPromptId(params: PendingConfirmationPro
   }
   return lines.join('\n');
 }
+
+
+const indonesianEditReceiptConfig: EditReceiptLocaleConfig = {
+  header: '✅ Transaksi berhasil diperbarui:',
+  accountMoved: (from, to) => `🏦 Akun dipindahkan dari: ${from} ➔ ${to}`,
+  clearedFieldsHeader: '🧹 Bidang dibersihkan:',
+  fieldNames: {
+    note: 'Catatan',
+    labelIds: 'Tag / Label',
+    counterParty: 'Merchant / Payee',
+    categoryId: 'Kategori',
+    transfer: 'Status Transfer',
+    place: 'Lokasi',
+  },
+};
 
 export const indonesianDictionary: ResponseDictionary = {
   languageCode: 'id',
@@ -73,6 +90,10 @@ export const indonesianDictionary: ResponseDictionary = {
         `${params.itemIndex + 1}. ${params.transactionTypeIcon} ${params.transactionDescription} — *${params.formattedAmount}* dari ${params.accountName}`,
         `   🏷️ ${params.categoryName}  •  ${params.recordTimestampDisplay}${labelSuffix}`,
       ].join('\n');
+    },
+
+    editSuccess(params: RecordEditSuccessParams): string {
+      return formatEditSuccessReceipt(params, indonesianEditReceiptConfig);
     },
   },
 
@@ -444,6 +465,34 @@ export const indonesianDictionary: ResponseDictionary = {
     },
     mediaDownloadFailed(channelDisplayName: string): string {
       return `⚠️ Gagal mengunduh foto struk dari ${channelDisplayName}. Silakan coba kirim ulang ya!`;
+    },
+    recordEditAccountNotFound(accountHint: string): string {
+      return `⚠️ Akun "${accountHint}" tidak ditemukan.`;
+    },
+    recordEditAccountAmbiguous(accountHint: string, candidates: string[]): string {
+      return `⚠️ Akun "${accountHint}" ambigu: cocok dengan ${candidates.join(', ')}.`;
+    },
+    recordEditSourceBankSynced(accountName: string): string {
+      return `⚠️ Transaksi pada akun bank-sync (${accountName}) tidak dapat dipindahkan ke akun lain.`;
+    },
+    recordEditTargetBankSynced(accountName: string): string {
+      return `⚠️ Tidak dapat memindahkan transaksi ke akun bank-sync (${accountName}).`;
+    },
+    recordEditCurrencyMismatch(
+      sourceAccount: string,
+      sourceCurrency: string,
+      targetAccount: string,
+      targetCurrency: string
+    ): string {
+      return `⚠️ Tidak dapat memindahkan transaksi: Mata uang ${sourceAccount} (${sourceCurrency}) berbeda dengan ${targetAccount} (${targetCurrency}). BudgetBakers hanya mengizinkan pemindahan antar-akun dengan mata uang yang sama.`;
+    },
+    recordEditZeroAmount: '⚠️ Nominal transaksi tidak boleh bernilai 0.',
+    recordEditCategoryNotFound(categoryHint: string): string {
+      return `⚠️ Kategori "${categoryHint}" tidak ditemukan atau tidak dapat digunakan.`;
+    },
+    recordEditNotFound: '⚠️ Transaksi tidak ditemukan atau pesan yang dibalas sudah kedaluwarsa.',
+    recordEditFailed(reason: string): string {
+      return `❌ Gagal memperbarui transaksi: ${reason}`;
     },
   },
 };

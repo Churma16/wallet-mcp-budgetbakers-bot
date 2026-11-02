@@ -139,4 +139,79 @@ describe('recordEditParser', () => {
       expect(Array.from(parsed!.note!)).toHaveLength(255);
     });
   });
+
+  describe('Account Token Parsing (rek, acc, rekening, account)', () => {
+    it('parses target account hint using rek: and acc:', () => {
+      const parsed1 = parseRecordEditCommand('rek: BCA');
+      expect(parsed1).not.toBeNull();
+      expect(parsed1?.targetAccountHint).toBe('BCA');
+      expect(parsed1?.hasModifications).toBe(true);
+
+      const parsed2 = parseRecordEditCommand('acc: Mandiri');
+      expect(parsed2?.targetAccountHint).toBe('Mandiri');
+    });
+
+    it('parses target account hint using full aliases rekening: and account:', () => {
+      const parsed1 = parseRecordEditCommand('rekening: Jago Pocket');
+      expect(parsed1?.targetAccountHint).toBe('Jago Pocket');
+
+      const parsed2 = parseRecordEditCommand('edit account: Cash Wallet c: Makanan');
+      expect(parsed2?.targetAccountHint).toBe('Cash Wallet');
+      expect(parsed2?.categoryName).toBe('Makanan');
+    });
+  });
+
+  describe('Field Clearing Shorthands ($clear)', () => {
+    it('parses note clearing using dash, none, kosong, hapus, or clear', () => {
+      expect(parseRecordEditCommand('n: -')?.clearFields).toEqual(['note']);
+      expect(parseRecordEditCommand('note: none')?.clearFields).toEqual(['note']);
+      expect(parseRecordEditCommand('catatan: kosong')?.clearFields).toEqual(['note']);
+      expect(parseRecordEditCommand('n: hapus')?.clearFields).toEqual(['note']);
+      expect(parseRecordEditCommand('n: clear')?.clearFields).toEqual(['note']);
+    });
+
+    it('parses tags clearing using dash or clear keywords', () => {
+      const parsed = parseRecordEditCommand('t: -');
+      expect(parsed?.clearFields).toEqual(['labelIds']);
+      expect(parsed?.tags).toBeUndefined();
+
+      expect(parseRecordEditCommand('tags: kosong')?.clearFields).toEqual(['labelIds']);
+      expect(parseRecordEditCommand('label: clear')?.clearFields).toEqual(['labelIds']);
+    });
+
+    it('parses category and counterparty clearing', () => {
+      expect(parseRecordEditCommand('c: -')?.clearFields).toEqual(['categoryId']);
+      expect(parseRecordEditCommand('kategori: hapus')?.clearFields).toEqual(['categoryId']);
+
+      expect(parseRecordEditCommand('p: -')?.clearFields).toEqual(['counterParty']);
+      expect(parseRecordEditCommand('payee: none')?.clearFields).toEqual(['counterParty']);
+    });
+
+    it('parses transfer unlink shorthand tf: - and natural transfer unlink commands', () => {
+      expect(parseRecordEditCommand('tf: -')?.clearFields).toEqual(['transfer']);
+      expect(parseRecordEditCommand('transfer: unlink')?.clearFields).toEqual(['transfer']);
+      expect(parseRecordEditCommand('unlink transfer')?.clearFields).toEqual(['transfer']);
+      expect(parseRecordEditCommand('e lepas transfer')?.clearFields).toEqual(['transfer']);
+      expect(parseRecordEditCommand('batal transfer')?.clearFields).toEqual(['transfer']);
+    });
+
+    it('handles collision by giving precedence to clear over explicit value', () => {
+      const parsed = parseRecordEditCommand('n: Kopi n: -');
+      expect(parsed?.clearFields).toEqual(['note']);
+      expect(parsed?.note).toBeUndefined();
+    });
+
+    it('parses compound edits combining account move, field edits, and field clearing', () => {
+      const parsed = parseRecordEditCommand('rek: BCA c: Transport t: - n: Bensin');
+      expect(parsed).not.toBeNull();
+      expect(parsed?.targetAccountHint).toBe('BCA');
+      expect(parsed?.categoryName).toBe('Transport');
+      expect(parsed?.clearFields).toEqual(['labelIds']);
+      expect(parsed?.note).toBe('Bensin');
+    });
+    it('returns null when tokens have invalid or empty values', () => {
+      expect(parseRecordEditCommand('a: bukanAngka')).toBeNull();
+      expect(parseRecordEditCommand('tf: invalid')).toBeNull();
+    });
+  });
 });

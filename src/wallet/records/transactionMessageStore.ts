@@ -5,7 +5,7 @@ import { applicationLogger } from '../../lib/logger.js';
 
 export interface StoredRecordMessageMapping {
   readonly recordId: string;
-  readonly accountId: string;
+  accountId: string;
   readonly createdAt: number;
   accountName?: string;
   currency?: string;

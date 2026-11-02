@@ -96,4 +96,97 @@ describe('wallet/records/records - patchRecords and preparePatchRecordsForDispat
     expect(patches[0].labelIds).toEqual(['lbl-existing', 'lbl-new-label']);
     expect(patches[0].labels).toEqual(['existing', 'new-label']);
   });
+
+  it('serializes accountId and $clear in patchRecords payload', async () => {
+    const mockClient = {
+      callMcpTool: vi.fn(async () => ({
+        summary: { total: 1, succeeded: 1 },
+        results: [{ id: 'rec-1', success: true }],
+      })),
+      createLabel: vi.fn(),
+    } as unknown as RecordsClient;
+
+    await patchRecords(mockClient, [
+      {
+        id: 'rec-1',
+        accountId: 'acc-target',
+        $clear: ['transfer', 'note'],
+      },
+    ]);
+
+    expect(mockClient.callMcpTool).toHaveBeenCalledWith(
+      'patch_records',
+      {
+        records: [
+          {
+            id: 'rec-1',
+            accountId: 'acc-target',
+            $clear: ['transfer', 'note'],
+          },
+        ],
+      }
+    );
+  });
+
+  it('enforces collision exclusion: omits explicit values for fields specified in $clear', async () => {
+    const mockClient = {
+      callMcpTool: vi.fn(async () => ({
+        summary: { total: 1, succeeded: 1 },
+        results: [{ id: 'rec-1', success: true }],
+      })),
+      createLabel: vi.fn(),
+    } as unknown as RecordsClient;
+
+    await patchRecords(mockClient, [
+      {
+        id: 'rec-1',
+        note: 'Should be omitted',
+        counterParty: 'Should be omitted',
+        categoryId: 'cat-omit',
+        labelIds: ['lbl-omit'],
+        $clear: ['note', 'counterParty', 'categoryId', 'labelIds'],
+      },
+    ]);
+
+    expect(mockClient.callMcpTool).toHaveBeenCalledWith(
+      'patch_records',
+      {
+        records: [
+          {
+            id: 'rec-1',
+            $clear: ['note', 'counterParty', 'categoryId', 'labelIds'],
+          },
+        ],
+      }
+    );
+  });
+
+  it('skips label resolution when $clear includes labelIds in WalletRecordPreparationService', async () => {
+    const mockCache: RecordsCache = {
+      getAccountByNameOrId: vi.fn(),
+      getCategoryByNameOrId: vi.fn(),
+      getCategories: vi.fn(() => []),
+      findLabelByName: vi.fn(),
+      isLabelsLoaded: vi.fn(() => true),
+      addLabelToCache: vi.fn(),
+    };
+
+    const mockLabelCreator: LabelCreatorClient = {
+      createLabel: vi.fn(),
+    };
+
+    const prepService = new WalletRecordPreparationService(mockCache, mockLabelCreator);
+
+    const patches = await prepService.preparePatchRecordsForDispatch([
+      {
+        id: 'rec-1',
+        labels: ['should-not-create'],
+        $clear: ['labelIds'],
+      },
+    ]);
+
+    expect(mockLabelCreator.createLabel).not.toHaveBeenCalled();
+    expect(patches[0].labelIds).toBeUndefined();
+    expect(patches[0].labels).toBeUndefined();
+  });
 });

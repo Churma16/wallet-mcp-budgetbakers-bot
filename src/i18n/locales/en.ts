@@ -1,6 +1,8 @@
+import { formatEditSuccessReceipt, type EditReceiptLocaleConfig } from '../editReceiptFormatter.js';
 import {
   ResponseDictionary,
   RecordMessageParams,
+  RecordEditSuccessParams,
   MultipleRecordsItemParams,
   PendingEmailNotificationParams,
   PendingConfirmationPromptParams,
@@ -27,6 +29,21 @@ export function formatPendingConfirmationPromptEn(params: PendingConfirmationPro
   }
   return lines.join('\n');
 }
+
+
+const englishEditReceiptConfig: EditReceiptLocaleConfig = {
+  header: '✅ Transaction updated successfully:',
+  accountMoved: (from, to) => `🏦 Account moved from: ${from} ➔ ${to}`,
+  clearedFieldsHeader: '🧹 Cleared fields:',
+  fieldNames: {
+    note: 'Note',
+    labelIds: 'Tags / Labels',
+    counterParty: 'Merchant / Payee',
+    categoryId: 'Category',
+    transfer: 'Transfer Link',
+    place: 'Place',
+  },
+};
 
 export const englishDictionary: ResponseDictionary = {
   languageCode: 'en',
@@ -73,6 +90,10 @@ export const englishDictionary: ResponseDictionary = {
         `${params.itemIndex + 1}. ${params.transactionTypeIcon} ${params.transactionDescription} — *${params.formattedAmount}* from ${params.accountName}`,
         `   🏷️ ${params.categoryName}  •  ${params.recordTimestampDisplay}${labelSuffix}`,
       ].join('\n');
+    },
+
+    editSuccess(params: RecordEditSuccessParams): string {
+      return formatEditSuccessReceipt(params, englishEditReceiptConfig);
     },
   },
 
@@ -445,6 +466,34 @@ export const englishDictionary: ResponseDictionary = {
     },
     mediaDownloadFailed(channelDisplayName: string): string {
       return `⚠️ Failed to download receipt photo from ${channelDisplayName}. Please try sending it again!`;
+    },
+    recordEditAccountNotFound(accountHint: string): string {
+      return `⚠️ Account "${accountHint}" not found.`;
+    },
+    recordEditAccountAmbiguous(accountHint: string, candidates: string[]): string {
+      return `⚠️ Account "${accountHint}" is ambiguous: matches ${candidates.join(', ')}.`;
+    },
+    recordEditSourceBankSynced(accountName: string): string {
+      return `⚠️ Transactions in bank-synced accounts (${accountName}) cannot be moved to another account.`;
+    },
+    recordEditTargetBankSynced(accountName: string): string {
+      return `⚠️ Cannot move transactions to a bank-synced account (${accountName}).`;
+    },
+    recordEditCurrencyMismatch(
+      sourceAccount: string,
+      sourceCurrency: string,
+      targetAccount: string,
+      targetCurrency: string
+    ): string {
+      return `⚠️ Cannot move transaction: Currency of ${sourceAccount} (${sourceCurrency}) does not match ${targetAccount} (${targetCurrency}). BudgetBakers only permits moving records between accounts with identical currencies.`;
+    },
+    recordEditZeroAmount: '⚠️ Transaction amount cannot be 0.',
+    recordEditCategoryNotFound(categoryHint: string): string {
+      return `⚠️ Category "${categoryHint}" not found or cannot be assigned.`;
+    },
+    recordEditNotFound: '⚠️ Transaction not found or the replied message has expired.',
+    recordEditFailed(reason: string): string {
+      return `❌ Failed to update transaction: ${reason}`;
     },
   },
 };

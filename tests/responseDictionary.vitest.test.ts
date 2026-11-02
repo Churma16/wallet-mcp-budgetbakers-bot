@@ -401,5 +401,60 @@ describe('response dictionaries and localized formatting', () => {
       expect(fallbackTransfer).toContain('#41');
       expect(fallbackTransfer.length).toBeGreaterThan(0);
     });
+  describe('Record edit receipts and errors localization', () => {
+    it.each([
+      ['id', indonesianDictionary],
+      ['en', englishDictionary],
+    ] as const)('formats editSuccess receipt with all fields and cleared fields in %s', (lang, dictionary) => {
+      const formatted = dictionary.records.editSuccess({
+        transactionTitle: 'Kopi Kenangan',
+        formattedAmount: 'Rp 25.000',
+        accountName: 'BCA Prioritas',
+        categoryName: 'Makanan & Minuman',
+        recordTimestampDisplay: '13 Sep 2026 13:00',
+        transactionTypeIcon: '💸',
+        labels: ['kopi', '#jajan'],
+        movedFromAccountName: 'Cash Dompet',
+        clearedFields: ['note', 'labelIds', 'counterParty', 'categoryId', 'transfer', 'place'],
+        clearedFieldLabels: ['Custom Field'],
+      });
+
+      expect(formatted).toContain('Kopi Kenangan');
+      expect(formatted).toContain('Rp 25.000');
+      expect(formatted).toContain('BCA Prioritas');
+      expect(formatted).toContain('Cash Dompet');
+      expect(formatted).toContain('#kopi #jajan');
+      expect(formatted).toContain('Custom Field');
+      if (lang === 'id') {
+        expect(formatted).toContain('✅ Transaksi berhasil diperbarui:');
+        expect(formatted).toContain('Catatan');
+        expect(formatted).toContain('Tag / Label');
+        expect(formatted).toContain('Status Transfer');
+      } else {
+        expect(formatted).toContain('✅ Transaction updated successfully:');
+        expect(formatted).toContain('Note');
+        expect(formatted).toContain('Tags / Labels');
+        expect(formatted).toContain('Transfer Link');
+      }
+    });
+
+    it.each([
+      ['id', indonesianDictionary],
+      ['en', englishDictionary],
+    ] as const)('formats all recordEdit error messages in %s', (lang, dictionary) => {
+      const err = dictionary.errors;
+
+      expect(err.recordEditAccountNotFound('BCA')).toContain('BCA');
+      expect(err.recordEditAccountAmbiguous('BCA', ['BCA 1', 'BCA 2'])).toContain('BCA 1, BCA 2');
+      expect(err.recordEditSourceBankSynced('BCA Sync')).toContain('BCA Sync');
+      expect(err.recordEditTargetBankSynced('BCA Sync')).toContain('BCA Sync');
+      expect(err.recordEditCurrencyMismatch('BCA', 'IDR', 'USD', 'USD')).toContain('IDR');
+      expect(err.recordEditCurrencyMismatch('BCA', 'IDR', 'USD', 'USD')).toContain('USD');
+      expect(err.recordEditZeroAmount.length).toBeGreaterThan(0);
+      expect(err.recordEditCategoryNotFound('Makan')).toContain('Makan');
+      expect(err.recordEditNotFound.length).toBeGreaterThan(0);
+      expect(err.recordEditFailed('Simulated error')).toContain('Simulated error');
+    });
+  });
   });
 });

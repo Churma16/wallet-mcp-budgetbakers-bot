@@ -4,6 +4,7 @@ import type {
   PatchRecordInputPayload,
   WalletPatchRecordsResponse,
   WalletDeleteRecordsResponse,
+  ClearableRecordField,
 } from '../types.js';
 import {
   type WalletToolCaller,
@@ -122,15 +123,28 @@ export async function patchRecords(
   client: RecordsClient,
   patchPayloadList: PatchRecordInputPayload[]
 ): Promise<WalletPatchRecordsResponse> {
-  const sanitizedPatchList: SanitizedPatchRecordItem[] = patchPayloadList.map(item => ({
-    id: item.id,
-    ...(item.amount !== undefined ? { amount: item.amount } : {}),
-    ...(item.categoryId ? { categoryId: item.categoryId } : {}),
-    ...(Array.isArray(item.labelIds) && item.labelIds.length > 0 ? { labelIds: item.labelIds } : {}),
-    ...(item.note !== undefined ? { note: item.note } : {}),
-    ...(item.counterParty !== undefined ? { counterParty: item.counterParty } : {}),
-    ...(item.recordDate ? { recordDate: normalizeRecordDate(item.recordDate) } : {}),
-  }));
+  const sanitizedPatchList: SanitizedPatchRecordItem[] = patchPayloadList.map(item => {
+    const clearFields =
+      Array.isArray(item.$clear) && item.$clear.length > 0
+        ? Array.from(new Set(item.$clear))
+        : undefined;
+
+    const hasClear = (field: ClearableRecordField) => Boolean(clearFields?.includes(field));
+
+    return {
+      id: item.id,
+      ...(item.accountId ? { accountId: item.accountId } : {}),
+      ...(item.amount !== undefined ? { amount: item.amount } : {}),
+      ...(item.categoryId && !hasClear('categoryId') ? { categoryId: item.categoryId } : {}),
+      ...(Array.isArray(item.labelIds) && item.labelIds.length > 0 && !hasClear('labelIds')
+        ? { labelIds: item.labelIds }
+        : {}),
+      ...(item.note !== undefined && !hasClear('note') ? { note: item.note } : {}),
+      ...(item.counterParty !== undefined && !hasClear('counterParty') ? { counterParty: item.counterParty } : {}),
+      ...(item.recordDate ? { recordDate: normalizeRecordDate(item.recordDate) } : {}),
+      ...(clearFields ? { $clear: clearFields } : {}),
+    };
+  });
 
   applicationLogger.fileDetail('mcp', `Prepared ${sanitizedPatchList.length} Record(s) for MCP Patch Dispatch`, {
     originalPatches: patchPayloadList,
@@ -305,6 +319,11 @@ export class WalletRecordPreparationService {
     patches: PatchRecordInputPayload[]
   ): Promise<PatchRecordInputPayload[]> {
     for (const patch of patches) {
+      if (patch.$clear?.includes('labelIds')) {
+        patch.labelIds = undefined;
+        patch.labels = undefined;
+        continue;
+      }
       if (patch.labels && patch.labels.length > 0) {
         const { resolvedLabelIds, resolvedLabelNames } = await resolveAndEnsureLabels(
           patch.labels,

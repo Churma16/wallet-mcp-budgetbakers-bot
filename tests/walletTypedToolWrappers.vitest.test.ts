@@ -9,6 +9,7 @@ import {
   callGetBudgets,
   callGetRecords,
   callCreateRecords,
+  callPatchRecords,
   callGetRecordsAggregation,
   callDeleteDocuments,
   extractRawArray,
@@ -315,6 +316,31 @@ describe('callDeleteDocuments', () => {
         { type: 'records', ids: ['rec-del'] }
       );
 
+    });
+  });
+
+  describe('callPatchRecords', () => {
+    it('dispatches patch_records with sanitized records containing accountId and $clear', async () => {
+      const mockResult = { summary: { total: 1, succeeded: 1 } };
+      const { caller, mockCallMcpTool } = createMockToolCaller(mockResult);
+
+      const args = {
+        records: [
+          {
+            id: 'rec-1',
+            accountId: 'acc-target',
+            $clear: ['transfer' as const, 'note' as const],
+          },
+        ],
+      };
+
+      const result = await callPatchRecords(caller, args);
+
+      expect(mockCallMcpTool).toHaveBeenCalledWith(
+        WALLET_MCP_TOOL_NAMES.PATCH_RECORDS,
+        args
+      );
+      expect(result).toEqual(mockResult);
     });
   });
 });

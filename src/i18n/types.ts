@@ -1,7 +1,7 @@
-import type { TransactionSortOrder, UnresolvedFilterIssue } from '../wallet/index.js';
+import type { TransactionSortOrder, UnresolvedFilterIssue, ClearableRecordField } from '../wallet/index.js';
 
 export type SupportedLanguage = 'id' | 'en';
-export type { TransactionSortOrder, UnresolvedFilterIssue };
+export type { TransactionSortOrder, UnresolvedFilterIssue, ClearableRecordField };
 
 export interface RecordMessageParams {
   transactionTitle: string;
@@ -11,6 +11,19 @@ export interface RecordMessageParams {
   recordTimestampDisplay: string;
   transactionTypeIcon: string;
   labels?: string[];
+}
+
+export interface RecordEditSuccessParams {
+  transactionTitle: string;
+  formattedAmount: string;
+  accountName: string;
+  categoryName: string;
+  recordTimestampDisplay: string;
+  transactionTypeIcon: string;
+  labels?: string[];
+  movedFromAccountName?: string;
+  clearedFields?: ClearableRecordField[];
+  clearedFieldLabels?: string[];
 }
 
 export interface MultipleRecordsItemParams {
@@ -95,6 +108,7 @@ export interface ResponseDictionary {
     singleSuccess(params: RecordMessageParams): string;
     multipleSuccessHeader(totalRecordsCount: number, currentTimestamp: string): string;
     multipleRecordItem(params: MultipleRecordsItemParams): string;
+    editSuccess(params: RecordEditSuccessParams): string;
   };
 
   balance: {
@@ -203,5 +217,19 @@ export interface ResponseDictionary {
     accountResolutionFallback: string;
     mediaTooLarge(maxMegabytes: number): string;
     mediaDownloadFailed(channelDisplayName: string): string;
+    recordEditAccountNotFound(accountHint: string): string;
+    recordEditAccountAmbiguous(accountHint: string, candidates: string[]): string;
+    recordEditSourceBankSynced(accountName: string): string;
+    recordEditTargetBankSynced(accountName: string): string;
+    recordEditCurrencyMismatch(
+      sourceAccount: string,
+      sourceCurrency: string,
+      targetAccount: string,
+      targetCurrency: string
+    ): string;
+    recordEditZeroAmount: string;
+    recordEditCategoryNotFound(categoryHint: string): string;
+    recordEditNotFound: string;
+    recordEditFailed(reason: string): string;
   };
 }
