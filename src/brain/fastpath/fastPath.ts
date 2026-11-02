@@ -78,7 +78,7 @@ export function detectFastPathAction(userMessageText: string): FastPathAction {
   if (rawTrimmed.startsWith('/')) {
     const slashBody = rawTrimmed.slice(1).trim();
     const [commandKeyword, ...trailingArgs] = slashBody.split(/\s+/);
-    const normalizedCommand = commandKeyword?.toLowerCase();
+    const normalizedCommand = commandKeyword?.split('@')[0]?.toLowerCase();
 
     switch (normalizedCommand) {
       case 'saldo':

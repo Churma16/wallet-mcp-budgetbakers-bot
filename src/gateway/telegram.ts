@@ -24,6 +24,7 @@ import {
   getTelegramBotCommands,
   getTelegramGuideTopicContent,
 } from './telegramMenu.js';
+import { getActiveLanguage } from '../i18n/index.js';
 
 export type { TelegramSafeguardConfiguration };
 
@@ -334,8 +335,9 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     }
 
     if (options?.isHelpMenu) {
+      const currentLanguage = getActiveLanguage();
       const formattedHtmlText = convertWhatsAppMarkupToTelegramHtml(messageText);
-      const replyKeyboard = createTelegramMainReplyKeyboard();
+      const replyKeyboard = createTelegramMainReplyKeyboard(currentLanguage);
 
       try {
         const sentMenu = await this.botInstance.api.sendMessage(targetChatIdentifier, formattedHtmlText, {
@@ -343,7 +345,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
           reply_markup: replyKeyboard,
         });
 
-        const guideOverview = getTelegramGuideTopicContent('home');
+        const guideOverview = getTelegramGuideTopicContent('home', currentLanguage);
         if (guideOverview) {
           await this.botInstance.api.sendMessage(targetChatIdentifier, guideOverview.text, {
             parse_mode: 'HTML',
@@ -447,7 +449,8 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
 
       if (callbackData.startsWith('guide:')) {
         const topic = callbackData.replace('guide:', '');
-        const guideContent = getTelegramGuideTopicContent(topic);
+        const currentLanguage = getActiveLanguage();
+        const guideContent = getTelegramGuideTopicContent(topic, currentLanguage);
         if (guideContent) {
           try {
             await ctx.editMessageText(guideContent.text, {
@@ -460,6 +463,8 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
             });
           }
         }
+        await ctx.answerCallbackQuery();
+      } else {
         await ctx.answerCallbackQuery();
       }
     });
@@ -565,16 +570,13 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
           imageMimeType: 'image/jpeg',
         });
       } catch (downloadError: unknown) {
-        if (
-          downloadError instanceof Error &&
-          downloadError.message.includes('Telegram file size limit exceeded')
-        ) {
-          applicationLogger.fileDetail(
-            'security',
-            'Telegram Image Rejection: Exceeded Payload Limit',
+        if (isMediaPayloadSizeLimitExceeded(downloadError)) {
+          await this.rejectOversizedPhoto(
+            chatId,
+            senderIdentifier,
+            undefined,
+            'download_stream',
             {
-              chatIdentifier: chatId,
-              senderIdentifier,
               error:
                 downloadError instanceof Error
                   ? { name: downloadError.name, message: downloadError.message }

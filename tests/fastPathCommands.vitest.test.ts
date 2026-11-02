@@ -27,8 +27,9 @@ describe('Fast-Path Deterministic Command & Button Resolution', () => {
   });
 
   describe('O(1) Slash Commands Resolution', () => {
-    it('resolves balance check for /saldo and /balance', () => {
+    it('resolves balance check for /saldo and /balance including @botname suffix', () => {
       expect(detectFastPathAction('/saldo')).toBe(FINANCIAL_ACTION_TYPES.CHECK_BALANCE);
+      expect(detectFastPathAction('/saldo@my_wallet_bot')).toBe(FINANCIAL_ACTION_TYPES.CHECK_BALANCE);
       expect(detectFastPathAction('/balance')).toBe(FINANCIAL_ACTION_TYPES.CHECK_BALANCE);
       expect(detectFastPathAction('/SALDO')).toBe(FINANCIAL_ACTION_TYPES.CHECK_BALANCE);
     });
