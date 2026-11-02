@@ -71,13 +71,26 @@ export async function fetchRecords(
       : {}),
     ...(queryOptions?.categoryId
       ? {
-          categoryId: Array.isArray(queryOptions.categoryId)
+          categoryId:
+            (typeof queryOptions.categoryId === 'string' &&
+              queryOptions.categoryId.toLowerCase() === 'unknown') ||
+            (Array.isArray(queryOptions.categoryId) &&
+              queryOptions.categoryId.length === 1 &&
+              queryOptions.categoryId[0].toLowerCase() === 'unknown')
+              ? 'unknown'
+              : Array.isArray(queryOptions.categoryId)
             ? queryOptions.categoryId
             : [queryOptions.categoryId],
         }
       : {}),
     ...(queryOptions?.categoryGroup &&
-    (!Array.isArray(queryOptions?.categoryId) || queryOptions.categoryId.length <= 1)
+    queryOptions.categoryGroup.toLowerCase() !== 'unknown' &&
+    queryOptions.categoryGroup.toLowerCase() !== 'unknown_records' &&
+    (typeof queryOptions.categoryId !== 'string' ||
+      queryOptions.categoryId.toLowerCase() !== 'unknown') &&
+    (!Array.isArray(queryOptions?.categoryId) ||
+      (queryOptions.categoryId.length <= 1 &&
+        String(queryOptions.categoryId[0]).toLowerCase() !== 'unknown'))
       ? { categoryGroup: queryOptions.categoryGroup }
       : {}),
     ...(queryOptions?.recordType ? { recordType: queryOptions.recordType } : {}),

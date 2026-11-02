@@ -30,6 +30,7 @@ export interface PendingTransactionItem {
   isBankSyncedAccount?: boolean;
   clarificationPrompt?: string;
   labels?: string[];
+  transfer?: import('../wallet/types.js').WalletTransferInput;
   createdAt: Date;
   expiresAt: Date;
 }

@@ -284,7 +284,7 @@ export interface GetRecordsToolArgs {
   readonly offset?: number;
   readonly sortBy?: readonly string[];
   readonly accountId?: string;
-  readonly categoryId?: readonly string[];
+  readonly categoryId?: readonly string[] | 'unknown';
   readonly categoryGroup?: string;
   readonly recordType?: string;
   readonly recordDate?: readonly [string, string] | readonly string[];
@@ -339,6 +339,7 @@ export interface SanitizedPatchRecordItem {
   readonly counterParty?: string;
   readonly recordDate?: string;
   readonly $clear?: readonly ClearableRecordField[];
+  readonly transfer?: SanitizedRecordTransferPayload;
 }
 
 export interface PatchRecordsToolArgs {

@@ -116,6 +116,11 @@ export interface CorrelationResult {
   suggestedAction: CorrelationSuggestedAction;
   fusedPendingItem?: Partial<PendingTransactionItem>;
   clarificationPrompt?: string;
+  proposedTransfer?: {
+    pairingMode: 'existing';
+    recordId: string;
+    accountId?: string;
+  };
 }
 
 export interface BankSourceCandidate {

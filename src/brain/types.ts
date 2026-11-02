@@ -17,6 +17,42 @@ export interface TokenUsageStatistics {
   thoughtsTokens?: number;
 }
 
+export interface ExtractedTransferNewItem {
+  pairingMode: 'new';
+  accountHint?: string;
+  accountId?: string;
+  counterAmount?: {
+    value: number;
+    currencyCode: string;
+  };
+}
+
+export interface ExtractedTransferExistingItem {
+  pairingMode: 'existing';
+  recordId: string;
+  accountHint?: string;
+  accountId?: string;
+  counterAmount?: {
+    value: number;
+    currencyCode: string;
+  };
+}
+
+export interface ExtractedTransferUnpairedItem {
+  pairingMode: 'unpaired';
+  accountHint?: string;
+  accountId?: string;
+  counterAmount?: {
+    value: number;
+    currencyCode: string;
+  };
+}
+
+export type ExtractedFinancialTransferItem =
+  | ExtractedTransferNewItem
+  | ExtractedTransferExistingItem
+  | ExtractedTransferUnpairedItem;
+
 export interface ExtractedFinancialRecordItem {
   accountId?: string;
   accountHint?: string;
@@ -28,15 +64,7 @@ export interface ExtractedFinancialRecordItem {
   counterParty?: string;
   labels?: string[];
   currency?: string;
-  transfer?: {
-    pairingMode: 'new';
-    accountHint?: string;
-    accountId?: string;
-    counterAmount?: {
-      value: number;
-      currencyCode: string;
-    };
-  };
+  transfer?: ExtractedFinancialTransferItem;
 }
 
 export interface ExtractedFinancialIntent {

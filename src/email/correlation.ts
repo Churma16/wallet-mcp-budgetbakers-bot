@@ -235,6 +235,111 @@ export class TransactionCorrelationService {
       }
     }
 
+    // Check for unlinked counterpart record to bind via pairingMode: 'existing'
+    const isPotentialTransfer =
+      isTransferEvidence ||
+      evidence.transactionType === INTERNAL_TRANSACTION_TYPES.TRANSFER ||
+      Boolean(evidence.destinationAccountId) ||
+      Boolean(evidence.destinationAccountHint);
+
+    if (isPotentialTransfer) {
+      for (const record of records) {
+        const recordCurrency = (record.currency || 'IDR').toUpperCase();
+        if (recordCurrency !== evidenceCurrency) {
+          continue;
+        }
+
+        // Must be on a different account
+        if (evidence.accountId && record.accountId === evidence.accountId) {
+          continue;
+        }
+
+        // Must NOT already be a paired transfer
+        const isAlreadyPairedTransfer =
+          record.recordType === WALLET_MCP_RECORD_TYPES.TRANSFER ||
+          Boolean(record.transfer);
+        if (isAlreadyPairedTransfer) {
+          continue;
+        }
+
+        // Must have opposite sign and same absolute amount
+        const recordAmount = Math.abs(record.amount);
+        if (recordAmount !== evidenceAmount) {
+          continue;
+        }
+
+        const isOppositeSign = Math.sign(record.amount) === -Math.sign(evidence.amount);
+        if (!isOppositeSign) {
+          continue;
+        }
+
+        // Time proximity check
+        const recordTime = new Date(record.recordDate).getTime();
+        const timeDiffMs = Math.abs(evidenceTime - recordTime);
+        if (timeDiffMs > this.maxCorrelationWindowMilliseconds) {
+          continue;
+        }
+
+        // Reference number match gives immediate HIGH confidence
+        const recordNoteUpper = (record.note || '').toUpperCase();
+        const hasRefMatch = evidenceRefs.some(
+          ref => recordNoteUpper.includes(ref) || record.id.toUpperCase() === ref
+        );
+
+        const matchesDestinationAccount =
+          Boolean(evidence.destinationAccountId) &&
+          record.accountId === evidence.destinationAccountId;
+
+        if (hasRefMatch || matchesDestinationAccount || timeDiffMs <= this.tightWindowMilliseconds) {
+          return {
+            confidence: 'HIGH',
+            matchTarget: { type: 'WALLET_RECORD', record },
+            reasons: [
+              `Existing unlinked Wallet record (${record.id}) on account (${record.accountId}) matches transfer counterpart (${record.amount}) within window. Proposing pairingMode: 'existing'.`,
+            ],
+            suggestedAction: 'PAIR_TRANSFER_EXISTING',
+            proposedTransfer: {
+              pairingMode: 'existing',
+              recordId: record.id,
+              accountId: record.accountId,
+            },
+            fusedPendingItem: {
+              transactionType: 'TRANSFER',
+              matchedDestinationAccountId: record.accountId,
+              transfer: {
+                pairingMode: 'existing',
+                recordId: record.id,
+                accountId: record.accountId,
+              },
+            },
+          };
+        } else if (timeDiffMs <= this.maxCorrelationWindowMilliseconds) {
+          return {
+            confidence: 'MEDIUM',
+            matchTarget: { type: 'WALLET_RECORD', record },
+            reasons: [
+              `Existing unlinked Wallet record (${record.id}) on account (${record.accountId}) has matching transfer amount and opposite sign, but outside tight window. Proposing pairingMode: 'existing'.`,
+            ],
+            suggestedAction: 'PAIR_TRANSFER_EXISTING',
+            proposedTransfer: {
+              pairingMode: 'existing',
+              recordId: record.id,
+              accountId: record.accountId,
+            },
+            fusedPendingItem: {
+              transactionType: 'TRANSFER',
+              matchedDestinationAccountId: record.accountId,
+              transfer: {
+                pairingMode: 'existing',
+                recordId: record.id,
+                accountId: record.accountId,
+              },
+            },
+          };
+        }
+      }
+    }
+
     return null;
   }
 

@@ -354,6 +354,17 @@ export class PendingActionHandler {
 
   private buildRecordsForPendingItem(item: PendingTransactionItem): CreateRecordInputPayload[] {
     if (item.transactionType === 'TRANSFER') {
+      if (item.transfer?.pairingMode === 'existing') {
+        return [{
+          accountId: item.matchedAccountId,
+          amount: item.amount < 0 ? -Math.abs(item.amount) : Math.abs(item.amount),
+          recordDate: item.recordDate,
+          note: item.note || `Transfer ke ${item.destinationAccountNameHint || 'akun lain'}`,
+          counterParty: item.destinationAccountNameHint || '',
+          transfer: item.transfer,
+        }];
+      }
+
       if (!item.matchedDestinationAccountId) {
         throw new WalletMcpRequestError(
           'Transfer destination account was not resolved before dispatch',

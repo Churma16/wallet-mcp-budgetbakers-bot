@@ -17,6 +17,9 @@ import {
   matchesCategorySubstring,
   matchDynamicCategoryGroup,
   extractDynamicCategoryGroups,
+  isUnknownCategoryQuery,
+  NATIVE_UNKNOWN_CATEGORY_FILTER,
+  UNKNOWN_CATEGORY_GROUP_SLUG,
 } from './categoryGroupResolver.js';
 import {
   isValidCalendarDateString,
@@ -92,6 +95,9 @@ const KNOWN_CANONICAL_CATEGORY_KEYWORDS = new Set([
   'housing',
   'pendidikan',
   'education',
+  'unknown',
+  'uncategorized',
+  'unknown_records',
 ]);
 
 export function buildCanonicalAccountSelector(accountName: string): string {
@@ -121,10 +127,35 @@ function resolveCategoryGroupFilter(
   isExplicitGroup: boolean = false
 ): { upstreamCategoryId?: string[]; upstreamCategoryGroup?: string } {
   const normalizedHint = rawCategoryHint.toLowerCase().trim();
+
+  // Directly delegate unknown / uncategorized queries to native upstream filter
+  if (isUnknownCategoryQuery(normalizedHint)) {
+    appliedFilters.categoryGroup = 'unknown';
+    appliedFilters.category = {
+      id: 'unknown',
+      name: 'Tanpa Kategori',
+      selector: categorySelector ?? buildCanonicalCategorySelector('unknown'),
+    };
+    return {
+      upstreamCategoryId: ['unknown'],
+    };
+  }
   const matchResult = matchDynamicCategoryGroup(normalizedHint, dynamicGroupMap);
 
   if (matchResult.status === 'EXACT_MATCH' || matchResult.status === 'FUZZY_MATCH') {
     const matchedGroup = matchResult.group!;
+    if (isUnknownCategoryQuery(matchedGroup.id) || matchedGroup.categoryIds.includes(NATIVE_UNKNOWN_CATEGORY_FILTER)) {
+      appliedFilters.categoryGroup = 'unknown';
+      appliedFilters.category = {
+        id: 'unknown',
+        name: 'Tanpa Kategori',
+        selector: categorySelector ?? buildCanonicalCategorySelector('unknown'),
+      };
+      return {
+        upstreamCategoryId: ['unknown'],
+      };
+    }
+
     if (matchedGroup.categoryIds.length > MAX_GROUP_CATEGORIES_LIMIT) {
       unresolvedFilterIssues.push({
         filterKey: 'category',
@@ -389,7 +420,14 @@ export function normalizeTransactionHistoryFilters(
     upstreamCategoryGroup = groupResult.upstreamCategoryGroup;
   } else if (rawCategoryId) {
     if (Array.isArray(rawCategoryId)) {
-      if (rawCategoryId.length > MAX_GROUP_CATEGORIES_LIMIT) {
+      if (rawCategoryId.length === 1 && isUnknownCategoryQuery(rawCategoryId[0])) {
+        upstreamCategoryId = ['unknown'];
+        appliedFilters.category = {
+          id: 'unknown',
+          name: 'Tanpa Kategori',
+          selector: buildCanonicalCategorySelector('unknown'),
+        };
+      } else if (rawCategoryId.length > MAX_GROUP_CATEGORIES_LIMIT) {
         unresolvedFilterIssues.push({
           filterKey: 'category',
           rawValue: `${rawCategoryId.length} kategori`,
@@ -404,7 +442,16 @@ export function normalizeTransactionHistoryFilters(
         };
       }
     } else {
-      upstreamCategoryId = [rawCategoryId];
+      if (isUnknownCategoryQuery(rawCategoryId)) {
+        upstreamCategoryId = ['unknown'];
+        appliedFilters.category = {
+          id: 'unknown',
+          name: 'Tanpa Kategori',
+          selector: buildCanonicalCategorySelector('unknown'),
+        };
+      } else {
+        upstreamCategoryId = [rawCategoryId];
+      }
       const matchedCategory = availableCategoryList.find(category => category.id === rawCategoryId);
       const categorySelector = matchedCategory
         ? buildCanonicalCategorySelector(matchedCategory.name)
@@ -428,12 +475,19 @@ export function normalizeTransactionHistoryFilters(
 
     // Strategy A: Check 'unknown' / uncategorized
     if (
-      normalizedCategoryHint === 'unknown' ||
-      normalizedCategoryHint === 'uncategorized' ||
-      normalizedCategoryHint === 'tanpa kategori'
+      isUnknownCategoryQuery(trimmedCategoryHint) || isUnknownCategoryQuery(normalizedCategoryHint)
+
+
     ) {
       upstreamCategoryId = ['unknown'];
-      appliedFilters.category = { id: 'unknown', name: 'Tanpa Kategori', selector: categorySelector };
+      appliedFilters.category = {
+        id: 'unknown',
+        name: 'Tanpa Kategori',
+        selector: categorySelector ?? buildCanonicalCategorySelector('unknown'),
+      };
+      if (isGroupQuery) {
+        appliedFilters.categoryGroup = 'unknown';
+      }
     } else {
       // Strategy B: Exact ID match
       const exactIdMatch = availableCategoryList.find(category => category.id === trimmedCategoryHint);

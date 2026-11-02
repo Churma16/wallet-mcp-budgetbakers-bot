@@ -111,9 +111,9 @@ describe('native paired transfers', () => {
     },
     {
       name: 'unsupported pairing mode',
-      record: { accountHint: 'jago expense', amount: -20_000, transfer: { pairingMode: 'unpaired', accountHint: 'gopay' } },
+      record: { accountHint: 'jago expense', amount: -20_000, transfer: { pairingMode: 'invalid_mode', accountHint: 'gopay' } },
       categories: [],
-      error: 'Hanya transfer berpasangan baru yang didukung.',
+      error: "Mode transfer 'invalid_mode' tidak didukung.",
     },
     {
       name: 'unresolved destination',
@@ -137,6 +137,58 @@ describe('native paired transfers', () => {
     );
     expect(result.isValid).toBe(false);
     expect(result.validationErrors[0]).toContain(error);
+  });
+
+  it('accepts transfer with pairingMode existing and valid recordId', () => {
+    const result = validateAndSanitizeFinancialRecords(
+      [{
+        accountHint: 'jago expense',
+        amount: -20_000,
+        note: 'Pair transfer to existing BCA record',
+        transfer: { pairingMode: 'existing', recordId: 'rec-bca-existing-1' },
+      }],
+      accounts,
+      [],
+      'Pair transfer to existing BCA record',
+      new Date('2026-09-14T12:00:00Z')
+    );
+    expect(result.isValid).toBe(true);
+    expect(result.sanitizedRecords[0].transfer).toEqual({
+      pairingMode: 'existing',
+      recordId: 'rec-bca-existing-1',
+    });
+  });
+
+  it('rejects transfer with pairingMode existing when recordId is missing or empty', () => {
+    const result = validateAndSanitizeFinancialRecords(
+      [{
+        accountHint: 'jago expense',
+        amount: -20_000,
+        note: 'Pair transfer without recordId',
+        transfer: { pairingMode: 'existing', recordId: '' } as any,
+      }],
+      accounts,
+      [],
+      'Pair transfer without recordId',
+      new Date('2026-09-14T12:00:00Z')
+    );
+    expect(result.isValid).toBe(false);
+    expect(result.validationErrors[0]).toContain(
+      "ID transaksi tujuan (recordId) wajib diisi untuk pairingMode 'existing'."
+    );
+  });
+
+  it('rejects createRecords with pairingMode existing when recordId is missing', async () => {
+    const client = new WalletMcpClientService('https://example.invalid', 'test-token');
+    await expect(
+      client.createRecords([
+        {
+          accountId: 'acc-jago',
+          amount: -20000,
+          transfer: { pairingMode: 'existing', recordId: '' } as any,
+        },
+      ])
+    ).rejects.toThrow(/requires a valid target recordId/);
   });
 
   it('accepts a validated cross-currency counter amount', () => {
