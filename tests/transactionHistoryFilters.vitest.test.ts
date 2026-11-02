@@ -873,7 +873,6 @@ describe('Composable Transaction History Filters Tests', () => {
   assert.deepStrictEqual(standardReorderedA.upstreamRecordDate, standardReorderedB.upstreamRecordDate);
   assert.deepStrictEqual(standardReorderedA.appliedFilters.dateRange, standardReorderedB.appliedFilters.dateRange);
 
-  console.log('  [PASS] Timezone UTC boundaries, strict calendar validation, and reversed bounds verified.');
 
     });
   });
@@ -921,7 +920,6 @@ describe('Composable Transaction History Filters Tests', () => {
       assert.strictEqual(comboResult.appliedFilters?.category?.selector, 'makanan');
       assert.strictEqual(comboResult.appliedFilters?.recordType, 'expense');
 
-      console.log('  [PASS] Composable multi-filter query accurately combines all dimensions simultaneously.');
     });
   });
 
@@ -948,7 +946,6 @@ describe('Composable Transaction History Filters Tests', () => {
       assert.match(formattedEmpty, /Belum ada transaksi yang cocok dengan filter/);
       assert.match(formattedEmpty, /Mandiri Utama/);
 
-      console.log('  [PASS] Empty results with active filters render non-misleading filtered empty state.');
     });
   });
 
@@ -1490,7 +1487,6 @@ describe('Composable Transaction History Filters Tests', () => {
   assert.match(idFormattedUnresolved, /Filter Riwayat Tidak Ditemukan/);
   assert.match(idFormattedUnresolved, /Akun "NonExistentBank" tidak ditemukan/);
 
-  console.log('  [PASS] Localized headers, badges, warnings, and navigation hints formatted properly.');
 
     });
   });
@@ -1626,7 +1622,6 @@ describe('Composable Transaction History Filters Tests', () => {
   assert.strictEqual(page2NormMixed.isValid, true);
   assert.deepStrictEqual(page2NormMixed.upstreamRecordDate, mixedPage1Norm.upstreamRecordDate);
 
-  console.log('  [PASS] Fast-path intent detector correctly identifies composable history filter commands.');
 
     });
   });
@@ -1668,7 +1663,6 @@ describe('Composable Transaction History Filters Tests', () => {
       assert.match(sentMessages[0].text, /BCA Tabungan/);
       assert.match(sentMessages[0].text, /Caramel Macchiato/);
 
-      console.log('  [PASS] FastPathHandler integration with filters verified end-to-end.');
     });
 
     it('verifies Issue #148 scope grammar and semantic tool boundary coverage', () => {

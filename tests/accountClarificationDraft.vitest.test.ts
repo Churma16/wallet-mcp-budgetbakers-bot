@@ -7,13 +7,8 @@ import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from 
 import { setActiveLanguage } from '../src/i18n/index.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-function assertCondition(testName: string, condition: boolean, extraDetail?: string): void {
-  expect(condition, `${testName}${extraDetail ? ` -> ${extraDetail}` : ''}`).toBe(true);
-}
 
-function runCase(testName: string, testFunction: () => Promise<void> | void): void {
-  it(testName, testFunction);
-}
+
 
 class MockMessagingGateway {
   public readonly messages: Array<{ channel: string; chatId: string; content: string }> = [];
@@ -172,63 +167,63 @@ describe('Pending Account Clarification Drafts', () => {
   beforeEach(() => setActiveLanguage('id'));
   afterEach(() => setActiveLanguage('id'));
 
-  runCase('missing account becomes a draft and numeric selection finalizes it', async () => {
+  it('missing account becomes a draft and numeric selection finalizes it', async () => {
     const harness = createHarness([createRecord('')]);
 
     await harness.handler.handleIncomingUserMessage(createEvent('Makan siang 45rb'));
 
-    assertCondition('No Wallet write happens before clarification', harness.walletMcp.calls.length === 0);
-    assertCondition('One account-selection draft is stored', harness.pendingService.getAllPendingAccountSelectionDrafts().length === 1);
-    assertCondition('Prompt lists the fallback account choices', harness.messaging.messages[0].content.includes('3. Cash'));
+    expect(harness.walletMcp.calls.length === 0, 'No Wallet write happens before clarification').toBe(true);
+    expect(harness.pendingService.getAllPendingAccountSelectionDrafts().length === 1, 'One account-selection draft is stored').toBe(true);
+    expect(harness.messaging.messages[0].content.includes('3. Cash'), 'Prompt lists the fallback account choices').toBe(true);
 
     await harness.handler.handleIncomingUserMessage(createEvent('3'));
 
-    assertCondition('Numeric choice dispatches exactly once', harness.walletMcp.calls.length === 1);
-    assertCondition('Selected account ID is used', harness.walletMcp.calls[0][0].accountId === 'acc-cash');
-    assertCondition('Draft is removed after success', harness.pendingService.getAllPendingAccountSelectionDrafts().length === 0);
-    assertCondition('Clarification reply bypasses AI', harness.ai.textCalls === 1);
+    expect(harness.walletMcp.calls.length === 1, 'Numeric choice dispatches exactly once').toBe(true);
+    expect(harness.walletMcp.calls[0][0].accountId === 'acc-cash', 'Selected account ID is used').toBe(true);
+    expect(harness.pendingService.getAllPendingAccountSelectionDrafts().length === 0, 'Draft is removed after success').toBe(true);
+    expect(harness.ai.textCalls === 1, 'Clarification reply bypasses AI').toBe(true);
   });
 
-  runCase('ambiguous account limits the prompt to matching candidates and accepts a name', async () => {
+  it('ambiguous account limits the prompt to matching candidates and accepts a name', async () => {
     const harness = createHarness([createRecord('BCA')]);
 
     await harness.handler.handleIncomingUserMessage(createEvent('Makan pakai BCA'));
 
     const prompt = harness.messaging.messages[0].content;
-    assertCondition('Ambiguous prompt includes BCA Personal', prompt.includes('BCA Personal'));
-    assertCondition('Ambiguous prompt includes BCA Business', prompt.includes('BCA Business'));
-    assertCondition('Ambiguous prompt excludes unrelated Cash account', !prompt.includes('3. Cash'));
+    expect(prompt.includes('BCA Personal'), 'Ambiguous prompt includes BCA Personal').toBe(true);
+    expect(prompt.includes('BCA Business'), 'Ambiguous prompt includes BCA Business').toBe(true);
+    expect(!prompt.includes('3. Cash'), 'Ambiguous prompt excludes unrelated Cash account').toBe(true);
 
     await harness.handler.handleIncomingUserMessage(createEvent('BCA Business'));
 
-    assertCondition('Name selection dispatches transaction', harness.walletMcp.calls.length === 1);
-    assertCondition('Name selection resolves correct account', harness.walletMcp.calls[0][0].accountId === 'acc-bca-business');
+    expect(harness.walletMcp.calls.length === 1, 'Name selection dispatches transaction').toBe(true);
+    expect(harness.walletMcp.calls[0][0].accountId === 'acc-bca-business', 'Name selection resolves correct account').toBe(true);
   });
 
-  runCase('invalid or still-ambiguous selection keeps the draft pending', async () => {
+  it('invalid or still-ambiguous selection keeps the draft pending', async () => {
     const harness = createHarness([createRecord('BCA')]);
 
     await harness.handler.handleIncomingUserMessage(createEvent('Makan pakai BCA'));
     await harness.handler.handleIncomingUserMessage(createEvent('BCA'));
 
-    assertCondition('Ambiguous reply does not dispatch', harness.walletMcp.calls.length === 0);
-    assertCondition('Draft remains pending', harness.pendingService.getAllPendingAccountSelectionDrafts().length === 1);
-    assertCondition('User receives retry guidance', harness.messaging.messages.at(-1)?.content.includes('belum valid') === true);
-    assertCondition('Invalid clarification reply bypasses AI', harness.ai.textCalls === 1);
+    expect(harness.walletMcp.calls.length === 0, 'Ambiguous reply does not dispatch').toBe(true);
+    expect(harness.pendingService.getAllPendingAccountSelectionDrafts().length === 1, 'Draft remains pending').toBe(true);
+    expect(harness.messaging.messages.at(-1)?.content.includes('belum valid') === true, 'User receives retry guidance').toBe(true);
+    expect(harness.ai.textCalls === 1, 'Invalid clarification reply bypasses AI').toBe(true);
   });
 
-  runCase('cancellation discards the draft without writing to Wallet', async () => {
+  it('cancellation discards the draft without writing to Wallet', async () => {
     const harness = createHarness([createRecord('')]);
 
     await harness.handler.handleIncomingUserMessage(createEvent('Makan siang 45rb'));
     await harness.handler.handleIncomingUserMessage(createEvent('batal'));
 
-    assertCondition('Cancellation performs no Wallet write', harness.walletMcp.calls.length === 0);
-    assertCondition('Cancellation removes the draft', harness.pendingService.getAllPendingAccountSelectionDrafts().length === 0);
-    assertCondition('Cancellation message is returned', harness.messaging.messages.at(-1)?.content.includes('dibatalkan') === true);
+    expect(harness.walletMcp.calls.length === 0, 'Cancellation performs no Wallet write').toBe(true);
+    expect(harness.pendingService.getAllPendingAccountSelectionDrafts().length === 0, 'Cancellation removes the draft').toBe(true);
+    expect(harness.messaging.messages.at(-1)?.content.includes('dibatalkan') === true, 'Cancellation message is returned').toBe(true);
   });
 
-  runCase('expired account-selection drafts are purged', () => {
+  it('expired account-selection drafts are purged', () => {
     const pendingService = new PendingTransactionService();
     const draft = pendingService.addPendingAccountSelectionDraft({
       sourceType: 'USER',
@@ -243,21 +238,21 @@ describe('Pending Account Clarification Drafts', () => {
 
     draft.expiresAt = new Date(Date.now() - 1000);
 
-    assertCondition('Expired draft is no longer retrievable', pendingService.getPendingAccountSelectionDraft(draft.ticketId) === undefined);
-    assertCondition('Expired draft state metadata is removed', pendingService.getPendingAccountSelectionDraftState(draft.ticketId) === undefined);
+    expect(pendingService.getPendingAccountSelectionDraft(draft.ticketId) === undefined, 'Expired draft is no longer retrievable').toBe(true);
+    expect(pendingService.getPendingAccountSelectionDraftState(draft.ticketId) === undefined, 'Expired draft state metadata is removed').toBe(true);
   });
 
-  runCase('unambiguous account still follows the immediate create flow', async () => {
+  it('unambiguous account still follows the immediate create flow', async () => {
     const harness = createHarness([createRecord('Cash')]);
 
     await harness.handler.handleIncomingUserMessage(createEvent('Makan 45rb pakai Cash'));
 
-    assertCondition('Unambiguous transaction dispatches immediately', harness.walletMcp.calls.length === 1);
-    assertCondition('No clarification draft is created', harness.pendingService.getAllPendingAccountSelectionDrafts().length === 0);
-    assertCondition('Immediate flow resolves Cash correctly', harness.walletMcp.calls[0][0].accountId === 'acc-cash');
+    expect(harness.walletMcp.calls.length === 1, 'Unambiguous transaction dispatches immediately').toBe(true);
+    expect(harness.pendingService.getAllPendingAccountSelectionDrafts().length === 0, 'No clarification draft is created').toBe(true);
+    expect(harness.walletMcp.calls[0][0].accountId === 'acc-cash', 'Immediate flow resolves Cash correctly').toBe(true);
   });
 
-  runCase('multi-record batch never partially writes before every account is resolved', async () => {
+  it('multi-record batch never partially writes before every account is resolved', async () => {
     const harness = createHarness([
       createRecord('', { note: 'Lunch' }),
       createRecord('Cash', { amount: -15000, note: 'Coffee' }),
@@ -265,17 +260,17 @@ describe('Pending Account Clarification Drafts', () => {
 
     await harness.handler.handleIncomingUserMessage(createEvent('Lunch dan coffee'));
 
-    assertCondition('Batch is not partially dispatched while one account is unresolved', harness.walletMcp.calls.length === 0);
+    expect(harness.walletMcp.calls.length === 0, 'Batch is not partially dispatched while one account is unresolved').toBe(true);
 
     await harness.handler.handleIncomingUserMessage(createEvent('3'));
 
-    assertCondition('Resolved batch dispatches in one MCP call', harness.walletMcp.calls.length === 1);
-    assertCondition('Both records are included after clarification', harness.walletMcp.calls[0].length === 2);
-    assertCondition('First record uses selected account', harness.walletMcp.calls[0][0].accountId === 'acc-cash');
-    assertCondition('Second record remains on its original resolved account', harness.walletMcp.calls[0][1].accountId === 'acc-cash');
+    expect(harness.walletMcp.calls.length === 1, 'Resolved batch dispatches in one MCP call').toBe(true);
+    expect(harness.walletMcp.calls[0].length === 2, 'Both records are included after clarification').toBe(true);
+    expect(harness.walletMcp.calls[0][0].accountId === 'acc-cash', 'First record uses selected account').toBe(true);
+    expect(harness.walletMcp.calls[0][1].accountId === 'acc-cash', 'Second record remains on its original resolved account').toBe(true);
   });
 
-  runCase('UNKNOWN draft does not lock normal commands and cannot be cancelled before reconciliation', async () => {
+  it('UNKNOWN draft does not lock normal commands and cannot be cancelled before reconciliation', async () => {
     const harness = createHarness([createRecord('')]);
 
     await harness.handler.handleIncomingUserMessage(createEvent('Makan siang 45rb'));
@@ -283,68 +278,56 @@ describe('Pending Account Clarification Drafts', () => {
     await harness.handler.handleIncomingUserMessage(createEvent('3'));
 
     const pendingDraft = harness.pendingService.getAllPendingAccountSelectionDrafts()[0];
-    assertCondition('Unknown MCP outcome retains the draft for reconciliation', Boolean(pendingDraft));
-    assertCondition(
-      'Draft is marked UNKNOWN after uncertain MCP outcome',
-      harness.pendingService.getPendingAccountSelectionDraftState(pendingDraft.ticketId) === 'UNKNOWN'
-    );
-    assertCondition('Only one Wallet dispatch occurred before reconciliation', harness.walletMcp.calls.length === 1);
+    expect(Boolean(pendingDraft), 'Unknown MCP outcome retains the draft for reconciliation').toBe(true);
+    expect(harness.pendingService.getPendingAccountSelectionDraftState(pendingDraft.ticketId) === 'UNKNOWN', 'Draft is marked UNKNOWN after uncertain MCP outcome').toBe(true);
+    expect(harness.walletMcp.calls.length === 1, 'Only one Wallet dispatch occurred before reconciliation').toBe(true);
 
     await harness.handler.handleIncomingUserMessage(createEvent('saldo'));
 
-    assertCondition('Saldo reaches normal fast-path routing', harness.fastPath.calls.includes('CHECK_BALANCE'));
-    assertCondition('Saldo does not retry the UNKNOWN Wallet write', harness.walletMcp.calls.length === 1);
-    assertCondition('Saldo does not invoke AI while fast path handles it', harness.ai.textCalls === 1);
+    expect(harness.fastPath.calls.includes('CHECK_BALANCE'), 'Saldo reaches normal fast-path routing').toBe(true);
+    expect(harness.walletMcp.calls.length === 1, 'Saldo does not retry the UNKNOWN Wallet write').toBe(true);
+    expect(harness.ai.textCalls === 1, 'Saldo does not invoke AI while fast path handles it').toBe(true);
 
     await harness.handler.handleIncomingUserMessage(createEvent('batal'));
 
-    assertCondition(
-      'Explicit cancellation preserves the UNKNOWN reconciliation draft',
-      harness.pendingService.getAllPendingAccountSelectionDrafts().length === 1
-    );
-    assertCondition(
-      'Explicit cancellation preserves UNKNOWN state',
-      harness.pendingService.getPendingAccountSelectionDraftState(pendingDraft.ticketId) === 'UNKNOWN'
-    );
-    assertCondition(
-      'Cancellation reminds the user to reconcile Wallet state',
-      harness.messaging.messages.at(-1)?.content.includes('Sudah ada') === true &&
-        harness.messaging.messages.at(-1)?.content.includes('Belum ada') === true
-    );
-    assertCondition('Cancellation still does not retry Wallet', harness.walletMcp.calls.length === 1);
+    expect(harness.pendingService.getAllPendingAccountSelectionDrafts().length === 1, 'Explicit cancellation preserves the UNKNOWN reconciliation draft').toBe(true);
+    expect(harness.pendingService.getPendingAccountSelectionDraftState(pendingDraft.ticketId) === 'UNKNOWN', 'Explicit cancellation preserves UNKNOWN state').toBe(true);
+    expect(harness.messaging.messages.at(-1)?.content.includes('Sudah ada') === true &&
+        harness.messaging.messages.at(-1)?.content.includes('Belum ada') === true, 'Cancellation reminds the user to reconcile Wallet state').toBe(true);
+    expect(harness.walletMcp.calls.length === 1, 'Cancellation still does not retry Wallet').toBe(true);
   });
 
-  runCase('success acknowledgement failure cannot turn a committed write into UNKNOWN', async () => {
+  it('success acknowledgement failure cannot turn a committed write into UNKNOWN', async () => {
     const harness = createHarness([createRecord('')]);
 
     await harness.handler.handleIncomingUserMessage(createEvent('Makan siang 45rb'));
     harness.messaging.failNextSend = true;
     await harness.handler.handleIncomingUserMessage(createEvent('3'));
 
-    assertCondition('Wallet was called exactly once', harness.walletMcp.calls.length === 1);
-    assertCondition('Committed draft remains resolved after messaging failure', harness.pendingService.getAllPendingAccountSelectionDrafts().length === 0);
-    assertCondition('Resolved draft has no remaining dispatch state', harness.pendingService.getPendingAccountSelectionDraftState(1) === undefined);
+    expect(harness.walletMcp.calls.length === 1, 'Wallet was called exactly once').toBe(true);
+    expect(harness.pendingService.getAllPendingAccountSelectionDrafts().length === 0, 'Committed draft remains resolved after messaging failure').toBe(true);
+    expect(harness.pendingService.getPendingAccountSelectionDraftState(1) === undefined, 'Resolved draft has no remaining dispatch state').toBe(true);
   });
 
-  runCase('numeric account choice remains stable across definitive MCP retry', async () => {
+  it('numeric account choice remains stable across definitive MCP retry', async () => {
     const harness = createHarness([createRecord('')]);
 
     await harness.handler.handleIncomingUserMessage(createEvent('Makan siang 45rb'));
     harness.walletMcp.failNextDefinitively();
     await harness.handler.handleIncomingUserMessage(createEvent('3'));
 
-    assertCondition('First attempt reached Wallet once', harness.walletMcp.calls.length === 1);
-    assertCondition('First attempt used option 3 account', harness.walletMcp.calls[0][0].accountId === 'acc-cash');
-    assertCondition('Definitive failure returns draft to PENDING', harness.pendingService.getPendingAccountSelectionDraftState(1) === 'PENDING');
+    expect(harness.walletMcp.calls.length === 1, 'First attempt reached Wallet once').toBe(true);
+    expect(harness.walletMcp.calls[0][0].accountId === 'acc-cash', 'First attempt used option 3 account').toBe(true);
+    expect(harness.pendingService.getPendingAccountSelectionDraftState(1) === 'PENDING', 'Definitive failure returns draft to PENDING').toBe(true);
 
     await harness.handler.handleIncomingUserMessage(createEvent('3'));
 
-    assertCondition('Same numeric reply triggers exactly one retry', harness.walletMcp.calls.length === 2);
-    assertCondition('Retry preserves option 3 account mapping', harness.walletMcp.calls[1][0].accountId === 'acc-cash');
-    assertCondition('Successful retry resolves the draft', harness.pendingService.getAllPendingAccountSelectionDrafts().length === 0);
+    expect(harness.walletMcp.calls.length === 2, 'Same numeric reply triggers exactly one retry').toBe(true);
+    expect(harness.walletMcp.calls[1][0].accountId === 'acc-cash', 'Retry preserves option 3 account mapping').toBe(true);
+    expect(harness.pendingService.getAllPendingAccountSelectionDrafts().length === 0, 'Successful retry resolves the draft').toBe(true);
   });
 
-  runCase('mixed-currency candidates never invent a currency before selection', async () => {
+  it('mixed-currency candidates never invent a currency before selection', async () => {
     const mixedCurrencyAccounts: WalletAccountItem[] = [
       { id: 'acc-idr', name: 'Rupiah Wallet', currency: 'IDR' },
       { id: 'acc-usd', name: 'Dollar Wallet', currency: 'USD' },
@@ -354,13 +337,13 @@ describe('Pending Account Clarification Drafts', () => {
     await harness.handler.handleIncomingUserMessage(createEvent('Lunch 45k'));
 
     const prompt = harness.messaging.messages[0].content;
-    assertCondition('Prompt exposes IDR candidate currency', prompt.includes('Rupiah Wallet (IDR)'));
-    assertCondition('Prompt exposes USD candidate currency', prompt.includes('Dollar Wallet (USD)'));
-    assertCondition('Prompt explains that currency follows the selected account', prompt.includes('mata uang mengikuti akun'));
-    assertCondition('Prompt does not falsely format the amount as IDR', !prompt.includes('*Nominal:* Rp'));
+    expect(prompt.includes('Rupiah Wallet (IDR)'), 'Prompt exposes IDR candidate currency').toBe(true);
+    expect(prompt.includes('Dollar Wallet (USD)'), 'Prompt exposes USD candidate currency').toBe(true);
+    expect(prompt.includes('mata uang mengikuti akun'), 'Prompt explains that currency follows the selected account').toBe(true);
+    expect(!prompt.includes('*Nominal:* Rp'), 'Prompt does not falsely format the amount as IDR').toBe(true);
   });
 
-  runCase('multi-step clarification advances to the next unresolved record before dispatch', async () => {
+  it('multi-step clarification advances to the next unresolved record before dispatch', async () => {
     const harness = createHarness([
       createRecord('', { note: 'Lunch' }),
       createRecord('BCA', { amount: -15000, note: 'Coffee' }),
@@ -369,19 +352,19 @@ describe('Pending Account Clarification Drafts', () => {
     await harness.handler.handleIncomingUserMessage(createEvent('Lunch dan coffee'));
     await harness.handler.handleIncomingUserMessage(createEvent('3'));
 
-    assertCondition('First resolved record still does not partially dispatch the batch', harness.walletMcp.calls.length === 0);
-    assertCondition('Draft remains for second unresolved record', harness.pendingService.getAllPendingAccountSelectionDrafts().length === 1);
-    assertCondition('Second prompt identifies item 2', harness.messaging.messages.at(-1)?.content.includes('Item 2 dari 2') === true);
-    assertCondition('Second prompt switches to BCA candidates', harness.messaging.messages.at(-1)?.content.includes('2. BCA Business') === true);
+    expect(harness.walletMcp.calls.length === 0, 'First resolved record still does not partially dispatch the batch').toBe(true);
+    expect(harness.pendingService.getAllPendingAccountSelectionDrafts().length === 1, 'Draft remains for second unresolved record').toBe(true);
+    expect(harness.messaging.messages.at(-1)?.content.includes('Item 2 dari 2') === true, 'Second prompt identifies item 2').toBe(true);
+    expect(harness.messaging.messages.at(-1)?.content.includes('2. BCA Business') === true, 'Second prompt switches to BCA candidates').toBe(true);
 
     await harness.handler.handleIncomingUserMessage(createEvent('2'));
 
-    assertCondition('Batch dispatches only after both account choices resolve', harness.walletMcp.calls.length === 1);
-    assertCondition('First record retains Cash selection', harness.walletMcp.calls[0][0].accountId === 'acc-cash');
-    assertCondition('Second record uses BCA Business selection', harness.walletMcp.calls[0][1].accountId === 'acc-bca-business');
+    expect(harness.walletMcp.calls.length === 1, 'Batch dispatches only after both account choices resolve').toBe(true);
+    expect(harness.walletMcp.calls[0][0].accountId === 'acc-cash', 'First record retains Cash selection').toBe(true);
+    expect(harness.walletMcp.calls[0][1].accountId === 'acc-bca-business', 'Second record uses BCA Business selection').toBe(true);
   });
 
-  runCase('PROCESSING draft reports busy state without starting another dispatch', async () => {
+  it('PROCESSING draft reports busy state without starting another dispatch', async () => {
     const harness = createHarness([createRecord('Cash')]);
     const draft = harness.pendingService.addPendingAccountSelectionDraft({
       sourceType: 'USER',
@@ -397,12 +380,12 @@ describe('Pending Account Clarification Drafts', () => {
 
     await harness.handler.handleIncomingUserMessage(createEvent('1'));
 
-    assertCondition('PROCESSING draft does not dispatch again', harness.walletMcp.calls.length === 0);
-    assertCondition('PROCESSING draft returns busy guidance', harness.messaging.messages.at(-1)?.content.includes('sedang diproses') === true);
-    assertCondition('PROCESSING reply bypasses AI', harness.ai.textCalls === 0);
+    expect(harness.walletMcp.calls.length === 0, 'PROCESSING draft does not dispatch again').toBe(true);
+    expect(harness.messaging.messages.at(-1)?.content.includes('sedang diproses') === true, 'PROCESSING draft returns busy guidance').toBe(true);
+    expect(harness.ai.textCalls === 0, 'PROCESSING reply bypasses AI').toBe(true);
   });
 
-  runCase('English mixed-currency prompt remains currency-neutral', async () => {
+  it('English mixed-currency prompt remains currency-neutral', async () => {
     setActiveLanguage('en');
     const mixedCurrencyAccounts: WalletAccountItem[] = [
       { id: 'acc-idr', name: 'Rupiah Wallet', currency: 'IDR' },
@@ -413,9 +396,9 @@ describe('Pending Account Clarification Drafts', () => {
     await harness.handler.handleIncomingUserMessage(createEvent('Lunch 45k'));
 
     const prompt = harness.messaging.messages[0].content;
-    assertCondition('English prompt explains deferred currency', prompt.includes('currency follows the selected account'));
-    assertCondition('English prompt includes candidate currency labels', prompt.includes('Dollar Wallet (USD)'));
-    assertCondition('English prompt does not invent a dollar amount', !prompt.includes('*Amount:* $'));
+    expect(prompt.includes('currency follows the selected account'), 'English prompt explains deferred currency').toBe(true);
+    expect(prompt.includes('Dollar Wallet (USD)'), 'English prompt includes candidate currency labels').toBe(true);
+    expect(!prompt.includes('*Amount:* $'), 'English prompt does not invent a dollar amount').toBe(true);
     setActiveLanguage('id');
   });
 

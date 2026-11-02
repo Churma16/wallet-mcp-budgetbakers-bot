@@ -8,9 +8,7 @@ import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from 
 import { setActiveLanguage } from '../src/i18n/index.js';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-function assertCondition(testName: string, condition: boolean): void {
-  expect(condition, testName).toBe(true);
-}
+
 
 class MockMessagingGateway {
   public readonly messages: string[] = [];
@@ -210,42 +208,27 @@ async function testAmbiguousBareCancellation(): Promise<void> {
 
   await harness.handler.handleIncomingUserMessage(createEvent('batal'));
 
-  assertCondition(
-    'Bare cancellation leaves clarification draft unchanged when both workflows coexist',
-    pendingService.getPendingAccountSelectionDraft(clarificationDraft.ticketId) !== undefined &&
-      pendingService.getPendingAccountSelectionDraftState(clarificationDraft.ticketId) === 'PENDING'
-  );
-  assertCondition(
-    'Bare cancellation leaves standard pending ticket unchanged when both workflows coexist',
-    pendingService.getPendingTransaction(standardPending.ticketId) !== undefined &&
-      pendingService.getPendingTransactionState(standardPending.ticketId) === 'PENDING'
-  );
-  assertCondition('Bare ambiguous cancellation does not reach pending action handler', harness.pendingActionHandler.calls.length === 0);
-  assertCondition('Bare ambiguous cancellation never dispatches Wallet', harness.walletMcp.calls.length === 0);
-  assertCondition(
-    'Disambiguation guidance names both ticket-specific cancellation commands',
-    messaging.messages.at(-1)?.includes(`batal #${clarificationDraft.ticketId}`) === true &&
-      messaging.messages.at(-1)?.includes(`batal #${standardPending.ticketId}`) === true
-  );
+  expect(pendingService.getPendingAccountSelectionDraft(clarificationDraft.ticketId) !== undefined &&
+      pendingService.getPendingAccountSelectionDraftState(clarificationDraft.ticketId) === 'PENDING', 'Bare cancellation leaves clarification draft unchanged when both workflows coexist').toBe(true);
+  expect(pendingService.getPendingTransaction(standardPending.ticketId) !== undefined &&
+      pendingService.getPendingTransactionState(standardPending.ticketId) === 'PENDING', 'Bare cancellation leaves standard pending ticket unchanged when both workflows coexist').toBe(true);
+  expect(harness.pendingActionHandler.calls.length === 0, 'Bare ambiguous cancellation does not reach pending action handler').toBe(true);
+  expect(harness.walletMcp.calls.length === 0, 'Bare ambiguous cancellation never dispatches Wallet').toBe(true);
+  expect(messaging.messages.at(-1)?.includes(`batal #${clarificationDraft.ticketId}`) === true &&
+      messaging.messages.at(-1)?.includes(`batal #${standardPending.ticketId}`) === true, 'Disambiguation guidance names both ticket-specific cancellation commands').toBe(true);
 
   await harness.handler.handleIncomingUserMessage(
     createEvent(`batal #${standardPending.ticketId}`)
   );
-  assertCondition(
-    'Ticket-specific standard cancellation removes only the standard ticket',
-    pendingService.getPendingTransaction(standardPending.ticketId) === undefined &&
-      pendingService.getPendingAccountSelectionDraft(clarificationDraft.ticketId) !== undefined
-  );
+  expect(pendingService.getPendingTransaction(standardPending.ticketId) === undefined &&
+      pendingService.getPendingAccountSelectionDraft(clarificationDraft.ticketId) !== undefined, 'Ticket-specific standard cancellation removes only the standard ticket').toBe(true);
 
   const replacementStandardPending = addStandardPending(pendingService, 'Standard pending C');
   await harness.handler.handleIncomingUserMessage(
     createEvent(`batal #${clarificationDraft.ticketId}`)
   );
-  assertCondition(
-    'Ticket-specific clarification cancellation removes only the clarification draft',
-    pendingService.getPendingAccountSelectionDraft(clarificationDraft.ticketId) === undefined &&
-      pendingService.getPendingTransaction(replacementStandardPending.ticketId) !== undefined
-  );
+  expect(pendingService.getPendingAccountSelectionDraft(clarificationDraft.ticketId) === undefined &&
+      pendingService.getPendingTransaction(replacementStandardPending.ticketId) !== undefined, 'Ticket-specific clarification cancellation removes only the clarification draft').toBe(true);
 }
 
 async function testUnknownWarningDeliveryFailure(): Promise<void> {
@@ -270,21 +253,18 @@ async function testUnknownWarningDeliveryFailure(): Promise<void> {
     Date.now()
   );
 
-  assertCondition('UNKNOWN dispatch with warning delivery failure is still handled', handled);
-  assertCondition('UNKNOWN warning delivery failure leaves draft UNKNOWN', pendingService.getPendingAccountSelectionDraftState(draft.ticketId) === 'UNKNOWN');
-  assertCondition('UNKNOWN warning delivery failure performs exactly one Wallet dispatch', walletMcp.calls.length === 1);
-  assertCondition(
-    'UNKNOWN warning delivery failure emits no retry or coba-lagi guidance',
-    messaging.messages.every(message => !/(coba\s*lagi|retry|mencoba ulang)/i.test(message))
-  );
+  expect(handled, 'UNKNOWN dispatch with warning delivery failure is still handled').toBe(true);
+  expect(pendingService.getPendingAccountSelectionDraftState(draft.ticketId) === 'UNKNOWN', 'UNKNOWN warning delivery failure leaves draft UNKNOWN').toBe(true);
+  expect(walletMcp.calls.length === 1, 'UNKNOWN warning delivery failure performs exactly one Wallet dispatch').toBe(true);
+  expect(messaging.messages.every(message => !/(coba\s*lagi|retry|mencoba ulang)/i.test(message)), 'UNKNOWN warning delivery failure emits no retry or coba-lagi guidance').toBe(true);
 
   const repeatedChoiceHandled = await handler.handlePendingAccountSelectionReply(
     createEvent('1'),
     '1',
     Date.now()
   );
-  assertCondition('UNKNOWN draft no longer claims a repeated account choice automatically', repeatedChoiceHandled === false);
-  assertCondition('UNKNOWN draft is never redispatched automatically', walletMcp.calls.length === 1);
+  expect(repeatedChoiceHandled === false, 'UNKNOWN draft no longer claims a repeated account choice automatically').toBe(true);
+  expect(walletMcp.calls.length === 1, 'UNKNOWN draft is never redispatched automatically').toBe(true);
 }
 
 async function testInitialPromptFailureRollback(): Promise<void> {
@@ -313,14 +293,14 @@ async function testInitialPromptFailureRollback(): Promise<void> {
     promptFailureObserved = true;
   }
 
-  assertCondition('Initial clarification prompt delivery failure propagates to caller', promptFailureObserved);
-  assertCondition('Undelivered initial clarification draft is rolled back', pendingService.getAllPendingAccountSelectionDrafts().length === 0);
+  expect(promptFailureObserved, 'Initial clarification prompt delivery failure propagates to caller').toBe(true);
+  expect(pendingService.getAllPendingAccountSelectionDrafts().length === 0, 'Undelivered initial clarification draft is rolled back').toBe(true);
 
   const userHarness = createUserHandlerHarness(pendingService, messaging);
   await userHarness.handler.handleIncomingUserMessage(createEvent('saldo'));
 
-  assertCondition('Next unrelated message follows normal fast-path routing', userHarness.fastPathHandler.calls.includes('CHECK_BALANCE'));
-  assertCondition('Hidden failed draft does not consume the next message', userHarness.financialAiProvider.textCalls === 0);
+  expect(userHarness.fastPathHandler.calls.includes('CHECK_BALANCE'), 'Next unrelated message follows normal fast-path routing').toBe(true);
+  expect(userHarness.financialAiProvider.textCalls === 0, 'Hidden failed draft does not consume the next message').toBe(true);
 }
 
 async function testFollowUpPromptDeliveryFailure(): Promise<void> {
@@ -350,13 +330,10 @@ async function testFollowUpPromptDeliveryFailure(): Promise<void> {
     accounts,
     categories
   );
-  assertCondition('Initial multi-record prompt is delivered successfully', initialCreated);
+  expect(initialCreated, 'Initial multi-record prompt is delivered successfully').toBe(true);
   const draft = pendingService.getAllPendingAccountSelectionDrafts()[0];
-  assertCondition(
-    'First-step draft is PENDING for record 1',
-    Boolean(draft) && pendingService.getPendingAccountSelectionDraftState(draft.ticketId) === 'PENDING'
-  );
-  assertCondition('First prompt delivered to user', messaging.messages.length === 1);
+  expect(Boolean(draft) && pendingService.getPendingAccountSelectionDraftState(draft.ticketId) === 'PENDING', 'First-step draft is PENDING for record 1').toBe(true);
+  expect(messaging.messages.length === 1, 'First prompt delivered to user').toBe(true);
 
   messaging.failNextSend = true;
   let secondPromptFailureObserved = false;
@@ -370,22 +347,16 @@ async function testFollowUpPromptDeliveryFailure(): Promise<void> {
     secondPromptFailureObserved = true;
   }
 
-  assertCondition('Follow-up prompt delivery failure propagates to caller', secondPromptFailureObserved);
-  assertCondition('Wallet dispatch count remains 0 after follow-up prompt failure', walletMcp.calls.length === 0);
-  assertCondition(
-    'Second-step draft is not left claimable as PENDING',
-    pendingService.getAllPendingAccountSelectionDrafts().length === 0
-  );
-  assertCondition(
-    'Second-step draft state is cleared from tracking',
-    pendingService.getPendingAccountSelectionDraftState(draft.ticketId) === undefined
-  );
+  expect(secondPromptFailureObserved, 'Follow-up prompt delivery failure propagates to caller').toBe(true);
+  expect(walletMcp.calls.length === 0, 'Wallet dispatch count remains 0 after follow-up prompt failure').toBe(true);
+  expect(pendingService.getAllPendingAccountSelectionDrafts().length === 0, 'Second-step draft is not left claimable as PENDING').toBe(true);
+  expect(pendingService.getPendingAccountSelectionDraftState(draft.ticketId) === undefined, 'Second-step draft state is cleared from tracking').toBe(true);
 
   const userHarness = createUserHandlerHarness(pendingService, messaging);
   await userHarness.handler.handleIncomingUserMessage(createEvent('1'));
 
-  assertCondition('Subsequent numeric reply cannot silently resolve record 2 or call Wallet', walletMcp.calls.length === 0);
-  assertCondition('No draft exists to be resolved by subsequent numeric reply', pendingService.getAllPendingAccountSelectionDrafts().length === 0);
+  expect(walletMcp.calls.length === 0, 'Subsequent numeric reply cannot silently resolve record 2 or call Wallet').toBe(true);
+  expect(pendingService.getAllPendingAccountSelectionDrafts().length === 0, 'No draft exists to be resolved by subsequent numeric reply').toBe(true);
 
   const successPendingService = new PendingTransactionService();
   const successMessaging = new MockMessagingGateway();
@@ -408,33 +379,30 @@ async function testFollowUpPromptDeliveryFailure(): Promise<void> {
     categories
   );
   const successDraft = successPendingService.getAllPendingAccountSelectionDrafts()[0];
-  assertCondition('Success multi-record draft created', Boolean(successDraft));
+  expect(Boolean(successDraft), 'Success multi-record draft created').toBe(true);
 
   const firstChoiceHandled = await successHandler.handlePendingAccountSelectionReply(
     createEvent('1'),
     '1',
     Date.now()
   );
-  assertCondition('First account choice handled successfully', firstChoiceHandled);
-  assertCondition('Wallet dispatch count remains 0 before final account selection', successWalletMcp.calls.length === 0);
-  assertCondition(
-    'Second-step draft becomes PENDING only after successful delivery of second prompt',
-    successPendingService.getPendingAccountSelectionDraftState(successDraft.ticketId) === 'PENDING' &&
-      successPendingService.getPendingAccountSelectionDraft(successDraft.ticketId)?.pendingRecordIndex === 1
-  );
-  assertCondition('Second prompt delivered to user', successMessaging.messages.at(-1)?.includes('Item 2 dari 2') === true);
+  expect(firstChoiceHandled, 'First account choice handled successfully').toBe(true);
+  expect(successWalletMcp.calls.length === 0, 'Wallet dispatch count remains 0 before final account selection').toBe(true);
+  expect(successPendingService.getPendingAccountSelectionDraftState(successDraft.ticketId) === 'PENDING' &&
+      successPendingService.getPendingAccountSelectionDraft(successDraft.ticketId)?.pendingRecordIndex === 1, 'Second-step draft becomes PENDING only after successful delivery of second prompt').toBe(true);
+  expect(successMessaging.messages.at(-1)?.includes('Item 2 dari 2') === true, 'Second prompt delivered to user').toBe(true);
 
   const secondChoiceHandled = await successHandler.handlePendingAccountSelectionReply(
     createEvent('1'),
     '1',
     Date.now()
   );
-  assertCondition('Second account choice completes the batch normally', secondChoiceHandled);
-  assertCondition('Wallet dispatch count is exactly 1 after full batch resolution', successWalletMcp.calls.length === 1);
-  assertCondition('Both records dispatched in the single batch', successWalletMcp.calls[0].length === 2);
-  assertCondition('First record resolved to selected account', successWalletMcp.calls[0][0].accountId === 'acc-cash');
-  assertCondition('Second record resolved to selected account', successWalletMcp.calls[0][1].accountId === 'acc-cash');
-  assertCondition('Completed draft is removed after resolution', successPendingService.getAllPendingAccountSelectionDrafts().length === 0);
+  expect(secondChoiceHandled, 'Second account choice completes the batch normally').toBe(true);
+  expect(successWalletMcp.calls.length === 1, 'Wallet dispatch count is exactly 1 after full batch resolution').toBe(true);
+  expect(successWalletMcp.calls[0].length === 2, 'Both records dispatched in the single batch').toBe(true);
+  expect(successWalletMcp.calls[0][0].accountId === 'acc-cash', 'First record resolved to selected account').toBe(true);
+  expect(successWalletMcp.calls[0][1].accountId === 'acc-cash', 'Second record resolved to selected account').toBe(true);
+  expect(successPendingService.getAllPendingAccountSelectionDrafts().length === 0, 'Completed draft is removed after resolution').toBe(true);
 }
 
 describe('Account Clarification Safety Regressions', () => {

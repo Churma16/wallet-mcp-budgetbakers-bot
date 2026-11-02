@@ -5,10 +5,6 @@ import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/wallet/index.js';
 import { expect, it } from 'vitest';
 
-function assertCondition(testName: string, condition: boolean): void {
-  expect(condition, testName).toBe(true);
-}
-
 class MockMessagingGateway {
   async sendTypingPresence(): Promise<void> {}
   async clearTypingPresence(): Promise<void> {}
@@ -145,20 +141,16 @@ function assertClarificationUntouched(
   label: string,
   harness: ReturnType<typeof createHarness>
 ): void {
-  assertCondition(
-    `${label} leaves clarification draft present`,
-    harness.pendingService.getPendingAccountSelectionDraft(
-      harness.clarificationDraft.ticketId
-    ) !== undefined
-  );
-  assertCondition(
-    `${label} leaves clarification draft PENDING`,
-    harness.pendingService.getPendingAccountSelectionDraftState(
-      harness.clarificationDraft.ticketId
-    ) === 'PENDING'
-  );
-  assertCondition(`${label} bypasses AI`, harness.financialAiProvider.textCalls === 0);
-  assertCondition(`${label} does not dispatch clarification Wallet write`, harness.walletDispatch.calls === 0);
+  expect(
+    harness.pendingService.getPendingAccountSelectionDraft(harness.clarificationDraft.ticketId),
+    `${label} leaves clarification draft present`
+  ).toBeDefined();
+  expect(
+    harness.pendingService.getPendingAccountSelectionDraftState(harness.clarificationDraft.ticketId),
+    `${label} leaves clarification draft PENDING`
+  ).toBe('PENDING');
+  expect(harness.financialAiProvider.textCalls, `${label} bypasses AI`).toBe(0);
+  expect(harness.walletDispatch.calls, `${label} does not dispatch clarification Wallet write`).toBe(0);
 }
 
 async function assertPendingRoute(
@@ -175,12 +167,9 @@ async function assertPendingRoute(
 
   await harness.handler.handleIncomingUserMessage(createEvent(message));
 
-  assertCondition(
-    `${label} reaches the standard pending handler`,
-    harness.pendingActionHandler.calls.length === 1 &&
-      harness.pendingActionHandler.calls[0].actionType === expectedActionType &&
-      harness.pendingActionHandler.calls[0].targetScope === targetScope
-  );
+  expect(harness.pendingActionHandler.calls, `${label} reaches the standard pending handler`).toHaveLength(1);
+  expect(harness.pendingActionHandler.calls[0].actionType).toBe(expectedActionType);
+  expect(harness.pendingActionHandler.calls[0].targetScope).toBe(targetScope);
   assertClarificationUntouched(label, harness);
 }
 

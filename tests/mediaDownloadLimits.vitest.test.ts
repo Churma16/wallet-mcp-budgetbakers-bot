@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { beforeEach, describe, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { Bot } from 'grammy';
 import { TelegramMessagingAdapter } from '../src/gateway/telegram.js';
 import { WhatsappMessagingAdapter } from '../src/gateway/whatsapp.js';
@@ -19,206 +19,132 @@ import {
 import { setActiveLanguage, getActiveLanguage } from '../src/i18n/index.js';
 import { applicationLogger } from '../src/lib/logger.js';
 
-interface AssertionStatistics {
-  totalCount: number;
-  passedCount: number;
-  failedCount: number;
-}
-
-const testStatistics: AssertionStatistics = {
-  totalCount: 0,
-  passedCount: 0,
-  failedCount: 0,
-};
-
-function assertCondition(testCaseIdentifier: string, conditionMet: boolean, failureDetail?: string): void {
-  testStatistics.totalCount++;
-  if (conditionMet) {
-    testStatistics.passedCount++;
-    console.log(`  [PASS] ${testCaseIdentifier}`);
-  } else {
-    testStatistics.failedCount++;
-    console.error(`  [FAIL] ${testCaseIdentifier}${failureDetail ? ` -> ${failureDetail}` : ''}`);
-  }
-}
-
-async function runTestGroup(testGroup: number): Promise<void> {
-  console.log('====================================================');
-  console.log('[INFO] Running Incoming Media Download Limits Test Suite');
-  console.log('====================================================\n');
-
+describe('incoming media download limits and safety policies', () => {
   const dummyToken = '123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ';
   const dummyUserId = '123456789';
   const dummySessionDirectory = './test_auth_session';
   const dummyPhoneNumber = '6281234567890';
 
-  // ----------------------------------------------------
-  // TEST GROUP 1: Environment Configuration for Media Limits
-  // ----------------------------------------------------
-  console.log('[TEST GROUP 1] Environment Configuration for Media Limits');
-  if (testGroup === 1) {
+  describe('environment configuration for media limits', () => {
     const originalEnv = process.env.MAX_MEDIA_DOWNLOAD_MB;
 
-    delete process.env.MAX_MEDIA_DOWNLOAD_MB;
-    const defaultConfig = loadEnvironmentConfiguration();
-    assertCondition(
-      'ENV-1.1: Default maxMediaDownloadMb is 10',
-      defaultConfig.maxMediaDownloadMb === 10,
-      `Actual: ${defaultConfig.maxMediaDownloadMb}`
-    );
-
-    process.env.MAX_MEDIA_DOWNLOAD_MB = '25';
-    const customConfig = loadEnvironmentConfiguration();
-    assertCondition(
-      'ENV-1.2: Custom MAX_MEDIA_DOWNLOAD_MB (25) is parsed correctly',
-      customConfig.maxMediaDownloadMb === 25,
-      `Actual: ${customConfig.maxMediaDownloadMb}`
-    );
-
-    process.env.MAX_MEDIA_DOWNLOAD_MB = 'invalid_number';
-    const invalidConfig = loadEnvironmentConfiguration();
-    assertCondition(
-      'ENV-1.3: Non-numeric MAX_MEDIA_DOWNLOAD_MB safely falls back to 10',
-      invalidConfig.maxMediaDownloadMb === 10,
-      `Actual: ${invalidConfig.maxMediaDownloadMb}`
-    );
-
-    process.env.MAX_MEDIA_DOWNLOAD_MB = '-5';
-    const negativeConfig = loadEnvironmentConfiguration();
-    assertCondition(
-      'ENV-1.4: Negative MAX_MEDIA_DOWNLOAD_MB safely falls back to 10',
-      negativeConfig.maxMediaDownloadMb === 10,
-      `Actual: ${negativeConfig.maxMediaDownloadMb}`
-    );
-
-    if (originalEnv !== undefined) {
-      process.env.MAX_MEDIA_DOWNLOAD_MB = originalEnv;
-    } else {
-      delete process.env.MAX_MEDIA_DOWNLOAD_MB;
-    }
-  }
-
-  // ----------------------------------------------------
-  // TEST GROUP 2: WhatsApp Pre-Download & Buffer Limits
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 2] WhatsApp Media Buffer Limits');
-  if (testGroup === 2) {
-    const receivedEvents: IncomingUserMessageEvent[] = [];
-    const callback = async (event: IncomingUserMessageEvent) => {
-      receivedEvents.push(event);
-    };
-
-    const maxDownloadLimitBytes = 5 * 1024 * 1024; // 5 MB
-    const adapter = new WhatsappMessagingAdapter(
-      dummySessionDirectory,
-      dummyPhoneNumber,
-      callback,
-      {
-        maxMediaDownloadBytes: maxDownloadLimitBytes,
+    beforeEach(() => {
+      if (originalEnv !== undefined) {
+        process.env.MAX_MEDIA_DOWNLOAD_MB = originalEnv;
+      } else {
+        delete process.env.MAX_MEDIA_DOWNLOAD_MB;
       }
-    );
+    });
 
-    assertCondition(
-      'WA-2.1: Adapter respects custom maxMediaDownloadBytes (5 MB)',
-      adapter.getMaxMediaDownloadBytes() === maxDownloadLimitBytes
-    );
+    it('loads default 10 MB when MAX_MEDIA_DOWNLOAD_MB is unset', () => {
+      delete process.env.MAX_MEDIA_DOWNLOAD_MB;
+      const config = loadEnvironmentConfiguration();
+      expect(config.maxMediaDownloadMb).toBe(10);
+    });
 
-    const outboundMessages: string[] = [];
-    const mockSocket = {
-      sendMessage: async (_jid: string, content: { text: string }) => {
-        outboundMessages.push(content.text);
-        return { key: { id: 'mock-outbound-id' } };
-      },
-      updateMediaMessage: async () => {},
-    };
-    (adapter as any).socketInstance = mockSocket;
+    it('parses valid integer MAX_MEDIA_DOWNLOAD_MB', () => {
+      process.env.MAX_MEDIA_DOWNLOAD_MB = '25';
+      const config = loadEnvironmentConfiguration();
+      expect(config.maxMediaDownloadMb).toBe(25);
+    });
 
-    // Subcase A: Pre-download inspection catches oversized declared fileLength (12 MB)
-    {
-      outboundMessages.length = 0;
-      receivedEvents.length = 0;
+    it('falls back to default 10 MB when MAX_MEDIA_DOWNLOAD_MB is <= 0 or invalid string', () => {
+      process.env.MAX_MEDIA_DOWNLOAD_MB = '0';
+      expect(loadEnvironmentConfiguration().maxMediaDownloadMb).toBe(10);
+
+      process.env.MAX_MEDIA_DOWNLOAD_MB = '-5';
+      expect(loadEnvironmentConfiguration().maxMediaDownloadMb).toBe(10);
+
+      process.env.MAX_MEDIA_DOWNLOAD_MB = 'invalid_string';
+      expect(loadEnvironmentConfiguration().maxMediaDownloadMb).toBe(10);
+    });
+  });
+
+  describe('WhatsApp pre-download and buffer limits', () => {
+    const maxDownloadLimitBytes = 5 * 1024 * 1024;
+
+    it('respects custom maxMediaDownloadBytes option', () => {
+      const adapter = new WhatsappMessagingAdapter(
+        dummySessionDirectory,
+        dummyPhoneNumber,
+        async () => {},
+        { maxMediaDownloadBytes: maxDownloadLimitBytes }
+      );
+      expect(adapter.getMaxMediaDownloadBytes()).toBe(maxDownloadLimitBytes);
+    });
+
+    it('rejects oversized image before download and notifies sender with localized warning', async () => {
+      const receivedEvents: IncomingUserMessageEvent[] = [];
+      const outboundMessages: string[] = [];
+
+      const adapter = new WhatsappMessagingAdapter(
+        dummySessionDirectory,
+        dummyPhoneNumber,
+        async event => { receivedEvents.push(event); },
+        { maxMediaDownloadBytes: maxDownloadLimitBytes }
+      );
+
+      const mockSocket = {
+        sendMessage: async (_jid: string, content: { text: string }) => {
+          outboundMessages.push(content.text);
+          return { key: { id: 'mock-outbound-id' } };
+        },
+        updateMediaMessage: async () => {},
+      };
+      (adapter as unknown as { socketInstance: typeof mockSocket }).socketInstance = mockSocket;
 
       const oversizedIncomingMessage = {
         key: { remoteJid: '6281234567890@s.whatsapp.net', id: 'msg-oversized-1' },
         message: {
           imageMessage: {
-            fileLength: 12 * 1024 * 1024, // 12 MB (exceeds 5 MB limit)
+            fileLength: 12 * 1024 * 1024,
             caption: 'Receipt over 5MB',
             mimetype: 'image/jpeg',
           },
         },
       };
 
-      await (adapter as any).handleIncomingMessage(
+      await (adapter as unknown as {
+        handleIncomingMessage: (...args: unknown[]) => Promise<void>;
+      }).handleIncomingMessage(
         oversizedIncomingMessage,
         oversizedIncomingMessage.message,
         '6281234567890@s.whatsapp.net',
         '6281234567890'
       );
 
-      assertCondition(
-        'WA-2.2: Oversized image is rejected before download is triggered',
-        receivedEvents.length === 0,
-        `Received event count: ${receivedEvents.length}`
+      expect(receivedEvents).toHaveLength(0);
+      expect(outboundMessages).toHaveLength(1);
+      expect(outboundMessages[0]).toContain('Ukuran foto melebihi batas maksimal (5 MB)');
+    });
+
+    it('correctly evaluates oversized post-download buffer when length is undeclared', () => {
+      const adapter = new WhatsappMessagingAdapter(
+        dummySessionDirectory,
+        dummyPhoneNumber,
+        async () => {},
+        { maxMediaDownloadBytes: maxDownloadLimitBytes }
       );
-      assertCondition(
-        'WA-2.3: Friendly warning message sent to user indicating limit exceeded',
-        outboundMessages.length > 0 && outboundMessages[0].includes('Ukuran foto melebihi batas maksimal (5 MB)'),
-        `Actual message: ${outboundMessages[0]}`
-      );
-    }
 
-    // Subcase B: Post-download buffer check when fileLength is missing/zero but actual buffer exceeds limit
-    {
-      outboundMessages.length = 0;
-      receivedEvents.length = 0;
+      const oversizedBuffer = Buffer.alloc(6 * 1024 * 1024);
+      expect(oversizedBuffer.length).toBeGreaterThan(adapter.getMaxMediaDownloadBytes());
+    });
+  });
 
-      const declaredZeroLengthMessage = {
-        key: { remoteJid: '6281234567890@s.whatsapp.net', id: 'msg-oversized-buffer' },
-        message: {
-          imageMessage: {
-            fileLength: 0, // Undeclared file length
-            caption: 'Receipt undeclared length',
-            mimetype: 'image/jpeg',
-          },
-        },
-      };
-
-      const oversizedBuffer = Buffer.alloc(6 * 1024 * 1024); // 6 MB buffer
-      assertCondition(
-        'WA-2.4: Oversized buffer exceeds configured limit (6 MB > 5 MB)',
-        oversizedBuffer.length > adapter.getMaxMediaDownloadBytes()
-      );
-    }
-  }
-
-  // ----------------------------------------------------
-  // TEST GROUP 3: Telegram Pre-Download & Stream Limits
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 3] Telegram Media Buffer Limits');
-  if (testGroup === 3) {
-    const receivedEvents: IncomingUserMessageEvent[] = [];
-    const callback = async (event: IncomingUserMessageEvent) => {
-      receivedEvents.push(event);
-    };
-
-    const maxDownloadLimitBytes = 10 * 1024 * 1024; // 10 MB
+  describe('Telegram pre-download and stream limits', () => {
+    const maxDownloadLimitBytes = 10 * 1024 * 1024;
     const adapter = new TelegramMessagingAdapter(
       dummyToken,
       dummyUserId,
-      callback,
-      {
-        maxMediaDownloadBytes: maxDownloadLimitBytes,
-      }
+      async () => {},
+      { maxMediaDownloadBytes: maxDownloadLimitBytes }
     );
 
-    assertCondition(
-      'TG-3.1: Adapter respects default/configured maxMediaDownloadBytes (10 MB)',
-      adapter.getMaxMediaDownloadBytes() === maxDownloadLimitBytes
-    );
+    it('respects default or configured maxMediaDownloadBytes', () => {
+      expect(adapter.getMaxMediaDownloadBytes()).toBe(maxDownloadLimitBytes);
+    });
 
-    // Subcase A: Axios error classification for maxContentLength exceeded
-    {
+    it('classifies ERR_FR_MAX_BODY_LENGTH_EXCEEDED as payload size limit exceeded', () => {
       const simulatedAxiosError = {
         isAxiosError: true,
         code: 'ERR_FR_MAX_BODY_LENGTH_EXCEEDED',
@@ -229,128 +155,61 @@ async function runTestGroup(testGroup: number): Promise<void> {
         simulatedAxiosError.code === 'ERR_FR_MAX_BODY_LENGTH_EXCEEDED' ||
         simulatedAxiosError.message.toLowerCase().includes('maxcontentlength');
 
-      assertCondition(
-        'TG-3.2: ERR_FR_MAX_BODY_LENGTH_EXCEEDED is classified as payload size limit exceeded',
-        isExceeded
-      );
-    }
+      expect(isExceeded).toBe(true);
+    });
 
-    // Subcase B: Pre-download inspection on photo variant file_size (15 MB)
-    {
+    it('correctly identifies photo variant file_size exceeding threshold', () => {
       const declaredFileSize = 15 * 1024 * 1024;
-      const isOversized = declaredFileSize > adapter.getMaxMediaDownloadBytes();
-      assertCondition(
-        'TG-3.3: Photo variant with 15 MB file_size detected as exceeding 10 MB threshold',
-        isOversized
-      );
-    }
+      expect(declaredFileSize).toBeGreaterThan(adapter.getMaxMediaDownloadBytes());
 
-    // Subcase C: Legitimate photo size check (3 MB)
-    {
       const legitimateFileSize = 3 * 1024 * 1024;
-      const isWithinLimit = legitimateFileSize <= adapter.getMaxMediaDownloadBytes();
-      assertCondition(
-        'TG-3.4: Legitimate photo of 3 MB is within allowable bounds',
-        isWithinLimit
-      );
-    }
-  }
+      expect(legitimateFileSize).toBeLessThanOrEqual(adapter.getMaxMediaDownloadBytes());
+    });
+  });
 
-  // ----------------------------------------------------
-  // TEST GROUP 4: Shared Cross-Channel Media Policy Primitives & Localization
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 4] Shared Cross-Channel Media Policy Primitives & Localization');
-  if (testGroup === 4) {
-    // 4.1 Byte and Megabyte Size Evaluation
-    assertCondition(
-      'POLICY-4.1: formatBytesToMegabytes converts 10 MB accurately',
-      formatBytesToMegabytes(10 * 1024 * 1024) === 10
-    );
-    assertCondition(
-      'POLICY-4.2: formatBytesToMegabytesDisplay formats 15.5 MB correctly',
-      formatBytesToMegabytesDisplay(15.5 * 1024 * 1024, 1) === '15.5'
-    );
-    assertCondition(
-      'POLICY-4.3: isMediaSizeExceeded detects byte boundaries accurately',
-      !isMediaSizeExceeded(100, 100) && isMediaSizeExceeded(101, 100) && !isMediaSizeExceeded(99, 100)
-    );
+  describe('shared cross-channel media policy primitives and localization', () => {
+    it('evaluates byte and megabyte size conversions and boundaries accurately', () => {
+      expect(formatBytesToMegabytes(10 * 1024 * 1024)).toBe(10);
+      expect(formatBytesToMegabytesDisplay(15.5 * 1024 * 1024, 1)).toBe('15.5');
+      expect(isMediaSizeExceeded(100, 100)).toBe(false);
+      expect(isMediaSizeExceeded(101, 100)).toBe(true);
+      expect(isMediaSizeExceeded(99, 100)).toBe(false);
+    });
 
-    // 4.2 Payload Limit Error Classification
-    const axiosError = { isAxiosError: true, code: 'ERR_FR_MAX_BODY_LENGTH_EXCEEDED' };
-    const genericStreamError = { code: 'ERR_FR_MAX_BODY_LENGTH_EXCEEDED' };
-    const maxContentError = { message: 'maxContentLength size of 10485760 exceeded' };
-    const maxBodyError = { message: 'maxBodyLength size of 10485760 exceeded' };
-    const normalNetworkError = { code: 'ECONNRESET', message: 'connection reset' };
+    it('detects payload size limit errors across Axios and generic stream variants', () => {
+      expect(isMediaPayloadSizeLimitExceeded({ isAxiosError: true, code: 'ERR_FR_MAX_BODY_LENGTH_EXCEEDED' })).toBe(true);
+      expect(isMediaPayloadSizeLimitExceeded({ code: 'ERR_FR_MAX_BODY_LENGTH_EXCEEDED' })).toBe(true);
+      expect(isMediaPayloadSizeLimitExceeded({ message: 'maxContentLength size of 10485760 exceeded' })).toBe(true);
+      expect(isMediaPayloadSizeLimitExceeded({ message: 'maxBodyLength size of 10485760 exceeded' })).toBe(true);
+      expect(isMediaPayloadSizeLimitExceeded({ code: 'ECONNRESET', message: 'connection reset' })).toBe(false);
+      expect(isMediaPayloadSizeLimitExceeded(null)).toBe(false);
+      expect(isMediaPayloadSizeLimitExceeded(undefined)).toBe(false);
+    });
 
-    assertCondition(
-      'POLICY-4.4: isMediaPayloadSizeLimitExceeded detects Axios error code',
-      isMediaPayloadSizeLimitExceeded(axiosError)
-    );
-    assertCondition(
-      'POLICY-4.5: isMediaPayloadSizeLimitExceeded detects generic stream error code',
-      isMediaPayloadSizeLimitExceeded(genericStreamError)
-    );
-    assertCondition(
-      'POLICY-4.6: isMediaPayloadSizeLimitExceeded detects maxContentLength in message',
-      isMediaPayloadSizeLimitExceeded(maxContentError)
-    );
-    assertCondition(
-      'POLICY-4.7: isMediaPayloadSizeLimitExceeded detects maxBodyLength in message',
-      isMediaPayloadSizeLimitExceeded(maxBodyError)
-    );
-    assertCondition(
-      'POLICY-4.8: isMediaPayloadSizeLimitExceeded returns false for standard network errors and non-objects',
-      !isMediaPayloadSizeLimitExceeded(normalNetworkError) &&
-      !isMediaPayloadSizeLimitExceeded(null) &&
-      !isMediaPayloadSizeLimitExceeded(undefined)
-    );
+    it('normalizes channel display names', () => {
+      expect(getChannelDisplayName('whatsapp')).toBe('WhatsApp');
+      expect(getChannelDisplayName('telegram')).toBe('Telegram');
+      expect(getChannelDisplayName('custom_channel')).toBe('custom_channel');
+    });
 
-    // 4.3 Channel Display Name Normalization
-    assertCondition(
-      'POLICY-4.9: getChannelDisplayName normalizes known and unknown channels',
-      getChannelDisplayName('whatsapp') === 'WhatsApp' &&
-      getChannelDisplayName('telegram') === 'Telegram' &&
-      getChannelDisplayName('custom_channel') === 'custom_channel'
-    );
+    it('formats localized media warnings and failure messages in Indonesian and English', () => {
+      const initialLanguage = getActiveLanguage();
+      try {
+        setActiveLanguage('id');
+        expect(formatMediaTooLargeMessage(5 * 1024 * 1024)).toContain('Ukuran foto melebihi batas maksimal (5 MB)');
+        expect(formatMediaDownloadFailedMessage('whatsapp')).toContain('Gagal mengunduh foto struk dari WhatsApp');
+        expect(formatMediaDownloadFailedMessage('telegram')).toContain('Gagal mengunduh foto struk dari Telegram');
 
-    // 4.4 Localization for Media Messages
-    const initialLanguage = getActiveLanguage();
-    try {
-      setActiveLanguage('id');
-      const oversizedId = formatMediaTooLargeMessage(5 * 1024 * 1024);
-      const failedWaId = formatMediaDownloadFailedMessage('whatsapp');
-      const failedTgId = formatMediaDownloadFailedMessage('telegram');
+        setActiveLanguage('en');
+        expect(formatMediaTooLargeMessage(10 * 1024 * 1024)).toContain('Photo size exceeds the maximum limit (10 MB)');
+        expect(formatMediaDownloadFailedMessage('whatsapp')).toContain('Failed to download receipt photo from WhatsApp');
+        expect(formatMediaDownloadFailedMessage('telegram')).toContain('Failed to download receipt photo from Telegram');
+      } finally {
+        setActiveLanguage(initialLanguage);
+      }
+    });
 
-      assertCondition(
-        'POLICY-4.10: Indonesian oversized media message formatting',
-        oversizedId.includes('Ukuran foto melebihi batas maksimal (5 MB)')
-      );
-      assertCondition(
-        'POLICY-4.11: Indonesian media download failure formatting',
-        failedWaId.includes('Gagal mengunduh foto struk dari WhatsApp') &&
-        failedTgId.includes('Gagal mengunduh foto struk dari Telegram')
-      );
-
-      setActiveLanguage('en');
-      const oversizedEn = formatMediaTooLargeMessage(10 * 1024 * 1024);
-      const failedWaEn = formatMediaDownloadFailedMessage('whatsapp');
-      const failedTgEn = formatMediaDownloadFailedMessage('telegram');
-
-      assertCondition(
-        'POLICY-4.12: English oversized media message formatting',
-        oversizedEn.includes('Photo size exceeds the maximum limit (10 MB)')
-      );
-      assertCondition(
-        'POLICY-4.13: English media download failure formatting',
-        failedWaEn.includes('Failed to download receipt photo from WhatsApp') &&
-        failedTgEn.includes('Failed to download receipt photo from Telegram')
-      );
-    } finally {
-      setActiveLanguage(initialLanguage);
-    }
-
-    // 4.5 rejectOversizedMedia Function Execution
-    {
+    it('executes rejectOversizedMedia sending localized notice', async () => {
       const sentTexts: string[] = [];
       const sendTextMessage = async (_chatId: string, text: string) => {
         sentTexts.push(text);
@@ -366,10 +225,8 @@ async function runTestGroup(testGroup: number): Promise<void> {
         sendTextMessage,
       });
 
-      assertCondition(
-        'POLICY-4.14: rejectOversizedMedia sends localized message with actualBytes',
-        sentTexts.length === 1 && sentTexts[0].includes('5 MB')
-      );
+      expect(sentTexts).toHaveLength(1);
+      expect(sentTexts[0]).toContain('5 MB');
 
       sentTexts.length = 0;
       await rejectOversizedMedia({
@@ -381,14 +238,11 @@ async function runTestGroup(testGroup: number): Promise<void> {
         sendTextMessage,
       });
 
-      assertCondition(
-        'POLICY-4.15: rejectOversizedMedia handles stream rejection without actualBytes',
-        sentTexts.length === 1 && sentTexts[0].includes('10 MB')
-      );
-    }
+      expect(sentTexts).toHaveLength(1);
+      expect(sentTexts[0]).toContain('10 MB');
+    });
 
-    // 4.6 handleMediaDownloadFailure Function Execution
-    {
+    it('executes handleMediaDownloadFailure with token redaction in logs', async () => {
       const sentTexts: string[] = [];
       const sendTextMessage = async (_chatId: string, text: string) => {
         sentTexts.push(text);
@@ -411,18 +265,12 @@ async function runTestGroup(testGroup: number): Promise<void> {
           sendTextMessage,
         });
 
-        assertCondition(
-          'POLICY-4.16: handleMediaDownloadFailure redacts sensitive token in error log',
-          loggedErrors.length > 0 &&
-          !loggedErrors[0].includes('secret-telegram-bot-token') &&
-          loggedErrors[0].includes('[REDACTED_TOKEN]')
-        );
-        assertCondition(
-          'POLICY-4.17: handleMediaDownloadFailure dispatches localized failure notice',
-          sentTexts.length === 1 && sentTexts[0].includes('Gagal mengunduh foto struk dari Telegram')
-        );
+        expect(loggedErrors.length).toBeGreaterThan(0);
+        expect(loggedErrors[0]).not.toContain('secret-telegram-bot-token');
+        expect(loggedErrors[0]).toContain('[REDACTED_TOKEN]');
+        expect(sentTexts).toHaveLength(1);
+        expect(sentTexts[0]).toContain('Gagal mengunduh foto struk dari Telegram');
 
-        // String error handling
         sentTexts.length = 0;
         loggedErrors.length = 0;
         await handleMediaDownloadFailure({
@@ -433,21 +281,15 @@ async function runTestGroup(testGroup: number): Promise<void> {
           sendTextMessage,
         });
 
-        assertCondition(
-          'POLICY-4.18: handleMediaDownloadFailure handles string downloadError',
-          sentTexts.length === 1 && loggedErrors.length > 0
-        );
+        expect(sentTexts).toHaveLength(1);
+        expect(loggedErrors.length).toBeGreaterThan(0);
       } finally {
         applicationLogger.error = originalLoggerError;
       }
-    }
-  }
+    });
+  });
 
-  // ----------------------------------------------------
-  // TEST GROUP 5: Telegram End-to-End Media Handling & Error Redaction
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 5] Telegram End-to-End Media Handling & Error Redaction');
-  if (testGroup === 5) {
+  describe('Telegram end-to-end media handling and error redaction', () => {
     const dummyBotInfo = {
       id: 123456789,
       is_bot: true as const,
@@ -458,8 +300,7 @@ async function runTestGroup(testGroup: number): Promise<void> {
       supports_inline_queries: false,
     };
 
-    // TG-5.1: Pre-download photo variant oversized rejection
-    {
+    it('rejects oversized photo variant before download without calling getFile', async () => {
       const sentMessages: string[] = [];
       const receivedEvents: IncomingUserMessageEvent[] = [];
 
@@ -469,7 +310,7 @@ async function runTestGroup(testGroup: number): Promise<void> {
         async event => { receivedEvents.push(event); },
         { maxMediaDownloadBytes: 5 * 1024 * 1024 }
       );
-      (adapter as any).sendTextMessage = async (_chatId: string, text: string) => {
+      (adapter as unknown as { sendTextMessage: (_chatId: string, text: string) => Promise<void> }).sendTextMessage = async (_chatId: string, text: string) => {
         sentMessages.push(text);
       };
 
@@ -501,14 +342,13 @@ async function runTestGroup(testGroup: number): Promise<void> {
 
       await bot.handleUpdate(oversizedPhotoUpdate);
 
-      assertCondition(
-        'TG-5.1: Telegram pre-download rejects oversized photo variant without calling getFile',
-        !getFileCalled && receivedEvents.length === 0 && sentMessages.length === 1 && sentMessages[0].includes('5 MB')
-      );
-    }
+      expect(getFileCalled).toBe(false);
+      expect(receivedEvents).toHaveLength(0);
+      expect(sentMessages).toHaveLength(1);
+      expect(sentMessages[0]).toContain('5 MB');
+    });
 
-    // TG-5.2: Metadata photo oversized rejection
-    {
+    it('rejects photo when fileMetadata exceeds limit without calling axios', async () => {
       const sentMessages: string[] = [];
       const receivedEvents: IncomingUserMessageEvent[] = [];
 
@@ -518,7 +358,7 @@ async function runTestGroup(testGroup: number): Promise<void> {
         async event => { receivedEvents.push(event); },
         { maxMediaDownloadBytes: 5 * 1024 * 1024 }
       );
-      (adapter as any).sendTextMessage = async (_chatId: string, text: string) => {
+      (adapter as unknown as { sendTextMessage: (_chatId: string, text: string) => Promise<void> }).sendTextMessage = async (_chatId: string, text: string) => {
         sentMessages.push(text);
       };
 
@@ -563,17 +403,16 @@ async function runTestGroup(testGroup: number): Promise<void> {
 
         await bot.handleUpdate(photoUpdate);
 
-        assertCondition(
-          'TG-5.2: Telegram rejects photo when fileMetadata exceeds limit without calling axios',
-          !axiosCalled && receivedEvents.length === 0 && sentMessages.length === 1 && sentMessages[0].includes('5 MB')
-        );
+        expect(axiosCalled).toBe(false);
+        expect(receivedEvents).toHaveLength(0);
+        expect(sentMessages).toHaveLength(1);
+        expect(sentMessages[0]).toContain('5 MB');
       } finally {
         axios.get = originalAxiosGet;
       }
-    }
+    });
 
-    // TG-5.3: Axios stream limit error classification
-    {
+    it('classifies axios stream limit error as oversized media', async () => {
       const sentMessages: string[] = [];
       const receivedEvents: IncomingUserMessageEvent[] = [];
 
@@ -583,7 +422,7 @@ async function runTestGroup(testGroup: number): Promise<void> {
         async event => { receivedEvents.push(event); },
         { maxMediaDownloadBytes: 10 * 1024 * 1024 }
       );
-      (adapter as any).sendTextMessage = async (_chatId: string, text: string) => {
+      (adapter as unknown as { sendTextMessage: (_chatId: string, text: string) => Promise<void> }).sendTextMessage = async (_chatId: string, text: string) => {
         sentMessages.push(text);
       };
 
@@ -629,17 +468,15 @@ async function runTestGroup(testGroup: number): Promise<void> {
 
         await bot.handleUpdate(photoUpdate);
 
-        assertCondition(
-          'TG-5.3: Telegram axios stream limit error classified as oversized media',
-          receivedEvents.length === 0 && sentMessages.length === 1 && sentMessages[0].includes('10 MB')
-        );
+        expect(receivedEvents).toHaveLength(0);
+        expect(sentMessages).toHaveLength(1);
+        expect(sentMessages[0]).toContain('10 MB');
       } finally {
         axios.get = originalAxiosGet;
       }
-    }
+    });
 
-    // TG-5.4: Axios download failure with token redaction
-    {
+    it('redacts bot token in logs and sends failure notice on normal download error', async () => {
       const sentMessages: string[] = [];
       const receivedEvents: IncomingUserMessageEvent[] = [];
       const loggedErrors: string[] = [];
@@ -655,7 +492,7 @@ async function runTestGroup(testGroup: number): Promise<void> {
         async event => { receivedEvents.push(event); },
         { maxMediaDownloadBytes: 10 * 1024 * 1024 }
       );
-      (adapter as any).sendTextMessage = async (_chatId: string, text: string) => {
+      (adapter as unknown as { sendTextMessage: (_chatId: string, text: string) => Promise<void> }).sendTextMessage = async (_chatId: string, text: string) => {
         sentMessages.push(text);
       };
 
@@ -698,23 +535,19 @@ async function runTestGroup(testGroup: number): Promise<void> {
 
         await bot.handleUpdate(photoUpdate);
 
-        assertCondition(
-          'TG-5.4: Telegram normal download failure redacts bot token in logs and sends failure notice',
-          receivedEvents.length === 0 &&
-          sentMessages.length === 1 &&
-          sentMessages[0].includes('Gagal mengunduh foto struk dari Telegram') &&
-          loggedErrors.length > 0 &&
-          !loggedErrors.some(e => e.includes(dummyToken)) &&
-          loggedErrors.some(e => e.includes('[REDACTED_TOKEN]'))
-        );
+        expect(receivedEvents).toHaveLength(0);
+        expect(sentMessages).toHaveLength(1);
+        expect(sentMessages[0]).toContain('Gagal mengunduh foto struk dari Telegram');
+        expect(loggedErrors.length).toBeGreaterThan(0);
+        expect(loggedErrors.some(e => e.includes(dummyToken))).toBe(false);
+        expect(loggedErrors.some(e => e.includes('[REDACTED_TOKEN]'))).toBe(true);
       } finally {
         axios.get = originalAxiosGet;
         applicationLogger.error = originalLoggerError;
       }
-    }
+    });
 
-    // TG-5.5: Post-download oversized buffer rejection
-    {
+    it('rejects post-download oversized buffer before event dispatch', async () => {
       const sentMessages: string[] = [];
       const receivedEvents: IncomingUserMessageEvent[] = [];
 
@@ -724,7 +557,7 @@ async function runTestGroup(testGroup: number): Promise<void> {
         async event => { receivedEvents.push(event); },
         { maxMediaDownloadBytes: 5 * 1024 * 1024 }
       );
-      (adapter as any).sendTextMessage = async (_chatId: string, text: string) => {
+      (adapter as unknown as { sendTextMessage: (_chatId: string, text: string) => Promise<void> }).sendTextMessage = async (_chatId: string, text: string) => {
         sentMessages.push(text);
       };
 
@@ -767,17 +600,15 @@ async function runTestGroup(testGroup: number): Promise<void> {
 
         await bot.handleUpdate(photoUpdate);
 
-        assertCondition(
-          'TG-5.5: Telegram post-download oversized buffer rejected before event dispatch',
-          receivedEvents.length === 0 && sentMessages.length === 1 && sentMessages[0].includes('5 MB')
-        );
+        expect(receivedEvents).toHaveLength(0);
+        expect(sentMessages).toHaveLength(1);
+        expect(sentMessages[0]).toContain('5 MB');
       } finally {
         axios.get = originalAxiosGet;
       }
-    }
+    });
 
-    // TG-5.6: Successful photo download and delivery
-    {
+    it('delivers valid photo as image message event cleanly', async () => {
       const sentMessages: string[] = [];
       const receivedEvents: IncomingUserMessageEvent[] = [];
 
@@ -787,7 +618,7 @@ async function runTestGroup(testGroup: number): Promise<void> {
         async event => { receivedEvents.push(event); },
         { maxMediaDownloadBytes: 10 * 1024 * 1024 }
       );
-      (adapter as any).sendTextMessage = async (_chatId: string, text: string) => {
+      (adapter as unknown as { sendTextMessage: (_chatId: string, text: string) => Promise<void> }).sendTextMessage = async (_chatId: string, text: string) => {
         sentMessages.push(text);
       };
 
@@ -832,55 +663,39 @@ async function runTestGroup(testGroup: number): Promise<void> {
 
         await bot.handleUpdate(photoUpdate);
 
-        assertCondition(
-          'TG-5.6: Telegram valid photo delivers image message event cleanly',
-          sentMessages.length === 0 &&
-          receivedEvents.length === 1 &&
-          receivedEvents[0].channel === 'telegram' &&
-          receivedEvents[0].messageType === 'image' &&
-          receivedEvents[0].textPayload === 'Grocery Receipt' &&
-          receivedEvents[0].imageBuffer?.equals(sampleImageBuffer) === true
-        );
+        expect(sentMessages).toHaveLength(0);
+        expect(receivedEvents).toHaveLength(1);
+        expect(receivedEvents[0].channel).toBe('telegram');
+        expect(receivedEvents[0].messageType).toBe('image');
+        expect(receivedEvents[0].textPayload).toBe('Grocery Receipt');
+        expect(receivedEvents[0].imageBuffer?.equals(sampleImageBuffer)).toBe(true);
       } finally {
         axios.get = originalAxiosGet;
       }
-    }
-  }
+    });
+  });
 
-  // ----------------------------------------------------
-  // TEST GROUP 6: WhatsApp Inbound Processor Download Failure Handling
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 6] WhatsApp Inbound Processor Download Failure Handling');
-  if (testGroup === 6) {
-    const receivedEvents: IncomingUserMessageEvent[] = [];
-    const callback = async (event: IncomingUserMessageEvent) => {
-      receivedEvents.push(event);
-    };
+  describe('WhatsApp inbound processor download failure handling', () => {
+    it('notifies user when WhatsApp image download fails', async () => {
+      const receivedEvents: IncomingUserMessageEvent[] = [];
+      const outboundMessages: string[] = [];
 
-    const maxDownloadLimitBytes = 5 * 1024 * 1024; // 5 MB
-    const adapter = new WhatsappMessagingAdapter(
-      dummySessionDirectory,
-      dummyPhoneNumber,
-      callback,
-      { maxMediaDownloadBytes: maxDownloadLimitBytes }
-    );
+      const adapter = new WhatsappMessagingAdapter(
+        dummySessionDirectory,
+        dummyPhoneNumber,
+        async event => { receivedEvents.push(event); },
+        { maxMediaDownloadBytes: 5 * 1024 * 1024 }
+      );
 
-    const outboundMessages: string[] = [];
-    const mockSocket = {
-      sendMessage: async (_jid: string, content: { text: string }) => {
-        outboundMessages.push(content.text);
-        return { key: { id: 'mock-outbound-id' } };
-      },
-      updateMediaMessage: async () => {},
-    };
-    (adapter as any).socketInstance = mockSocket;
+      const mockSocket = {
+        sendMessage: async (_jid: string, content: { text: string }) => {
+          outboundMessages.push(content.text);
+          return { key: { id: 'mock-outbound-id' } };
+        },
+        updateMediaMessage: async () => {},
+      };
+      (adapter as unknown as { socketInstance: typeof mockSocket }).socketInstance = mockSocket;
 
-    // Subcase 6.1: WhatsApp image download error triggers handleMediaDownloadFailure
-    {
-      outboundMessages.length = 0;
-      receivedEvents.length = 0;
-
-      // An imageMessage without valid media credentials causes downloadMediaMessage to fail
       const failingIncomingMessage = {
         key: { remoteJid: '6281234567890@s.whatsapp.net', id: 'msg-download-fail-1' },
         message: {
@@ -892,49 +707,18 @@ async function runTestGroup(testGroup: number): Promise<void> {
         },
       };
 
-      await (adapter as any).handleIncomingMessage(
+      await (adapter as unknown as {
+        handleIncomingMessage: (...args: unknown[]) => Promise<void>;
+      }).handleIncomingMessage(
         failingIncomingMessage,
         failingIncomingMessage.message,
         '6281234567890@s.whatsapp.net',
         '6281234567890'
       );
 
-      assertCondition(
-        'WA-6.1: WhatsApp download failure invokes handleMediaDownloadFailure and notifies user',
-        receivedEvents.length === 0 &&
-        outboundMessages.length === 1 &&
-        outboundMessages[0].includes('Gagal mengunduh foto struk dari WhatsApp')
-      );
-    }
-  }
-
-  // ----------------------------------------------------
-  // TEST SUMMARY
-  // ----------------------------------------------------
-  console.log('\n====================================================');
-  console.log(
-    `[TEST SUMMARY] Total: ${testStatistics.totalCount} | Passed: ${testStatistics.passedCount} | Failed: ${testStatistics.failedCount}`
-  );
-  console.log('====================================================');
-
-  if (testStatistics.failedCount > 0) {
-    throw new Error(`${testStatistics.failedCount} media download limit assertions failed`);
-  } else {
-    console.log('[SUCCESS] All incoming media download limit tests passed!\n');
-  }
-}
-
-beforeEach(() => {
-  testStatistics.totalCount = 0;
-  testStatistics.passedCount = 0;
-  testStatistics.failedCount = 0;
-});
-
-describe('incoming media download limits', () => {
-  it.each(Array.from({ length: 6 }, (_, index) => index + 1))(
-    'runs logical group %s in isolation',
-    async testGroup => {
-      await runTestGroup(testGroup);
-    }
-  );
+      expect(receivedEvents).toHaveLength(0);
+      expect(outboundMessages).toHaveLength(1);
+      expect(outboundMessages[0]).toContain('Gagal mengunduh foto struk dari WhatsApp');
+    });
+  });
 });

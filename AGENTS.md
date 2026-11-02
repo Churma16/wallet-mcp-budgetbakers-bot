@@ -139,6 +139,17 @@ Following the Vitest cutover (Issues #113 & #140), all hermetic unit, integratio
 - **Legacy Runner Retired**: The legacy `tests/runOfflineTests.ts` runner has been completely retired and removed. All offline suites execute through Vitest.
 - **Verification Requirement**: PRs introducing new capabilities or refactorings must verify `npm test` and `npm run build`.
 
+### Native Vitest Authoring Guidelines
+To preserve test suite maintainability, isolation, and actionable failure diagnostics:
+1. **Direct Vitest Primitives**: Always write tests using direct native Vitest primitives (`describe`, `it`, `expect`, `vi`). Never wrap test execution in custom procedural iteration loops, ad-hoc `runTestGroup` / `runCase` runners, manual `assertCondition` abstractions, or manual `passedCount` / `failedCount` statistics.
+2. **No Custom Console Reporters**: Do not emit custom `[PASS]` or `[FAIL]` `console.log` statements inside test cases. Allow Vitest's native reporter to represent test results and failure stack traces.
+3. **Execution Independence & Isolation**: Every test must be completely order-independent and safely runnable in isolation (`npx vitest run tests/<file>.vitest.test.ts -t "<test-name>"`). Never leak mutable module-level state between tests.
+4. **Scoped Lifecycle Hooks**: Place `beforeEach` and `afterEach` hooks in the smallest meaningful `describe` scope rather than registering broad global hooks across unrelated test groups.
+5. **Fixture & Factory State**: Use shared fixtures or factory functions only for genuinely immutable or default mock states. Always instantiate fresh mutable objects (caches, context objects, mock spies) per test or within scoped `beforeEach` blocks.
+6. **Parameterized Matrices (`it.each`)**: Use `it.each` or `test.each` when exercising a finite set of inputs against the identical invariant or behavior. Keep table cases readable and avoid burying complex unique branching logic inside parameterized rows.
+7. **Observable Behavior as Primary Target**: Assert observable behavior, return values, emitted messages, and persistent state transitions as the primary verification target. Contractual interaction assertions (`expect(spy).toHaveBeenCalledWith(...)`) are encouraged when verifying external boundary integrations (e.g. MCP client, messaging gateway).
+8. **Pragmatic Authoring (No Cosmetic Dogmatism)**: Avoid dogmatic cosmetic rules that increase friction without improving test quality. There is no requirement for mandatory `// Arrange, // Act, // Assert` comments, no artificial limit of exactly one assertion per test, and no blanket requirement for universal mocking where real in-memory dependencies provide higher fidelity.
+
 ## Complexity-Based Handler & File Splitting Guidelines
 To maintain codebase maintainability without premature fragmentation or unnecessary navigation overhead:
 - **Co-locate Thin Wrappers**: Group simple, thin delegating handlers (typically <= ~50 lines with no complex business logic, no heavy dependencies, and identical structural patterns—e.g. read-only forwarders like `CHECK_BALANCE`, `CHECK_BUDGET`, `HELP_MENU`) into a single cohesive file (e.g. `readActionHandlers.ts`).

@@ -10,13 +10,8 @@ import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { PendingConfirmationIntent } from '../src/brain/index.js';
 import { describe, expect, it, vi } from 'vitest';
 
-function assertCondition(testName: string, condition: boolean, extraDetail?: string): void {
-  expect(condition, `${testName}${extraDetail ? ` -> ${extraDetail}` : ''}`).toBe(true);
-}
 
-function runCase(testName: string, testFunction: () => Promise<void> | void): void {
-  it(testName, testFunction);
-}
+
 
 class MockWalletMcpClient {
   public readonly calls: CreateRecordInputPayload[][] = [];
@@ -134,13 +129,9 @@ async function expectWalletMcpRequestError(
   try {
     await operation();
   } catch (error) {
-    assertCondition('Error is classified as WalletMcpRequestError', error instanceof WalletMcpRequestError);
+    expect(error instanceof WalletMcpRequestError, 'Error is classified as WalletMcpRequestError').toBe(true);
     const typedError = error as WalletMcpRequestError;
-    assertCondition(
-      `Dispatch outcome is ${expectedOutcome}`,
-      typedError.dispatchOutcome === expectedOutcome,
-      `actual=${typedError.dispatchOutcome}`
-    );
+    expect(typedError.dispatchOutcome === expectedOutcome, `${`Dispatch outcome is ${expectedOutcome}`} -> ${`actual=${typedError.dispatchOutcome}`}`).toBe(true);
     return typedError;
   }
 
@@ -160,7 +151,7 @@ const sampleRecord: CreateRecordInputPayload = {
 };
 
 describe('Pending Transaction Data Integrity and MCP Failure Recovery', () => {
-  runCase('single confirmation succeeds and removes the ticket', async () => {
+  it('single confirmation succeeds and removes the ticket', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -169,12 +160,12 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery', () => {
     addExpense(pendingService);
     await handler.handlePendingAction(createMockEvent(), confirmTicketOne, Date.now());
 
-    assertCondition('Ticket removed after confirmed MCP success', pendingService.getPendingTransaction(1) === undefined);
-    assertCondition('Exactly one MCP call was made', walletMcp.calls.length === 1);
-    assertCondition('Success response was sent to the user', messaging.messages.length === 1);
+    expect(pendingService.getPendingTransaction(1) === undefined, 'Ticket removed after confirmed MCP success').toBe(true);
+    expect(walletMcp.calls.length === 1, 'Exactly one MCP call was made').toBe(true);
+    expect(messaging.messages.length === 1, 'Success response was sent to the user').toBe(true);
   });
 
-  runCase('bulk partial definitive failures keep only failed tickets retryable', async () => {
+  it('bulk partial definitive failures keep only failed tickets retryable', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -195,23 +186,23 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery', () => {
 
     await handler.handlePendingAction(createMockEvent(), confirmAll, Date.now());
 
-    assertCondition('Five independent MCP calls were attempted', walletMcp.calls.length === 5);
-    assertCondition('Successful ticket #1 removed', pendingService.getPendingTransaction(1) === undefined);
-    assertCondition('Failed ticket #2 remains', pendingService.getPendingTransaction(2) !== undefined);
-    assertCondition('Successful ticket #3 removed', pendingService.getPendingTransaction(3) === undefined);
-    assertCondition('Failed ticket #4 remains', pendingService.getPendingTransaction(4) !== undefined);
-    assertCondition('Successful ticket #5 removed', pendingService.getPendingTransaction(5) === undefined);
-    assertCondition('Failed ticket #2 returned to PENDING', pendingService.getPendingTransactionState(2) === 'PENDING');
-    assertCondition('Failed ticket #4 returned to PENDING', pendingService.getPendingTransactionState(4) === 'PENDING');
-    assertCondition('Only two retryable tickets remain', pendingService.getAllPendingTransactions().length === 2);
+    expect(walletMcp.calls.length === 5, 'Five independent MCP calls were attempted').toBe(true);
+    expect(pendingService.getPendingTransaction(1) === undefined, 'Successful ticket #1 removed').toBe(true);
+    expect(pendingService.getPendingTransaction(2) !== undefined, 'Failed ticket #2 remains').toBe(true);
+    expect(pendingService.getPendingTransaction(3) === undefined, 'Successful ticket #3 removed').toBe(true);
+    expect(pendingService.getPendingTransaction(4) !== undefined, 'Failed ticket #4 remains').toBe(true);
+    expect(pendingService.getPendingTransaction(5) === undefined, 'Successful ticket #5 removed').toBe(true);
+    expect(pendingService.getPendingTransactionState(2) === 'PENDING', 'Failed ticket #2 returned to PENDING').toBe(true);
+    expect(pendingService.getPendingTransactionState(4) === 'PENDING', 'Failed ticket #4 returned to PENDING').toBe(true);
+    expect(pendingService.getAllPendingTransactions().length === 2, 'Only two retryable tickets remain').toBe(true);
 
     const retryMessage = messaging.messages[0].content;
-    assertCondition('Bulk retry guidance targets ticket #2 explicitly', retryMessage.includes('"ya #2"'));
-    assertCondition('Bulk retry guidance targets ticket #4 explicitly', retryMessage.includes('"ya #4"'));
-    assertCondition('Bulk retry guidance does not suggest ambiguous bare ya', !retryMessage.includes('Ketik "ya"'));
+    expect(retryMessage.includes('"ya #2"'), 'Bulk retry guidance targets ticket #2 explicitly').toBe(true);
+    expect(retryMessage.includes('"ya #4"'), 'Bulk retry guidance targets ticket #4 explicitly').toBe(true);
+    expect(!retryMessage.includes('Ketik "ya"'), 'Bulk retry guidance does not suggest ambiguous bare ya').toBe(true);
   });
 
-  runCase('transfer uses one native paired-transfer input', async () => {
+  it('transfer uses one native paired-transfer input', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -234,22 +225,22 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery', () => {
     walletMcp.setDefinitiveFailureOnCall(1, 'transfer rejected');
     await handler.handlePendingAction(createMockEvent(), confirmTicketOne, Date.now());
 
-    assertCondition('Transfer remains pending after definitive failure', pendingService.getPendingTransaction(1) !== undefined);
-    assertCondition('Transfer returns to PENDING after definitive failure', pendingService.getPendingTransactionState(1) === 'PENDING');
-    assertCondition('One native transfer call attempted initially', walletMcp.calls.length === 1);
-    assertCondition('Native transfer uses source account', walletMcp.calls[0][0].accountId === 'acc-source');
-    assertCondition('Native transfer targets destination account', walletMcp.calls[0][0].transfer?.accountId === 'acc-destination');
-    assertCondition('Native transfer requests a new pair', walletMcp.calls[0][0].transfer?.pairingMode === 'new');
-    assertCondition('Native transfer omits ordinary category', walletMcp.calls[0][0].categoryId === undefined);
+    expect(pendingService.getPendingTransaction(1) !== undefined, 'Transfer remains pending after definitive failure').toBe(true);
+    expect(pendingService.getPendingTransactionState(1) === 'PENDING', 'Transfer returns to PENDING after definitive failure').toBe(true);
+    expect(walletMcp.calls.length === 1, 'One native transfer call attempted initially').toBe(true);
+    expect(walletMcp.calls[0][0].accountId === 'acc-source', 'Native transfer uses source account').toBe(true);
+    expect(walletMcp.calls[0][0].transfer?.accountId === 'acc-destination', 'Native transfer targets destination account').toBe(true);
+    expect(walletMcp.calls[0][0].transfer?.pairingMode === 'new', 'Native transfer requests a new pair').toBe(true);
+    expect(walletMcp.calls[0][0].categoryId === undefined, 'Native transfer omits ordinary category').toBe(true);
 
     walletMcp.clearFailures();
     await handler.handlePendingAction(createMockEvent('msg-retry'), confirmTicketOne, Date.now());
 
-    assertCondition('Safe retry dispatched one logical transfer call', walletMcp.calls.length === 2);
-    assertCondition('Transfer ticket removed after retry succeeds', pendingService.getPendingTransaction(1) === undefined);
+    expect(walletMcp.calls.length === 2, 'Safe retry dispatched one logical transfer call').toBe(true);
+    expect(pendingService.getPendingTransaction(1) === undefined, 'Transfer ticket removed after retry succeeds').toBe(true);
   });
 
-  runCase('ambiguous timeout becomes UNKNOWN and is not automatically retried', async () => {
+  it('ambiguous timeout becomes UNKNOWN and is not automatically retried', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -260,16 +251,16 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery', () => {
 
     await handler.handlePendingAction(createMockEvent(), confirmTicketOne, Date.now());
 
-    assertCondition('Ambiguous ticket remains for reconciliation', pendingService.getPendingTransaction(1) !== undefined);
-    assertCondition('Ambiguous ticket is marked UNKNOWN', pendingService.getPendingTransactionState(1) === 'UNKNOWN');
-    assertCondition('Unknown outcome helper recognizes the error type', isWalletMcpDispatchOutcomeUnknown(new WalletMcpRequestError('timeout', 'UNKNOWN')));
-    assertCondition('User is warned that automatic retry is disabled', messaging.messages[0].content.includes('tidak akan dikirim ulang otomatis'));
+    expect(pendingService.getPendingTransaction(1) !== undefined, 'Ambiguous ticket remains for reconciliation').toBe(true);
+    expect(pendingService.getPendingTransactionState(1) === 'UNKNOWN', 'Ambiguous ticket is marked UNKNOWN').toBe(true);
+    expect(isWalletMcpDispatchOutcomeUnknown(new WalletMcpRequestError('timeout', 'UNKNOWN')), 'Unknown outcome helper recognizes the error type').toBe(true);
+    expect(messaging.messages[0].content.includes('tidak akan dikirim ulang otomatis'), 'User is warned that automatic retry is disabled').toBe(true);
 
     await handler.handlePendingAction(createMockEvent('msg-second-confirm'), confirmTicketOne, Date.now());
-    assertCondition('Second confirmation did not redispatch UNKNOWN ticket', walletMcp.calls.length === 1);
+    expect(walletMcp.calls.length === 1, 'Second confirmation did not redispatch UNKNOWN ticket').toBe(true);
   });
 
-  runCase('concurrent confirmations cannot double-dispatch one ticket', async () => {
+  it('concurrent confirmations cannot double-dispatch one ticket', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -283,12 +274,12 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery', () => {
       handler.handlePendingAction(createMockEvent('msg-concurrent-2'), confirmTicketOne, Date.now()),
     ]);
 
-    assertCondition('Only one concurrent MCP dispatch occurred', walletMcp.calls.length === 1);
-    assertCondition('Ticket resolved once after successful dispatch', pendingService.getPendingTransaction(1) === undefined);
-    assertCondition('Both confirmation attempts received deterministic responses', messaging.messages.length === 2);
+    expect(walletMcp.calls.length === 1, 'Only one concurrent MCP dispatch occurred').toBe(true);
+    expect(pendingService.getPendingTransaction(1) === undefined, 'Ticket resolved once after successful dispatch').toBe(true);
+    expect(messaging.messages.length === 2, 'Both confirmation attempts received deterministic responses').toBe(true);
   });
 
-  runCase('email reference is recorded only after the native transfer succeeds', async () => {
+  it('email reference is recorded only after the native transfer succeeds', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -319,14 +310,14 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery', () => {
 
     walletMcp.setDefinitiveFailureOnCall(1, 'native transfer rejected');
     await handler.handlePendingAction(createMockEvent(), confirmTicketOne, Date.now());
-    assertCondition('Email reference is not marked after rejected transfer', recordedReferences.length === 0);
+    expect(recordedReferences.length === 0, 'Email reference is not marked after rejected transfer').toBe(true);
 
     walletMcp.clearFailures();
     await handler.handlePendingAction(createMockEvent('msg-email-retry'), confirmTicketOne, Date.now());
-    assertCondition('Email reference marked once after full success', recordedReferences.join(',') === 'REF-12345');
+    expect(recordedReferences.join(',') === 'REF-12345', 'Email reference marked once after full success').toBe(true);
   });
 
-  runCase('backend error details stay in logs and are not exposed to chat', async () => {
+  it('backend error details stay in logs and are not exposed to chat', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -338,32 +329,32 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery', () => {
     await handler.handlePendingAction(createMockEvent(), confirmTicketOne, Date.now());
 
     const chatMessage = messaging.messages[0].content;
-    assertCondition('User receives sanitized retry guidance', chatMessage.includes('aman untuk dicoba lagi'));
-    assertCondition('Internal hostname is not exposed', !chatMessage.includes('db.internal'));
-    assertCondition('Backend token is not exposed', !chatMessage.includes('secret-123'));
+    expect(chatMessage.includes('aman untuk dicoba lagi'), 'User receives sanitized retry guidance').toBe(true);
+    expect(!chatMessage.includes('db.internal'), 'Internal hostname is not exposed').toBe(true);
+    expect(!chatMessage.includes('secret-123'), 'Backend token is not exposed').toBe(true);
   });
 
-  runCase('PROCESSING and UNKNOWN tickets cannot be cancelled concurrently or before reconciliation', () => {
+  it('PROCESSING and UNKNOWN tickets cannot be cancelled concurrently or before reconciliation', () => {
     const pendingService = new PendingTransactionService();
     addExpense(pendingService);
 
     const claimed = pendingService.claimPendingTransaction(1);
-    assertCondition('Ticket can be claimed from PENDING', claimed?.ticketId === 1);
-    assertCondition('Claim moves ticket to PROCESSING', pendingService.getPendingTransactionState(1) === 'PROCESSING');
-    assertCondition('PROCESSING ticket cannot be rejected', pendingService.rejectPendingTransaction(1) === undefined);
+    expect(claimed?.ticketId === 1, 'Ticket can be claimed from PENDING').toBe(true);
+    expect(pendingService.getPendingTransactionState(1) === 'PROCESSING', 'Claim moves ticket to PROCESSING').toBe(true);
+    expect(pendingService.rejectPendingTransaction(1) === undefined, 'PROCESSING ticket cannot be rejected').toBe(true);
 
     pendingService.releaseProcessingTransaction(1);
-    assertCondition('Definitive failure can release ticket to PENDING', pendingService.getPendingTransactionState(1) === 'PENDING');
+    expect(pendingService.getPendingTransactionState(1) === 'PENDING', 'Definitive failure can release ticket to PENDING').toBe(true);
 
     const reclaimed = pendingService.claimLatestPendingTransaction();
-    assertCondition('Released ticket can be claimed again', reclaimed?.ticketId === 1);
+    expect(reclaimed?.ticketId === 1, 'Released ticket can be claimed again').toBe(true);
     pendingService.markPendingTransactionUnknown(1);
-    assertCondition('UNKNOWN ticket cannot be claimed automatically', pendingService.claimPendingTransaction(1) === undefined);
-    assertCondition('UNKNOWN ticket cannot be cancelled before reconciliation', pendingService.rejectPendingTransaction(1) === undefined);
-    assertCondition('UNKNOWN ticket remains available for reconciliation', pendingService.getPendingTransactionState(1) === 'UNKNOWN');
+    expect(pendingService.claimPendingTransaction(1) === undefined, 'UNKNOWN ticket cannot be claimed automatically').toBe(true);
+    expect(pendingService.rejectPendingTransaction(1) === undefined, 'UNKNOWN ticket cannot be cancelled before reconciliation').toBe(true);
+    expect(pendingService.getPendingTransactionState(1) === 'UNKNOWN', 'UNKNOWN ticket remains available for reconciliation').toBe(true);
   });
 
-  runCase('create_records per-item rejection is treated as definitive failure', async () => {
+  it('create_records per-item rejection is treated as definitive failure', async () => {
     const client = new WalletMcpClientService('https://example.invalid', 'test-token');
     vi.spyOn(client, 'callMcpTool').mockResolvedValue({
       summary: { total: 1, succeeded: 0, failed: 1 },
@@ -376,7 +367,7 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery', () => {
     );
   });
 
-  runCase('transport timeout is classified UNKNOWN', async () => {
+  it('transport timeout is classified UNKNOWN', async () => {
     const client = new WalletMcpClientService('https://example.invalid', 'test-token');
     vi.spyOn(client, 'callMcpTool').mockRejectedValue(
       new WalletMcpRequestError('request timed out', 'UNKNOWN')
@@ -386,10 +377,10 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery', () => {
       () => client.createRecords([sampleRecord]),
       'UNKNOWN'
     );
-    assertCondition('UNKNOWN helper recognizes real client transport error', isWalletMcpDispatchOutcomeUnknown(error));
+    expect(isWalletMcpDispatchOutcomeUnknown(error), 'UNKNOWN helper recognizes real client transport error').toBe(true);
   });
 
-  runCase('explicit HTTP 400 is definitive while HTTP 503 is ambiguous', async () => {
+  it('explicit HTTP 400 is definitive while HTTP 503 is ambiguous', async () => {
     const definitiveClient = new WalletMcpClientService('https://example.invalid', 'test-token');
     vi.spyOn(definitiveClient, 'callMcpTool').mockRejectedValue(
       new WalletMcpRequestError('bad request', 'DEFINITIVE_FAILURE')
@@ -411,7 +402,7 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery', () => {
     );
   });
 
-  runCase('create_records requires positive and internally consistent success evidence', async () => {
+  it('create_records requires positive and internally consistent success evidence', async () => {
     const nullClient = createWalletClientWithToolResult(null);
     await expectWalletMcpRequestError(() => nullClient.createRecords([sampleRecord]), 'UNKNOWN');
 
@@ -437,13 +428,13 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery', () => {
       summary: { total: 1, succeeded: 1, failed: 0 },
     });
     const summaryOnlyResult = await summaryOnlySuccessClient.createRecords([sampleRecord]);
-    assertCondition('Complete success summary is accepted as positive evidence', summaryOnlyResult.summary?.succeeded === 1);
+    expect(summaryOnlyResult.summary?.succeeded === 1, 'Complete success summary is accepted as positive evidence').toBe(true);
 
     const resultsOnlySuccessClient = createWalletClientWithToolResult({
       results: [{ inputIndex: 0, id: 'record-1', success: true }],
     });
     const resultsOnlyResult = await resultsOnlySuccessClient.createRecords([sampleRecord]);
-    assertCondition('Complete per-record results are accepted as positive evidence', resultsOnlyResult.results?.[0]?.success === true);
+    expect(resultsOnlyResult.results?.[0]?.success === true, 'Complete per-record results are accepted as positive evidence').toBe(true);
 
     // Current-format full success (Issue #146)
     const currentFormatSuccessClient = createWalletClientWithToolResult({
@@ -451,7 +442,7 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery', () => {
       results: [{ inputIndex: 0, id: 'record-1', success: true }],
     });
     const currentFormatResult = await currentFormatSuccessClient.createRecords([sampleRecord]);
-    assertCondition('Current format success summary is accepted', currentFormatResult.summary?.succeeded === 1);
+    expect(currentFormatResult.summary?.succeeded === 1, 'Current format success summary is accepted').toBe(true);
 
     // Current-format client error yields DEFINITIVE_FAILURE
     const currentClientErrorClient = createWalletClientWithToolResult({
@@ -541,7 +532,7 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery', () => {
     await expectWalletMcpRequestError(() => mismatchedTotalClient.createRecords([sampleRecord]), 'UNKNOWN');
   });
 
-  runCase('generic unclassified handler errors become UNKNOWN instead of retryable', async () => {
+  it('generic unclassified handler errors become UNKNOWN instead of retryable', async () => {
     const pendingService = new PendingTransactionService();
     const walletMcp = new MockWalletMcpClient();
     const messaging = new MockMessagingGateway();
@@ -552,13 +543,13 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery', () => {
 
     await handler.handlePendingAction(createMockEvent(), confirmTicketOne, Date.now());
 
-    assertCondition('Generic error keeps ticket for reconciliation', pendingService.getPendingTransaction(1) !== undefined);
-    assertCondition('Generic error is fail-safe classified UNKNOWN', pendingService.getPendingTransactionState(1) === 'UNKNOWN');
-    assertCondition('Generic error is not presented as safely retryable', !messaging.messages[0].content.includes('aman untuk dicoba lagi'));
-    assertCondition('User receives no-auto-retry guidance', messaging.messages[0].content.includes('tidak akan dikirim ulang otomatis'));
+    expect(pendingService.getPendingTransaction(1) !== undefined, 'Generic error keeps ticket for reconciliation').toBe(true);
+    expect(pendingService.getPendingTransactionState(1) === 'UNKNOWN', 'Generic error is fail-safe classified UNKNOWN').toBe(true);
+    expect(!messaging.messages[0].content.includes('aman untuk dicoba lagi'), 'Generic error is not presented as safely retryable').toBe(true);
+    expect(messaging.messages[0].content.includes('tidak akan dikirim ulang otomatis'), 'User receives no-auto-retry guidance').toBe(true);
 
     await handler.handlePendingAction(createMockEvent('msg-generic-retry'), confirmTicketOne, Date.now());
-    assertCondition('Generic UNKNOWN ticket is not redispatched', walletMcp.calls.length === 1);
+    expect(walletMcp.calls.length === 1, 'Generic UNKNOWN ticket is not redispatched').toBe(true);
   });
 
 });
