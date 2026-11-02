@@ -3,7 +3,8 @@ import { fileURLToPath } from 'node:url';
 
 /**
  * Sanitizes raw AI output into a clean, concise single-line release title.
- * Removes markdown formatting, enclosing quotes, emojis, and unwanted prefixes.
+ * Strips reasoning blocks (<think>...</think>), markdown formatting, enclosing quotes
+ * (including unicode smart quotes), emojis, and unwanted title prefixes.
  *
  * @param {string | null | undefined} rawTitle - Raw title string from model output.
  * @returns {string} Sanitized title.
@@ -13,8 +14,11 @@ export function sanitizeTitle(rawTitle) {
     return '';
   }
 
+  // Strip reasoning blocks emitted by thinking/reasoning models (e.g. DeepSeek-R1)
+  const strippedTitle = rawTitle.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
   // Take the first non-empty line
-  const firstLine = rawTitle
+  const firstLine = strippedTitle
     .split('\n')
     .map((line) => line.trim())
     .find((line) => line.length > 0) || '';
@@ -24,12 +28,15 @@ export function sanitizeTitle(rawTitle) {
   // Remove bold/italic markdown indicators
   cleaned = cleaned.replace(/[*_~`]/g, '');
 
-  // Remove common title prefixes
+  // Strip wrapping quotes and unicode smart quotes before prefix check
+  cleaned = cleaned.replace(/^["'“”‘’]+|["'“”‘’]+$/g, '').trim();
+
+  // Remove common title prefixes and markdown headers
   cleaned = cleaned.replace(/^(?:release\s*title|title|release|headline|summary)\s*:\s*/i, '');
   cleaned = cleaned.replace(/^(?:#+|\*|-)\s*/, '');
 
-  // Strip wrapping quotes
-  cleaned = cleaned.replace(/^["']+|["']+$/g, '');
+  // Strip any lingering wrapping quotes after prefix removal
+  cleaned = cleaned.replace(/^["'“”‘’]+|["'“”‘’]+$/g, '').trim();
 
   // Strip emojis and non-standard symbol pictographs (human-facing rule)
   cleaned = cleaned.replace(/[\p{Extended_Pictographic}\uFE0F]/gu, '');
@@ -134,8 +141,6 @@ export async function requestOpenRouterTitle({
       signal: abortController.signal
     });
 
-    clearTimeout(timeoutId);
-
     if (!response.ok) {
       console.warn(`[WARN] OpenRouter API responded with HTTP status ${response.status}`);
       return null;
@@ -152,9 +157,10 @@ export async function requestOpenRouterTitle({
     const cleanTitle = sanitizeTitle(rawContent);
     return cleanTitle.length >= 3 ? cleanTitle : null;
   } catch (error) {
-    clearTimeout(timeoutId);
     console.warn(`[WARN] OpenRouter request failed: ${error.message}`);
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -195,7 +201,16 @@ export async function generateReleaseTitle(options = {}) {
   let finalReleaseName = tagName || 'Release';
 
   if (aiTitle) {
-    finalReleaseName = tagName ? `${tagName} - ${aiTitle}` : aiTitle;
+    let deduplicatedAiTitle = aiTitle;
+    if (tagName) {
+      const escapedTag = tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      deduplicatedAiTitle = deduplicatedAiTitle.replace(new RegExp(`^${escapedTag}\\s*[-:]*\\s*`, 'i'), '');
+    }
+    deduplicatedAiTitle = deduplicatedAiTitle.replace(/^v?\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?\s*[-:]*\s*/i, '');
+
+    if (deduplicatedAiTitle.length >= 3) {
+      finalReleaseName = tagName ? `${tagName} - ${deduplicatedAiTitle}` : deduplicatedAiTitle;
+    }
   }
 
   // Write to GitHub Actions environment file if present

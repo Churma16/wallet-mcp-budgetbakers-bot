@@ -46,6 +46,32 @@ describe('generate-release-title script', () => {
       expect(sanitizeTitle('- Auto Categorization Engine')).toBe('Auto Categorization Engine');
     });
 
+    it('strips prefixes even when wrapped in quotes (Finding 1 fix)', () => {
+      expect(sanitizeTitle('"Release Title: Multi-Currency Engine"')).toBe('Multi-Currency Engine');
+      expect(sanitizeTitle('\'Title: Fix Token Refresh\'')).toBe('Fix Token Refresh');
+      expect(sanitizeTitle('“Headline: Realtime WhatsApp Stream”')).toBe('Realtime WhatsApp Stream');
+    });
+
+    it('strips <think>...</think> reasoning blocks before selecting the title line (Finding 2 fix)', () => {
+      const reasoningOutput =
+        '<think>\n' +
+        'The user wants a concise title from the changelog.\n' +
+        'Key feature: Interactive Category Selection.\n' +
+        '</think>\n' +
+        'Interactive Category Selection';
+
+      expect(sanitizeTitle(reasoningOutput)).toBe('Interactive Category Selection');
+    });
+
+    it('handles unicode smart/curly quotes (Finding 3 fix)', () => {
+      expect(sanitizeTitle('“Multi-Currency Exchange Rate Engine”')).toBe(
+        'Multi-Currency Exchange Rate Engine'
+      );
+      expect(sanitizeTitle('‘Automated Bank Reconciliation’')).toBe(
+        'Automated Bank Reconciliation'
+      );
+    });
+
     it('strips trailing punctuation', () => {
       expect(sanitizeTitle('New WhatsApp Interactive Buttons.')).toBe('New WhatsApp Interactive Buttons');
       expect(sanitizeTitle('Fix Token Expiration Timeout!')).toBe('Fix Token Expiration Timeout');
@@ -183,6 +209,30 @@ describe('generate-release-title script', () => {
       expect(fs.readFileSync(githubEnvPath, 'utf8')).toContain(
         'RELEASE_NAME=v2.1.0 - Interactive Category Buttons and Selection\n'
       );
+    });
+
+    it('deduplicates tag name if AI title already includes it (Finding 4 fix)', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: 'v2.1.0 - Interactive Category Buttons'
+              }
+            }
+          ]
+        })
+      });
+
+      const releaseName = await generateReleaseTitle({
+        apiKey: 'test-key',
+        tagName: 'v2.1.0',
+        outputTitleFile: path.join(temporaryDirectory, 'dedup-title.txt'),
+        fetchFn: mockFetch as unknown as typeof fetch
+      });
+
+      expect(releaseName).toBe('v2.1.0 - Interactive Category Buttons');
     });
 
     it('falls back to tagName when apiKey is not provided', async () => {
