@@ -160,23 +160,6 @@ export class ModifyRecordHandler {
     }
 
     const clearFields = editCommand.clearFields ? [...editCommand.clearFields] : [];
-    const clearedFieldLabels: string[] = [];
-
-    if (clearFields.includes('note')) {
-      clearedFieldLabels.push('Catatan');
-    }
-    if (clearFields.includes('labelIds')) {
-      clearedFieldLabels.push('Tag / Label');
-    }
-    if (clearFields.includes('counterParty')) {
-      clearedFieldLabels.push('Merchant / Payee');
-    }
-    if (clearFields.includes('categoryId')) {
-      clearedFieldLabels.push('Kategori');
-    }
-    if (clearFields.includes('transfer')) {
-      clearedFieldLabels.push('Status Transfer');
-    }
 
     let resolvedCategoryId: string | undefined;
     let resolvedCategoryName: string | undefined;
@@ -345,7 +328,6 @@ export class ModifyRecordHandler {
         labels: finalLabels,
         movedFromAccountName,
         clearedFields: clearFields.length > 0 ? clearFields : undefined,
-        clearedFieldLabels: clearedFieldLabels.length > 0 ? clearedFieldLabels : undefined,
       });
 
       const sendReceipt = await this.messagingGateway.sendMessage(
