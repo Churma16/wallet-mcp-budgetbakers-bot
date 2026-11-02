@@ -26,7 +26,7 @@ async function runWalletMcpVerification(): Promise<void> {
 
     console.log('');
     applicationLogger.info('2. Fetching accounts...');
-    const accountList = await walletMcpClient.fetchAccounts(true);
+    const accountList = await walletMcpClient.fetchAccounts();
     applicationLogger.success(`Found ${accountList.length} accounts:`);
     accountList.forEach((accountItem, accountIndex) => {
       console.log(`   ${accountIndex + 1}. [${accountItem.name}] ID: ${accountItem.id} | Balance: ${accountItem.balance ?? 'N/A'} ${accountItem.currency ?? ''}`);
@@ -34,7 +34,7 @@ async function runWalletMcpVerification(): Promise<void> {
 
     console.log('');
     applicationLogger.info('3. Fetching categories...');
-    const categoryList = await walletMcpClient.fetchCategories(true);
+    const categoryList = await walletMcpClient.fetchCategories();
     applicationLogger.success(`Found ${categoryList.length} categories.`);
     console.log('   Sample categories:', categoryList.slice(0, 5).map(c => c.name).join(', '));
 

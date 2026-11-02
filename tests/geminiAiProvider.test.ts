@@ -12,8 +12,8 @@ async function runGeminiAiVerification(): Promise<void> {
     environmentConfig.walletMcpAccessToken
   );
 
-  const accountList = await walletMcpClient.fetchAccounts(true);
-  const categoryList = await walletMcpClient.fetchCategories(true);
+  const accountList = await walletMcpClient.fetchAccounts();
+  const categoryList = await walletMcpClient.fetchCategories();
 
   const geminiAiProvider = new GeminiAiProvider(
     environmentConfig.geminiApiKey,

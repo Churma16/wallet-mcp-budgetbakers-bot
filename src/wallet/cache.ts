@@ -50,7 +50,9 @@ export class WalletCache {
       })
       .catch(fetchError => {
         this.accountsLastUpdatedTimestamp = 0;
-        applicationLogger.error(`Failed to fetch accounts during cache initialization: ${fetchError.message}`);
+        applicationLogger.error(
+          `Failed to fetch accounts during cache initialization: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`
+        );
         return [];
       });
 
@@ -62,7 +64,9 @@ export class WalletCache {
       })
       .catch(fetchError => {
         this.categoriesLastUpdatedTimestamp = 0;
-        applicationLogger.error(`Failed to fetch categories during cache initialization: ${fetchError.message}`);
+        applicationLogger.error(
+          `Failed to fetch categories during cache initialization: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`
+        );
         return [];
       });
 
