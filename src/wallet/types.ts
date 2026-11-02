@@ -58,17 +58,7 @@ export interface WalletTransferUnpairedInput extends WalletTransferBaseInput {
 export type WalletTransferInput =
   | WalletTransferNewInput
   | WalletTransferExistingInput
-  | WalletTransferUnpairedInput
-  | {
-      pairingMode: WalletTransferPairingMode;
-      accountId?: string;
-      accountHint?: string;
-      recordId?: string;
-      counterAmount?: {
-        value: number;
-        currencyCode: string;
-      };
-    };
+  | WalletTransferUnpairedInput;
 
 export interface WalletLabelItem {
   id: string;

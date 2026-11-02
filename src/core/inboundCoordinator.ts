@@ -224,23 +224,33 @@ export async function coordinateInboundTransactionCandidate(
       : `[Klarifikasi] ${initialNote}`;
   }
 
+  const matchedTransferRecord =
+    correlationResult.suggestedAction === 'PAIR_TRANSFER_EXISTING' &&
+    correlationResult.matchTarget.type === 'WALLET_RECORD'
+      ? correlationResult.matchTarget.record
+      : undefined;
+
+  const resolvedTransferDestinationAccountName = matchedTransferRecord
+    ? matchedTransferRecord.accountName ||
+      cachedAccounts.find(account => account.id === matchedTransferRecord.accountId)?.name ||
+      resolvedDestinationAccountName
+    : resolvedDestinationAccountName;
+
   const pendingItem = pendingTransactionManager.addPendingTransaction({
     sourceType,
     bankDisplayName: gateResult.matchedBankRule?.displayName || sourceDisplayName,
     accountNameHint: resolvedAccountName,
     matchedAccountId: resolvedAccountId,
-    destinationAccountNameHint: resolvedDestinationAccountName,
+    destinationAccountNameHint: resolvedTransferDestinationAccountName,
     counterParty: parsedData.counterParty || '',
     amount: parsedData.amount,
     currency: resolvedCurrency,
-    transactionType: correlationResult.suggestedAction === 'PAIR_TRANSFER_EXISTING'
-      ? 'TRANSFER'
-      : parsedData.transactionType,
-    matchedDestinationAccountId: correlationResult.suggestedAction === 'PAIR_TRANSFER_EXISTING' && correlationResult.matchTarget.type === 'WALLET_RECORD'
-      ? correlationResult.matchTarget.record.accountId
+    transactionType: matchedTransferRecord ? 'TRANSFER' : parsedData.transactionType,
+    matchedDestinationAccountId: matchedTransferRecord
+      ? matchedTransferRecord.accountId
       : resolvedDestinationAccountId,
-    transfer: correlationResult.proposedTransfer || (correlationResult.suggestedAction === 'PAIR_TRANSFER_EXISTING' && correlationResult.matchTarget.type === 'WALLET_RECORD'
-      ? { pairingMode: 'existing', recordId: correlationResult.matchTarget.record.id, accountId: correlationResult.matchTarget.record.accountId }
+    transfer: correlationResult.proposedTransfer || (matchedTransferRecord
+      ? { pairingMode: 'existing', recordId: matchedTransferRecord.id, accountId: matchedTransferRecord.accountId }
       : undefined),
     matchedCategoryId: parsedData.matchedCategoryId,
     matchedCategoryName: parsedData.matchedCategoryName,

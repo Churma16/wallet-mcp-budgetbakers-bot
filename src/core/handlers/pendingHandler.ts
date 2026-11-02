@@ -357,7 +357,7 @@ export class PendingActionHandler {
       if (item.transfer?.pairingMode === 'existing') {
         return [{
           accountId: item.matchedAccountId,
-          amount: -Math.abs(item.amount),
+          amount: item.amount < 0 ? -Math.abs(item.amount) : Math.abs(item.amount),
           recordDate: item.recordDate,
           note: item.note || `Transfer ke ${item.destinationAccountNameHint || 'akun lain'}`,
           counterParty: item.destinationAccountNameHint || '',
