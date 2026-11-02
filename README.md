@@ -1,8 +1,8 @@
 # AI Bookkeeper for BudgetBakers Wallet (WhatsApp & Telegram)
 
-[![Continuous Integration](https://github.com/Churma16/wallet-mcp-budgetbakers-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/Churma16/wallet-mcp-budgetbakers-bot/actions/workflows/ci.yml) [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Node.js](https://img.shields.io/badge/Node.js-%3E=22.0.0-339933?logo=node.js&logoColor=white)](https://nodejs.org/) [![Google Gemini](https://img.shields.io/badge/Google%20Gemini-3.5%20Flash-4285F4?logo=google&logoColor=white)](https://aistudio.google.com/) [![Baileys](https://img.shields.io/badge/WhatsApp-Baileys-25D366?logo=whatsapp&logoColor=white)](https://github.com/WhiskeySockets/Baileys) [![Telegram](https://img.shields.io/badge/Telegram-grammY-26A5E4?logo=telegram&logoColor=white)](https://grammy.dev/) [![BudgetBakers MCP](https://img.shields.io/badge/BudgetBakers-Wallet%20MCP-FF6B6B)](https://web.budgetbakers.com/settings/mcp-server) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Continuous Integration](https://github.com/Churma16/wallet-mcp-budgetbakers-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/Churma16/wallet-mcp-budgetbakers-bot/actions/workflows/ci.yml) [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Node.js](https://img.shields.io/badge/Node.js-%3E=22.0.0-339933?logo=node.js&logoColor=white)](https://nodejs.org/) [![Google Gemini](https://img.shields.io/badge/Google%20Gemini-Flash-4285F4?logo=google&logoColor=white)](https://aistudio.google.com/) [![Baileys](https://img.shields.io/badge/WhatsApp-Baileys-25D366?logo=whatsapp&logoColor=white)](https://github.com/WhiskeySockets/Baileys) [![Telegram](https://img.shields.io/badge/Telegram-grammY-26A5E4?logo=telegram&logoColor=white)](https://grammy.dev/) [![BudgetBakers MCP](https://img.shields.io/badge/BudgetBakers-Wallet%20MCP-FF6B6B)](https://web.budgetbakers.com/settings/mcp-server) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-An automated personal bookkeeping assistant via **WhatsApp** and **Telegram** integrated directly with BudgetBakers Wallet through the official Model Context Protocol (MCP) Streamable HTTP endpoint. Powered by an agnostic AI provider (Google Gemini, OpenRouter, Groq, Ollama, OpenAI — currently only tested for Gemini API), the system converts natural language chats and physical receipt photos into structured wallet records, monitors bank/e-wallet notification emails in real time, and requests interactive confirmation before committing financial records.
+An automated personal bookkeeping assistant via **WhatsApp** and **Telegram** integrated directly with BudgetBakers Wallet through the official Model Context Protocol (MCP) Streamable HTTP endpoint. Powered by an AI engine supporting Google Gemini, OpenRouter, Groq, Ollama, and OpenAI, the system converts natural language chats and physical receipt photos into structured wallet records, monitors bank and e-wallet notification emails in real time, and requests interactive confirmation before committing financial records.
 
 <details>
 <summary><b>Table of Contents</b></summary>
@@ -34,55 +34,68 @@ An automated personal bookkeeping assistant via **WhatsApp** and **Telegram** in
 
 ```mermaid
 flowchart TD
-    subgraph Messaging_Channels ["Channel Layer (Agnostic)"]
+    subgraph Channels ["User Channels"]
         UserWA["WhatsApp User"]
         UserTG["Telegram User"]
         AdapterWA["WhatsApp Adapter (Baileys)"]
         AdapterTG["Telegram Adapter (grammY)"]
-        Gateway["Messaging Gateway Manager"]
+        Gateway["Messaging Gateway"]
     end
 
-    subgraph Core_Orchestrator ["Core Orchestrator"]
-        FastPath["Fast-Path Intent Detector (Zero Token)"]
-        PendingMgr["Pending Transaction Manager"]
+    subgraph Mobile_Sync ["Android Push Sync"]
+        AndroidApp["Android Forwarder App"]
+        Webhook["Webhook Server (HTTP)"]
+        GateAndroid["Package and Spam Filter"]
     end
 
-    subgraph AI_Engine ["AI Engine (Agnostic)"]
-        GeminiNLU["LLM NLU & Vision Parser"]
-        FallbackCascade["Model Fallback Cascade"]
+    subgraph Email_Sync ["Bank Email Sync"]
+        Gmail["Gmail Server (IMAP IDLE)"]
+        Listener["IMAP Listener"]
+        Gate1["Gate 1: Sender and Regex Filter"]
+        Gate2["Gate 2: AI Transaction Parser"]
     end
 
-    subgraph Email_Sync ["Real-Time Email Sync"]
-        Gmail["Gmail IMAP Server (IDLE)"]
-        Listener["IMAP Listener Service"]
-        Gate1["Gate 1: Regex & Domain Filter (Zero Token)"]
-        Gate2["Gate 2: AI Financial Classifier"]
+    subgraph Core ["Core Processing"]
+        Fusion["Transaction Fusion and Deduplication"]
+        FastPath["Fast-Path Intent Router"]
+        PendingMgr["Pending Confirmation Queue"]
     end
 
-    subgraph Wallet_Integration ["BudgetBakers Wallet"]
-        McpClient["Wallet MCP Client (JSON-RPC)"]
+    subgraph AI ["AI Engine"]
+        LLMParser["Financial and Receipt Vision Parser"]
+        ModelFallback["Fallback Provider Cascade"]
+    end
+
+    subgraph Wallet ["BudgetBakers Wallet"]
+        McpClient["Wallet MCP Client (Official SDK)"]
         BBCloud["BudgetBakers Cloud"]
     end
 
-    UserWA -->|Message / Receipt Image| AdapterWA
-    UserTG -->|Message / Receipt Image| AdapterTG
+    UserWA -->|Chat or Receipt Photo| AdapterWA
+    UserTG -->|Chat or Receipt Photo| AdapterTG
     AdapterWA --> Gateway
     AdapterTG --> Gateway
     Gateway --> FastPath
-    FastPath -->|Confirmation / Simple Commands| PendingMgr
-    FastPath -->|Financial NLP / Receipt OCR| GeminiNLU
-    GeminiNLU -.-> FallbackCascade
-    GeminiNLU -->|Validated Record| McpClient
+    FastPath -->|Confirmation Command| PendingMgr
+    FastPath -->|Expense Text or Receipt OCR| LLMParser
+    LLMParser -.-> ModelFallback
+    LLMParser -->|Parsed Record| McpClient
 
-    Gmail -->|IMAP IDLE Push| Listener
+    AndroidApp -->|Push Notification| Webhook
+    Webhook --> GateAndroid
+    GateAndroid -->|Verified Notification| Fusion
+
+    Gmail -->|Push Notification| Listener
     Listener --> Gate1
-    Gate1 -->|Pass Validation| Gate2
-    Gate2 -->|Extracted Transaction| PendingMgr
+    Gate1 -->|Verified Email| Gate2
+    Gate2 -->|Extracted Transaction| Fusion
+
+    Fusion -->|Single Combined Ticket| PendingMgr
     PendingMgr -->|Broadcast Interactive Ticket| Gateway
-    PendingMgr -->|Confirmed Ticket| McpClient
+    PendingMgr -->|Confirmed Transaction| McpClient
 
     McpClient --> BBCloud
-    BBCloud -->|Response & Balances| McpClient
+    BBCloud -->|Balances and Response| McpClient
     McpClient --> Gateway
     Gateway -->|Reply| UserWA
     Gateway -->|Reply| UserTG
@@ -98,7 +111,8 @@ flowchart TD
 - **Account-Aware Multi-Currency & Precision Formatting**: Automatically inspects account currencies configured in BudgetBakers Wallet (e.g. USD, EUR, IDR, SGD, GBP) and formats amounts accordingly with proper decimal precision (e.g., `$5.75` vs `Rp 45.000`).
 - **Multi-Language Support (i18n)**: Fully localized human responses and interactive ticket confirmations in **Bahasa Indonesia** (`id`) and **English** (`en`), configurable via `APP_LANGUAGE`.
 - **Configurable Timezone**: Formats transaction receipts and contextual timestamps matching your IANA timezone (e.g., `Asia/Jakarta`, `America/New_York`, `Europe/London`).
-- **Real-Time Bank & E-Wallet Email Sync**: Automatically monitors transaction emails via Gmail IMAP IDLE for **Bank Mandiri (Livin), Bank Jago, GoPay, OVO, DANA, and ShopeePay**.
+- **Real-Time Android Push Notification Sync**: Receive transaction alerts from banking apps (BCA, Mandiri Livin, BRImo, BNI wondr, blu, Jenius, SeaBank, GoPay, OVO, DANA, ShopeePay) via the companion app (`codes.churma.walletforwarder`). Uses smart transaction fusion to merge duplicate alerts when both email and push notifications arrive for the same transaction.
+- **Real-Time Bank & E-Wallet Email Sync**: Automatically monitors transaction emails via Gmail IMAP IDLE for **Bank Mandiri (Livin), Bank Jago, BCA, Flip, GoPay, OVO, DANA, and ShopeePay**.
 - **Two-Gate Spam & Promo Defense Engine**:
   - **Gate 1**: Header, sender domain, regex validation, security keyword blacklist (OTP, login alerts, promos), and in-memory deduplication (zero AI tokens spent).
   - **Gate 2**: AI structured schema extraction for verified financial notifications.
@@ -114,11 +128,11 @@ flowchart TD
 ## Tech Stack & Libraries
 
 - **Language & Runtime**: TypeScript 5.x on Node.js 22+ via `tsx`
-- **AI / NLU Engine**: Agnostic AI Provider supporting Google Gemini API via `@google/genai`, plus OpenRouter, Groq, Ollama, OpenAI (*currently only tested with Gemini API*)
+- **AI / NLU Engine**: Agnostic AI engine supporting Google Gemini API via `@google/genai`, plus OpenRouter, Groq, Ollama, and OpenAI
 - **Messaging Gateways**:
   - WhatsApp: `@whiskeysockets/baileys` (Multi-device WhatsApp Web socket API)
   - Telegram: `grammy` (Modern, native TypeScript Telegram Bot framework)
-- **MCP Client**: Custom JSON-RPC over HTTP client targeting BudgetBakers Wallet MCP Server
+- **MCP Client**: Official Model Context Protocol Client (`@modelcontextprotocol/client`) targeting BudgetBakers Wallet MCP Server
 - **Email Synchronization**: `imapflow` (IMAP IDLE push events) and `mailparser` (RFC 822 stream parsing)
 - **Logging**: `pino` with rotating daily file logs and clean console output
 
@@ -128,13 +142,13 @@ flowchart TD
 
 1. **Node.js**: Version 22.0.0 or higher.
 2. **AI Provider API Key**:
-   - Google Gemini: Obtain a free key from [Google AI Studio](https://aistudio.google.com) (*currently only tested with Gemini API*).
+   - Google Gemini: Obtain a free key from [Google AI Studio](https://aistudio.google.com).
    - Or OpenRouter / Groq / OpenAI / Ollama.
 3. **BudgetBakers Wallet MCP Token**:
    - Generate a **Personal Access Token** with required scopes (`records.create`, `records.read`, `accounts.read`, `categories.read`, `budgets.read`) by following the [step-by-step instructions below](#generating-a-budgetbakers-wallet-mcp-token).
 4. **Messaging Credentials (At least one required)**:
    - **WhatsApp**: Your phone number for `ALLOWED_PHONE_NUMBER`.
-   - **Telegram**: A bot token from [@BotFather](https://t.me/BotFather) (`TELEGRAM_BOT_TOKEN`) and your Telegram user ID from [@userinfobot](https://t.me/userinfobot) (`TELEGRAM_ALLOWED_USER_ID`).
+   - **Telegram**: Both a bot token from [@BotFather](https://t.me/BotFather) (`TELEGRAM_BOT_TOKEN`) and your numeric Telegram user ID from [@userinfobot](https://t.me/userinfobot) (`TELEGRAM_ALLOWED_USER_ID`). Usernames such as @username are not supported.
 5. **Google App Password (Optional for Email Sync)**:
    - If enabling real-time bank email monitoring:
      1. Enable 2-Step Verification on your Google Account.
@@ -158,7 +172,7 @@ Your `WALLET_MCP_ACCESS_TOKEN` is a **Personal Access Token** issued by BudgetBa
    - `accounts.read`
    - `categories.read`
    - `budgets.read`
-7. Click **Create / Generate** and **copy the token immediately** — it is displayed only once and starts with the prefix `pat_...`.
+7. Click **Create / Generate** and **copy the token immediately**. It is shown only once and starts with `pat_...`.
 
 Then paste it into `WALLET_MCP_ACCESS_TOKEN` in your `.env` file:
 
@@ -167,7 +181,7 @@ WALLET_MCP_ACCESS_TOKEN=pat_your_generated_token_here
 ```
 
 > [!IMPORTANT]
-> Treat your Personal Access Token like a password. Never commit it to version control or share it — it grants direct API access to your Wallet records. If it is ever leaked, revoke it immediately from the same **Settings > MCP Server** page and generate a replacement.
+> Treat your Personal Access Token like a password. Never commit it to git or share it. It gives direct API access to your Wallet records. If it is ever leaked, revoke it immediately from the same **Settings > MCP Server** page and generate a replacement.
 
 Direct link: [BudgetBakers MCP Server Settings](https://web.budgetbakers.com/settings/mcp-server).
 
@@ -180,41 +194,33 @@ Direct link: [BudgetBakers MCP Server Settings](https://web.budgetbakers.com/set
 
 ### 3-Minute Quickstart
 
-The fastest path from zero to a working bot requires exactly **4 environment variables**:
+The fastest path to a working bot is the interactive setup wizard:
 
-1. **Clone and install** the project:
+1. **Clone and install**:
    ```bash
    git clone https://github.com/Churma16/wallet-mcp-budgetbakers-bot.git
    cd wallet-mcp-budgetbakers-bot
    npm install
    ```
-2. **Copy the environment template** and set the 4 mandatory variables below:
+
+2. **Run the setup wizard**:
    ```bash
-   cp .env.example .env
+   npm run setup
    ```
+   The wizard asks for your Wallet MCP token, AI key, and chosen messaging channel (WhatsApp or Telegram), then writes your `.env` file.
 
-   | Variable | What to put | Where to get it |
-   | :--- | :--- | :--- |
-   | `WALLET_MCP_BASE_URL` | BudgetBakers Wallet MCP endpoint | Use the default `https://mcp.wallet.budgetbakers.com` |
-   | `WALLET_MCP_ACCESS_TOKEN` | Your Wallet MCP Personal Access Token (`pat_...`) | See [step-by-step instructions](#generating-a-budgetbakers-wallet-mcp-token) |
-   | `GEMINI_API_KEY` | Your Google Gemini API key | Free key at [Google AI Studio](https://aistudio.google.com) |
-   | `ALLOWED_PHONE_NUMBER` | Your own WhatsApp number (international format, no `+`) | e.g. `6281234567890` |
+3. **Check connections**:
+   ```bash
+   npm run doctor
+   ```
+   This checks your token scopes, AI connection, and local directories before you run the bot.
 
-   > [!NOTE]
-   > Using **Telegram** instead of WhatsApp? Replace `ALLOWED_PHONE_NUMBER` with `TELEGRAM_BOT_TOKEN` (from [@BotFather](https://t.me/BotFather)) and `TELEGRAM_ALLOWED_USER_ID` (from [@userinfobot](https://t.me/userinfobot)).
-
-   > [!IMPORTANT]
-   > **Non-Indonesian / International Users**: The bot defaults to Indonesian (`id`), `IDR`, and `Asia/Jakarta`. If you are outside Indonesia, make sure to set the three localization variables in **Stage 1D** (`APP_LANGUAGE=en`, `DEFAULT_CURRENCY`, `APP_TIMEZONE`) to match your language, currency, and local timezone.
-
-3. **Run the bot**:
+4. **Start the bot**:
    ```bash
    npm start
    ```
-
-   - **WhatsApp**: scan the QR code shown in the terminal via WhatsApp > **Settings** > **Linked Devices** > **Link a Device**.
-   - **Telegram**: send `/start` to your bot from your whitelisted account.
-
-Your bot is now live. Continue below only when you want to enable extra channels, AI fallbacks, or email sync.
+   - **WhatsApp**: Scan the terminal QR code in WhatsApp > **Settings** > **Linked Devices** > **Link a Device**.
+   - **Telegram**: Send `/start` to your bot from your whitelisted user account.
 
 ---
 
@@ -251,7 +257,7 @@ Fill in these credentials to get the bot running immediately.
 | `AI_PROVIDER` | Active AI provider or comma-separated priority order (`gemini`, `openrouter`, `groq`, `ollama`, `openai`, `custom`, or e.g. `gemini,openrouter`) | `gemini` |
 | `GEMINI_API_KEY` | Google Gemini API key (from [Google AI Studio](https://aistudio.google.com)) | `AIzaSy...` |
 | `GEMINI_MODEL` | Primary Gemini model identifier | `gemini-3.5-flash-lite` |
-| `GEMINI_FALLBACK_MODELS` | Comma-separated cascade fallback models | `gemini-3.5-flash,gemini-3.6-flash` |
+| `GEMINI_FALLBACK_MODELS` | Comma-separated cascade fallback models | `gemini-3.6-flash,gemini-3.8-flash` |
 | `GEMINI_TIMEOUT_SECONDS` | Request timeout before triggering fallback | `20` |
 | `OPENROUTER_API_KEY` | OpenRouter API Key (required if `openrouter` is in `AI_PROVIDER`) | `sk-or-v1-...` |
 | `GROQ_API_KEY` | Groq API Key (required if `groq` is in `AI_PROVIDER`) | `gsk_...` |
@@ -264,7 +270,7 @@ Fill in these credentials to get the bot running immediately.
 
 > [!TIP]
 > **Recommended Multi-Provider Fallback Setup**:
-> Set `AI_PROVIDER=gemini,openrouter` with your `GEMINI_API_KEY` and `OPENROUTER_API_KEY`. The bot will utilize Gemini's high-speed native multimodal engine, and automatically fail over to OpenRouter free models (e.g. `openrouter/free`) if Gemini hits rate limits (`429`) or server overload (`503`).
+> Set `AI_PROVIDER=gemini,openrouter` with your `GEMINI_API_KEY` and `OPENROUTER_API_KEY`. The bot uses Gemini's native multimodal engine, and automatically fail over to OpenRouter free models (e.g. `openrouter/free`) if Gemini hits rate limits (`429`) or server overload (`503`).
 
 **1C. Messaging Channels (Choose at least one: WhatsApp or Telegram):**
 | Variable | Description | Example / Default |
@@ -273,7 +279,7 @@ Fill in these credentials to get the bot running immediately.
 | `ALLOWED_PHONE_NUMBER` | Authorized WhatsApp number in international format (whitelist) | `6281234567890` |
 | `WHATSAPP_SESSION_PATH` | Local directory for multi-device session credentials | `./auth_session` |
 | `TELEGRAM_BOT_TOKEN` | Telegram Bot Token from @BotFather | `123456789:ABC...` |
-| `TELEGRAM_ALLOWED_USER_ID` | Telegram User ID whitelist security | `123456789` |
+| `TELEGRAM_ALLOWED_USER_ID` | Numeric Telegram User ID whitelist (digits only, no `@username`) | `123456789` |
 
 **1D. Localization & Regional Preferences (Recommended for International Users):**
 | Variable | Description | Example / Default |
@@ -285,9 +291,10 @@ Fill in these credentials to get the bot running immediately.
 > [!IMPORTANT]
 > The bot ships with Indonesian defaults (`id`, `IDR`, `Asia/Jakarta`). If you live outside Indonesia, set `APP_LANGUAGE=en`, adjust `DEFAULT_CURRENCY`, and pick your [IANA timezone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) (e.g. `America/New_York`, `Europe/London`, `Asia/Singapore`) to avoid receiving responses in Indonesian with unexpected timezone offsets.
 
-#### Stage 2: Optional Add-On Features (Real-Time Bank Sync)
-Configure if you want real-time financial tracking from email notifications.
+#### Stage 2: Optional Add-On Features (Inbound Bank & Mobile Sync)
+Configure if you want real-time financial tracking from bank emails or Android push notifications.
 
+**2A. Bank Email Synchronization (Gmail IMAP IDLE):**
 | Variable | Description | Example / Default |
 | :--- | :--- | :--- |
 | `EMAIL_SYNC_ENABLED` | Toggle real-time bank email sync via IMAP | `false` |
@@ -296,6 +303,20 @@ Configure if you want real-time financial tracking from email notifications.
 | `EMAIL_IMAP_USER` | Gmail address receiving bank notifications | `user@gmail.com` |
 | `EMAIL_IMAP_PASSWORD` | 16-character Google App Password | `abcd efgh ijkl mnop` |
 | `EMAIL_LOOKBACK_MINUTES`| Lookback window on initial startup to prevent flooding | `10` |
+
+**2B. Android Notification Forwarder Webhook:**
+If you use the Android companion app (**Wallet Forwarder** / `codes.churma.walletforwarder`), the bot can receive push notifications directly from your phone.
+
+| Variable | Description | Example / Default |
+| :--- | :--- | :--- |
+| `NOTIFICATION_WEBHOOK_ENABLED` | Toggle embedded HTTP webhook for Android notifications | `false` |
+| `NOTIFICATION_WEBHOOK_PORT` | HTTP port for notification webhook receiver | `3000` |
+| `NOTIFICATION_WEBHOOK_HOST` | Host interface to bind | `0.0.0.0` |
+| `NOTIFICATION_WEBHOOK_SECRET` | Secret Bearer token protecting the webhook endpoint | `your_secure_random_token` |
+
+- **Webhook URL**: `http://<your-server-ip-or-domain>:3000/api/webhook/notification`
+- **Auth Header**: `Authorization: Bearer <NOTIFICATION_WEBHOOK_SECRET>`
+- **Test Connection**: Triggering a test ping from `codes.churma.walletforwarder` broadcasts a confirmation alert to your WhatsApp and Telegram channels without writing records to Wallet.
 
 #### Stage 3: Advanced System Safeguards & Anti-Ban Tuning
 All settings below have sensible built-in defaults. Change only if needed. This stage is dedicated exclusively to system safeguards, throttling, and anti-ban configuration.
@@ -434,74 +455,33 @@ Send messages from your whitelisted WhatsApp or Telegram account to the bot:
 ```
 wallet-mcp-budgetbakers-bot/
 ├── src/
-│   ├── config/
-│   │   ├── bankEmailRules.ts            # Rule definitions for Mandiri, Jago, GoPay, OVO, DANA, ShopeePay
-│   │   └── environmentConfig.ts         # Environment validation and typed configurations
-│   ├── handlers/                        # Modular event & message processing handlers
-│   │   ├── emailTransactionHandler.ts   # Bank email notification processing & ticket creation
-│   │   ├── fastPathHandler.ts           # Zero-token intent shortcuts and quick commands
-│   │   ├── pendingActionHandler.ts      # Confirmation ticket queue actions (confirm, cancel)
-│   │   ├── userMessageHandler.ts        # Financial NLU, receipt OCR, and query handling
-│   │   └── index.ts                     # Handlers barrel export
-│   ├── i18n/                            # Internationalization (i18n) and response dictionaries
-│   │   ├── locales/
-│   │   │   ├── en.ts                    # English dictionary & templates
-│   │   │   └── id.ts                    # Indonesian dictionary & templates
-│   │   ├── types.ts                     # Dictionary type definitions & interfaces
-│   │   └── index.ts                     # Language manager & active dictionary getter
-│   ├── types/
-│   │   └── walletTypes.ts               # Wallet MCP interfaces (Account, Category, Record, Budget)
-│   ├── services/
-│   │   ├── ai/                          # Agnostic AI Provider implementations
-│   │   │   ├── aiPromptBuilder.ts       # Centralized system instruction & prompt builder
-│   │   │   ├── aiProviderFactory.ts     # Dynamic factory creating active AI provider instances
-│   │   │   ├── fallbackAiProvider.ts    # Priority-based cascade failover provider
-│   │   │   ├── financialAiProvider.ts   # Common AI provider contract & interfaces
-│   │   │   ├── geminiAiProvider.ts      # Google Gemini native provider with model fallback
-│   │   │   ├── jsonExtractionHelper.ts  # Resilient markdown JSON extractor & sanitizer
-│   │   │   ├── openAiCompatibleAiProvider.ts # OpenAI / OpenRouter / Groq / Ollama provider
-│   │   │   └── index.ts                 # AI services barrel export
-│   ├── messaging/                       # Channel-agnostic messaging gateways
-│   │   ├── types.ts                     # Adapter interfaces and messaging event contracts
-│   │   ├── messagingGatewayService.ts   # Gateway orchestrator managing active channels
-│   │   ├── messageFormatHelper.ts       # Formatting converter (WhatsApp markup to Telegram HTML)
-│   │   ├── whatsappAdapter.ts           # Baileys WhatsApp Web socket adapter
-│   │   ├── telegramAdapter.ts           # grammY Telegram Bot adapter
-│   │   └── index.ts                     # Messaging barrel export
-│   ├── emailListenerService.ts          # Gmail IMAP IDLE real-time subscriber and parser
-│   ├── pendingTransactionService.ts     # Interactive confirmation ticket queue
-│   ├── walletCacheService.ts            # In-memory cache for accounts, categories, and currencies
-│   └── walletMcpService.ts               # BudgetBakers Wallet MCP HTTP JSON-RPC client
-│   ├── utils/
-│   │   ├── emailGateEvaluator.ts            # Gate 1 rule evaluator (sender domain, blacklist, anti-dupe)
-│   │   ├── fastPathIntentDetector.ts    # Zero-token intent classifier and confirmation parser
-│   │   ├── humanResponseFormatter.ts    # Multi-language response templates and formatting
-│   │   ├── logger.ts                    # Pino logger instance with daily file rotation & redaction
-│   │   └── recordValidator.ts           # Account/category index resolver and payload sanitizer
-│   ├── app.ts                           # Application container and lifecycle coordinator
-│   └── index.ts                         # Entrypoint bootstrap
-├── tests/                               # Diagnostic & verification test suites
-│   ├── *.vitest.test.ts                 # Hermetic unit, integration, and regression suites run via Vitest
-│   ├── aiProvider.test.ts               # Diagnostic script for active AI provider NLU
-│   ├── emailListenerService.test.ts     # Diagnostic script for Gmail IMAP connectivity
-│   ├── fetchRealEmailsGate.test.ts      # Live inbox diagnostic for Gate 1 rule evaluation
-│   ├── geminiAiProvider.test.ts         # Diagnostic script for Gemini AI provider
-│   ├── telegramBot.test.ts              # Diagnostic script for Telegram bot connectivity & dispatch
-│   └── walletMcpService.test.ts         # Diagnostic script for BudgetBakers MCP endpoints
-├── .env.example                         # Environment variable template
-├── package.json                         # Node dependencies and execution scripts
-├── tsconfig.json                        # TypeScript compiler configuration
-├── CONTRIBUTING.md                      # Contribution guidelines & workflows
-├── LICENSE                              # MIT License
-└── README.md                            # Project documentation
+│   ├── app.ts                 # Thin composition root (context assembly and pipeline dispatching)
+│   ├── brain/                 # AI Domain: providers (Gemini, OpenAI-compatible), prompts, parsers, clarification, fast path
+│   ├── cli/                   # Tooling: doctor diagnostics, setup wizard, env editor
+│   ├── config/                # Shared: application and environment configuration schemas, notification rules
+│   ├── core/                  # Orchestration: shared context, message pipeline, action handlers, pending states
+│   ├── email/                 # Email Domain: IMAP listener, bank rules, transaction correlation, transaction fusion
+│   ├── gateway/               # Gateway Domain: WhatsApp, Telegram, Console messaging adapters and coordinator
+│   ├── i18n/                  # Localization: dictionaries (en, id) and human message formatters
+│   ├── lib/                   # Infrastructure: domain-agnostic utilities (logger, resilience, text casing)
+│   ├── wallet/                # Wallet Domain: BudgetBakers MCP client (official SDK), records, history, summary, cache
+│   └── index.ts               # Application entry point and process lifecycle management
+├── tests/                     # Diagnostic and verification test suites
+│   ├── *.vitest.test.ts       # Hermetic unit, integration, and regression suites run via Vitest
+│   └── *.test.ts              # Diagnostic connectivity scripts for live environment probing
+├── .env.example               # Environment variable template
+├── package.json               # Node dependencies and execution scripts
+├── tsconfig.json              # TypeScript compiler configuration
+├── CONTRIBUTING.md            # Contribution guidelines and workflows
+├── LICENSE                    # MIT License
+└── README.md                  # Project documentation
 ```
-
 
 ---
 
 ## Security & Privacy Considerations
 
-- **Self-Hosted, No Intermediary Proxy**: This tool is a self-hosted client application with no additional relay, proxy, or intermediary servers. Your messages and financial data travel directly between your machine and the respective endpoints (AI provider API and BudgetBakers MCP). Note that **NLU processing and receipt OCR do require sending transaction text or images to your configured AI provider** (e.g. Google Gemini, OpenRouter) as part of the cloud API call — no third-party middleware is involved beyond that direct connection.
+- **Self-Hosted, No Intermediary Proxy**: This tool is a self-hosted client application with no additional relay, proxy, or intermediary servers. Your messages and financial data travel directly between your machine and the respective endpoints (AI provider API and BudgetBakers MCP). Note that **NLU processing and receipt OCR do require sending transaction text or images to your configured AI provider** (e.g. Google Gemini, OpenRouter) as part of the cloud API call. No third-party middleware handles the data beyond that direct connection.
 - **Whitelisted Access**: Incoming messages from unapproved numbers are rejected immediately before reaching the AI or MCP layers.
 - **Isolated Local Sessions**: WhatsApp connection tokens and keys are stored in the local `./auth_session` folder and excluded from git tracking.
 - **Two-Gate Email Protection**: Promotional campaigns, newsletter updates, and sensitive security alerts (such as OTP codes or device verification notifications) are dropped by Gate 1 regex patterns without transmitting content to cloud AI APIs.
@@ -557,7 +537,7 @@ This project follows [Semantic Versioning](https://semver.org/) and [Conventiona
 We want getting help and giving feedback to be as approachable as possible.
 
 - **Questions, Setup Help & Ideas**: For casual Q&A, troubleshooting your setup, or brainstorming new capabilities, join the conversation on [GitHub Discussions](https://github.com/Churma16/wallet-mcp-budgetbakers-bot/discussions). It is the best place for questions that do not yet have a clear action item.
-- **Bug Reports & Feature Requests**: Submit these directly as GitHub Issues. There is no need to follow a formal RFC template or write perfect English - free-form descriptions are welcome in any format and in either English or Indonesian. Maintainers will review, clarify, and structure them into formal specifications when needed.
+- **Bug Reports & Feature Requests**: Submit these directly as GitHub Issues. There is no need to follow a formal RFC template or write perfect English: free-form descriptions are welcome in any format and in either English or Indonesian. Maintainers will review, clarify, and structure them into formal specifications when needed.
 
 > [!NOTE]
 > The detailed technical sections seen in many issues are a maintainer planning aid, not a reporting requirement. Rough bug reports, screenshots, logs, and half-formed feature ideas are all valuable and appreciated.
