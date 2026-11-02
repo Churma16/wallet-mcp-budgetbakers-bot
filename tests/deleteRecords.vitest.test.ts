@@ -193,6 +193,35 @@ describe('deleteRecords service logic', () => {
     expect(result.summary?.succeeded).toBe(2);
   });
 
+  it('atomically retries when requested record ID precedes partner ID in error text', async () => {
+    const leg1 = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+    const leg2 = 'b2c3d4e5-f6a7-8901-bcde-f12345678901';
+
+    // Upstream error mentions target record leg1 first, followed by companion leg2
+    vi.mocked(mockClient.callMcpTool)
+      .mockRejectedValueOnce(
+        new Error(
+          `Record ${leg1} is part of a paired transfer and cannot be deleted without companion record ${leg2}`
+        )
+      )
+      .mockResolvedValueOnce({
+        summary: { total: 2, succeeded: 2 },
+        results: [
+          { id: leg1, success: true },
+          { id: leg2, success: true },
+        ],
+      });
+
+    const result = await deleteRecords(mockClient, leg1);
+
+    expect(mockClient.callMcpTool).toHaveBeenCalledTimes(2);
+    expect(mockClient.callMcpTool).toHaveBeenNthCalledWith(2, 'delete_documents', {
+      type: 'records',
+      ids: [leg1, leg2],
+    });
+    expect(result.summary?.succeeded).toBe(2);
+  });
+
   it('atomically retries paired transfer deletion when result item contains partner leg UUID', async () => {
     const leg1 = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
     const leg2 = 'b2c3d4e5-f6a7-8901-bcde-f12345678901';

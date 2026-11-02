@@ -8,7 +8,7 @@ import {
 import { getDefaultCurrency } from '../../config/applicationConfig.js';
 import { applicationLogger } from '../../lib/logger.js';
 
-const DELETE_COMMAND_PATTERN = /^(?:\/)?(?:hapus|delete|del|rm|batal|cancel)(?:\s+(?:ini|this|transaksi|transaction|transactions|rekor|catatan|record))?[!?.]*$/i;
+const DELETE_COMMAND_PATTERN = /^(?:\/)?(?:hapus|delete|del|rm|batal|cancel)(?:\s+(?:ini|this|transaksi|transaction|transactions|rekor|catatan|record)){0,2}[!?.]*$/i;
 
 /**
  * Checks whether an incoming message string expresses a transaction deletion command.
