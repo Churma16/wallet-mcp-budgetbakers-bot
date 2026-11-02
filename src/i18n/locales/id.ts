@@ -90,8 +90,22 @@ export const indonesianDictionary: ResponseDictionary = {
       if (params.movedFromAccountName) {
         lines.push(`🏦 Akun dipindahkan dari: ${params.movedFromAccountName} ➔ ${params.accountName}`);
       }
-      if (params.clearedFieldLabels && params.clearedFieldLabels.length > 0) {
-        lines.push(`🧹 Bidang dibersihkan: ${params.clearedFieldLabels.join(', ')}`);
+      const clearedLabels = [
+        ...(params.clearedFieldLabels || []),
+        ...((params.clearedFields || []).map(field => {
+          switch (field) {
+            case 'note': return 'Catatan';
+            case 'labelIds': return 'Tag / Label';
+            case 'counterParty': return 'Merchant / Payee';
+            case 'categoryId': return 'Kategori';
+            case 'transfer': return 'Status Transfer';
+            case 'place': return 'Lokasi';
+            default: return field;
+          }
+        })),
+      ];
+      if (clearedLabels.length > 0) {
+        lines.push(`🧹 Bidang dibersihkan: ${Array.from(new Set(clearedLabels)).join(', ')}`);
       }
       return lines.join('\n');
     },

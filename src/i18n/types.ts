@@ -1,4 +1,4 @@
-import type { TransactionSortOrder, UnresolvedFilterIssue } from '../wallet/index.js';
+import type { TransactionSortOrder, UnresolvedFilterIssue, ClearableRecordField } from '../wallet/index.js';
 
 export type SupportedLanguage = 'id' | 'en';
 export type { TransactionSortOrder, UnresolvedFilterIssue };
@@ -22,6 +22,7 @@ export interface RecordEditSuccessParams {
   transactionTypeIcon: string;
   labels?: string[];
   movedFromAccountName?: string;
+  clearedFields?: ClearableRecordField[];
   clearedFieldLabels?: string[];
 }
 

@@ -274,6 +274,9 @@ export class ModifyRecordHandler {
         ...(resolvedAmount !== undefined ? { amount: resolvedAmount } : {}),
         ...(formattedCounterParty !== undefined ? { counterParty: formattedCounterParty } : {}),
         ...(clearFields.includes('counterParty') ? { counterParty: undefined } : {}),
+        ...(clearFields.includes('transfer')
+          ? { isTransfer: false, partnerRecordId: undefined }
+          : {}),
       });
 
       // Build structured receipt response
@@ -296,15 +299,16 @@ export class ModifyRecordHandler {
         'Wallet';
 
       const cachedCategories = this.walletCacheService.getCategories();
+      const defaultCategoryName = dictionary.labels.defaultCategory || 'Umum';
       let finalCategoryName: string;
       if (clearFields.includes('categoryId') || clearFields.includes('transfer')) {
-        finalCategoryName = 'Umum';
+        finalCategoryName = defaultCategoryName;
       } else {
         finalCategoryName =
           resolvedCategoryName ||
           mapping.categoryName ||
           cachedCategories.find(category => category.id === mapping.categoryId)?.name ||
-          'Umum';
+          defaultCategoryName;
       }
 
       const recordTimestampDisplay = formatTransactionDate(
@@ -340,6 +344,7 @@ export class ModifyRecordHandler {
         transactionTypeIcon,
         labels: finalLabels,
         movedFromAccountName,
+        clearedFields: clearFields.length > 0 ? clearFields : undefined,
         clearedFieldLabels: clearedFieldLabels.length > 0 ? clearedFieldLabels : undefined,
       });
 
@@ -369,6 +374,9 @@ export class ModifyRecordHandler {
           ...(resolvedAmount !== undefined ? { amount: resolvedAmount } : {}),
           ...(formattedCounterParty !== undefined ? { counterParty: formattedCounterParty } : {}),
           ...(clearFields.includes('counterParty') ? { counterParty: undefined } : {}),
+          ...(clearFields.includes('transfer')
+            ? { isTransfer: false, partnerRecordId: undefined }
+            : {}),
         });
       }
 

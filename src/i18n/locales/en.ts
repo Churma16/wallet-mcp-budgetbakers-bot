@@ -90,8 +90,22 @@ export const englishDictionary: ResponseDictionary = {
       if (params.movedFromAccountName) {
         lines.push(`🏦 Account moved from: ${params.movedFromAccountName} ➔ ${params.accountName}`);
       }
-      if (params.clearedFieldLabels && params.clearedFieldLabels.length > 0) {
-        lines.push(`🧹 Cleared fields: ${params.clearedFieldLabels.join(', ')}`);
+      const clearedLabels = [
+        ...(params.clearedFieldLabels || []),
+        ...((params.clearedFields || []).map(field => {
+          switch (field) {
+            case 'note': return 'Note';
+            case 'labelIds': return 'Tags / Labels';
+            case 'counterParty': return 'Merchant / Payee';
+            case 'categoryId': return 'Category';
+            case 'transfer': return 'Transfer Link';
+            case 'place': return 'Place';
+            default: return field;
+          }
+        })),
+      ];
+      if (clearedLabels.length > 0) {
+        lines.push(`🧹 Cleared fields: ${Array.from(new Set(clearedLabels)).join(', ')}`);
       }
       return lines.join('\n');
     },

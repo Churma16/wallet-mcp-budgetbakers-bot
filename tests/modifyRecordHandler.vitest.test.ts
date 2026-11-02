@@ -555,12 +555,14 @@ describe('ModifyRecordHandler', () => {
       expect(updated?.labels).toEqual([]);
     });
 
-    it('unlinks transfer via $clear: ["transfer"] on natural command', async () => {
+    it('unlinks transfer via $clear: ["transfer"] on natural command and unsets partnerRecordId', async () => {
       store.recordMessageMapping('msg-tf-1', {
         recordId: 'rec-tf-1',
         accountId: 'acc-bca',
         categoryId: 'cat-transfer-id',
         categoryName: 'Transfer',
+        isTransfer: true,
+        partnerRecordId: 'rec-tf-partner-999',
       });
 
       const event: IncomingUserMessageEvent = {
@@ -585,6 +587,10 @@ describe('ModifyRecordHandler', () => {
       const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
       expect(sentMessage).toContain('🧹 Bidang dibersihkan: Status Transfer');
       expect(sentMessage).toContain('🏷️ Umum');
+
+      const updated = store.getMessageMapping('msg-tf-1');
+      expect(updated?.isTransfer).toBe(false);
+      expect(updated?.partnerRecordId).toBeUndefined();
     });
   });
 });
