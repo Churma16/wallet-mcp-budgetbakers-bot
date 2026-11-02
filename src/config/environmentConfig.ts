@@ -201,8 +201,8 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
   const aiProvider: SupportedAiProviderType = aiProviders[0];
 
   const geminiApiKey = process.env.GEMINI_API_KEY || '';
-  const geminiModel = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
-  const geminiFallbackModels = (process.env.GEMINI_FALLBACK_MODELS || 'gemini-3.5-flash,gemini-3.5-flash-lite')
+  const geminiModel = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
+  const geminiFallbackModels = (process.env.GEMINI_FALLBACK_MODELS || 'gemini-3.6-flash,gemini-3.8-flash')
     .split(',')
     .map(modelItem => modelItem.trim())
     .filter(Boolean);

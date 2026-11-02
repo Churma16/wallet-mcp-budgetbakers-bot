@@ -93,10 +93,20 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: node .github/scripts/generate-release-notes.js
 
+      - name: Generate AI Release Title
+        if: ${{ inputs.dry_run == false }}
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: 'openrouter/free'
+          TAG_NAME: ${{ env.RELEASE_TAG }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node .github/scripts/generate-release-title.js
+
       - name: Publish GitHub Release
         if: ${{ inputs.dry_run == false }}
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_NAME || env.RELEASE_TAG }}
           body_path: release-notes.md
           prerelease: false

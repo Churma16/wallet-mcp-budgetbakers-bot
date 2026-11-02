@@ -47,8 +47,8 @@ export class GeminiAiProvider implements FinancialAiProvider {
 
   constructor(
     apiKey: string,
-    primaryModelName: string = process.env.GEMINI_MODEL || 'gemini-3.6-flash',
-    fallbackModelList: string[] = ['gemini-3.5-flash', 'gemini-3.5-flash-lite'],
+    primaryModelName: string = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
+    fallbackModelList: string[] = ['gemini-3.6-flash', 'gemini-3.8-flash'],
     private readonly requestTimeoutMilliseconds: number = 20000,
     private readonly categoryContextService?: CategoryContextService
   ) {
