@@ -8,10 +8,6 @@ import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from 
 import { setActiveLanguage } from '../src/i18n/index.js';
 import { afterEach, expect, it } from 'vitest';
 
-function assertCondition(testName: string, condition: boolean): void {
-  expect(condition, testName).toBe(true);
-}
-
 class MockMessagingGateway {
   public readonly messages: string[] = [];
 
@@ -30,10 +26,13 @@ class MockWalletMcpClient {
   async createRecords(records: CreateRecordInputPayload[]): Promise<Record<string, unknown>> {
     this.calls.push(records.map(record => ({ ...record })));
     if (this.failWithUnknownOutcome) {
-      this.failWithUnknownOutcome = false;
-      throw new WalletMcpRequestError('simulated uncertain Wallet outcome', 'UNKNOWN');
+      throw new WalletMcpRequestError('simulated socket timeout', 'UNKNOWN');
     }
     return {};
+  }
+
+  async fetchBudgets(): Promise<unknown[]> {
+    return [];
   }
 }
 
@@ -59,7 +58,7 @@ class RecordingPendingActionHandler {
     _event: IncomingUserMessageEvent,
     intent: { actionType: string; targetScope: string | number }
   ): Promise<boolean> {
-    this.calls.push({ ...intent });
+    this.calls.push(intent);
     return true;
   }
 }
@@ -71,19 +70,20 @@ class NoopFastPathHandler {
 }
 
 class FailIfCalledAiProvider {
-  public readonly providerName = 'test';
+  public readonly providerName = 'fail-if-called';
 
-  async processTextMessage(): Promise<never> {
-    throw new Error('AI must not run for ticket-specific pending commands');
+  async processTextMessage(): Promise<Record<string, unknown>> {
+    throw new Error('AI must not be called while clarification draft is active');
   }
 
-  async processImageMessage(): Promise<never> {
-    throw new Error('AI must not run for ticket-specific pending commands');
+  async processImageMessage(): Promise<Record<string, unknown>> {
+    throw new Error('AI must not be called while clarification draft is active');
   }
 }
 
 const accounts: WalletAccountItem[] = [
   { id: 'acc-cash', name: 'Cash', currency: 'IDR' },
+  { id: 'acc-bank', name: 'Bank', currency: 'IDR' },
 ];
 
 const categories: WalletCategoryItem[] = [
@@ -157,19 +157,19 @@ it('preserves UNKNOWN clarification drafts until ticket-specific reconciliation'
     Date.now()
   );
 
-  assertCondition('Initial account choice is handled', selectionHandled);
-  assertCondition('Wallet dispatch occurs exactly once', walletMcp.calls.length === 1);
-  assertCondition(
-    'Uncertain Wallet outcome marks draft UNKNOWN',
-    pendingService.getPendingAccountSelectionDraftState(draft.ticketId) === 'UNKNOWN'
-  );
+  expect(selectionHandled, 'Initial account choice is handled').toBe(true);
+  expect(walletMcp.calls, 'Wallet dispatch occurs exactly once').toHaveLength(1);
+  expect(
+    pendingService.getPendingAccountSelectionDraftState(draft.ticketId),
+    'Uncertain Wallet outcome marks draft UNKNOWN'
+  ).toBe('UNKNOWN');
   const uncertaintyMessage = messaging.messages.at(-1) || '';
-  assertCondition(
-    'Uncertainty warning exposes reconciliation actions instead of cancellation',
+  expect(
     uncertaintyMessage.includes('Sudah ada') &&
       uncertaintyMessage.includes('Belum ada') &&
-      !uncertaintyMessage.toLowerCase().includes('batal')
-  );
+      !uncertaintyMessage.toLowerCase().includes('batal'),
+    'Uncertainty warning exposes reconciliation actions instead of cancellation'
+  ).toBe(true);
 
   addStandardPendingTransaction(pendingService, 'Separate pending transaction');
 
@@ -179,15 +179,15 @@ it('preserves UNKNOWN clarification drafts until ticket-specific reconciliation'
     Date.now()
   );
 
-  assertCondition(
-    'Generic cancellation is left for the standard pending-action router',
-    genericCancellationHandled === false
-  );
-  assertCondition(
-    'Generic cancellation does not remove UNKNOWN reconciliation draft',
-    pendingService.getPendingAccountSelectionDraft(draft.ticketId) !== undefined
-  );
-  assertCondition('Generic cancellation does not retry Wallet', walletMcp.calls.length === 1);
+  expect(
+    genericCancellationHandled,
+    'Generic cancellation is left for the standard pending-action router'
+  ).toBe(false);
+  expect(
+    pendingService.getPendingAccountSelectionDraft(draft.ticketId),
+    'Generic cancellation does not remove UNKNOWN reconciliation draft'
+  ).toBeDefined();
+  expect(walletMcp.calls, 'Generic cancellation does not retry Wallet').toHaveLength(1);
 
   const targetedCancellationHandled = await handler.handlePendingAccountSelectionReply(
     { ...event, textPayload: `batal #${draft.ticketId}` },
@@ -196,26 +196,26 @@ it('preserves UNKNOWN clarification drafts until ticket-specific reconciliation'
   );
 
   const reminderMessage = messaging.messages.at(-1) || '';
-  assertCondition('Ticket-specific cancellation attempt is handled', targetedCancellationHandled);
-  assertCondition(
-    'Ticket-specific cancellation preserves the UNKNOWN reconciliation draft',
+  expect(targetedCancellationHandled, 'Ticket-specific cancellation attempt is handled').toBe(true);
+  expect(
     pendingService.getPendingAccountSelectionDraft(draft.ticketId) !== undefined &&
-      pendingService.getPendingAccountSelectionDraftState(draft.ticketId) === 'UNKNOWN'
-  );
-  assertCondition('UNKNOWN cancellation attempt never retries Wallet', walletMcp.calls.length === 1);
-  assertCondition(
-    'UNKNOWN cancellation reminder does not falsely claim the transaction was not recorded',
+      pendingService.getPendingAccountSelectionDraftState(draft.ticketId) === 'UNKNOWN',
+    'Ticket-specific cancellation preserves the UNKNOWN reconciliation draft'
+  ).toBe(true);
+  expect(walletMcp.calls, 'UNKNOWN cancellation attempt never retries Wallet').toHaveLength(1);
+  expect(
     !reminderMessage.includes('Transaksi tidak dicatat ke Wallet') &&
-      !reminderMessage.includes('transaksi tidak dicatat ke Wallet')
-  );
-  assertCondition(
-    'UNKNOWN cancellation reminder requires reconciliation',
-    reminderMessage.includes('Sudah ada') && reminderMessage.includes('Belum ada')
-  );
-  assertCondition(
-    'Separate standard pending transaction remains available',
-    pendingService.hasPendingTransactions()
-  );
+      !reminderMessage.includes('transaksi tidak dicatat ke Wallet'),
+    'UNKNOWN cancellation reminder does not falsely claim the transaction was not recorded'
+  ).toBe(true);
+  expect(
+    reminderMessage.includes('Sudah ada') && reminderMessage.includes('Belum ada'),
+    'UNKNOWN cancellation reminder requires reconciliation'
+  ).toBe(true);
+  expect(
+    pendingService.hasPendingTransactions(),
+    'Separate standard pending transaction remains available'
+  ).toBe(true);
 });
 
 it('routes ticket-specific standard pending commands around an active clarification draft', async () => {
@@ -256,36 +256,36 @@ it('routes ticket-specific standard pending commands around an active clarificat
     textPayload: `batal #${standardTicket.ticketId}`,
   });
 
-  assertCondition(
-    'Ticket-specific reject reaches standard pending handler',
+  expect(
     routingPendingAction.calls.length === 1 &&
       routingPendingAction.calls[0].actionType === 'REJECT' &&
-      routingPendingAction.calls[0].targetScope === standardTicket.ticketId
-  );
-  assertCondition(
-    'Ticket-specific reject leaves clarification draft untouched',
+      routingPendingAction.calls[0].targetScope === standardTicket.ticketId,
+    'Ticket-specific reject reaches standard pending handler'
+  ).toBe(true);
+  expect(
     routingPendingService.getPendingAccountSelectionDraft(routingDraft.ticketId) !== undefined &&
-      routingPendingService.getPendingAccountSelectionDraftState(routingDraft.ticketId) === 'PENDING'
-  );
+      routingPendingService.getPendingAccountSelectionDraftState(routingDraft.ticketId) === 'PENDING',
+    'Ticket-specific reject leaves clarification draft untouched'
+  ).toBe(true);
 
   await routingHandler.handleIncomingUserMessage({
     ...event,
     textPayload: `ya #${standardTicket.ticketId}`,
   });
 
-  assertCondition(
-    'Ticket-specific confirm reaches standard pending handler',
+  expect(
     routingPendingAction.calls.length === 2 &&
       routingPendingAction.calls[1].actionType === 'CONFIRM' &&
-      routingPendingAction.calls[1].targetScope === standardTicket.ticketId
-  );
-  assertCondition(
-    'Ticket-specific confirm also leaves clarification draft untouched',
+      routingPendingAction.calls[1].targetScope === standardTicket.ticketId,
+    'Ticket-specific confirm reaches standard pending handler'
+  ).toBe(true);
+  expect(
     routingPendingService.getPendingAccountSelectionDraft(routingDraft.ticketId) !== undefined &&
-      routingPendingService.getPendingAccountSelectionDraftState(routingDraft.ticketId) === 'PENDING'
-  );
-  assertCondition(
-    'Ticket-specific standard commands do not dispatch clarification Wallet writes',
-    routingWalletMcp.calls.length === 0
-  );
+      routingPendingService.getPendingAccountSelectionDraftState(routingDraft.ticketId) === 'PENDING',
+    'Ticket-specific confirm also leaves clarification draft untouched'
+  ).toBe(true);
+  expect(
+    routingWalletMcp.calls,
+    'Ticket-specific standard commands do not dispatch clarification Wallet writes'
+  ).toHaveLength(0);
 });

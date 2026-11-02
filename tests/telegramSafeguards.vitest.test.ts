@@ -1,338 +1,251 @@
 import { Context, GrammyError, HttpError } from 'grammy';
-import { beforeEach, describe, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { TelegramMessagingAdapter } from '../src/gateway/telegram.js';
 
-interface AssertionStatistics {
-  totalCount: number;
-  passedCount: number;
-  failedCount: number;
-}
-
-const testStatistics: AssertionStatistics = {
-  totalCount: 0,
-  passedCount: 0,
-  failedCount: 0,
-};
-
-function assertCondition(testCaseIdentifier: string, conditionMet: boolean, failureDetail?: string): void {
-  testStatistics.totalCount++;
-  if (conditionMet) {
-    testStatistics.passedCount++;
-    console.log(`  [PASS] ${testCaseIdentifier}`);
-  } else {
-    testStatistics.failedCount++;
-    console.error(`  [FAIL] ${testCaseIdentifier}${failureDetail ? ` -> ${failureDetail}` : ''}`);
-  }
-}
-
-async function runTestGroup(testGroup: number): Promise<void> {
-  console.log('====================================================');
-  console.log('[INFO] Running Telegram Connection Resilience & Safeguards Test Suite');
-  console.log('====================================================\n');
-
+describe('TelegramMessagingAdapter safeguards', () => {
   const dummyToken = '123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ';
   const dummyUserId = '123456789';
   const dummyCallback = async () => {};
 
-  // ----------------------------------------------------
-  // TEST GROUP 1: Configuration & Default Values
-  // ----------------------------------------------------
-  console.log('[TEST GROUP 1] Configuration & Default Values');
-  if (testGroup === 1) {
-    const defaultAdapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback);
-    assertCondition('TG-1.1: Default maxStartupAttempts is 5', defaultAdapter.getMaxStartupAttempts() === 5);
-    assertCondition('TG-1.2: Default startupRetryBaseDelayMs is 2000', defaultAdapter.getStartupRetryBaseDelayMs() === 2000);
-    assertCondition('TG-1.3: Default startupRetryMaxDelayMs is 15000', defaultAdapter.getStartupRetryMaxDelayMs() === 15000);
-    assertCondition('TG-1.4: Initial connection state is idle', defaultAdapter.getConnectionState() === 'idle');
-    assertCondition('TG-1.8: Default maxMediaDownloadBytes is 10 MB (10485760 bytes)', defaultAdapter.getMaxMediaDownloadBytes() === 10 * 1024 * 1024);
+  describe('configuration and defaults', () => {
+    it('initializes with default configuration values', () => {
+      const defaultAdapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback);
 
-    const customAdapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback, {
-      maxStartupAttempts: 8,
-      startupRetryBaseDelayMs: 1000,
-      startupRetryMaxDelayMs: 30000,
-      maxMediaDownloadBytes: 5 * 1024 * 1024,
+      expect(defaultAdapter.getMaxStartupAttempts()).toBe(5);
+      expect(defaultAdapter.getStartupRetryBaseDelayMs()).toBe(2000);
+      expect(defaultAdapter.getStartupRetryMaxDelayMs()).toBe(15000);
+      expect(defaultAdapter.getConnectionState()).toBe('idle');
+      expect(defaultAdapter.getMaxMediaDownloadBytes()).toBe(10 * 1024 * 1024);
     });
-    assertCondition('TG-1.5: Custom maxStartupAttempts is respected', customAdapter.getMaxStartupAttempts() === 8);
-    assertCondition('TG-1.6: Custom startupRetryBaseDelayMs is respected', customAdapter.getStartupRetryBaseDelayMs() === 1000);
-    assertCondition('TG-1.7: Custom startupRetryMaxDelayMs is respected', customAdapter.getStartupRetryMaxDelayMs() === 30000);
-    assertCondition('TG-1.9: Custom maxMediaDownloadBytes is respected', customAdapter.getMaxMediaDownloadBytes() === 5 * 1024 * 1024);
-  }
 
-  // ----------------------------------------------------
-  // TEST GROUP 2: Backoff Delay Math & Jitter Bounds
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 2] Backoff Delay Math & Jitter Bounds');
-  if (testGroup === 2) {
+    it('respects custom configuration overrides', () => {
+      const customAdapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback, {
+        maxStartupAttempts: 8,
+        startupRetryBaseDelayMs: 1000,
+        startupRetryMaxDelayMs: 30000,
+        maxMediaDownloadBytes: 5 * 1024 * 1024,
+      });
+
+      expect(customAdapter.getMaxStartupAttempts()).toBe(8);
+      expect(customAdapter.getStartupRetryBaseDelayMs()).toBe(1000);
+      expect(customAdapter.getStartupRetryMaxDelayMs()).toBe(30000);
+      expect(customAdapter.getMaxMediaDownloadBytes()).toBe(5 * 1024 * 1024);
+    });
+  });
+
+  describe('backoff delay calculations', () => {
     const adapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback, {
       maxStartupAttempts: 5,
       startupRetryBaseDelayMs: 2000,
       startupRetryMaxDelayMs: 15000,
     });
 
-    const delayAttempt0 = adapter.calculateBackoffDelayMilliseconds(0);
-    const delayAttempt1 = adapter.calculateBackoffDelayMilliseconds(1);
-    const delayAttempt2 = adapter.calculateBackoffDelayMilliseconds(2);
-    const delayAttempt5 = adapter.calculateBackoffDelayMilliseconds(5);
+    it('calculates attempt 0 delay within expected bounds (2500 - 3500ms)', () => {
+      const delay = adapter.calculateBackoffDelayMilliseconds(0);
+      expect(delay).toBeGreaterThanOrEqual(2500);
+      expect(delay).toBeLessThanOrEqual(3500);
+    });
 
-    // Attempt 0: 2000 * 2^0 = 2000 + jitter (500-1500ms) -> 2500 - 3500ms
-    assertCondition(
-      'TG-2.1: Attempt 0 delay within expected bounds (2500 - 3500ms)',
-      delayAttempt0 >= 2500 && delayAttempt0 <= 3500,
-      `Actual: ${delayAttempt0}`
-    );
+    it('calculates attempt 1 delay within expected bounds (4500 - 5500ms)', () => {
+      const delay = adapter.calculateBackoffDelayMilliseconds(1);
+      expect(delay).toBeGreaterThanOrEqual(4500);
+      expect(delay).toBeLessThanOrEqual(5500);
+    });
 
-    // Attempt 1: 2000 * 2^1 = 4000 + jitter (500-1500ms) -> 4500 - 5500ms
-    assertCondition(
-      'TG-2.2: Attempt 1 delay within expected bounds (4500 - 5500ms)',
-      delayAttempt1 >= 4500 && delayAttempt1 <= 5500,
-      `Actual: ${delayAttempt1}`
-    );
+    it('calculates attempt 2 delay within expected bounds (8500 - 9500ms)', () => {
+      const delay = adapter.calculateBackoffDelayMilliseconds(2);
+      expect(delay).toBeGreaterThanOrEqual(8500);
+      expect(delay).toBeLessThanOrEqual(9500);
+    });
 
-    // Attempt 2: 2000 * 2^2 = 8000 + jitter (500-1500ms) -> 8500 - 9500ms
-    assertCondition(
-      'TG-2.3: Attempt 2 delay within expected bounds (8500 - 9500ms)',
-      delayAttempt2 >= 8500 && delayAttempt2 <= 9500,
-      `Actual: ${delayAttempt2}`
-    );
+    it('caps high attempt delay at max delay plus jitter (15500 - 16500ms)', () => {
+      const delay = adapter.calculateBackoffDelayMilliseconds(5);
+      expect(delay).toBeGreaterThanOrEqual(15500);
+      expect(delay).toBeLessThanOrEqual(16500);
+    });
+  });
 
-    // Attempt 5: bounded by max (15000) + jitter (500-1500ms) -> 15500 - 16500ms
-    assertCondition(
-      'TG-2.4: High attempt delay is properly capped at max delay + jitter (15500 - 16500ms)',
-      delayAttempt5 >= 15500 && delayAttempt5 <= 16500,
-      `Actual: ${delayAttempt5}`
-    );
-  }
-
-  // ----------------------------------------------------
-  // TEST GROUP 3: Error Classification (Transient vs Permanent)
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 3] Transient vs Permanent Error Classification');
-  if (testGroup === 3) {
+  describe('transient vs permanent error classification', () => {
     const adapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback);
 
-    // Grammy HttpError (network level failure)
-    const httpError = new HttpError('Network request for getMe failed', new Error('getaddrinfo EAI_AGAIN'));
-    assertCondition('TG-3.1: Grammy HttpError is retryable', adapter.isRetryableNetworkError(httpError) === true);
+    it.each([
+      ['Grammy HttpError', new HttpError('Network request for getMe failed', new Error('getaddrinfo EAI_AGAIN')), true],
+      ['GrammyError 401 Unauthorized', new GrammyError('Unauthorized', { ok: false, error_code: 401, description: 'Unauthorized' }, 'getMe', {}), false],
+      ['GrammyError 404 Not Found', new GrammyError('Not Found', { ok: false, error_code: 404, description: 'Not Found' }, 'getMe', {}), false],
+      ['GrammyError 429 Too Many Requests', new GrammyError('Too Many Requests', { ok: false, error_code: 429, description: 'Too Many Requests: retry after 5' }, 'getMe', {}), true],
+      ['GrammyError 502 Bad Gateway', new GrammyError('Bad Gateway', { ok: false, error_code: 502, description: 'Bad Gateway' }, 'getMe', {}), true],
+      ['ECONNRESET system error code', Object.assign(new Error('Connection reset'), { code: 'ECONNRESET' }), true],
+      ['ETIMEDOUT system error code', Object.assign(new Error('Connection timed out'), { code: 'ETIMEDOUT' }), true],
+      ['EAI_AGAIN system error code', Object.assign(new Error('DNS lookup temporary failure'), { code: 'EAI_AGAIN' }), true],
+      ['ENOTFOUND system error code', Object.assign(new Error('DNS lookup host not found'), { code: 'ENOTFOUND' }), true],
+      ['message substring fallback', new Error("HttpError: Network request for 'getMe' failed!"), true],
+      ['standard TypeError', new TypeError('Cannot read property of undefined'), false],
+      ['null error reference', null, false],
+    ])('classifies %s as retryable=%s', (_description, error, expectedRetryable) => {
+      expect(adapter.isRetryableNetworkError(error)).toBe(expectedRetryable);
+    });
+  });
 
-    // GrammyError 401 Unauthorized (invalid token) -> NEVER retry
-    const unauthorizedError = new GrammyError(
-      'Unauthorized',
-      { ok: false, error_code: 401, description: 'Unauthorized' },
-      'getMe',
-      {}
-    );
-    assertCondition('TG-3.2: GrammyError 401 Unauthorized is NOT retryable', adapter.isRetryableNetworkError(unauthorizedError) === false);
+  describe('startup retry execution loop', () => {
+    it('executes successfully on the first attempt', async () => {
+      const fastAdapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback, {
+        maxStartupAttempts: 3,
+        startupRetryBaseDelayMs: 10,
+        startupRetryMaxDelayMs: 50,
+      });
 
-    // GrammyError 404 Not Found -> NEVER retry
-    const notFoundError = new GrammyError(
-      'Not Found',
-      { ok: false, error_code: 404, description: 'Not Found' },
-      'getMe',
-      {}
-    );
-    assertCondition('TG-3.3: GrammyError 404 Not Found is NOT retryable', adapter.isRetryableNetworkError(notFoundError) === false);
+      let attemptCount = 0;
+      const result = await fastAdapter.executeWithStartupRetry(async () => {
+        attemptCount++;
+        return { botId: 12345 };
+      }, 'Test Operation 1');
 
-    // GrammyError 429 Too Many Requests -> RETRYABLE
-    const rateLimitError = new GrammyError(
-      'Too Many Requests',
-      { ok: false, error_code: 429, description: 'Too Many Requests: retry after 5' },
-      'getMe',
-      {}
-    );
-    assertCondition('TG-3.4: GrammyError 429 Rate Limited is retryable', adapter.isRetryableNetworkError(rateLimitError) === true);
-
-    // GrammyError 502 Bad Gateway -> RETRYABLE
-    const badGatewayError = new GrammyError(
-      'Bad Gateway',
-      { ok: false, error_code: 502, description: 'Bad Gateway' },
-      'getMe',
-      {}
-    );
-    assertCondition('TG-3.5: GrammyError 502 Bad Gateway is retryable', adapter.isRetryableNetworkError(badGatewayError) === true);
-
-    // Node network error codes
-    const econnresetError = Object.assign(new Error('Connection reset'), { code: 'ECONNRESET' });
-    assertCondition('TG-3.6: ECONNRESET error code is retryable', adapter.isRetryableNetworkError(econnresetError) === true);
-
-    const etimedoutError = Object.assign(new Error('Connection timed out'), { code: 'ETIMEDOUT' });
-    assertCondition('TG-3.7: ETIMEDOUT error code is retryable', adapter.isRetryableNetworkError(etimedoutError) === true);
-
-    const eaiAgainError = Object.assign(new Error('DNS lookup temporary failure'), { code: 'EAI_AGAIN' });
-    assertCondition('TG-3.8: EAI_AGAIN error code is retryable', adapter.isRetryableNetworkError(eaiAgainError) === true);
-
-    const enotfoundError = Object.assign(new Error('DNS lookup host not found'), { code: 'ENOTFOUND' });
-    assertCondition('TG-3.9: ENOTFOUND error code is retryable', adapter.isRetryableNetworkError(enotfoundError) === true);
-
-    // Message substring fallback
-    const networkMessageError = new Error("HttpError: Network request for 'getMe' failed!");
-    assertCondition('TG-3.10: Error with Network request substring is retryable', adapter.isRetryableNetworkError(networkMessageError) === true);
-
-    // Non-retryable standard errors
-    const typeError = new TypeError('Cannot read property of undefined');
-    assertCondition('TG-3.11: TypeError is NOT retryable', adapter.isRetryableNetworkError(typeError) === false);
-
-    assertCondition('TG-3.12: Null error is NOT retryable', adapter.isRetryableNetworkError(null) === false);
-  }
-
-  // ----------------------------------------------------
-  // TEST GROUP 4: Retry Execution Loop
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 4] Retry Execution Loop (executeWithStartupRetry)');
-  if (testGroup === 4) {
-    vi.useFakeTimers();
-    try {
-    // Fast adapter with 10ms base delay for instant test execution
-    const fastAdapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback, {
-      maxStartupAttempts: 3,
-      startupRetryBaseDelayMs: 10,
-      startupRetryMaxDelayMs: 50,
+      expect(result).toEqual({ botId: 12345 });
+      expect(attemptCount).toBe(1);
     });
 
-    // 1. Success on first try
-    let attemptCounter1 = 0;
-    const result1 = await fastAdapter.executeWithStartupRetry(async () => {
-      attemptCounter1++;
-      return { botId: 12345 };
-    }, 'Test Operation 1');
-    assertCondition('TG-4.1: Operation succeeds on first attempt', result1.botId === 12345 && attemptCounter1 === 1);
+    it('recovers and succeeds after transient failures', async () => {
+      vi.useFakeTimers();
+      try {
+        const fastAdapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback, {
+          maxStartupAttempts: 3,
+          startupRetryBaseDelayMs: 10,
+          startupRetryMaxDelayMs: 50,
+        });
 
-    // 2. Success on 3rd attempt after 2 transient failures
-    let attemptCounter2 = 0;
-    const result2Promise = fastAdapter.executeWithStartupRetry(async () => {
-      attemptCounter2++;
-      if (attemptCounter2 < 3) {
-        throw Object.assign(new Error('DNS failure'), { code: 'EAI_AGAIN' });
+        let attemptCount = 0;
+        const retryPromise = fastAdapter.executeWithStartupRetry(async () => {
+          attemptCount++;
+          if (attemptCount < 3) {
+            throw Object.assign(new Error('DNS failure'), { code: 'EAI_AGAIN' });
+          }
+          return { botId: 99999 };
+        }, 'Test Operation 2');
+
+        await vi.runAllTimersAsync();
+        const result = await retryPromise;
+
+        expect(result).toEqual({ botId: 99999 });
+        expect(attemptCount).toBe(3);
+      } finally {
+        vi.useRealTimers();
       }
-      return { botId: 99999 };
-    }, 'Test Operation 2');
-    await vi.runAllTimersAsync();
-    const result2 = await result2Promise;
-    assertCondition('TG-4.2: Operation recovers and succeeds after transient failures', result2.botId === 99999 && attemptCounter2 === 3);
-
-    // 3. Immediate failure on non-retryable 401 error
-    let attemptCounter3 = 0;
-    let errorCaught3: unknown = null;
-    try {
-      await fastAdapter.executeWithStartupRetry(async () => {
-        attemptCounter3++;
-        throw new GrammyError(
-          'Unauthorized',
-          { ok: false, error_code: 401, description: 'Unauthorized' },
-          'getMe',
-          {}
-        );
-      }, 'Test Operation 3');
-    } catch (error) {
-      errorCaught3 = error;
-    }
-    assertCondition(
-      'TG-4.3: Non-retryable 401 error terminates immediately without retrying',
-      attemptCounter3 === 1 && errorCaught3 instanceof GrammyError && errorCaught3.error_code === 401
-    );
-
-    // 4. Exhaustion failure after max attempts
-    let attemptCounter4 = 0;
-    let errorCaught4: unknown = null;
-    const operation4Promise = fastAdapter.executeWithStartupRetry(async () => {
-        attemptCounter4++;
-        throw Object.assign(new Error('Continuous timeout'), { code: 'ETIMEDOUT' });
-      }, 'Test Operation 4').catch(error => {
-      errorCaught4 = error;
     });
-    await vi.runAllTimersAsync();
-    await operation4Promise;
-    assertCondition(
-      'TG-4.4: Retry loop exhausts all attempts when transient error persists',
-      attemptCounter4 === 3 && (errorCaught4 as { code?: string })?.code === 'ETIMEDOUT'
-    );
-    } finally {
-      vi.useRealTimers();
-    }
-  }
 
-  // ----------------------------------------------------
-  // TEST GROUP 5: Whitelist Authorization Gates (Fail-Closed)
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 5] Whitelist Authorization Gates (Fail-Closed)');
-  if (testGroup === 5) {
-    const emptyAllowlistAdapter = new TelegramMessagingAdapter(dummyToken, '', dummyCallback);
-    assertCondition(
-      'TG-5.1: Missing allowlist rejects arbitrary sender in isAuthorizedSender',
-      emptyAllowlistAdapter.isAuthorizedSender('123456789') === false
-    );
+    it('terminates immediately on non-retryable 401 error without retrying', async () => {
+      const fastAdapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback, {
+        maxStartupAttempts: 3,
+        startupRetryBaseDelayMs: 10,
+        startupRetryMaxDelayMs: 50,
+      });
 
-    let nextCalledWhenEmpty = false;
-    const mockContextWhenEmpty: Partial<Context> = {
-      from: { id: 123456789, is_bot: false, first_name: 'Attacker' },
-    };
-    await emptyAllowlistAdapter.handleInboundMiddleware(mockContextWhenEmpty as Context, async () => {
-      nextCalledWhenEmpty = true;
+      let attemptCount = 0;
+      let caughtError: unknown = null;
+
+      try {
+        await fastAdapter.executeWithStartupRetry(async () => {
+          attemptCount++;
+          throw new GrammyError(
+            'Unauthorized',
+            { ok: false, error_code: 401, description: 'Unauthorized' },
+            'getMe',
+            {}
+          );
+        }, 'Test Operation 3');
+      } catch (error) {
+        caughtError = error;
+      }
+
+      expect(attemptCount).toBe(1);
+      expect(caughtError).toBeInstanceOf(GrammyError);
+      expect((caughtError as GrammyError).error_code).toBe(401);
     });
-    assertCondition(
-      'TG-5.2: Inbound middleware blocks message when allowlist is empty (fail-closed)',
-      nextCalledWhenEmpty === false
-    );
 
-    const configuredAdapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback);
-    assertCondition(
-      'TG-5.3: Whitelisted user ID is authorized',
-      configuredAdapter.isAuthorizedSender(dummyUserId) === true
-    );
-    assertCondition(
-      'TG-5.4: Unauthorized user ID is rejected',
-      configuredAdapter.isAuthorizedSender('999999999') === false
-    );
+    it('exhausts all attempts when transient errors persist', async () => {
+      vi.useFakeTimers();
+      try {
+        const fastAdapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback, {
+          maxStartupAttempts: 3,
+          startupRetryBaseDelayMs: 10,
+          startupRetryMaxDelayMs: 50,
+        });
 
-    let nextCalledWhenAuthorized = false;
-    const mockContextAuthorized: Partial<Context> = {
-      from: { id: Number(dummyUserId), is_bot: false, first_name: 'Owner' },
-    };
-    await configuredAdapter.handleInboundMiddleware(mockContextAuthorized as Context, async () => {
-      nextCalledWhenAuthorized = true;
+        let attemptCount = 0;
+        let caughtError: unknown = null;
+
+        const retryPromise = fastAdapter
+          .executeWithStartupRetry(async () => {
+            attemptCount++;
+            throw Object.assign(new Error('Continuous timeout'), { code: 'ETIMEDOUT' });
+          }, 'Test Operation 4')
+          .catch(error => {
+            caughtError = error;
+          });
+
+        await vi.runAllTimersAsync();
+        await retryPromise;
+
+        expect(attemptCount).toBe(3);
+        expect((caughtError as { code?: string })?.code).toBe('ETIMEDOUT');
+      } finally {
+        vi.useRealTimers();
+      }
     });
-    assertCondition(
-      'TG-5.5: Inbound middleware invokes next() for whitelisted user ID',
-      nextCalledWhenAuthorized === true
-    );
+  });
 
-    let nextCalledWhenUnauthorized = false;
-    const mockContextUnauthorized: Partial<Context> = {
-      from: { id: 999999999, is_bot: false, first_name: 'Stranger' },
-    };
-    await configuredAdapter.handleInboundMiddleware(mockContextUnauthorized as Context, async () => {
-      nextCalledWhenUnauthorized = true;
+  describe('whitelist authorization gates (fail-closed)', () => {
+    it('rejects arbitrary senders when allowlist is missing', () => {
+      const emptyAllowlistAdapter = new TelegramMessagingAdapter(dummyToken, '', dummyCallback);
+      expect(emptyAllowlistAdapter.isAuthorizedSender('123456789')).toBe(false);
     });
-    assertCondition(
-      'TG-5.6: Inbound middleware blocks message for unauthorized sender',
-      nextCalledWhenUnauthorized === false
-    );
-  }
 
-  // ----------------------------------------------------
-  // Summary
-  // ----------------------------------------------------
-  console.log('\n====================================================');
-  console.log(`[TEST SUMMARY] Total: ${testStatistics.totalCount} | Passed: ${testStatistics.passedCount} | Failed: ${testStatistics.failedCount}`);
-  console.log('====================================================');
+    it('blocks inbound message middleware when allowlist is empty', async () => {
+      const emptyAllowlistAdapter = new TelegramMessagingAdapter(dummyToken, '', dummyCallback);
+      let nextInvoked = false;
+      const mockContext: Partial<Context> = {
+        from: { id: 123456789, is_bot: false, first_name: 'Attacker' },
+      };
 
-  if (testStatistics.failedCount > 0) {
-    throw new Error(`${testStatistics.failedCount} Telegram safeguard assertions failed`);
-  } else {
-    console.log('[SUCCESS] All Telegram resilience & safeguard test cases passed!\n');
-  }
-}
+      await emptyAllowlistAdapter.handleInboundMiddleware(mockContext as Context, async () => {
+        nextInvoked = true;
+      });
 
-beforeEach(() => {
-  testStatistics.totalCount = 0;
-  testStatistics.passedCount = 0;
-  testStatistics.failedCount = 0;
-});
+      expect(nextInvoked).toBe(false);
+    });
 
-describe('Telegram resilience and safeguards', () => {
-  it.each(Array.from({ length: 5 }, (_, index) => index + 1))(
-    'runs logical group %s in isolation',
-    async testGroup => {
-      await runTestGroup(testGroup);
-    }
-  );
+    it('authorizes whitelisted user ID and rejects unauthorized user ID', () => {
+      const configuredAdapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback);
+
+      expect(configuredAdapter.isAuthorizedSender(dummyUserId)).toBe(true);
+      expect(configuredAdapter.isAuthorizedSender('999999999')).toBe(false);
+    });
+
+    it('invokes next() in inbound middleware for whitelisted user ID', async () => {
+      const configuredAdapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback);
+      let nextInvoked = false;
+      const mockContext: Partial<Context> = {
+        from: { id: Number(dummyUserId), is_bot: false, first_name: 'Owner' },
+      };
+
+      await configuredAdapter.handleInboundMiddleware(mockContext as Context, async () => {
+        nextInvoked = true;
+      });
+
+      expect(nextInvoked).toBe(true);
+    });
+
+    it('blocks inbound middleware for unauthorized sender', async () => {
+      const configuredAdapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback);
+      let nextInvoked = false;
+      const mockContext: Partial<Context> = {
+        from: { id: 999999999, is_bot: false, first_name: 'Stranger' },
+      };
+
+      await configuredAdapter.handleInboundMiddleware(mockContext as Context, async () => {
+        nextInvoked = true;
+      });
+
+      expect(nextInvoked).toBe(false);
+    });
+  });
 });

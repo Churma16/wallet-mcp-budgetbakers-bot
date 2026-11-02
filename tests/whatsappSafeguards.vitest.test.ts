@@ -1,10 +1,10 @@
-import { WhatsappMessagingAdapter } from '../src/gateway/whatsapp.js';
-import { beforeEach, describe, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import makeWASocket, {
   DisconnectReason,
   type proto,
   useMultiFileAuthState,
 } from '@whiskeysockets/baileys';
+import { WhatsappMessagingAdapter } from '../src/gateway/whatsapp.js';
 
 vi.mock('@whiskeysockets/baileys', async importOriginal => {
   const actual = await importOriginal<typeof import('@whiskeysockets/baileys')>();
@@ -25,484 +25,354 @@ vi.mock('@whiskeysockets/baileys', async importOriginal => {
   };
 });
 
-interface AssertionStatistics {
-  totalCount: number;
-  passedCount: number;
-  failedCount: number;
-}
-
-const testStatistics: AssertionStatistics = {
-  totalCount: 0,
-  passedCount: 0,
-  failedCount: 0,
-};
-
-function assertCondition(testCaseIdentifier: string, conditionMet: boolean, failureDetail?: string): void {
-  testStatistics.totalCount++;
-  if (conditionMet) {
-    testStatistics.passedCount++;
-    console.log(`  [PASS] ${testCaseIdentifier}`);
-  } else {
-    testStatistics.failedCount++;
-    console.error(`  [FAIL] ${testCaseIdentifier}${failureDetail ? ` -> ${failureDetail}` : ''}`);
-  }
-}
-
-async function runTestGroup(testGroup: number): Promise<void> {
-  console.log('====================================================');
-  console.log('[INFO] Running WhatsApp Connection Resilience & Safeguards Test Suite (14 Test Cases)');
-  console.log('====================================================\n');
-
+describe('WhatsappMessagingAdapter resilience and safeguards', () => {
   const dummySessionDirectory = './test_auth_session';
   const dummyPhoneNumber = '6281234567890';
   const dummyCallback = async () => {};
 
-  const adapter = new WhatsappMessagingAdapter(
-    dummySessionDirectory,
-    dummyPhoneNumber,
-    dummyCallback,
-    {
-      maxReconnectAttempts: 6,
-      maxBackoffSeconds: 300,
-      messageQueueIntervalMs: 50, // Short interval for faster test execution
-      maxMediaDownloadBytes: 5 * 1024 * 1024,
-    }
-  );
-
-  // ----------------------------------------------------
-  // TC-0: Configuration & Default Values
-  // ----------------------------------------------------
-  console.log('[TEST GROUP 0] Configuration & Default Values');
-  if (testGroup === 1) {
-    const defaultAdapter = new WhatsappMessagingAdapter(dummySessionDirectory, dummyPhoneNumber, dummyCallback);
-    assertCondition('TC-0.1: Default maxMediaDownloadBytes is 10 MB (10485760 bytes)', defaultAdapter.getMaxMediaDownloadBytes() === 10 * 1024 * 1024);
-    assertCondition('TC-0.2: Custom maxMediaDownloadBytes is respected', adapter.getMaxMediaDownloadBytes() === 5 * 1024 * 1024);
-  }
-
-  // ----------------------------------------------------
-  // TC-1: Exponential Backoff & Jitter Bounds
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 1] Backoff & Delay Math');
-  if (testGroup === 2) {
-    const delayAttempt0 = adapter.calculateBackoffDelayMilliseconds(0);
-    const delayAttempt1 = adapter.calculateBackoffDelayMilliseconds(1);
-    const delayAttempt2 = adapter.calculateBackoffDelayMilliseconds(2);
-    const delayAttempt10 = adapter.calculateBackoffDelayMilliseconds(10);
-
-    // Attempt 0: 5s * 2^0 = 5s (5000ms) + jitter (500 - 2500ms) -> 5500 - 7500ms
-    assertCondition('TC-1.1: Attempt 0 delay within expected bounds (5500 - 7500ms)', delayAttempt0 >= 5500 && delayAttempt0 <= 7500, `Actual: ${delayAttempt0}`);
-
-    // Attempt 1: 5s * 2^1 = 10s (10000ms) + jitter -> 10500 - 12500ms
-    assertCondition('TC-1.2: Attempt 1 delay within expected bounds (10500 - 12500ms)', delayAttempt1 >= 10500 && delayAttempt1 <= 12500, `Actual: ${delayAttempt1}`);
-
-    // Attempt 2: 5s * 2^2 = 20s (20000ms) + jitter -> 20500 - 22500ms
-    assertCondition('TC-1.3: Attempt 2 delay within expected bounds (20500 - 22500ms)', delayAttempt2 >= 20500 && delayAttempt2 <= 22500, `Actual: ${delayAttempt2}`);
-
-    // Attempt 10: Capped at maxBackoffSeconds (300s = 300000ms) + jitter -> 300500 - 302500ms
-    assertCondition('TC-1.4: Extreme attempt capped at 300s + jitter', delayAttempt10 >= 300500 && delayAttempt10 <= 302500, `Actual: ${delayAttempt10}`);
-  }
-
-  // ----------------------------------------------------
-  // TC-2 & TC-3: Circuit Breaker Tripping & Success Reset
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 2] Circuit Breaker Lifecycle');
-  if (testGroup === 3) {
-    adapter.resetSafeguardsState();
-
-    // Trigger 5 connection failures (threshold is 6)
-    for (let failureIndex = 1; failureIndex <= 5; failureIndex++) {
-      adapter.handleConnectionClose(DisconnectReason.connectionLost, new Error('Simulated Connection Lost'));
-    }
-
-    assertCondition('TC-2.1: 5 failures increments counter to 5', adapter.getConsecutiveFailureCount() === 5, `Count: ${adapter.getConsecutiveFailureCount()}`);
-    assertCondition('TC-2.2: Circuit breaker is NOT tripped at 5 failures', adapter.getCircuitBreakerStatus() === false);
-
-    // 6th failure hits threshold
-    adapter.handleConnectionClose(DisconnectReason.connectionLost, new Error('Simulated Connection Lost'));
-    assertCondition('TC-2.3: 6th failure trips circuit breaker', adapter.getCircuitBreakerStatus() === true);
-    assertCondition('TC-2.4: Counter remains at 6', adapter.getConsecutiveFailureCount() === 6);
-
-    // TC-3: Reset on successful connection open
-    adapter.resetSafeguardsState();
-    assertCondition('TC-3.1: Reset clears failure counter', adapter.getConsecutiveFailureCount() === 0);
-    assertCondition('TC-3.2: Reset untrips circuit breaker', adapter.getCircuitBreakerStatus() === false);
-  }
-
-  // ----------------------------------------------------
-  // TC-4, TC-5: Baileys Status Code Specific Behaviors
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 3] Granular Status Code Dispatcher');
-  if (testGroup === 4) {
-    vi.useFakeTimers();
-    try {
-      adapter.resetSafeguardsState();
-
-      // TC-4: Status 440 (connectionReplaced) must abort immediately
-      adapter.handleConnectionClose(DisconnectReason.connectionReplaced, new Error('Stream Errored (conflict)'));
-      assertCondition('TC-4.1: Status 440 immediately trips circuit breaker', adapter.getCircuitBreakerStatus() === true);
-      assertCondition('TC-4.2: Status 440 does NOT increment standard failure counter', adapter.getConsecutiveFailureCount() === 0, `Actual: ${adapter.getConsecutiveFailureCount()}`);
-
-      adapter.resetSafeguardsState();
-
-      // TC-5: Status 515 (restartRequired) fast track
-      adapter.handleConnectionClose(DisconnectReason.restartRequired, new Error('Restart Required'));
-      assertCondition('TC-5.1: Status 515 does not increment failure counter', adapter.getConsecutiveFailureCount() === 0);
-      assertCondition('TC-5.2: Status 515 does not trip circuit breaker', adapter.getCircuitBreakerStatus() === false);
-      assertCondition('TC-5.3: Status 515 schedules a reconnect timer', (adapter as any).activeReconnectTimeout !== null);
-
-      await adapter.stopConnection();
-      assertCondition('TC-5.4: stopConnection clears the status-515 timer', (adapter as any).activeReconnectTimeout === null);
-
-      await vi.runAllTimersAsync();
-      assertCondition('TC-5.5: No socket is created after advancing cleaned timers', vi.mocked(makeWASocket).mock.calls.length === 0);
-    } finally {
-      vi.useRealTimers();
-    }
-  }
-
-  // ----------------------------------------------------
-  // TC-6: Reconnection Mutex Guard
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 4] Concurrency & Mutex Lock');
-  if (testGroup === 5) {
-    adapter.resetSafeguardsState();
-
-    // Test mutex flag behavior using internal reflection
-    const isConnectingProperty = 'isConnectingOrReconnecting';
-    (adapter as any)[isConnectingProperty] = true;
-
-    // When isConnectingOrReconnecting is true, another startConnection invocation must skip execution
-    let duplicateAttemptSkipped = false;
-    try {
-      await adapter.startConnection(false);
-      duplicateAttemptSkipped = true;
-    } catch {
-      duplicateAttemptSkipped = false;
-    }
-
-    assertCondition('TC-6.1: Concurrent connection invocation skips gracefully without throwing', duplicateAttemptSkipped);
-    (adapter as any)[isConnectingProperty] = false;
-  }
-
-  // ----------------------------------------------------
-  // TC-7: Outbound Message FIFO Throttling
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 5] Outbound Message Queue Throttling');
-  if (testGroup === 6) {
-    adapter.resetSafeguardsState();
-
-    const dispatchTimestamps: number[] = [];
-    const simulatedSocketInstance = {
-      sendMessage: async () => {
-        dispatchTimestamps.push(Date.now());
-        return { key: { id: `MSG_${Date.now()}` } };
-      },
-      ev: { removeAllListeners: () => {} },
-      end: () => {},
-    };
-
-    (adapter as any).socketInstance = simulatedSocketInstance;
-
-    const message1Promise = adapter.sendTextMessage('test-chat-1', 'Message 1');
-    const message2Promise = adapter.sendTextMessage('test-chat-2', 'Message 2');
-    const message3Promise = adapter.sendTextMessage('test-chat-3', 'Message 3');
-
-    await Promise.all([message1Promise, message2Promise, message3Promise]);
-
-    assertCondition('TC-7.1: All 3 burst messages dispatched', dispatchTimestamps.length === 3);
-
-    const intervalBetween1And2 = dispatchTimestamps[1] - dispatchTimestamps[0];
-    const intervalBetween2And3 = dispatchTimestamps[2] - dispatchTimestamps[1];
-
-    // messageQueueIntervalMs is set to 50ms for tests
-    assertCondition('TC-7.2: Interval between message 1 and 2 is at least 45ms', intervalBetween1And2 >= 45, `Actual: ${intervalBetween1And2}ms`);
-    assertCondition('TC-7.3: Interval between message 2 and 3 is at least 45ms', intervalBetween2And3 >= 45, `Actual: ${intervalBetween2And3}ms`);
-
-    (adapter as any).socketInstance = null;
-  }
-
-  // ----------------------------------------------------
-  // TC-8: Clean Timer Cancellation on stopConnection
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 6] Lifecycle Stop Cleanup');
-  if (testGroup === 7) {
-    adapter.resetSafeguardsState();
-    adapter.handleConnectionClose(DisconnectReason.timedOut, new Error('Timeout'));
-
-    const hasActiveTimer = (adapter as any).activeReconnectTimeout !== null;
-    assertCondition('TC-8.1: Reconnection timeout is actively scheduled', hasActiveTimer);
-
-    await adapter.stopConnection();
-    const timerAfterStop = (adapter as any).activeReconnectTimeout;
-    assertCondition('TC-8.2: stopConnection clears active reconnection timeout', timerAfterStop === null);
-  }
-
-  // ----------------------------------------------------
-  // Edge Case EC-1: Undefined / Unknown Status Code Fall-Through
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 7] Edge Cases (EC-1 through EC-6)');
-  if (testGroup === 8) {
-    adapter.resetSafeguardsState();
-
-    // Passing undefined status code (raw network drop without Baileys status)
-    adapter.handleConnectionClose(undefined, 'Unrecognized Network Error');
-    assertCondition('EC-1.1: Undefined status code increments failure counter safely', adapter.getConsecutiveFailureCount() === 1);
-    assertCondition('EC-1.2: Undefined status code does not throw unhandled exception', true);
-
-    // Passing arbitrary non-standard status code (e.g. 599)
-    adapter.handleConnectionClose(599, 'Custom Upstream Gateway Drop');
-    assertCondition('EC-1.3: Custom unknown status code treated as standard failure', adapter.getConsecutiveFailureCount() === 2);
-  }
-
-  // ----------------------------------------------------
-  // Edge Case EC-2: Queue Rejection when Socket is null
-  // ----------------------------------------------------
-  if (testGroup === 8) {
-    adapter.resetSafeguardsState();
-    (adapter as any).socketInstance = null;
-
-    let rejectedWithError = false;
-    let errorMessage = '';
-
-    try {
-      await adapter.sendTextMessage('dummy-chat', 'Hello while disconnected');
-    } catch (sendError: any) {
-      rejectedWithError = true;
-      errorMessage = sendError.message;
-    }
-
-    assertCondition('EC-2.1: Sending message while socket is null immediately rejects', rejectedWithError);
-    assertCondition('EC-2.2: Rejection message indicates socket is not connected', errorMessage.includes('WhatsApp socket is not connected'));
-  }
-
-  // ----------------------------------------------------
-  // Edge Case EC-3: Queue Item Failure Does Not Stall Remaining Items
-  // ----------------------------------------------------
-  if (testGroup === 8) {
-    adapter.resetSafeguardsState();
-
-    let item1Failed = false;
-    let item2Succeeded = false;
-
-    const mockSocket = {
-      sendMessage: async (chatId: string) => {
-        if (chatId === 'failing-chat') {
-          throw new Error('Simulated Baileys Transport Error');
-        }
-        return { key: { id: 'SUCCESS_MSG' } };
-      },
-      ev: { removeAllListeners: () => {} },
-      end: () => {},
-    };
-
-    (adapter as any).socketInstance = mockSocket;
-
-    const failingItemPromise = adapter.sendTextMessage('failing-chat', 'Will fail').catch(() => {
-      item1Failed = true;
-    });
-
-    const succeedingItemPromise = adapter.sendTextMessage('good-chat', 'Will succeed').then(() => {
-      item2Succeeded = true;
-    });
-
-    await Promise.all([failingItemPromise, succeedingItemPromise]);
-
-    assertCondition('EC-3.1: Failing message promise rejected individually', item1Failed);
-    assertCondition('EC-3.2: Subsequent message in queue succeeds without stalling', item2Succeeded);
-
-    (adapter as any).socketInstance = null;
-  }
-
-  // ----------------------------------------------------
-  // Edge Case EC-4: stopConnection Drains and Rejects Pending Queue Tasks
-  // ----------------------------------------------------
-  if (testGroup === 8) {
-    adapter.resetSafeguardsState();
-
-    let queueItemRejectedOnStop = false;
-    let rejectionReason = '';
-
-    const slowSocket = {
-      sendMessage: async () => {
-        await new Promise(res => setTimeout(res, 500));
-        return { key: { id: 'DELAYED' } };
-      },
-      ev: { removeAllListeners: () => {} },
-      end: () => {},
-    };
-
-    (adapter as any).socketInstance = slowSocket;
-
-    // Enqueue 2 tasks so item 2 is waiting in the queue while item 1 is in-flight
-    adapter.sendTextMessage('queued-chat-1', 'Item 1 in-flight').catch(() => {});
-    const task2Promise = adapter.sendTextMessage('queued-chat-2', 'Item 2 pending in queue').catch(err => {
-      queueItemRejectedOnStop = true;
-      rejectionReason = err.message;
-    });
-
-    // Immediately stop connection while item 2 is waiting in queue
-    await adapter.stopConnection();
-    await task2Promise;
-
-    assertCondition('EC-4.1: Pending queue tasks rejected when stopConnection is called', queueItemRejectedOnStop);
-    assertCondition('EC-4.2: Rejection indicates adapter was stopped', rejectionReason.includes('WhatsApp adapter was stopped'));
-    assertCondition('EC-4.3: Outbound queue drained to zero', adapter.getOutboundQueueLength() === 0);
-  }
-
-  // ----------------------------------------------------
-  // Edge Case EC-5: Manual startConnection Resets Tripped Circuit Breaker
-  // ----------------------------------------------------
-  if (testGroup === 8) {
-    adapter.resetSafeguardsState();
-
-    for (let count = 1; count <= 6; count++) {
-      adapter.handleConnectionClose(DisconnectReason.timedOut, 'Timeout');
-    }
-    assertCondition('EC-5.1: Breaker is initially tripped', adapter.getCircuitBreakerStatus() === true);
-
-    await adapter.startConnection(true);
-
-    assertCondition('EC-5.2: Manual startConnection uses mocked auth initialization', vi.mocked(useMultiFileAuthState).mock.calls.length === 1);
-    assertCondition('EC-5.3: Manual startConnection uses mocked socket creation', vi.mocked(makeWASocket).mock.calls.length === 1);
-    assertCondition('EC-5.4: Manual startConnection reset failure counter to 0', adapter.getConsecutiveFailureCount() === 0);
-    assertCondition('EC-5.5: Manual startConnection cleared circuit breaker trip flag', adapter.getCircuitBreakerStatus() === false);
-  }
-
-  // ----------------------------------------------------
-  // Edge Case EC-6: Repeated loggedOut After Session Purge Trips Circuit Breaker
-  // ----------------------------------------------------
-  if (testGroup === 8) {
-    adapter.resetSafeguardsState();
-
-    adapter.handleConnectionClose(DisconnectReason.loggedOut, 'First Logout');
-    assertCondition('EC-6.1: First logout schedules QR attempt without tripping breaker immediately', adapter.getCircuitBreakerStatus() === false);
-
-    adapter.handleConnectionClose(DisconnectReason.loggedOut, 'Second Logout (Device Banned or Unlinked Repeatedly)');
-    assertCondition('EC-6.2: Repeated logout trips circuit breaker', adapter.getCircuitBreakerStatus() === true);
-    assertCondition('EC-6.3: Consecutive failure count incremented', adapter.getConsecutiveFailureCount() === 1);
-    await adapter.stopConnection();
-  }
-
-  // ----------------------------------------------------
-  // TEST GROUP 7: Whitelist Inbound Authorization Gates (Fail-Closed)
-  // ----------------------------------------------------
-  console.log('\n[TEST GROUP 7] Whitelist Inbound Authorization Gates (Fail-Closed)');
-  if (testGroup === 9) {
-    let receivedCallback = false;
-    const testCallback = async () => {
-      receivedCallback = true;
-    };
-
-    const emptyPhoneAdapter = new WhatsappMessagingAdapter(dummySessionDirectory, '', testCallback);
-    assertCondition(
-      'TC-7.1: Missing allowlist rejects non-self sender in isAuthorizedSender',
-      emptyPhoneAdapter.isAuthorizedSender('6281234567890@s.whatsapp.net', false) === false
-    );
-
-    const externalMessage: proto.IWebMessageInfo = {
-      key: {
-        remoteJid: '62899998888@s.whatsapp.net',
-        fromMe: false,
-        id: 'MSG_FAILCLOSED_001',
-      },
-      message: {
-        conversation: 'Beli bensin 50000',
-      },
-    };
-
-    await emptyPhoneAdapter.processIncomingMessages([externalMessage]);
-    assertCondition(
-      'TC-7.2: Inbound non-self message with missing allowlist is dropped in processIncomingMessages',
-      receivedCallback === false
-    );
-
-    const whitelistedAdapter = new WhatsappMessagingAdapter(
+  function createTestAdapter(overrides?: Record<string, unknown>): WhatsappMessagingAdapter {
+    return new WhatsappMessagingAdapter(
       dummySessionDirectory,
       dummyPhoneNumber,
-      testCallback
-    );
-    assertCondition(
-      'TC-7.3: Configured allowlist authorizes matching phone number',
-      whitelistedAdapter.isAuthorizedSender(`${dummyPhoneNumber}@s.whatsapp.net`, false) === true
-    );
-    assertCondition(
-      'TC-7.4: Configured allowlist rejects non-matching phone number',
-      whitelistedAdapter.isAuthorizedSender('62899998888@s.whatsapp.net', false) === false
-    );
-    assertCondition(
-      'TC-7.5: Self-targeted message returns true from isAuthorizedSender',
-      whitelistedAdapter.isAuthorizedSender('62899998888@s.whatsapp.net', true) === true
-    );
-
-    // Test message dispatch for whitelisted sender
-    receivedCallback = false;
-    const whitelistedMessage: proto.IWebMessageInfo = {
-      key: {
-        remoteJid: `${dummyPhoneNumber}@s.whatsapp.net`,
-        fromMe: false,
-        id: 'MSG_WHITELISTED_001',
-      },
-      message: {
-        conversation: 'Makan siang 35000',
-      },
-    };
-    await whitelistedAdapter.processIncomingMessages([whitelistedMessage]);
-    assertCondition(
-      'TC-7.6: Inbound non-self message from whitelisted sender is dispatched to callback',
-      receivedCallback === true
-    );
-
-    // Test message dispatch rejection for unauthorized sender
-    receivedCallback = false;
-    const unauthorizedMessage: proto.IWebMessageInfo = {
-      key: {
-        remoteJid: '62899998888@s.whatsapp.net',
-        fromMe: false,
-        id: 'MSG_UNAUTHORIZED_001',
-      },
-      message: {
-        conversation: 'Transfer 500000',
-      },
-    };
-    await whitelistedAdapter.processIncomingMessages([unauthorizedMessage]);
-    assertCondition(
-      'TC-7.7: Inbound non-self message from unauthorized sender is dropped in processIncomingMessages',
-      receivedCallback === false
+      dummyCallback,
+      {
+        maxReconnectAttempts: 6,
+        maxBackoffSeconds: 300,
+        messageQueueIntervalMs: 50,
+        maxMediaDownloadBytes: 5 * 1024 * 1024,
+        ...overrides,
+      }
     );
   }
 
-  await adapter.stopConnection();
-  assertCondition(
-    `cleanup-${testGroup}: reconnect timer is cleared after the logical group`,
-    (adapter as any).activeReconnectTimeout === null
-  );
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
-  // ----------------------------------------------------
-  // Summary
-  // ----------------------------------------------------
-  console.log('\n====================================================');
-  console.log(`[TEST SUMMARY] Total: ${testStatistics.totalCount} | Passed: ${testStatistics.passedCount} | Failed: ${testStatistics.failedCount}`);
-  console.log('====================================================');
+  describe('configuration and defaults', () => {
+    it('sets default max media download bytes and respects custom overrides', () => {
+      const defaultAdapter = new WhatsappMessagingAdapter(dummySessionDirectory, dummyPhoneNumber, dummyCallback);
+      const customAdapter = createTestAdapter({ maxMediaDownloadBytes: 5 * 1024 * 1024 });
 
-  if (testStatistics.failedCount > 0) {
-    throw new Error(`${testStatistics.failedCount} WhatsApp safeguard assertions failed`);
-  } else {
-    console.log('[SUCCESS] All 14 WhatsApp resilience & safeguard test cases passed!\n');
-  }
-}
+      expect(defaultAdapter.getMaxMediaDownloadBytes()).toBe(10 * 1024 * 1024);
+      expect(customAdapter.getMaxMediaDownloadBytes()).toBe(5 * 1024 * 1024);
+    });
+  });
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  testStatistics.totalCount = 0;
-  testStatistics.passedCount = 0;
-  testStatistics.failedCount = 0;
-});
+  describe('exponential backoff math and jitter bounds', () => {
+    const adapter = createTestAdapter();
 
-describe('WhatsApp resilience and safeguards', () => {
-  it.each(Array.from({ length: 9 }, (_, index) => index + 1))(
-    'runs logical group %s in isolation',
-    async testGroup => {
-      await runTestGroup(testGroup);
-    }
-  );
+    it('calculates attempt 0 delay within expected bounds (5500 - 7500ms)', () => {
+      const delay = adapter.calculateBackoffDelayMilliseconds(0);
+      expect(delay).toBeGreaterThanOrEqual(5500);
+      expect(delay).toBeLessThanOrEqual(7500);
+    });
+
+    it('calculates attempt 1 delay within expected bounds (10500 - 12500ms)', () => {
+      const delay = adapter.calculateBackoffDelayMilliseconds(1);
+      expect(delay).toBeGreaterThanOrEqual(10500);
+      expect(delay).toBeLessThanOrEqual(12500);
+    });
+
+    it('calculates attempt 2 delay within expected bounds (20500 - 22500ms)', () => {
+      const delay = adapter.calculateBackoffDelayMilliseconds(2);
+      expect(delay).toBeGreaterThanOrEqual(20500);
+      expect(delay).toBeLessThanOrEqual(22500);
+    });
+
+    it('caps high attempt delay at maxBackoffSeconds plus jitter', () => {
+      const delay = adapter.calculateBackoffDelayMilliseconds(10);
+      expect(delay).toBeGreaterThanOrEqual(300500);
+      expect(delay).toBeLessThanOrEqual(302500);
+    });
+  });
+
+  describe('circuit breaker lifecycle', () => {
+    it('increments failure counter, trips at threshold, and resets on success', () => {
+      const adapter = createTestAdapter();
+      adapter.resetSafeguardsState();
+
+      for (let failureIndex = 1; failureIndex <= 5; failureIndex++) {
+        adapter.handleConnectionClose(DisconnectReason.connectionLost, new Error('Simulated Connection Lost'));
+      }
+
+      expect(adapter.getConsecutiveFailureCount()).toBe(5);
+      expect(adapter.getCircuitBreakerStatus()).toBe(false);
+
+      // 6th failure hits threshold
+      adapter.handleConnectionClose(DisconnectReason.connectionLost, new Error('Simulated Connection Lost'));
+      expect(adapter.getCircuitBreakerStatus()).toBe(true);
+      expect(adapter.getConsecutiveFailureCount()).toBe(6);
+
+      // Reset on successful connection
+      adapter.resetSafeguardsState();
+      expect(adapter.getConsecutiveFailureCount()).toBe(0);
+      expect(adapter.getCircuitBreakerStatus()).toBe(false);
+    });
+  });
+
+  describe('granular status code dispatcher', () => {
+    it('aborts immediately and trips circuit breaker on DisconnectReason.connectionReplaced (440)', () => {
+      const adapter = createTestAdapter();
+      adapter.resetSafeguardsState();
+
+      adapter.handleConnectionClose(DisconnectReason.connectionReplaced, new Error('Stream Errored (conflict)'));
+      expect(adapter.getCircuitBreakerStatus()).toBe(true);
+      expect(adapter.getConsecutiveFailureCount()).toBe(0);
+    });
+
+    it('fast-tracks DisconnectReason.restartRequired (515) without incrementing failure counter or tripping breaker', async () => {
+      vi.useFakeTimers();
+      try {
+        const adapter = createTestAdapter();
+        adapter.resetSafeguardsState();
+
+        adapter.handleConnectionClose(DisconnectReason.restartRequired, new Error('Restart Required'));
+        expect(adapter.getConsecutiveFailureCount()).toBe(0);
+        expect(adapter.getCircuitBreakerStatus()).toBe(false);
+        expect((adapter as unknown as { activeReconnectTimeout: unknown }).activeReconnectTimeout).not.toBeNull();
+
+        await adapter.stopConnection();
+        expect((adapter as unknown as { activeReconnectTimeout: unknown }).activeReconnectTimeout).toBeNull();
+
+        await vi.runAllTimersAsync();
+        expect(vi.mocked(makeWASocket).mock.calls).toHaveLength(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe('concurrency and mutex locks', () => {
+    it('skips concurrent startConnection executions when isConnectingOrReconnecting is true', async () => {
+      const adapter = createTestAdapter();
+      adapter.resetSafeguardsState();
+
+      (adapter as unknown as { isConnectingOrReconnecting: boolean }).isConnectingOrReconnecting = true;
+
+      await expect(adapter.startConnection(false)).resolves.toBeUndefined();
+
+      (adapter as unknown as { isConnectingOrReconnecting: boolean }).isConnectingOrReconnecting = false;
+    });
+  });
+
+  describe('outbound message queue throttling', () => {
+    it('dispatches burst messages in FIFO order honoring queue interval throttling', async () => {
+      const adapter = createTestAdapter();
+      adapter.resetSafeguardsState();
+
+      const dispatchTimestamps: number[] = [];
+      const simulatedSocketInstance = {
+        sendMessage: async () => {
+          dispatchTimestamps.push(Date.now());
+          return { key: { id: `MSG_${Date.now()}` } };
+        },
+        ev: { removeAllListeners: () => {} },
+        end: () => {},
+      };
+
+      (adapter as unknown as { socketInstance: typeof simulatedSocketInstance | null }).socketInstance = simulatedSocketInstance;
+
+      const message1Promise = adapter.sendTextMessage('test-chat-1', 'Message 1');
+      const message2Promise = adapter.sendTextMessage('test-chat-2', 'Message 2');
+      const message3Promise = adapter.sendTextMessage('test-chat-3', 'Message 3');
+
+      await Promise.all([message1Promise, message2Promise, message3Promise]);
+
+      expect(dispatchTimestamps).toHaveLength(3);
+      const intervalBetween1And2 = dispatchTimestamps[1] - dispatchTimestamps[0];
+      const intervalBetween2And3 = dispatchTimestamps[2] - dispatchTimestamps[1];
+
+      expect(intervalBetween1And2).toBeGreaterThanOrEqual(45);
+      expect(intervalBetween2And3).toBeGreaterThanOrEqual(45);
+
+      (adapter as unknown as { socketInstance: typeof simulatedSocketInstance | null }).socketInstance = null;
+    });
+  });
+
+  describe('lifecycle stop cleanup', () => {
+    it('clears active reconnection timers when stopConnection is called', async () => {
+      const adapter = createTestAdapter();
+      adapter.resetSafeguardsState();
+      adapter.handleConnectionClose(DisconnectReason.timedOut, new Error('Timeout'));
+
+      expect((adapter as unknown as { activeReconnectTimeout: unknown }).activeReconnectTimeout).not.toBeNull();
+
+      await adapter.stopConnection();
+      expect((adapter as unknown as { activeReconnectTimeout: unknown }).activeReconnectTimeout).toBeNull();
+    });
+  });
+
+  describe('edge cases and error conditions', () => {
+    it('handles undefined and custom status codes gracefully as standard failures', () => {
+      const adapter = createTestAdapter();
+      adapter.resetSafeguardsState();
+
+      adapter.handleConnectionClose(undefined, 'Unrecognized Network Error');
+      expect(adapter.getConsecutiveFailureCount()).toBe(1);
+
+      adapter.handleConnectionClose(599, 'Custom Upstream Gateway Drop');
+      expect(adapter.getConsecutiveFailureCount()).toBe(2);
+    });
+
+    it('rejects outbound messages immediately when socket is disconnected', async () => {
+      const adapter = createTestAdapter();
+      adapter.resetSafeguardsState();
+      (adapter as unknown as { socketInstance: unknown }).socketInstance = null;
+
+      await expect(
+        adapter.sendTextMessage('dummy-chat', 'Hello while disconnected')
+      ).rejects.toThrow(/WhatsApp socket is not connected/);
+    });
+
+    it('rejects failing message promises individually without stalling the queue', async () => {
+      const adapter = createTestAdapter();
+      adapter.resetSafeguardsState();
+
+      const mockSocket = {
+        sendMessage: async (chatId: string) => {
+          if (chatId === 'failing-chat') {
+            throw new Error('Simulated Baileys Transport Error');
+          }
+          return { key: { id: 'SUCCESS_MSG' } };
+        },
+        ev: { removeAllListeners: () => {} },
+        end: () => {},
+      };
+
+      (adapter as unknown as { socketInstance: typeof mockSocket | null }).socketInstance = mockSocket;
+
+      const failingItemPromise = adapter.sendTextMessage('failing-chat', 'Will fail');
+      const succeedingItemPromise = adapter.sendTextMessage('good-chat', 'Will succeed');
+
+      await expect(failingItemPromise).rejects.toThrow(/Simulated Baileys Transport Error/);
+      await expect(succeedingItemPromise).resolves.toBeUndefined();
+
+      (adapter as unknown as { socketInstance: typeof mockSocket | null }).socketInstance = null;
+    });
+
+    it('drains and rejects pending queue tasks when stopConnection is called', async () => {
+      const adapter = createTestAdapter();
+      adapter.resetSafeguardsState();
+
+      const slowSocket = {
+        sendMessage: async () => {
+          await new Promise(res => setTimeout(res, 500));
+          return { key: { id: 'DELAYED' } };
+        },
+        ev: { removeAllListeners: () => {} },
+        end: () => {},
+      };
+
+      (adapter as unknown as { socketInstance: typeof slowSocket | null }).socketInstance = slowSocket;
+
+      adapter.sendTextMessage('queued-chat-1', 'Item 1 in-flight').catch(() => {});
+      const task2Promise = adapter.sendTextMessage('queued-chat-2', 'Item 2 pending in queue');
+
+      await adapter.stopConnection();
+
+      await expect(task2Promise).rejects.toThrow(/WhatsApp adapter was stopped/);
+      expect(adapter.getOutboundQueueLength()).toBe(0);
+    });
+
+    it('resets tripped circuit breaker and failure counters upon manual startConnection', async () => {
+      const adapter = createTestAdapter();
+      adapter.resetSafeguardsState();
+
+      for (let count = 1; count <= 6; count++) {
+        adapter.handleConnectionClose(DisconnectReason.timedOut, 'Timeout');
+      }
+      expect(adapter.getCircuitBreakerStatus()).toBe(true);
+
+      await adapter.startConnection(true);
+
+      expect(vi.mocked(useMultiFileAuthState)).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(makeWASocket)).toHaveBeenCalledTimes(1);
+      expect(adapter.getConsecutiveFailureCount()).toBe(0);
+      expect(adapter.getCircuitBreakerStatus()).toBe(false);
+    });
+
+    it('trips circuit breaker on repeated logout after session purge', async () => {
+      const adapter = createTestAdapter();
+      adapter.resetSafeguardsState();
+
+      adapter.handleConnectionClose(DisconnectReason.loggedOut, 'First Logout');
+      expect(adapter.getCircuitBreakerStatus()).toBe(false);
+
+      adapter.handleConnectionClose(DisconnectReason.loggedOut, 'Second Logout (Device Banned or Unlinked Repeatedly)');
+      expect(adapter.getCircuitBreakerStatus()).toBe(true);
+      expect(adapter.getConsecutiveFailureCount()).toBe(1);
+
+      await adapter.stopConnection();
+    });
+  });
+
+  describe('whitelist inbound authorization gates (fail-closed)', () => {
+    it('drops inbound messages when phone allowlist is empty', async () => {
+      let receivedCallback = false;
+      const emptyPhoneAdapter = new WhatsappMessagingAdapter(dummySessionDirectory, '', async () => {
+        receivedCallback = true;
+      });
+
+      expect(emptyPhoneAdapter.isAuthorizedSender('6281234567890@s.whatsapp.net', false)).toBe(false);
+
+      const externalMessage: proto.IWebMessageInfo = {
+        key: {
+          remoteJid: '62899998888@s.whatsapp.net',
+          fromMe: false,
+          id: 'MSG_FAILCLOSED_001',
+        },
+        message: {
+          conversation: 'Beli bensin 50000',
+        },
+      };
+
+      await emptyPhoneAdapter.processIncomingMessages([externalMessage]);
+      expect(receivedCallback).toBe(false);
+    });
+
+    it('authorizes matching phone numbers and self-messages while rejecting unauthorized senders', async () => {
+      let receivedCallback = false;
+      const whitelistedAdapter = new WhatsappMessagingAdapter(
+        dummySessionDirectory,
+        dummyPhoneNumber,
+        async () => {
+          receivedCallback = true;
+        }
+      );
+
+      expect(whitelistedAdapter.isAuthorizedSender(`${dummyPhoneNumber}@s.whatsapp.net`, false)).toBe(true);
+      expect(whitelistedAdapter.isAuthorizedSender('62899998888@s.whatsapp.net', false)).toBe(false);
+      expect(whitelistedAdapter.isAuthorizedSender('62899998888@s.whatsapp.net', true)).toBe(true);
+
+      // Inbound message from whitelisted sender dispatches to callback
+      const whitelistedMessage: proto.IWebMessageInfo = {
+        key: {
+          remoteJid: `${dummyPhoneNumber}@s.whatsapp.net`,
+          fromMe: false,
+          id: 'MSG_WHITELISTED_001',
+        },
+        message: {
+          conversation: 'Makan siang 35000',
+        },
+      };
+      await whitelistedAdapter.processIncomingMessages([whitelistedMessage]);
+      expect(receivedCallback).toBe(true);
+
+      // Inbound message from unauthorized sender is dropped
+      receivedCallback = false;
+      const unauthorizedMessage: proto.IWebMessageInfo = {
+        key: {
+          remoteJid: '62899998888@s.whatsapp.net',
+          fromMe: false,
+          id: 'MSG_UNAUTHORIZED_001',
+        },
+        message: {
+          conversation: 'Transfer 500000',
+        },
+      };
+      await whitelistedAdapter.processIncomingMessages([unauthorizedMessage]);
+      expect(receivedCallback).toBe(false);
+    });
+  });
 });

@@ -1,5 +1,4 @@
-import assert from 'node:assert/strict';
-import { describe, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   FallbackAiProvider,
   isRecoverableProviderError,
@@ -11,7 +10,6 @@ import {
 } from '../src/brain/index.js';
 import {
   createFinancialAiProvider,
-  createSingleFinancialAiProvider,
 } from '../src/brain/index.js';
 import { OpenAiCompatibleAiProvider } from '../src/brain/index.js';
 import { extractAndParseJsonObject } from '../src/brain/index.js';
@@ -30,7 +28,7 @@ class MockFinancialAiProvider implements FinancialAiProvider {
   public async processTextMessage(
     userMessageText: string,
     availableAccountList: WalletAccountItem[],
-    availableCategoryList: WalletCategoryItem[]
+    _availableCategoryList: WalletCategoryItem[]
   ): Promise<ExtractedFinancialIntent> {
     this.callCount++;
 
@@ -57,11 +55,11 @@ class MockFinancialAiProvider implements FinancialAiProvider {
   }
 
   public async processImageMessage(
-    imageBuffer: Buffer,
-    mimeType: string,
-    optionalCaption: string,
+    _imageBuffer: Buffer,
+    _mimeType: string,
+    _optionalCaption: string,
     availableAccountList: WalletAccountItem[],
-    availableCategoryList: WalletCategoryItem[]
+    _availableCategoryList: WalletCategoryItem[]
   ): Promise<ExtractedFinancialIntent> {
     this.callCount++;
 
@@ -110,204 +108,167 @@ class MockFinancialAiProvider implements FinancialAiProvider {
   }
 }
 
-async function runFallbackAiProviderTest(testCase: number): Promise<void> {
-  console.log('Running FallbackAiProvider Unit Tests...');
-
+describe('FallbackAiProvider and AI resilience', () => {
   const mockAccounts: WalletAccountItem[] = [{ id: 'acc-1', name: 'Cash', currency: 'IDR' }];
   const mockCategories: WalletCategoryItem[] = [{ id: 'cat-1', name: 'Food' }];
 
-  if (testCase === 1) {
-  // Test 1: Recoverable Error Detection
-  console.log('Test 1: isRecoverableProviderError detection');
-  assert.equal(isRecoverableProviderError(null), false);
-  assert.equal(isRecoverableProviderError(new Error('Syntax error')), false);
-  assert.equal(isRecoverableProviderError({ response: { status: 429 } }), true);
-  assert.equal(isRecoverableProviderError({ response: { status: 503 } }), true);
-  assert.equal(isRecoverableProviderError(new Error('Rate limit exceeded')), true);
-  assert.equal(isRecoverableProviderError(new Error('RESOURCE_EXHAUSTED: quota exceeded')), true);
-  assert.equal(isRecoverableProviderError(new Error('Request timed out')), true);
-  console.log('[SUCCESS] Test 1 Passed: Error recovery classifications verified.');
-
-  }
-
-  if (testCase === 2) {
-  // Test 2: Primary succeeds, secondary is never invoked
-  console.log('Test 2: Primary provider success');
-  const primaryProvider = new MockFinancialAiProvider('gemini');
-  const secondaryProvider = new MockFinancialAiProvider('openrouter');
-  const fallbackProvider = new FallbackAiProvider([primaryProvider, secondaryProvider]);
-
-  const result1 = await fallbackProvider.processTextMessage('Beli kopi 25rb', mockAccounts, mockCategories);
-  assert.equal(primaryProvider.callCount, 1);
-  assert.equal(secondaryProvider.callCount, 0);
-  assert.ok(result1.records?.[0].note.includes('Processed by gemini'));
-  console.log('[SUCCESS] Test 2 Passed: Primary executed exclusively on healthy state.');
-
-  }
-
-  if (testCase === 3) {
-  // Test 3: Primary fails with 429, falls back to secondary
-  console.log('Test 3: Primary 429 failover to secondary');
-  const rateLimitedPrimary = new MockFinancialAiProvider('gemini', 429, 'Too Many Requests');
-  const activeSecondary = new MockFinancialAiProvider('openrouter');
-  const fallbackProvider2 = new FallbackAiProvider([rateLimitedPrimary, activeSecondary]);
-
-  const result2 = await fallbackProvider2.processTextMessage('Makan siang 30rb', mockAccounts, mockCategories);
-  assert.equal(rateLimitedPrimary.callCount, 1);
-  assert.equal(activeSecondary.callCount, 1);
-  assert.ok(result2.records?.[0].note.includes('Processed by openrouter'));
-  console.log('[SUCCESS] Test 3 Passed: 429 failover to secondary completed seamlessly.');
-
-  }
-
-  if (testCase === 4) {
-  // Test 4: Cascade across 3 providers (1st fails -> 2nd fails -> 3rd succeeds)
-  console.log('Test 4: 3-tier cascade fallback');
-  const tier1 = new MockFinancialAiProvider('gemini', 503, 'Overloaded');
-  const tier2 = new MockFinancialAiProvider('openrouter', 429, 'Quota exceeded');
-  const tier3 = new MockFinancialAiProvider('groq');
-  const fallbackProvider3 = new FallbackAiProvider([tier1, tier2, tier3]);
-
-  const result3 = await fallbackProvider3.processTextMessage('Isi bensin 100rb', mockAccounts, mockCategories);
-  assert.equal(tier1.callCount, 1);
-  assert.equal(tier2.callCount, 1);
-  assert.equal(tier3.callCount, 1);
-  assert.ok(result3.records?.[0].note.includes('Processed by groq'));
-  console.log('[SUCCESS] Test 4 Passed: 3-tier cascade executed in strict priority order.');
-
-  }
-
-  if (testCase === 5) {
-  // Test 5: Image message fallback
-  console.log('Test 5: Image message failover');
-  const imageTier1 = new MockFinancialAiProvider('gemini', 429, 'Rate limit');
-  const imageTier2 = new MockFinancialAiProvider('openrouter');
-  const fallbackProviderImage = new FallbackAiProvider([imageTier1, imageTier2]);
-
-  const imageResult = await fallbackProviderImage.processImageMessage(
-    Buffer.from('fake-image'),
-    'image/jpeg',
-    'receipt',
-    mockAccounts,
-    mockCategories
-  );
-  assert.equal(imageTier1.callCount, 1);
-  assert.equal(imageTier2.callCount, 1);
-  assert.ok(imageResult.records?.[0].note.includes('Image processed by openrouter'));
-  console.log('[SUCCESS] Test 5 Passed: Image message failover verified.');
-
-  }
-
-  if (testCase === 6) {
-  // Test 6: All providers fail throws last error
-  console.log('Test 6: All providers fail');
-  const failed1 = new MockFinancialAiProvider('gemini', 429, 'Rate limit 1');
-  const failed2 = new MockFinancialAiProvider('openrouter', 503, 'Outage 2');
-  const fallbackProviderAllFail = new FallbackAiProvider([failed1, failed2]);
-
-  await assert.rejects(
-    async () => {
-      await fallbackProviderAllFail.processTextMessage('test', mockAccounts, mockCategories);
-    },
-    (err: any) => {
-      assert.ok(err.message.includes('Outage 2'));
-      return true;
-    }
-  );
-  console.log('[SUCCESS] Test 6 Passed: Exhaustion error propagated cleanly.');
-
-  }
-
-  if (testCase === 7) {
-  // Test 7: Factory multi-provider resolution
-  console.log('Test 7: Factory creation with multiple providers');
-  const mockConfig = {
-    aiProvider: 'gemini' as const,
-    aiProviders: ['gemini', 'openrouter'] as ('gemini' | 'openrouter')[],
-    geminiApiKey: 'test-gemini-key',
-    geminiModel: 'gemini-3.5-flash',
-    geminiFallbackModels: [],
-    geminiRequestTimeoutMilliseconds: 5000,
-    aiApiKey: 'test-openrouter-key',
-    aiBaseUrl: 'https://openrouter.ai/api/v1',
-    aiModel: 'meta-llama/llama-3.3-70b-instruct:free',
-    aiFallbackModels: [],
-    aiRequestTimeoutMilliseconds: 5000,
-  } as unknown as ApplicationEnvironmentConfiguration;
-
-  const createdProvider = createFinancialAiProvider(mockConfig);
-  assert.ok(createdProvider instanceof FallbackAiProvider);
-  assert.equal((createdProvider as FallbackAiProvider).getProviders().length, 2);
-  console.log('[SUCCESS] Test 7 Passed: Factory instantiated FallbackAiProvider correctly.');
-
-  }
-
-  if (testCase === 8) {
-  // Test 8: Factory single provider backward compatibility
-  console.log('Test 8: Factory single provider backward compatibility');
-  const singleConfig = {
-    aiProvider: 'gemini' as const,
-    aiProviders: ['gemini'] as ('gemini')[],
-    geminiApiKey: 'test-gemini-key',
-    geminiModel: 'gemini-3.5-flash',
-    geminiFallbackModels: [],
-    geminiRequestTimeoutMilliseconds: 5000,
-  } as unknown as ApplicationEnvironmentConfiguration;
-
-  const singleProvider = createFinancialAiProvider(singleConfig);
-  assert.ok(!(singleProvider instanceof FallbackAiProvider));
-  assert.equal(singleProvider.providerName, 'gemini');
-  console.log('[SUCCESS] Test 8 Passed: Single provider maintains 100% backward compatibility.');
-
-  }
-
-  if (testCase === 9) {
-  // Test 9: JSON response extraction from markdown code fences
-  console.log('Test 9: extractAndParseJsonObject markdown code fence handling');
-  const fencedJsonWithLabel = '```json\n{"nominal": 50000, "merchant": "Kopi"}\n```';
-  const parsedFencedJson = extractAndParseJsonObject<{ nominal: number; merchant: string }>(fencedJsonWithLabel);
-  assert.equal(parsedFencedJson.nominal, 50000);
-  assert.equal(parsedFencedJson.merchant, 'Kopi');
-
-  const fencedJsonWithoutLabel = '```\n{"nominal": 25000}\n```';
-  const parsedPlainFencedJson = extractAndParseJsonObject<{ nominal: number }>(fencedJsonWithoutLabel);
-  assert.equal(parsedPlainFencedJson.nominal, 25000);
-
-  const rawJsonResponse = '{"nominal": 10000}';
-  const parsedRawJson = extractAndParseJsonObject<{ nominal: number }>(rawJsonResponse);
-  assert.equal(parsedRawJson.nominal, 10000);
-
-  const unclosedFenceResponse = '```json\n{"nominal": 75000}';
-  const parsedUnclosedFenceJson = extractAndParseJsonObject<{ nominal: number }>(unclosedFenceResponse);
-  assert.equal(parsedUnclosedFenceJson.nominal, 75000);
-  console.log('[SUCCESS] Test 9 Passed: Markdown fenced and raw JSON responses parsed deterministically.');
-
-  }
-
-  if (testCase === 10) {
-  // Test 10: OpenAI-compatible provider base URL trailing slash normalization
-  console.log('Test 10: OpenAiCompatibleAiProvider base URL trailing slash trimming');
-  const openAiCompatibleProvider = new OpenAiCompatibleAiProvider({
-    baseUrl: 'http://localhost:11434/v1///',
-    apiKey: 'test-key',
-    primaryModelName: 'test-model',
+  describe('isRecoverableProviderError', () => {
+    it.each([
+      ['null', null, false],
+      ['Syntax error', new Error('Syntax error'), false],
+      ['response status 429', { response: { status: 429 } }, true],
+      ['response status 503', { response: { status: 503 } }, true],
+      ['Rate limit message', new Error('Rate limit exceeded'), true],
+      ['RESOURCE_EXHAUSTED quota message', new Error('RESOURCE_EXHAUSTED: quota exceeded'), true],
+      ['Timeout message', new Error('Request timed out'), true],
+    ])('evaluates %s as recoverable=%s', (_description, error, expectedRecoverable) => {
+      expect(isRecoverableProviderError(error)).toBe(expectedRecoverable);
+    });
   });
-  const normalizedBaseUrl = (openAiCompatibleProvider as unknown as {
-    httpClient: { defaults: { baseURL: string } };
-  }).httpClient.defaults.baseURL;
-  assert.equal(normalizedBaseUrl, 'http://localhost:11434/v1');
-  console.log('[SUCCESS] Test 10 Passed: Trailing slashes normalized without regex backtracking.');
 
-  }
+  describe('failover behavior', () => {
+    it('executes primary provider exclusively when primary is healthy', async () => {
+      const primaryProvider = new MockFinancialAiProvider('gemini');
+      const secondaryProvider = new MockFinancialAiProvider('openrouter');
+      const fallbackProvider = new FallbackAiProvider([primaryProvider, secondaryProvider]);
 
-  console.log('\nAll FallbackAiProvider unit tests passed successfully!');
-}
+      const result = await fallbackProvider.processTextMessage('Beli kopi 25rb', mockAccounts, mockCategories);
 
-describe('fallback AI provider', () => {
-  it.each(Array.from({ length: 10 }, (_, index) => index + 1))(
-    'runs fallback scenario %s in isolation',
-    async testCase => {
-      await runFallbackAiProviderTest(testCase);
-    }
-  );
+      expect(primaryProvider.callCount).toBe(1);
+      expect(secondaryProvider.callCount).toBe(0);
+      expect(result.records?.[0].note).toContain('Processed by gemini');
+    });
+
+    it('falls back to secondary provider seamlessly when primary encounters a 429', async () => {
+      const rateLimitedPrimary = new MockFinancialAiProvider('gemini', 429, 'Too Many Requests');
+      const activeSecondary = new MockFinancialAiProvider('openrouter');
+      const fallbackProvider = new FallbackAiProvider([rateLimitedPrimary, activeSecondary]);
+
+      const result = await fallbackProvider.processTextMessage('Makan siang 30rb', mockAccounts, mockCategories);
+
+      expect(rateLimitedPrimary.callCount).toBe(1);
+      expect(activeSecondary.callCount).toBe(1);
+      expect(result.records?.[0].note).toContain('Processed by openrouter');
+    });
+
+    it('executes 3-tier cascade fallback in strict priority order', async () => {
+      const tier1 = new MockFinancialAiProvider('gemini', 503, 'Overloaded');
+      const tier2 = new MockFinancialAiProvider('openrouter', 429, 'Quota exceeded');
+      const tier3 = new MockFinancialAiProvider('groq');
+      const fallbackProvider = new FallbackAiProvider([tier1, tier2, tier3]);
+
+      const result = await fallbackProvider.processTextMessage('Isi bensin 100rb', mockAccounts, mockCategories);
+
+      expect(tier1.callCount).toBe(1);
+      expect(tier2.callCount).toBe(1);
+      expect(tier3.callCount).toBe(1);
+      expect(result.records?.[0].note).toContain('Processed by groq');
+    });
+
+    it('falls back to secondary provider for image messages when primary fails with 429', async () => {
+      const imageTier1 = new MockFinancialAiProvider('gemini', 429, 'Rate limit');
+      const imageTier2 = new MockFinancialAiProvider('openrouter');
+      const fallbackProvider = new FallbackAiProvider([imageTier1, imageTier2]);
+
+      const imageResult = await fallbackProvider.processImageMessage(
+        Buffer.from('fake-image'),
+        'image/jpeg',
+        'receipt',
+        mockAccounts,
+        mockCategories
+      );
+
+      expect(imageTier1.callCount).toBe(1);
+      expect(imageTier2.callCount).toBe(1);
+      expect(imageResult.records?.[0].note).toContain('Image processed by openrouter');
+    });
+
+    it('propagates the last failure when all providers fail', async () => {
+      const failed1 = new MockFinancialAiProvider('gemini', 429, 'Rate limit 1');
+      const failed2 = new MockFinancialAiProvider('openrouter', 503, 'Outage 2');
+      const fallbackProvider = new FallbackAiProvider([failed1, failed2]);
+
+      await expect(
+        fallbackProvider.processTextMessage('test', mockAccounts, mockCategories)
+      ).rejects.toThrow(/Outage 2/);
+    });
+  });
+
+  describe('factory resolution', () => {
+    it('instantiates FallbackAiProvider when multiple providers are configured', () => {
+      const mockConfig = {
+        aiProvider: 'gemini' as const,
+        aiProviders: ['gemini', 'openrouter'] as ('gemini' | 'openrouter')[],
+        geminiApiKey: 'test-gemini-key',
+        geminiModel: 'gemini-3.5-flash',
+        geminiFallbackModels: [],
+        geminiRequestTimeoutMilliseconds: 5000,
+        aiApiKey: 'test-openrouter-key',
+        aiBaseUrl: 'https://openrouter.ai/api/v1',
+        aiModel: 'meta-llama/llama-3.3-70b-instruct:free',
+        aiFallbackModels: [],
+        aiRequestTimeoutMilliseconds: 5000,
+      } as unknown as ApplicationEnvironmentConfiguration;
+
+      const createdProvider = createFinancialAiProvider(mockConfig);
+      expect(createdProvider).toBeInstanceOf(FallbackAiProvider);
+      expect((createdProvider as FallbackAiProvider).getProviders()).toHaveLength(2);
+    });
+
+    it('instantiates a single provider directly when only one provider is configured', () => {
+      const singleConfig = {
+        aiProvider: 'gemini' as const,
+        aiProviders: ['gemini'] as ('gemini')[],
+        geminiApiKey: 'test-gemini-key',
+        geminiModel: 'gemini-3.5-flash',
+        geminiFallbackModels: [],
+        geminiRequestTimeoutMilliseconds: 5000,
+      } as unknown as ApplicationEnvironmentConfiguration;
+
+      const singleProvider = createFinancialAiProvider(singleConfig);
+      expect(singleProvider).not.toBeInstanceOf(FallbackAiProvider);
+      expect(singleProvider.providerName).toBe('gemini');
+    });
+  });
+
+  describe('extractAndParseJsonObject', () => {
+    it('parses JSON from labeled markdown code fences', () => {
+      const fencedJsonWithLabel = '```json\n{"nominal": 50000, "merchant": "Kopi"}\n```';
+      const parsed = extractAndParseJsonObject<{ nominal: number; merchant: string }>(fencedJsonWithLabel);
+      expect(parsed).toEqual({ nominal: 50000, merchant: 'Kopi' });
+    });
+
+    it('parses JSON from unlabeled markdown code fences', () => {
+      const fencedJsonWithoutLabel = '```\n{"nominal": 25000}\n```';
+      const parsed = extractAndParseJsonObject<{ nominal: number }>(fencedJsonWithoutLabel);
+      expect(parsed).toEqual({ nominal: 25000 });
+    });
+
+    it('parses raw JSON strings without code fences', () => {
+      const rawJsonResponse = '{"nominal": 10000}';
+      const parsed = extractAndParseJsonObject<{ nominal: number }>(rawJsonResponse);
+      expect(parsed).toEqual({ nominal: 10000 });
+    });
+
+    it('parses unclosed markdown code fences', () => {
+      const unclosedFenceResponse = '```json\n{"nominal": 75000}';
+      const parsed = extractAndParseJsonObject<{ nominal: number }>(unclosedFenceResponse);
+      expect(parsed).toEqual({ nominal: 75000 });
+    });
+  });
+
+  describe('OpenAiCompatibleAiProvider base URL normalization', () => {
+    it('normalizes trailing slashes on base URLs without regex backtracking', () => {
+      const openAiCompatibleProvider = new OpenAiCompatibleAiProvider({
+        baseUrl: 'http://localhost:11434/v1///',
+        apiKey: 'test-key',
+        primaryModelName: 'test-model',
+      });
+      const normalizedBaseUrl = (openAiCompatibleProvider as unknown as {
+        httpClient: { defaults: { baseURL: string } };
+      }).httpClient.defaults.baseURL;
+
+      expect(normalizedBaseUrl).toBe('http://localhost:11434/v1');
+    });
+  });
 });
