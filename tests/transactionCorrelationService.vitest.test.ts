@@ -705,20 +705,20 @@ describe('TransactionCorrelationService', () => {
       const singleId = formatEnrichedPendingEmailTransactionNotification(item, 1, 'Blibli', 'id');
       expect(singleId).toContain('Transaksi Diperkaya');
       expect(singleId).toContain('Balas *Ya* atau *Catat* (atau *Ya 1*)');
-      expect(singleId).toContain('Balas *Ya: <catatan> cat:<kategori> #<tag>* untuk tambah rincian');
+      expect(singleId).toContain('Balas *Ya: n:<catatan> c:<kategori> t:<tag> m:<merchant> acc:<akun>*');
 
       const bulkId = formatEnrichedPendingEmailTransactionNotification(item, 3, 'Blibli', 'id');
       expect(bulkId).toContain('Balas *Ya 1* (atau *Ya semua*)');
-      expect(bulkId).toContain('Balas *Ya 1: <catatan> cat:<kategori> #<tag>* untuk tambah rincian');
+      expect(bulkId).toContain('Balas *Ya 1: n:<catatan> c:<kategori> t:<tag> m:<merchant> acc:<akun>*');
 
       const singleEn = formatEnrichedPendingEmailTransactionNotification(item, 1, 'Blibli', 'en');
       expect(singleEn).toContain('Transaction Enriched');
       expect(singleEn).toContain('Reply *Yes* or *Record* (or *Yes 1*)');
-      expect(singleEn).toContain('Reply *Yes: <note> cat:<category> #<tag>* to add details');
+      expect(singleEn).toContain('Reply *Yes: n:<note> c:<category> t:<tag> m:<merchant> acc:<account>*');
 
       const bulkEn = formatEnrichedPendingEmailTransactionNotification(item, 3, 'Blibli', 'en');
       expect(bulkEn).toContain('Reply *Yes 1* (or *Yes all*)');
-      expect(bulkEn).toContain('Reply *Yes 1: <note> cat:<category> #<tag>* to add details');
+      expect(bulkEn).toContain('Reply *Yes 1: n:<note> c:<category> t:<tag> m:<merchant> acc:<account>*');
     });
 
     it('formats correlated Wallet record notification in English and Indonesian', () => {

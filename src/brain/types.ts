@@ -232,6 +232,8 @@ export interface PendingConfirmationIntent {
   customNote?: string;
   customCategoryHint?: string;
   customTags?: string[];
+  counterParty?: string;
+  targetAccountHint?: string;
   rawCustomInput?: string;
 }
 

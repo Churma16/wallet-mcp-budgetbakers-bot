@@ -143,6 +143,44 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
       expect(intent?.customTags).toEqual(['kantor']);
     });
 
+    it('detects consistent shorthand keys n:, c:, t:, m:, acc: with ticket ID', () => {
+      const intent = detectPendingConfirmationAction(
+        'Ya 2: n: Makan Siang c: Food t: jajan m: Warung Bu Sri acc: Mandiri Debit Card'
+      );
+      expect(intent).toEqual<PendingConfirmationIntent>({
+        actionType: 'CONFIRM',
+        targetScope: 2,
+        customNote: 'Makan Siang',
+        customCategoryHint: 'Food',
+        customTags: ['jajan'],
+        counterParty: 'Warung Bu Sri',
+        targetAccountHint: 'Mandiri Debit Card',
+        rawCustomInput: 'n: Makan Siang c: Food t: jajan m: Warung Bu Sri acc: Mandiri Debit Card',
+      });
+    });
+
+    it('detects shorthand keys without explicit colon separator after confirmation word', () => {
+      const intent = detectPendingConfirmationAction('Ya 3 n: Kopi c: Drinks');
+      expect(intent?.targetScope).toBe(3);
+      expect(intent?.customNote).toBe('Kopi');
+      expect(intent?.customCategoryHint).toBe('Drinks');
+    });
+
+    it('detects single shorthand key c: or t: or m: or acc:', () => {
+      const intentCat = detectPendingConfirmationAction('Ya: c: Food');
+      expect(intentCat?.customCategoryHint).toBe('Food');
+      expect(intentCat?.customNote).toBeUndefined();
+
+      const intentTag = detectPendingConfirmationAction('Ya: t: #sarapan, #kantor');
+      expect(intentTag?.customTags).toEqual(['sarapan', 'kantor']);
+
+      const intentAcc = detectPendingConfirmationAction('Ya 1: acc: BCA');
+      expect(intentAcc?.targetAccountHint).toBe('BCA');
+
+      const intentMerchant = detectPendingConfirmationAction('Ya: m: Starbucks');
+      expect(intentMerchant?.counterParty).toBe('Starbucks');
+    });
+
     it('preserves existing pure confirmation and cancellation commands', () => {
       expect(detectPendingConfirmationAction('ya')).toEqual({
         actionType: 'CONFIRM',
@@ -848,6 +886,69 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
       // Labels MUST be undefined (not ['makan'])
       expect(dispatchedRecords[0].labels).toBeUndefined();
     });
+
+    it('end-to-end: resolves shorthand keys n:, c:, t:, m:, acc: in pendingHandler', async () => {
+      const pendingService = new PendingTransactionService();
+      let dispatchedRecords: any[] = [];
+      const mockWalletClient = {
+        createRecords: vi.fn(async (records) => {
+          dispatchedRecords = records;
+          return { summary: { total: 1, succeeded: 1, failed: 0 }, results: [{ inputIndex: 0, success: true, recordId: 'r1' }] };
+        }),
+      } as unknown as WalletMcpClientService;
+
+      const mockCacheService = {
+        getCategories: vi.fn(() => [
+          { id: 'cat-food', name: 'Food' },
+          { id: 'cat-transport', name: 'Transport' },
+        ]),
+        getAccounts: vi.fn(() => [
+          { id: 'acc-mandiri', name: 'Mandiri Debit Card', currency: 'IDR' },
+          { id: 'acc-bca', name: 'BCA Account', currency: 'IDR' },
+        ]),
+      } as unknown as WalletCacheService;
+
+      const handler = new PendingActionHandler(
+        pendingService,
+        mockWalletClient,
+        { sendMessage: vi.fn() } as any,
+        () => null,
+        mockCacheService
+      );
+
+      pendingService.addPendingTransaction({
+        sourceType: 'EMAIL',
+        bankDisplayName: 'Mandiri',
+        accountNameHint: 'Old Account',
+        counterParty: 'Old Merchant',
+        amount: -25000,
+        transactionType: 'EXPENSE',
+        matchedAccountId: 'acc-mandiri',
+        matchedCategoryId: 'cat-transport',
+        matchedCategoryName: 'Transport',
+        note: 'Old Note',
+        recordDate: '2026-11-03T12:00:00Z',
+      });
+
+      const intent = detectPendingConfirmationAction(
+        'Ya: n: Nasi Padang c: Food t: lunch, makan m: RM Sederhana acc: BCA Account'
+      );
+      expect(intent).not.toBeNull();
+
+      const handled = await handler.handlePendingAction(
+        createMockEvent('Ya: n: Nasi Padang c: Food t: lunch, makan m: RM Sederhana acc: BCA Account'),
+        intent!,
+        Date.now()
+      );
+
+      expect(handled).toBe(true);
+      expect(dispatchedRecords).toHaveLength(1);
+      expect(dispatchedRecords[0].note).toBe('Nasi Padang');
+      expect(dispatchedRecords[0].categoryId).toBe('cat-food');
+      expect(dispatchedRecords[0].labels).toEqual(['lunch', 'makan']);
+      expect(dispatchedRecords[0].counterParty).toBe('Rm Sederhana');
+      expect(dispatchedRecords[0].accountId).toBe('acc-bca');
+    });
   });
 
   describe('Notification Formatting Hints', () => {
@@ -863,7 +964,7 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
         totalPendingCount: 1,
       });
 
-      expect(notifSingle).toContain('Balas *Ya: <catatan> cat:<kategori> #<tag>* untuk tambah rincian');
+      expect(notifSingle).toContain('Balas *Ya: n:<catatan> c:<kategori> t:<tag> m:<merchant> acc:<akun>*');
 
       const notifMulti = indonesianDictionary.emailPending.formatNotification({
         ticketId: 2,
@@ -876,7 +977,7 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
         totalPendingCount: 2,
       });
 
-      expect(notifMulti).toContain('Balas *Ya 2: <catatan> cat:<kategori> #<tag>* untuk tambah rincian');
+      expect(notifMulti).toContain('Balas *Ya 2: n:<catatan> c:<kategori> t:<tag> m:<merchant> acc:<akun>*');
     });
 
     it('includes inline note hint in English notification', () => {
@@ -891,7 +992,7 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
         totalPendingCount: 1,
       });
 
-      expect(notif).toContain('Reply *Yes: <note> cat:<category> #<tag>* to add details');
+      expect(notif).toContain('Reply *Yes: n:<note> c:<category> t:<tag> m:<merchant> acc:<account>*');
     });
 
     it('formats centralized pending confirmation prompt in Indonesian and English', () => {
@@ -901,7 +1002,7 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
       });
       expect(idSingle).toContain('Catat transaksi ini?');
       expect(idSingle).toContain('• Balas *Ya* atau *Catat* (atau *Ya 1*)');
-      expect(idSingle).toContain('• Balas *Ya: <catatan> cat:<kategori> #<tag>* untuk tambah rincian');
+      expect(idSingle).toContain('• Balas *Ya: n:<catatan> c:<kategori> t:<tag> m:<merchant> acc:<akun>*');
       expect(idSingle).toContain('• Balas *Batal* atau *Abaikan* (atau *Batal 1*)');
 
       const idMulti = indonesianDictionary.emailPending.formatConfirmationPrompt({
@@ -909,7 +1010,7 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
         totalPendingCount: 3,
       });
       expect(idMulti).toContain('• Balas *Ya 5* (atau *Ya semua*)');
-      expect(idMulti).toContain('• Balas *Ya 5: <catatan> cat:<kategori> #<tag>* untuk tambah rincian');
+      expect(idMulti).toContain('• Balas *Ya 5: n:<catatan> c:<kategori> t:<tag> m:<merchant> acc:<akun>*');
       expect(idMulti).toContain('• Balas *Batal 5*');
       expect(idMulti).toContain('_Ada 2 transaksi lain yang juga menunggu konfirmasi._');
 
@@ -919,7 +1020,7 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
       });
       expect(enSingle).toContain('Record this transaction?');
       expect(enSingle).toContain('• Reply *Yes* or *Record* (or *Yes 1*)');
-      expect(enSingle).toContain('• Reply *Yes: <note> cat:<category> #<tag>* to add details');
+      expect(enSingle).toContain('• Reply *Yes: n:<note> c:<category> t:<tag> m:<merchant> acc:<account>*');
       expect(enSingle).toContain('• Reply *Cancel* or *Ignore* (or *Cancel 1*)');
 
       const enMulti = englishDictionary.emailPending.formatConfirmationPrompt({
@@ -927,7 +1028,7 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
         totalPendingCount: 4,
       });
       expect(enMulti).toContain('• Reply *Yes 8* (or *Yes all*)');
-      expect(enMulti).toContain('• Reply *Yes 8: <note> cat:<category> #<tag>* to add details');
+      expect(enMulti).toContain('• Reply *Yes 8: n:<note> c:<category> t:<tag> m:<merchant> acc:<account>*');
       expect(enMulti).toContain('• Reply *Cancel 8*');
       expect(enMulti).toContain('_There is 3 other transaction waiting for confirmation._');
 
