@@ -122,7 +122,20 @@ test('FinancialActionExecutor directly executes balance, budget, and help action
     routingSource: 'fast-path',
   });
   assert.strictEqual(mockGateway.dispatchedMessages.length, 3, 'Should dispatch help menu message');
-  assert.ok(mockGateway.dispatchedMessages[2].message.includes('saldo'), 'Help menu should mention commands');
+  assert.ok(
+    mockGateway.dispatchedMessages[2].message.includes('pengeluaran'),
+    'Help menu should send concise welcome guidance'
+  );
+  assert.strictEqual(
+    mockGateway.dispatchedMessages[2].message.includes('0 Token AI'),
+    false,
+    'Help menu should not leak internal AI token metrics'
+  );
+  assert.strictEqual(
+    mockGateway.dispatchedMessages[2].message.includes('Cek Saldo: Cek saldo semua rekening'),
+    false,
+    'Help menu should omit redundant command list since keyboard buttons already exist'
+  );
 });
 
 // -----------------------------------------------------------------------------

@@ -407,12 +407,12 @@ export const indonesianDictionary: ResponseDictionary = {
   },
 
   help: {
-    welcomeGuidance: '👋 Halo! Kirimkan pengeluaran Anda (misal: "Makan siang 25rb pakai Cash") atau foto struk belanja untuk dicatat ke Wallet.',
-    quickCommandsTitle: '*Perintah Cepat (0 Token AI):*',
-    commandBalance: '• *Saldo* / *Cek Saldo*: Cek saldo semua rekening',
-    commandBudget: '• *Budget* / *Cek Budget*: Cek status limit anggaran',
-    commandHistory: '• *Riwayat* / *History*: Cek riwayat transaksi terakhir',
-    commandMenu: '• *Menu* / *Bantuan*: Menampilkan petunjuk ini',
+    welcomeGuidance: [
+      'Ketik pengeluaran kamu langsung, misalnya:',
+      '"Makan siang 30k Cash" atau "Bensin 50rb Gopay"',
+      '',
+      'Atau kirim foto struk — langsung kerekam.',
+    ].join('\n'),
   },
 
   telegramMenu: {
@@ -501,7 +501,7 @@ export const indonesianDictionary: ResponseDictionary = {
       '\u{2022} <i>Cek antrean pending</i>',
     ].join('\n'),
     guideFastCommandsContent: [
-      '<b>\u{26A1} Perintah Cepat (0 Token AI)</b>',
+      '<b>\u{26A1} Perintah Cepat</b>',
       '',
       'Tombol keyboard bawah siap digunakan kapan saja:',
       '\u{2022} <b>Cek Saldo</b> \u{2014} Ringkasan total uang &amp; rekening',

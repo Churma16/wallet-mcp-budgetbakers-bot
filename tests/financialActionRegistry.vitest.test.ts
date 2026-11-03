@@ -697,7 +697,7 @@ describe('FinancialActionRegistry & Action Handlers', () => {
       expect(mockGateway.sendMessage).toHaveBeenCalledWith(
         textEvent.channel,
         textEvent.chatIdentifier,
-        expect.stringContaining('Halo!')
+        expect.stringContaining('pengeluaran')
       );
     });
 

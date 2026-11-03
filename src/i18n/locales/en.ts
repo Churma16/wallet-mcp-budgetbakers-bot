@@ -409,12 +409,12 @@ export const englishDictionary: ResponseDictionary = {
   },
 
   help: {
-    welcomeGuidance: '👋 Hello! Send your expenses (e.g. "Lunch 25k using Cash") or receipt photos to record them to Wallet.',
-    quickCommandsTitle: '*Quick Commands (0 AI Tokens):*',
-    commandBalance: '• *Balance* / *Check Balance*: Check all account balances',
-    commandBudget: '• *Budget* / *Check Budget*: Check budget limit status',
-    commandHistory: '• *History*: Check recent transaction history',
-    commandMenu: '• *Menu* / *Help*: Show this guidance',
+    welcomeGuidance: [
+      'Type your expense directly, for example:',
+      '"Lunch 30k Cash" or "Gas 50k Gopay"',
+      '',
+      'Or send a receipt photo — recorded instantly.',
+    ].join('\n'),
   },
 
   telegramMenu: {
@@ -493,7 +493,7 @@ export const englishDictionary: ResponseDictionary = {
     guideSummaryFilterContent: [
       '<b>\u{1F50D} Summary &amp; History Queries</b>',
       '',
-      'Fast direct queries from BudgetBakers using 0 AI tokens:',
+      'Fast direct queries without AI token usage:',
       '',
       '<b>Example Commands:</b>',
       '\u{2022} <i>Summary this month</i>',
@@ -503,7 +503,7 @@ export const englishDictionary: ResponseDictionary = {
       '\u{2022} <i>Check pending queue</i>',
     ].join('\n'),
     guideFastCommandsContent: [
-      '<b>\u{26A1} Quick Commands (0 AI Tokens)</b>',
+      '<b>\u{26A1} Quick Commands</b>',
       '',
       'Bottom keyboard buttons are always ready to use:',
       '\u{2022} <b>Check Balance</b> \u{2014} Net worth &amp; account breakdown',
