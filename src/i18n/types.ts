@@ -41,6 +41,7 @@ export interface PendingEmailNotificationParams {
   ticketId: number;
   bankDisplayName: string;
   typeIcon: string;
+  sourceIcon?: string;
   formattedAmount: string;
   typeLabel: string;
   formattedTime: string;

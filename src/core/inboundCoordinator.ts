@@ -182,6 +182,24 @@ export async function coordinateInboundTransactionCandidate(
       `[Correlation Fused Pending] Correlated ${sourceType} with pending ticket #${existingPending.ticketId}. Merging evidence.`
     );
 
+    // Guard: Check if ticket is still active pending (not already confirmed, cancelled, or resolving)
+    const currentPending = pendingTransactionManager.getPendingTransaction(existingPending.ticketId);
+    const isProcessing =
+      typeof pendingTransactionManager.isTicketProcessing === 'function' &&
+      pendingTransactionManager.isTicketProcessing(existingPending.ticketId);
+
+    if (!currentPending || isProcessing) {
+      applicationLogger.info(
+        `[Correlation Fused Pending] Ticket #${existingPending.ticketId} is no longer active pending (processing or resolved). Skipping edit.`
+      );
+      if (onRecordProcessed) {
+        for (const ref of extractedRefs) {
+          onRecordProcessed(ref);
+        }
+      }
+      return;
+    }
+
     const enrichedItem = pendingTransactionManager.enrichPendingTransaction(
       existingPending.ticketId,
       correlationResult.fusedPendingItem || {}
@@ -200,10 +218,29 @@ export async function coordinateInboundTransactionCandidate(
         totalPendingCount,
         sourceDisplayName
       );
-      await messagingGateway.broadcastNotification(notificationText);
-      applicationLogger.success(
-        `Dispatched enriched transaction notification (#${enrichedItem.ticketId}) to active messaging channels.`
-      );
+
+      let wasEdited = false;
+      if (
+        enrichedItem.notificationMessageIds &&
+        Object.keys(enrichedItem.notificationMessageIds).length > 0 &&
+        typeof messagingGateway.editBroadcastNotification === 'function'
+      ) {
+        wasEdited = await messagingGateway.editBroadcastNotification(
+          enrichedItem.notificationMessageIds,
+          notificationText
+        );
+      }
+
+      if (!wasEdited) {
+        await messagingGateway.broadcastNotification(notificationText);
+        applicationLogger.success(
+          `Dispatched enriched transaction notification (#${enrichedItem.ticketId}) to active messaging channels.`
+        );
+      } else {
+        applicationLogger.success(
+          `Successfully updated in-place notification bubble for enriched transaction (#${enrichedItem.ticketId}).`
+        );
+      }
     }
     return;
   }
@@ -271,7 +308,16 @@ export async function coordinateInboundTransactionCandidate(
     notificationText = `⚠️ *Perlu Klarifikasi*\n${correlationResult.clarificationPrompt}\n\n${notificationText}`;
   }
 
-  await messagingGateway.broadcastNotification(notificationText);
+  const receipts = await messagingGateway.broadcastNotification(notificationText);
+  if (
+    receipts &&
+    typeof receipts === 'object' &&
+    Object.keys(receipts).length > 0 &&
+    typeof pendingTransactionManager.updateNotificationMessageIds === 'function'
+  ) {
+    pendingTransactionManager.updateNotificationMessageIds(pendingItem.ticketId, receipts);
+  }
+
   applicationLogger.success(
     `Dispatched pending transaction notification (#${pendingItem.ticketId}) to active messaging channels.`
   );
