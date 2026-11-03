@@ -4,6 +4,8 @@ import {
   formatWhatsAppMarkdown,
   formatConsolePlainText,
   formatMessageForChannel,
+  decodeHtmlEntities,
+  stripHtmlTags,
   TelegramMessageFormatter,
   WhatsAppMessageFormatter,
   ConsoleMessageFormatter,
@@ -126,6 +128,20 @@ describe('Channel Message Formatters Architecture', () => {
 
     it('returns source text unchanged for unrecognized channel', () => {
       expect(formatMessageForChannel('unknown' as any, 'Raw Text')).toBe('Raw Text');
+    });
+  });
+
+  describe('HTML Security Utilities (Single-Pass Decoding & Iterative Stripping)', () => {
+    it('decodes entities in a single pass preventing double-unescaping', () => {
+      expect(decodeHtmlEntities('&amp;lt;')).toBe('&lt;');
+      expect(decodeHtmlEntities('&lt;b&gt;Hello &amp; World&lt;/b&gt;')).toBe('<b>Hello & World</b>');
+      expect(decodeHtmlEntities('')).toBe('');
+    });
+
+    it('iteratively strips nested HTML tags to fixed point', () => {
+      expect(stripHtmlTags('<<script>script>evil()</script>')).toBe('evil()');
+      expect(stripHtmlTags('<b<b>>nested</b> text')).toBe('nested text');
+      expect(stripHtmlTags('')).toBe('');
     });
   });
 });

@@ -3,6 +3,7 @@ import type { ChannelMessageFormatter } from './types.js';
 import { formatTelegramHtml, TelegramMessageFormatter } from './telegramFormatter.js';
 import { formatWhatsAppMarkdown, WhatsAppMessageFormatter } from './whatsappFormatter.js';
 import { formatConsolePlainText, ConsoleMessageFormatter } from './consoleFormatter.js';
+import { decodeHtmlEntities, stripHtmlTags } from './htmlUtils.js';
 
 export type { ChannelMessageFormatter };
 export {
@@ -12,6 +13,8 @@ export {
   WhatsAppMessageFormatter,
   formatConsolePlainText,
   ConsoleMessageFormatter,
+  decodeHtmlEntities,
+  stripHtmlTags,
 };
 
 const formatterRegistry: Record<SupportedMessengerChannel, ChannelMessageFormatter> = {

@@ -1,8 +1,9 @@
 import type { ChannelMessageFormatter } from './types.js';
+import { decodeHtmlEntities, stripHtmlTags } from './htmlUtils.js';
 
 /**
  * Normalizes messages for interactive terminal / console output:
- * 1. Strips HTML tags and decodes entities.
+ * 1. Strips HTML tags cleanly and decodes entities safely via single-pass matching.
  * 2. Unwraps formatting markers (*bold*, _italic_, ~strike~) into plain legible terminal text.
  */
 export function formatConsolePlainText(sourceText: string): string {
@@ -10,16 +11,11 @@ export function formatConsolePlainText(sourceText: string): string {
     return '';
   }
 
-  let transformedText = sourceText;
+  // 1. Strip HTML tags iteratively until a fixed point is reached
+  let transformedText = stripHtmlTags(sourceText);
 
-  // 1. Strip HTML tags
-  transformedText = transformedText.replace(/<[^>]+>/g, '');
-
-  // 2. Decode HTML entities
-  transformedText = transformedText
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
+  // 2. Decode HTML entities in a single pass to eliminate double-unescaping
+  transformedText = decodeHtmlEntities(transformedText);
 
   // Delimiter boundaries
   const boundaryBefore = '(?<=^|[\\s([{<"\'“‘/•—–;\\-])';
