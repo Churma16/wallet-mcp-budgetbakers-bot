@@ -78,6 +78,14 @@ class MockFinancialAiProvider {
   async processImageMessage(): Promise<Record<string, unknown>> {
     return this.intent;
   }
+
+  async classifyCategory(text: string, _availableCategoryList: WalletCategoryItem[]): Promise<{ categoryId?: string; confidence: number }> {
+    const textLower = text.toLowerCase();
+    if (textLower.includes('obat') || textLower.includes('flu') || textLower.includes('paracetamol')) {
+      return { categoryId: 'cat-kesehatan', confidence: 0.95 };
+    }
+    return { categoryId: undefined, confidence: 0 };
+  }
 }
 
 class MockPendingActionHandler {
