@@ -285,21 +285,27 @@ export class MessagingGatewayService {
   }
 
   /**
-   * Broadcasts a notification message (e.g. email transaction prompt) to all connected channels
+   * Broadcasts a notification message (e.g. email transaction prompt) to all connected channels.
+   * Returns a dictionary of channel names to message IDs for channels that provided receipts.
    */
-  public async broadcastNotification(messageText: string): Promise<void> {
+  public async broadcastNotification(messageText: string): Promise<Record<string, string>> {
     const connectedAdapters = Array.from(this.adapterMap.entries())
       .filter(([channel]) => this.isChannelConnected(channel))
       .map(([, adapter]) => adapter);
 
     if (connectedAdapters.length === 0) {
       applicationLogger.warn('[WARN] Cannot broadcast notification: no messaging adapters are currently connected.');
-      return;
+      return {};
     }
+
+    const receipts: Record<string, string> = {};
 
     const broadcastPromises = connectedAdapters.map(async adapter => {
       try {
-        await adapter.sendBroadcastNotification(messageText);
+        const receipt = await adapter.sendBroadcastNotification(messageText);
+        if (receipt && receipt.messageId) {
+          receipts[adapter.channelName] = receipt.messageId;
+        }
         applicationLogger.success(
           `[SUCCESS] Dispatched broadcast notification to [${adapter.channelName.toUpperCase()}].`
         );
@@ -311,6 +317,43 @@ export class MessagingGatewayService {
     });
 
     await Promise.allSettled(broadcastPromises);
+    return receipts;
+  }
+
+  /**
+   * Attempts to edit an existing broadcast notification bubble across connected channels in-place.
+   * Returns true if at least one adapter successfully edited the message in-place.
+   */
+  public async editBroadcastNotification(
+    messageIds: Record<string, string>,
+    messageText: string
+  ): Promise<boolean> {
+    const connectedAdapters = Array.from(this.adapterMap.entries())
+      .filter(([channel]) => this.isChannelConnected(channel))
+      .map(([, adapter]) => adapter);
+
+    let anyEdited = false;
+
+    for (const adapter of connectedAdapters) {
+      const messageId = messageIds[adapter.channelName];
+      if (messageId && typeof adapter.editBroadcastNotification === 'function') {
+        try {
+          const edited = await adapter.editBroadcastNotification(messageId, messageText);
+          if (edited) {
+            anyEdited = true;
+            applicationLogger.success(
+              `[SUCCESS] Edited broadcast notification on [${adapter.channelName.toUpperCase()}] (#${messageId}).`
+            );
+          }
+        } catch (editError: unknown) {
+          applicationLogger.warn(
+            `[WARN] Failed to edit broadcast notification on [${adapter.channelName.toUpperCase()}]: ${editError}`
+          );
+        }
+      }
+    }
+
+    return anyEdited;
   }
 }
 

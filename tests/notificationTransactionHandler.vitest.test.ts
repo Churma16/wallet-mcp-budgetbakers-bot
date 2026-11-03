@@ -171,7 +171,7 @@ describe('NotificationTransactionHandler', () => {
     expect(pendingItems[0].evidenceSources).toContain('EMAIL_BANK');
     expect(pendingItems[0].evidenceSources).toContain('PUSH_NOTIFICATION');
     expect(messaging.broadcastNotification).toHaveBeenCalledWith(
-      expect.stringContaining('Transaksi Diperkaya')
+      expect.stringContaining('Diperbarui via 📩 com.jago')
     );
   });
 

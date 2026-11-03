@@ -31,6 +31,7 @@ export interface PendingTransactionItem {
   clarificationPrompt?: string;
   labels?: string[];
   transfer?: import('../wallet/types.js').WalletTransferInput;
+  notificationMessageIds?: Record<string, string>;
   createdAt: Date;
   expiresAt: Date;
 }
@@ -612,6 +613,25 @@ export class PendingTransactionService {
     this.pendingTransactionMap.set(ticketId, updatedItem);
     this.saveToStorage();
     return updatedItem;
+  }
+
+  /**
+   * Updates or associates outbound broadcast notification message IDs with a pending ticket.
+   */
+  public updateNotificationMessageIds(
+    ticketId: number,
+    messageIds: Record<string, string>
+  ): void {
+    const existingItem = this.pendingTransactionMap.get(ticketId);
+    if (!existingItem) {
+      return;
+    }
+
+    existingItem.notificationMessageIds = {
+      ...(existingItem.notificationMessageIds || {}),
+      ...messageIds,
+    };
+    this.saveToStorage();
   }
 
 

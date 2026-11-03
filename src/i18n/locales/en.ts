@@ -247,7 +247,8 @@ export const englishDictionary: ResponseDictionary = {
     formatConfirmationPrompt: formatPendingConfirmationPromptEn,
     formatNotification(params: PendingEmailNotificationParams): string {
       const isTransfer = params.typeLabel.includes('Transfer');
-      const headline = isTransfer ? '🔄 *New Transfer*' : '📩 *New Payment*';
+      const icon = params.sourceIcon || '📩';
+      const headline = isTransfer ? '🔄 *New Transfer*' : `${icon} *New Payment*`;
       const merchantOrTitle = isTransfer
         ? `${params.accountNameHint || 'Account'} ➔ ${params.destinationAccountNameHint || 'Destination'}`
         : (params.counterParty || params.matchedCategoryName || params.bankDisplayName);

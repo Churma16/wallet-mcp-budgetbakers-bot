@@ -822,6 +822,28 @@ export function formatErrorMessageForHuman(
 }
 
 /**
+ * Resolves channel/evidence source icons (e.g. 📩 for email, 📲 for push notification, 📲📩 for fusion)
+ */
+export function resolveEvidenceSourceIcons(
+  sourceType?: string,
+  evidenceSources?: string[]
+): string {
+  const sources = evidenceSources && evidenceSources.length > 0
+    ? evidenceSources
+    : sourceType ? [sourceType] : [];
+
+  const icons: string[] = [];
+  for (const src of sources) {
+    const icon = src.includes('PUSH_NOTIFICATION') ? '📲' : '📩';
+    if (!icons.includes(icon)) {
+      icons.push(icon);
+    }
+  }
+
+  return icons.length > 0 ? icons.join('') : '📩';
+}
+
+/**
  * Formats a notification prompt for an incoming email transaction requiring confirmation
  */
 export function formatPendingEmailTransactionNotification(
@@ -837,11 +859,13 @@ export function formatPendingEmailTransactionNotification(
   const itemCurrency = pendingItem.currency || getDefaultCurrency();
   const formattedAmount = formatCurrencyAmount(pendingItem.amount, itemCurrency, languageCode);
   const formattedTime = formatTransactionDate(pendingItem.recordDate, languageCode);
+  const sourceIcon = resolveEvidenceSourceIcons(pendingItem.sourceType, pendingItem.evidenceSources);
 
   return dictionary.emailPending.formatNotification({
     ticketId: pendingItem.ticketId,
     bankDisplayName: pendingItem.bankDisplayName,
     typeIcon,
+    sourceIcon,
     formattedAmount,
     typeLabel,
     formattedTime,
@@ -866,31 +890,31 @@ export function formatEnrichedPendingEmailTransactionNotification(
   languageCode?: SupportedLanguage
 ): string {
   const dictionary = getDictionary(languageCode);
-  const itemCurrency = pendingItem.currency || getDefaultCurrency();
-  const formattedAmount = formatCurrencyAmount(pendingItem.amount, itemCurrency, languageCode);
-  const formattedTime = formatTransactionDate(pendingItem.recordDate, languageCode);
-
   const activeLang = languageCode || getActiveLanguage();
   const isEnglish = activeLang === 'en';
 
-  const headline = isEnglish
-    ? `✨ *Transaction Enriched* (#${pendingItem.ticketId})`
-    : `✨ *Transaksi Diperkaya* (#${pendingItem.ticketId})`;
+  const isTransfer = pendingItem.transactionType === 'TRANSFER';
+  const itemCurrency = pendingItem.currency || getDefaultCurrency();
+  const formattedAmount = formatCurrencyAmount(pendingItem.amount, itemCurrency, languageCode);
+  const sourceIcons = resolveEvidenceSourceIcons(pendingItem.sourceType, pendingItem.evidenceSources);
 
-  const sourceNotice = isEnglish
-    ? `Details from *${enrichedSourceDisplayName}* merged into *${pendingItem.bankDisplayName}* debit:`
-    : `Rincian dari *${enrichedSourceDisplayName}* digabungkan ke transaksi *${pendingItem.bankDisplayName}*:`;
+  const headline = isTransfer
+    ? (isEnglish ? '🔄 *New Transfer*' : '🔄 *Transfer Baru*')
+    : (isEnglish ? `${sourceIcons} *New Payment*` : `${sourceIcons} *Pembayaran Baru*`);
+
+  const merchantOrTitle = isTransfer
+    ? `${pendingItem.accountNameHint || (isEnglish ? 'Account' : 'Akun')} ➔ ${pendingItem.destinationAccountNameHint || (isEnglish ? 'Destination' : 'Tujuan')}`
+    : (pendingItem.counterParty || pendingItem.matchedCategoryName || pendingItem.bankDisplayName);
 
   const lines = [
     headline,
-    sourceNotice,
-    `*${formattedAmount}* • ${pendingItem.counterParty || pendingItem.bankDisplayName}`,
+    `*${formattedAmount}* • ${merchantOrTitle} (#${pendingItem.ticketId})`,
   ];
 
-  if (pendingItem.accountNameHint) {
+  if (pendingItem.accountNameHint && !isTransfer) {
     lines.push(isEnglish ? `Account: ${pendingItem.accountNameHint}` : `Akun: ${pendingItem.accountNameHint}`);
   }
-  if (pendingItem.matchedCategoryName) {
+  if (pendingItem.matchedCategoryName && !isTransfer) {
     lines.push(isEnglish ? `Category: ${pendingItem.matchedCategoryName}` : `Kategori: ${pendingItem.matchedCategoryName}`);
   }
   if (pendingItem.note && pendingItem.note !== pendingItem.counterParty) {
@@ -907,6 +931,11 @@ export function formatEnrichedPendingEmailTransactionNotification(
       totalPendingCount,
     })
   );
+
+  const updateCue = isEnglish
+    ? `_Updated via 📩 ${enrichedSourceDisplayName}_`
+    : `_Diperbarui via 📩 ${enrichedSourceDisplayName}_`;
+  lines.push(updateCue);
 
   return lines.join('\n');
 }

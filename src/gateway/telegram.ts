@@ -390,13 +390,62 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     // Telegram automatically clears typing presence after 5 seconds or upon sending a message
   }
 
-  public async sendBroadcastNotification(messageText: string): Promise<void> {
+  public async sendBroadcastNotification(messageText: string): Promise<SentMessageReceipt | void> {
     if (!this.normalizedAllowedUserId) {
       applicationLogger.warn('Cannot broadcast Telegram notification: TELEGRAM_ALLOWED_USER_ID is not configured.');
       return;
     }
 
-    await this.sendTextMessage(this.normalizedAllowedUserId, messageText);
+    return await this.sendTextMessage(this.normalizedAllowedUserId, messageText);
+  }
+
+  public async editBroadcastNotification(
+    messageId: string,
+    messageText: string
+  ): Promise<boolean> {
+    if (!this.botInstance || !this.normalizedAllowedUserId) {
+      return false;
+    }
+
+    const numericMessageId = Number(messageId);
+    if (!Number.isFinite(numericMessageId)) {
+      return false;
+    }
+
+    const formattedHtmlText = formatTelegramHtml(messageText);
+
+    try {
+      await this.botInstance.api.editMessageText(
+        this.normalizedAllowedUserId,
+        numericMessageId,
+        formattedHtmlText,
+        { parse_mode: 'HTML' }
+      );
+      return true;
+    } catch (htmlEditError: unknown) {
+      const errorMessage = htmlEditError instanceof Error ? htmlEditError.message : String(htmlEditError);
+      if (errorMessage.includes('message is not modified')) {
+        return true;
+      }
+
+      applicationLogger.warn(
+        `Telegram HTML edit failed, trying plain text fallback for message ${messageId}: ${htmlEditError}`
+      );
+
+      try {
+        await this.botInstance.api.editMessageText(
+          this.normalizedAllowedUserId,
+          numericMessageId,
+          messageText
+        );
+        return true;
+      } catch (fallbackEditError: unknown) {
+        applicationLogger.warn(
+          `Telegram plain text edit also failed for message ${messageId}: ${fallbackEditError}`
+        );
+        return false;
+      }
+    }
   }
 
   public setupBotHandlers(bot: Bot): void {

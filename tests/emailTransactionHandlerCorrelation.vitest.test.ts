@@ -158,7 +158,7 @@ describe('EmailTransactionHandler Multi-Source Correlation Integration', () => {
     // Verify broadcast messaging was called twice (initial + enriched notification)
     expect(messaging.broadcastNotification).toHaveBeenCalledTimes(2);
     const lastBroadcastMessage = messaging.broadcastNotification.mock.calls[1][0];
-    expect(lastBroadcastMessage).toContain('Transaksi Diperkaya');
+    expect(lastBroadcastMessage).toContain('Diperbarui via 📩 Blibli');
     expect(lastBroadcastMessage).toContain('Bakwan Sayur');
 
     // Listener registered the Blibli reference to prevent duplicate ingestion

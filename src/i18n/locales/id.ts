@@ -245,7 +245,8 @@ export const indonesianDictionary: ResponseDictionary = {
     formatConfirmationPrompt: formatPendingConfirmationPromptId,
     formatNotification(params: PendingEmailNotificationParams): string {
       const isTransfer = params.typeLabel.includes('Transfer');
-      const headline = isTransfer ? '🔄 *Transfer Baru*' : '📩 *Pembayaran Baru*';
+      const icon = params.sourceIcon || '📩';
+      const headline = isTransfer ? '🔄 *Transfer Baru*' : `${icon} *Pembayaran Baru*`;
       const merchantOrTitle = isTransfer
         ? `${params.accountNameHint || 'Akun'} ➔ ${params.destinationAccountNameHint || 'Tujuan'}`
         : (params.counterParty || params.matchedCategoryName || params.bankDisplayName);
