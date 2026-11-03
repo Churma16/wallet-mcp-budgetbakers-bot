@@ -1,8 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { inferCategoryFromText, selectBestCategory } from '../src/brain/category/categoryScorer.js';
 import type { WalletCategoryItem } from '../src/wallet/types.js';
+import type { FinancialAiProvider } from '../src/brain/types.js';
 
-describe('categoryScorer & inferCategoryFromText', () => {
+describe('categoryScorer & inferCategoryFromText (AI-driven)', () => {
   const sampleCategories: WalletCategoryItem[] = [
     {
       id: 'cat-food',
@@ -54,88 +55,105 @@ describe('categoryScorer & inferCategoryFromText', () => {
     },
   ];
 
-  describe('inferCategoryFromText', () => {
-    it('infers Food & Drinks from coffee/food notes', () => {
-      const match1 = inferCategoryFromText('Kopi Kenangan Mantan', sampleCategories);
+  describe('inferCategoryFromText with AI Provider', () => {
+    it('uses AI Provider to classify categories contextually without static restrictions', async () => {
+      const mockAiProvider: FinancialAiProvider = {
+        providerName: 'gemini',
+        processTextMessage: vi.fn(),
+        processImageMessage: vi.fn(),
+        processEmailTransactionMessage: vi.fn(),
+        classifyCategory: vi.fn(async (text: string) => {
+          if (text.includes('Kopi') || text.includes('Mixue') || text.includes('Seblak')) {
+            return { categoryId: 'cat-food', categoryName: 'Makanan & Minuman', confidence: 'high' };
+          }
+          if (text.includes('Pertamax') || text.includes('Tambal Ban') || text.includes('Ganti Oli')) {
+            return { categoryId: 'cat-transport', categoryName: 'Transportasi', confidence: 'high' };
+          }
+          if (text.includes('Steam') || text.includes('Netflix')) {
+            return { categoryId: 'cat-entertainment', categoryName: 'Hiburan', confidence: 'high' };
+          }
+          return { categoryId: null, categoryName: null };
+        }),
+      };
+
+      const match1 = await inferCategoryFromText('Beli Seblak Ceker Pedas', sampleCategories, mockAiProvider);
       expect(match1?.id).toBe('cat-food');
 
-      const match2 = inferCategoryFromText('Nasi Padang Rendang', sampleCategories);
-      expect(match2?.id).toBe('cat-food');
-
-      const match3 = inferCategoryFromText('Makan siang di Warteg', sampleCategories);
-      expect(match3?.id).toBe('cat-food');
-
-      const match4 = inferCategoryFromText('Starbucks latte', sampleCategories);
-      expect(match4?.id).toBe('cat-food');
-    });
-
-    it('infers Transport from fuel, ridehailing, and transport notes', () => {
-      const match1 = inferCategoryFromText('Beli Pertamax di SPBU', sampleCategories);
-      expect(match1?.id).toBe('cat-transport');
-
-      const match2 = inferCategoryFromText('GrabCar ke stasiun', sampleCategories);
+      const match2 = await inferCategoryFromText('Ganti Oli Motor Beat di Bengkel', sampleCategories, mockAiProvider);
       expect(match2?.id).toBe('cat-transport');
 
-      const match3 = inferCategoryFromText('Tiket KRL Commuter Line', sampleCategories);
-      expect(match3?.id).toBe('cat-transport');
+      const match3 = await inferCategoryFromText('Beli Game di Steam Sale', sampleCategories, mockAiProvider);
+      expect(match3?.id).toBe('cat-entertainment');
 
-      const match4 = inferCategoryFromText('Parkir mall', sampleCategories);
-      expect(match4?.id).toBe('cat-transport');
+      expect(mockAiProvider.classifyCategory).toHaveBeenCalledTimes(3);
     });
 
-    it('infers Healthcare from pharmacy and medicine notes', () => {
-      const match1 = inferCategoryFromText('Beli obat batuk di Apotek Kimia Farma', sampleCategories);
-      expect(match1?.id).toBe('cat-health');
+    it('falls back gracefully to deterministic token match if AI classification throws an error', async () => {
+      const failingAiProvider: FinancialAiProvider = {
+        providerName: 'gemini',
+        processTextMessage: vi.fn(),
+        processImageMessage: vi.fn(),
+        processEmailTransactionMessage: vi.fn(),
+        classifyCategory: vi.fn(async () => {
+          throw new Error('AI Provider Rate Limit (429)');
+        }),
+      };
 
-      const match2 = inferCategoryFromText('Konsultasi dokter Halodoc', sampleCategories);
-      expect(match2?.id).toBe('cat-health');
+      const match = await inferCategoryFromText('Makanan siang', sampleCategories, failingAiProvider);
+      expect(match?.id).toBe('cat-food');
     });
 
-    it('infers Bills & Utilities from electricity, internet, and phone credit', () => {
-      const match1 = inferCategoryFromText('Token Listrik PLN', sampleCategories);
-      expect(match1?.id).toBe('cat-bills');
+    it('falls back to deterministic token match if AI classification returns null categoryId', async () => {
+      const emptyAiProvider: FinancialAiProvider = {
+        providerName: 'gemini',
+        processTextMessage: vi.fn(),
+        processImageMessage: vi.fn(),
+        processEmailTransactionMessage: vi.fn(),
+        classifyCategory: vi.fn(async () => ({ categoryId: null, categoryName: null })),
+      };
 
-      const match2 = inferCategoryFromText('Pulsa Telkomsel bulanan', sampleCategories);
-      expect(match2?.id).toBe('cat-bills');
-
-      const match3 = inferCategoryFromText('Tagihan WiFi IndiHome', sampleCategories);
-      expect(match3?.id).toBe('cat-bills');
+      const match = await inferCategoryFromText('Transportasi umum', sampleCategories, emptyAiProvider);
+      expect(match?.id).toBe('cat-transport');
     });
 
-    it('infers Shopping & Groceries from supermarket and e-commerce notes', () => {
-      const match1 = inferCategoryFromText('Indomaret jajan bulanan', sampleCategories);
-      expect(match1?.id).toBe('cat-groceries');
+    it('returns undefined when text is unclassifiable by both AI and fallback', async () => {
+      const emptyAiProvider: FinancialAiProvider = {
+        providerName: 'gemini',
+        processTextMessage: vi.fn(),
+        processImageMessage: vi.fn(),
+        processEmailTransactionMessage: vi.fn(),
+        classifyCategory: vi.fn(async () => ({ categoryId: null, categoryName: null })),
+      };
 
-      const match2 = inferCategoryFromText('Belanja di Tokopedia', sampleCategories);
-      expect(match2?.id).toBe('cat-groceries');
+      const match = await inferCategoryFromText('xyz123abc 9999', sampleCategories, emptyAiProvider);
+      expect(match).toBeUndefined();
     });
 
-    it('infers Entertainment from movie and streaming notes', () => {
-      const match = inferCategoryFromText('Langganan Netflix bulanan', sampleCategories);
-      expect(match?.id).toBe('cat-entertainment');
-    });
+    it('handles empty or whitespace text without calling AI provider', async () => {
+      const mockAiProvider: FinancialAiProvider = {
+        providerName: 'gemini',
+        processTextMessage: vi.fn(),
+        processImageMessage: vi.fn(),
+        processEmailTransactionMessage: vi.fn(),
+        classifyCategory: vi.fn(),
+      };
 
-    it('infers Income from salary notes', () => {
-      const match = inferCategoryFromText('Gaji bulanan kantor', sampleCategories);
-      expect(match?.id).toBe('cat-income');
-    });
-
-    it('returns undefined for empty, whitespace, or unclassifiable text', () => {
-      expect(inferCategoryFromText('', sampleCategories)).toBeUndefined();
-      expect(inferCategoryFromText('   ', sampleCategories)).toBeUndefined();
-      expect(inferCategoryFromText(undefined, sampleCategories)).toBeUndefined();
-      expect(inferCategoryFromText('xyz123abc 9999', sampleCategories)).toBeUndefined();
-    });
-
-    it('never assigns system categories even if tokens collide', () => {
-      const match = inferCategoryFromText('system', sampleCategories);
-      expect(match?.id).not.toBe('cat-system');
+      expect(await inferCategoryFromText('', sampleCategories, mockAiProvider)).toBeUndefined();
+      expect(await inferCategoryFromText('   ', sampleCategories, mockAiProvider)).toBeUndefined();
+      expect(await inferCategoryFromText(undefined, sampleCategories, mockAiProvider)).toBeUndefined();
+      expect(mockAiProvider.classifyCategory).not.toHaveBeenCalled();
     });
   });
 
-  describe('selectBestCategory handling of c:auto sentinel hint', () => {
-    it('ignores categoryHint when given "auto" or "otomatis" to prevent searching for "auto"', () => {
-      const match = selectBestCategory('auto', [], sampleCategories, 'Beli Pertamax');
+  describe('selectBestCategory fallback', () => {
+    it('matches exact and substring category names without AI', () => {
+      expect(selectBestCategory('', [], sampleCategories, 'Makanan')?.id).toBe('cat-food');
+      expect(selectBestCategory('', [], sampleCategories, 'Transportasi')?.id).toBe('cat-transport');
+      expect(selectBestCategory('', [], sampleCategories, 'Tagihan')?.id).toBe('cat-bills');
+    });
+
+    it('ignores categoryHint when given "auto" to prevent searching for "auto"', () => {
+      const match = selectBestCategory('auto', [], sampleCategories, 'Transportasi');
       expect(match?.id).toBe('cat-transport');
     });
   });

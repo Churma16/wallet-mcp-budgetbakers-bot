@@ -246,12 +246,28 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
         ]),
       } as unknown as WalletCacheService;
 
+      const mockAiProvider = {
+        providerName: 'gemini',
+        processTextMessage: vi.fn(),
+        processImageMessage: vi.fn(),
+        processEmailTransactionMessage: vi.fn(),
+        classifyCategory: vi.fn(async (text: string) => {
+          if (text.toLowerCase().includes('pertamax')) {
+            return { categoryId: 'cat-transport', categoryName: 'Transportasi', confidence: 'high' };
+          }
+          return { categoryId: null, categoryName: null };
+        }),
+      } as unknown as FinancialAiProvider;
+
       const handler = new PendingActionHandler(
         pendingService,
         mockWalletClient,
         mockGateway,
         () => null,
-        mockCacheService
+        mockCacheService,
+        undefined,
+        undefined,
+        mockAiProvider
       );
 
       // Create a pending Shopee transaction with generic note
@@ -329,12 +345,28 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
         ]),
       } as unknown as WalletCacheService;
 
+      const mockAiProvider = {
+        providerName: 'gemini',
+        processTextMessage: vi.fn(),
+        processImageMessage: vi.fn(),
+        processEmailTransactionMessage: vi.fn(),
+        classifyCategory: vi.fn(async (text: string) => {
+          if (text.toLowerCase().includes('pertamax')) {
+            return { categoryId: 'cat-transport', categoryName: 'Transportasi', confidence: 'high' };
+          }
+          return { categoryId: null, categoryName: null };
+        }),
+      } as unknown as FinancialAiProvider;
+
       const handler = new PendingActionHandler(
         pendingService,
         mockWalletClient,
         mockGateway,
         () => null,
-        mockCacheService
+        mockCacheService,
+        undefined,
+        undefined,
+        mockAiProvider
       );
 
       // Add dummy Ticket #1 and target Ticket #2
@@ -416,12 +448,28 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
         ]),
       } as unknown as WalletCacheService;
 
+      const mockAiProvider = {
+        providerName: 'gemini',
+        processTextMessage: vi.fn(),
+        processImageMessage: vi.fn(),
+        processEmailTransactionMessage: vi.fn(),
+        classifyCategory: vi.fn(async (text: string) => {
+          if (text.toLowerCase().includes('pertamax')) {
+            return { categoryId: 'cat-transport', categoryName: 'Transportasi', confidence: 'high' };
+          }
+          return { categoryId: null, categoryName: null };
+        }),
+      } as unknown as FinancialAiProvider;
+
       const handler = new PendingActionHandler(
         pendingService,
         mockWalletClient,
         mockGateway,
         () => null,
-        mockCacheService
+        mockCacheService,
+        undefined,
+        undefined,
+        mockAiProvider
       );
 
       pendingService.addPendingTransaction({
@@ -632,12 +680,28 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
         ]),
       } as unknown as WalletCacheService;
 
+      const mockAiProvider = {
+        providerName: 'gemini',
+        processTextMessage: vi.fn(),
+        processImageMessage: vi.fn(),
+        processEmailTransactionMessage: vi.fn(),
+        classifyCategory: vi.fn(async (text: string) => {
+          if (text.toLowerCase().includes('pertamax')) {
+            return { categoryId: 'cat-transport', categoryName: 'Transportasi', confidence: 'high' };
+          }
+          return { categoryId: null, categoryName: null };
+        }),
+      } as unknown as FinancialAiProvider;
+
       const handler = new PendingActionHandler(
         pendingService,
         mockWalletClient,
         mockGateway,
         () => null,
-        mockCacheService
+        mockCacheService,
+        undefined,
+        undefined,
+        mockAiProvider
       );
 
       pendingService.addPendingTransaction({
@@ -706,12 +770,28 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
         ]),
       } as unknown as WalletCacheService;
 
+      const mockAiProvider = {
+        providerName: 'gemini',
+        processTextMessage: vi.fn(),
+        processImageMessage: vi.fn(),
+        processEmailTransactionMessage: vi.fn(),
+        classifyCategory: vi.fn(async (text: string) => {
+          if (text.toLowerCase().includes('pertamax')) {
+            return { categoryId: 'cat-transport', categoryName: 'Transportasi', confidence: 'high' };
+          }
+          return { categoryId: null, categoryName: null };
+        }),
+      } as unknown as FinancialAiProvider;
+
       const handler = new PendingActionHandler(
         pendingService,
         mockWalletClient,
         mockGateway,
         () => null,
-        mockCacheService
+        mockCacheService,
+        undefined,
+        undefined,
+        mockAiProvider
       );
 
       pendingService.addPendingTransaction({
@@ -779,12 +859,28 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
         ]),
       } as unknown as WalletCacheService;
 
+      const mockAiProvider = {
+        providerName: 'gemini',
+        processTextMessage: vi.fn(),
+        processImageMessage: vi.fn(),
+        processEmailTransactionMessage: vi.fn(),
+        classifyCategory: vi.fn(async (text: string) => {
+          if (text.toLowerCase().includes('pertamax')) {
+            return { categoryId: 'cat-transport', categoryName: 'Transportasi', confidence: 'high' };
+          }
+          return { categoryId: null, categoryName: null };
+        }),
+      } as unknown as FinancialAiProvider;
+
       const handler = new PendingActionHandler(
         pendingService,
         mockWalletClient,
         mockGateway,
         () => null,
-        mockCacheService
+        mockCacheService,
+        undefined,
+        undefined,
+        mockAiProvider
       );
 
       pendingService.addPendingTransaction({
@@ -849,12 +945,28 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
         ]),
       } as unknown as WalletCacheService;
 
+      const mockAiProvider = {
+        providerName: 'gemini',
+        processTextMessage: vi.fn(),
+        processImageMessage: vi.fn(),
+        processEmailTransactionMessage: vi.fn(),
+        classifyCategory: vi.fn(async (text: string) => {
+          if (text.toLowerCase().includes('pertamax')) {
+            return { categoryId: 'cat-transport', categoryName: 'Transportasi', confidence: 'high' };
+          }
+          return { categoryId: null, categoryName: null };
+        }),
+      } as unknown as FinancialAiProvider;
+
       const handler = new PendingActionHandler(
         pendingService,
         mockWalletClient,
         mockGateway,
         () => null,
-        mockCacheService
+        mockCacheService,
+        undefined,
+        undefined,
+        mockAiProvider
       );
 
       pendingService.addPendingTransaction({
@@ -976,12 +1088,28 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
         ]),
       } as unknown as WalletCacheService;
 
+      const mockAiProvider = {
+        providerName: 'gemini',
+        processTextMessage: vi.fn(),
+        processImageMessage: vi.fn(),
+        processEmailTransactionMessage: vi.fn(),
+        classifyCategory: vi.fn(async (text: string) => {
+          if (text.toLowerCase().includes('pertamax')) {
+            return { categoryId: 'cat-transport', categoryName: 'Transportasi', confidence: 'high' };
+          }
+          return { categoryId: null, categoryName: null };
+        }),
+      } as unknown as FinancialAiProvider;
+
       const handler = new PendingActionHandler(
         pendingService,
         mockWalletClient,
         mockGateway,
         () => null,
-        mockCacheService
+        mockCacheService,
+        undefined,
+        undefined,
+        mockAiProvider
       );
 
       const pendingItem = pendingService.addPendingTransaction({

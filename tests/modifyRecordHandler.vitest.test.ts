@@ -3,11 +3,13 @@ import { ModifyRecordHandler } from '../src/core/handlers/modifyRecordHandler.js
 import { TransactionMessageStore } from '../src/wallet/records/transactionMessageStore.js';
 import type { WalletCacheService, WalletMcpClientService, WalletCategoryItem, WalletAccountItem } from '../src/wallet/index.js';
 import type { MessagingGatewayService, IncomingUserMessageEvent } from '../src/gateway/index.js';
+import type { FinancialAiProvider } from '../src/brain/types.js';
 
 describe('ModifyRecordHandler', () => {
   let mockClient: WalletMcpClientService;
   let mockCache: WalletCacheService;
   let mockGateway: MessagingGatewayService;
+  let mockAiProvider: FinancialAiProvider;
   let store: TransactionMessageStore;
   let handler: ModifyRecordHandler;
 
@@ -55,11 +57,29 @@ describe('ModifyRecordHandler', () => {
 
     store = new TransactionMessageStore();
 
+    mockAiProvider = {
+      providerName: 'gemini',
+      processTextMessage: vi.fn(),
+      processImageMessage: vi.fn(),
+      processEmailTransactionMessage: vi.fn(),
+      classifyCategory: vi.fn(async (text: string) => {
+        if (text.toLowerCase().includes('pertamax') || text.toLowerCase().includes('bensin')) {
+          return { categoryId: 'cat-transport', categoryName: 'Transportasi', confidence: 'high' };
+        }
+        if (text.toLowerCase().includes('kopi') || text.toLowerCase().includes('makan')) {
+          return { categoryId: 'cat-food', categoryName: 'Makanan & Minuman', confidence: 'high' };
+        }
+        return { categoryId: null, categoryName: null };
+      }),
+    };
+
     handler = new ModifyRecordHandler(
       mockClient,
       mockCache,
       mockGateway,
-      store
+      store,
+      undefined,
+      mockAiProvider
     );
   });
 

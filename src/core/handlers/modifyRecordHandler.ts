@@ -12,7 +12,7 @@ import {
   TransactionMessageStore,
   FILTER_ERROR_REASONS,
 } from '../../wallet/index.js';
-import { resolveSemanticAccountHint, inferCategoryFromText } from '../../brain/index.js';
+import { resolveSemanticAccountHint, inferCategoryFromText, FinancialAiProvider } from '../../brain/index.js';
 import type { CategoryContextService } from '../../brain/category/categoryContext.js';
 import {
   formatCurrencyAmount,
@@ -37,7 +37,8 @@ export class ModifyRecordHandler {
     private readonly walletCacheService: WalletCacheService,
     private readonly messagingGateway: MessagingGatewayService,
     private readonly transactionMessageStore: TransactionMessageStore,
-    private readonly categoryContextService?: CategoryContextService
+    private readonly categoryContextService?: CategoryContextService,
+    private readonly financialAiProvider?: FinancialAiProvider
   ) {}
 
   public async handleModifyRecordReply(
@@ -191,9 +192,10 @@ export class ModifyRecordHandler {
         .filter(Boolean)
         .join(' ');
 
-      const autoCategory = inferCategoryFromText(
+      const autoCategory = await inferCategoryFromText(
         textToClassify,
         this.walletCacheService.getCategories(),
+        this.financialAiProvider,
         this.categoryContextService?.getConfiguration().categoryRules
       );
 

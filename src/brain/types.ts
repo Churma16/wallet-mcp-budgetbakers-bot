@@ -182,6 +182,18 @@ export interface FinancialAiProvider {
     candidates: UnifiedClarificationCandidate[],
     context?: Partial<AccountClarificationQuestionContext>
   ): Promise<AccountClarificationProposal>;
+
+  classifyCategory?(
+    text: string,
+    availableCategoryList: WalletCategoryItem[]
+  ): Promise<CategoryClassificationProposal>;
+}
+
+export interface CategoryClassificationProposal {
+  categoryId?: string | null;
+  categoryName?: string | null;
+  confidence?: 'high' | 'low';
+  tokenUsage?: TokenUsageStatistics;
 }
 
 export interface AiExecutionResult {

@@ -34,7 +34,7 @@ import {
   formatReconciliationAmbiguousResponse,
 } from '../../wallet/formatters/transactionStatusFormatter.js';
 import { formatAccountSelectionPrompt } from '../../brain/clarification/accountClarificationFormatter.js';
-import { inferCategoryFromText } from '../../brain/index.js';
+import { inferCategoryFromText, FinancialAiProvider } from '../../brain/index.js';
 import { isAutoCategoryToken } from '../../wallet/records/recordEditParser.js';
 import type { CategoryContextService } from '../../brain/category/categoryContext.js';
 import { applicationLogger } from '../../lib/logger.js';
@@ -51,7 +51,8 @@ export class PendingActionHandler {
     private readonly emailListenerServiceGetter: () => EmailListenerService | null,
     private readonly walletCacheService?: WalletCacheService,
     private readonly transactionMessageStore?: TransactionMessageStore,
-    private readonly categoryContextService?: CategoryContextService
+    private readonly categoryContextService?: CategoryContextService,
+    private readonly financialAiProvider?: FinancialAiProvider
   ) {}
 
   /**
@@ -122,9 +123,10 @@ export class PendingActionHandler {
           .filter(Boolean)
           .join(' ');
 
-        const autoCategory = inferCategoryFromText(
+        const autoCategory = await inferCategoryFromText(
           textToClassify,
           categories,
+          this.financialAiProvider,
           this.categoryContextService?.getConfiguration().categoryRules
         );
 

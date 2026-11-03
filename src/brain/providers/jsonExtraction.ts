@@ -5,6 +5,7 @@ import type {
   ExtractedFinancialIntent,
   ExtractedFinancialRecordItem,
   AccountClarificationProposal,
+  CategoryClassificationProposal,
   TokenUsageStatistics,
 } from '../types.js';
 
@@ -291,6 +292,48 @@ export function parseClarificationProposalResponse(
     return {
       selectedCandidateIndex: null,
       reasoning: 'Failed to parse JSON response',
+      tokenUsage,
+    };
+  }
+}
+
+/**
+ * Parses and normalizes LLM response for AI category classification.
+ */
+export function parseCategoryClassificationResponse(
+  rawResponseText: string,
+  tokenUsage?: TokenUsageStatistics
+): CategoryClassificationProposal {
+  try {
+    const parsed = extractAndParseJsonObject<{
+      categoryId?: unknown;
+      categoryName?: unknown;
+      confidence?: unknown;
+    }>(rawResponseText);
+
+    const categoryId =
+      typeof parsed.categoryId === 'string' && parsed.categoryId.trim().length > 0
+        ? parsed.categoryId.trim()
+        : null;
+    const categoryName =
+      typeof parsed.categoryName === 'string' && parsed.categoryName.trim().length > 0
+        ? parsed.categoryName.trim()
+        : null;
+    const confidence =
+      parsed.confidence === 'high' || parsed.confidence === 'low'
+        ? parsed.confidence
+        : undefined;
+
+    return {
+      categoryId,
+      categoryName,
+      confidence,
+      tokenUsage,
+    };
+  } catch {
+    return {
+      categoryId: null,
+      categoryName: null,
       tokenUsage,
     };
   }
