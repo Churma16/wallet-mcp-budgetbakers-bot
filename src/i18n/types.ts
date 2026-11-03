@@ -258,6 +258,7 @@ export interface ResponseDictionary {
     ): string;
     recordEditZeroAmount: string;
     recordEditCategoryNotFound(categoryHint: string): string;
+    recordEditCategoryAutoNotFound(hint?: string): string;
     recordEditNotFound: string;
     recordEditFailed(reason: string): string;
   };

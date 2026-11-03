@@ -34,6 +34,9 @@ import {
   formatReconciliationAmbiguousResponse,
 } from '../../wallet/formatters/transactionStatusFormatter.js';
 import { formatAccountSelectionPrompt } from '../../brain/clarification/accountClarificationFormatter.js';
+import { inferCategoryFromText, FinancialAiProvider } from '../../brain/index.js';
+import { isAutoCategoryToken } from '../../wallet/records/recordEditParser.js';
+import type { CategoryContextService } from '../../brain/category/categoryContext.js';
 import { applicationLogger } from '../../lib/logger.js';
 
 /**
@@ -47,7 +50,9 @@ export class PendingActionHandler {
     private readonly messagingGateway: MessagingGatewayService,
     private readonly emailListenerServiceGetter: () => EmailListenerService | null,
     private readonly walletCacheService?: WalletCacheService,
-    private readonly transactionMessageStore?: TransactionMessageStore
+    private readonly transactionMessageStore?: TransactionMessageStore,
+    private readonly categoryContextService?: CategoryContextService,
+    private readonly financialAiProvider?: FinancialAiProvider
   ) {}
 
   /**
@@ -95,105 +100,136 @@ export class PendingActionHandler {
     let effectiveCustomNote = confirmationIntent.customNote;
     let effectiveCustomTags = confirmationIntent.customTags;
 
+    const isAutoCategoryRequested = Boolean(
+      confirmationIntent.isAutoCategory ||
+      isAutoCategoryToken(confirmationIntent.customCategoryHint)
+    );
+
     if (
       this.walletCacheService &&
-      (confirmationIntent.customCategoryHint ||
+      (isAutoCategoryRequested ||
+        confirmationIntent.customCategoryHint ||
         confirmationIntent.rawCustomInput ||
         confirmationIntent.customNote)
     ) {
       const categories = this.walletCacheService.getCategories();
-      const normalize = (text: string) =>
-        text.toLowerCase().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
 
-      const candidateHints: string[] = [];
+      if (isAutoCategoryRequested) {
+        const textToClassify = [
+          effectiveCustomNote || confirmationIntent.customNote,
+          confirmationIntent.counterParty || itemsToRecord[0]?.counterParty,
+          itemsToRecord[0]?.note,
+        ]
+          .filter(Boolean)
+          .join(' ');
 
-      // 1. Raw custom input stripped of leading # and punctuation: e.g. "#makan nafsu" -> "makan nafsu"
-      if (confirmationIntent.rawCustomInput) {
-        const cleanRaw = normalize(confirmationIntent.rawCustomInput.replace(/^#+/, ''));
-        if (cleanRaw) candidateHints.push(cleanRaw);
-      }
-
-      // 2. Combined tag + note: e.g. tag "makan" + note "nafsu" -> "makan nafsu"
-      if (confirmationIntent.customCategoryHint && confirmationIntent.customNote) {
-        const combined = normalize(
-          `${confirmationIntent.customCategoryHint} ${confirmationIntent.customNote}`
+        const autoCategory = await inferCategoryFromText(
+          textToClassify,
+          categories,
+          this.financialAiProvider,
+          this.categoryContextService?.getConfiguration().categoryRules
         );
-        if (!candidateHints.includes(combined)) candidateHints.push(combined);
-      }
 
-      // 3. Normalized category hint alone: e.g. "makan-nafsu" -> "makan nafsu", or "makan"
-      if (confirmationIntent.customCategoryHint) {
-        const normalizedHint = normalize(confirmationIntent.customCategoryHint);
-        if (!candidateHints.includes(normalizedHint)) candidateHints.push(normalizedHint);
-      }
+        if (autoCategory) {
+          for (const item of itemsToRecord) {
+            item.matchedCategoryId = autoCategory.id;
+            item.matchedCategoryName = autoCategory.name;
+          }
+        }
+      } else {
+        const normalize = (text: string) =>
+          text.toLowerCase().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
 
-      // 4. Custom note alone (e.g. "Ya 2: Makan Nafsu")
-      if (confirmationIntent.customNote) {
-        const normalizedNote = normalize(confirmationIntent.customNote);
-        if (!candidateHints.includes(normalizedNote)) candidateHints.push(normalizedNote);
-      }
+        const candidateHints: string[] = [];
 
-      // Priority A: EXACT match across all categories
-      let matchedCat: (typeof categories)[0] | undefined;
-      for (const hint of candidateHints) {
-        matchedCat = categories.find(c => normalize(c.name) === hint);
-        if (matchedCat) break;
-      }
+        // 1. Raw custom input stripped of leading # and punctuation: e.g. "#makan nafsu" -> "makan nafsu"
+        if (confirmationIntent.rawCustomInput) {
+          const cleanRaw = normalize(confirmationIntent.rawCustomInput.replace(/^#+/, ''));
+          if (cleanRaw) candidateHints.push(cleanRaw);
+        }
 
-      // Priority B: If hint matches a full word boundary in category name
-      if (!matchedCat) {
+        // 2. Combined tag + note: e.g. tag "makan" + note "nafsu" -> "makan nafsu"
+        if (confirmationIntent.customCategoryHint && confirmationIntent.customNote) {
+          const combined = normalize(
+            `${confirmationIntent.customCategoryHint} ${confirmationIntent.customNote}`
+          );
+          if (!candidateHints.includes(combined)) candidateHints.push(combined);
+        }
+
+        // 3. Normalized category hint alone: e.g. "makan-nafsu" -> "makan nafsu", or "makan"
+        if (confirmationIntent.customCategoryHint) {
+          const normalizedHint = normalize(confirmationIntent.customCategoryHint);
+          if (!candidateHints.includes(normalizedHint)) candidateHints.push(normalizedHint);
+        }
+
+        // 4. Custom note alone (e.g. "Ya 2: Makan Nafsu")
+        if (confirmationIntent.customNote) {
+          const normalizedNote = normalize(confirmationIntent.customNote);
+          if (!candidateHints.includes(normalizedNote)) candidateHints.push(normalizedNote);
+        }
+
+        // Priority A: EXACT match across all categories
+        let matchedCat: (typeof categories)[0] | undefined;
         for (const hint of candidateHints) {
-          const escaped = hint.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const wordRegex = new RegExp(`(^|\\s)${escaped}(\\s|$)`, 'i');
+          matchedCat = categories.find(c => normalize(c.name) === hint);
+          if (matchedCat) break;
+        }
 
-          // Check if any current item category already satisfies the word boundary hint
+        // Priority B: If hint matches a full word boundary in category name
+        if (!matchedCat) {
+          for (const hint of candidateHints) {
+            const escaped = hint.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const wordRegex = new RegExp(`(^|\\s)${escaped}(\\s|$)`, 'i');
+
+            // Check if any current item category already satisfies the word boundary hint
+            const alreadySatisfiedCat = itemsToRecord
+              .map(item => categories.find(c => c.id === item.matchedCategoryId))
+              .find(cat => cat && wordRegex.test(normalize(cat.name)));
+
+            if (alreadySatisfiedCat) {
+              matchedCat = alreadySatisfiedCat;
+              break;
+            }
+
+            matchedCat = categories.find(c => wordRegex.test(normalize(c.name)));
+            if (matchedCat) break;
+          }
+        }
+
+        // Priority C: Substring match only for explicit category hints (not generic notes)
+        if (!matchedCat && confirmationIntent.customCategoryHint) {
+          const hint = normalize(confirmationIntent.customCategoryHint);
           const alreadySatisfiedCat = itemsToRecord
             .map(item => categories.find(c => c.id === item.matchedCategoryId))
-            .find(cat => cat && wordRegex.test(normalize(cat.name)));
+            .find(cat => cat && normalize(cat.name).includes(hint));
 
           if (alreadySatisfiedCat) {
             matchedCat = alreadySatisfiedCat;
-            break;
+          } else {
+            matchedCat = categories.find(c => normalize(c.name).includes(hint));
+          }
+        }
+
+        if (matchedCat) {
+          for (const item of itemsToRecord) {
+            item.matchedCategoryId = matchedCat.id;
+            item.matchedCategoryName = matchedCat.name;
           }
 
-          matchedCat = categories.find(c => wordRegex.test(normalize(c.name)));
-          if (matchedCat) break;
-        }
-      }
-
-      // Priority C: Substring match only for explicit category hints (not generic notes)
-      if (!matchedCat && confirmationIntent.customCategoryHint) {
-        const hint = normalize(confirmationIntent.customCategoryHint);
-        const alreadySatisfiedCat = itemsToRecord
-          .map(item => categories.find(c => c.id === item.matchedCategoryId))
-          .find(cat => cat && normalize(cat.name).includes(hint));
-
-        if (alreadySatisfiedCat) {
-          matchedCat = alreadySatisfiedCat;
-        } else {
-          matchedCat = categories.find(c => normalize(c.name).includes(hint));
-        }
-      }
-
-      if (matchedCat) {
-        for (const item of itemsToRecord) {
-          item.matchedCategoryId = matchedCat.id;
-          item.matchedCategoryName = matchedCat.name;
-        }
-
-        // If the entire custom input or combination matched the category (e.g. "#makan nafsu" or "Makan Nafsu"),
-        // do not overwrite the item's note with a severed fragment like "nafsu" or the category name itself
-        if (confirmationIntent.rawCustomInput) {
-          const cleanRaw = normalize(confirmationIntent.rawCustomInput.replace(/^#+/, ''));
-          if (
-            cleanRaw === normalize(matchedCat.name) ||
-            (confirmationIntent.customCategoryHint &&
-              confirmationIntent.customNote &&
-              normalize(`${confirmationIntent.customCategoryHint} ${confirmationIntent.customNote}`) ===
-                normalize(matchedCat.name))
-          ) {
-            effectiveCustomNote = undefined;
-            effectiveCustomTags = undefined;
+          // If the entire custom input or combination matched the category (e.g. "#makan nafsu" or "Makan Nafsu"),
+          // do not overwrite the item's note with a severed fragment like "nafsu" or the category name itself
+          if (confirmationIntent.rawCustomInput) {
+            const cleanRaw = normalize(confirmationIntent.rawCustomInput.replace(/^#+/, ''));
+            if (
+              cleanRaw === normalize(matchedCat.name) ||
+              (confirmationIntent.customCategoryHint &&
+                confirmationIntent.customNote &&
+                normalize(`${confirmationIntent.customCategoryHint} ${confirmationIntent.customNote}`) ===
+                  normalize(matchedCat.name))
+            ) {
+              effectiveCustomNote = undefined;
+              effectiveCustomTags = undefined;
+            }
           }
         }
       }

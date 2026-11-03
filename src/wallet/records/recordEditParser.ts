@@ -6,6 +6,7 @@ import type { ClearableRecordField } from '../types.js';
  */
 export interface ParsedRecordEditCommand {
   readonly categoryName?: string;
+  readonly isAutoCategory?: boolean;
   readonly tags?: string[];
   readonly note?: string;
   readonly amount?: number;
@@ -30,6 +31,16 @@ function isClearToken(val: string): boolean {
 
 function isTransferClearToken(val: string): boolean {
   return TRANSFER_UNLINK_PATTERN.test(val.trim());
+}
+
+/**
+ * Checks if a string token indicates automatic category inference based on note/context.
+ * Supports patterns like "auto", "otomatis", or "c:auto(berdasarkan note)".
+ */
+export function isAutoCategoryToken(val: string | undefined): boolean {
+  if (!val) return false;
+  const clean = val.trim().toLowerCase();
+  return /^(?:auto|otomatis)(?:\s*\(.*?\))?$/i.test(clean);
 }
 
 /**
@@ -165,6 +176,7 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
   }
 
   let categoryName: string | undefined;
+  let isAutoCategory: boolean | undefined;
   let tags: string[] | undefined;
   let note: string | undefined;
   let amount: number | undefined;
@@ -189,8 +201,14 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
         if (isClearToken(rawVal)) {
           clearFieldsSet.add('categoryId');
           categoryName = undefined;
+          isAutoCategory = false;
+        } else if (isAutoCategoryToken(cleanVal)) {
+          isAutoCategory = true;
+          categoryName = 'auto';
+          clearFieldsSet.delete('categoryId');
         } else {
           categoryName = cleanVal;
+          isAutoCategory = false;
           clearFieldsSet.delete('categoryId');
         }
         break;
@@ -274,6 +292,7 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
 
   const hasModifications = Boolean(
     categoryName ||
+    isAutoCategory ||
     (tags && tags.length > 0) ||
     note !== undefined ||
     amount !== undefined ||
@@ -288,6 +307,7 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
 
   return {
     categoryName,
+    isAutoCategory,
     tags,
     note,
     amount,

@@ -8,6 +8,7 @@ import {
   TokenUsageStatistics,
   AccountClarificationQuestionContext,
   AccountClarificationProposal,
+  CategoryClassificationProposal,
   UnifiedClarificationCandidate,
 } from '../types.js';
 import { CategoryContextService } from '../category/categoryContext.js';
@@ -20,10 +21,12 @@ import {
 import {
   buildAccountClarificationQuestionPrompt,
   buildAccountClarificationReplyPrompt,
+  buildCategoryClassificationPrompt,
 } from '../prompts/prompts.js';
 import {
   parseClarificationQuestionResponse,
   parseClarificationProposalResponse,
+  parseCategoryClassificationResponse,
 } from './jsonExtraction.js';
 import { executeGeminiGenerationWithFallback } from './geminiClient.js';
 
@@ -218,5 +221,19 @@ export class GeminiAiProvider implements FinancialAiProvider {
     });
 
     return parseClarificationProposalResponse(result.responseText, result.tokenUsage);
+  }
+
+  public async classifyCategory(
+    text: string,
+    availableCategoryList: WalletCategoryItem[]
+  ): Promise<CategoryClassificationProposal> {
+    const { systemInstruction, promptText } = buildCategoryClassificationPrompt(text, availableCategoryList);
+    const result = await this.executeGeneration({
+      contents: [{ role: 'user', parts: [{ text: promptText }] }],
+      systemInstruction,
+      requestContextDescription: `Category classification for "${text.slice(0, 30)}"`,
+    });
+
+    return parseCategoryClassificationResponse(result.responseText, result.tokenUsage);
   }
 }

@@ -6,7 +6,7 @@ import {
 } from '../../core/pending.js';
 import { WalletCategoryItem } from '../../wallet/index.js';
 import { FinancialAiProvider } from '../types.js';
-import { selectBestCategory } from '../category/categoryScorer.js';
+import { selectBestCategory, inferCategoryFromText } from '../category/categoryScorer.js';
 import {
   generateAccountClarificationQuestion,
   generateCategoryClarificationQuestion,
@@ -14,7 +14,7 @@ import {
   interpretCategoryClarificationReply,
 } from './clarificationInterpreter.js';
 
-export { selectBestCategory };
+export { selectBestCategory, inferCategoryFromText };
 
 /**
  * Unified conversational state machine and candidate interpretation service
@@ -103,6 +103,15 @@ export class ClarificationService {
     availableCategories: WalletCategoryItem[],
     recordNote?: string
   ): Promise<WalletCategoryItem | undefined> {
+    const text = [categoryHint, recordNote].filter(Boolean).join(' ');
+    const aiMatched = await inferCategoryFromText(
+      text,
+      availableCategories,
+      this.financialAiProvider
+    );
+    if (aiMatched) {
+      return aiMatched;
+    }
     return selectBestCategory(categoryHint, candidateCategories, availableCategories, recordNote);
   }
 }

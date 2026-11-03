@@ -7,11 +7,13 @@ import type {
 } from '../../wallet/index.js';
 import {
   parseRecordEditCommand,
+  isAutoCategoryToken,
   resolveAndEnsureLabels,
   TransactionMessageStore,
   FILTER_ERROR_REASONS,
 } from '../../wallet/index.js';
-import { resolveSemanticAccountHint } from '../../brain/index.js';
+import { resolveSemanticAccountHint, inferCategoryFromText, FinancialAiProvider } from '../../brain/index.js';
+import type { CategoryContextService } from '../../brain/category/categoryContext.js';
 import {
   formatCurrencyAmount,
   formatTransactionDate,
@@ -34,7 +36,9 @@ export class ModifyRecordHandler {
     private readonly walletMcpClient: WalletMcpClientService,
     private readonly walletCacheService: WalletCacheService,
     private readonly messagingGateway: MessagingGatewayService,
-    private readonly transactionMessageStore: TransactionMessageStore
+    private readonly transactionMessageStore: TransactionMessageStore,
+    private readonly categoryContextService?: CategoryContextService,
+    private readonly financialAiProvider?: FinancialAiProvider
   ) {}
 
   public async handleModifyRecordReply(
@@ -161,10 +165,65 @@ export class ModifyRecordHandler {
 
     const clearFields = editCommand.clearFields ? [...editCommand.clearFields] : [];
 
+    // Auto-capitalize note and counterParty using Smart Title Casing
+    const formattedNote =
+      editCommand.note !== undefined && !clearFields.includes('note')
+        ? normalizeTransactionText(editCommand.note) || editCommand.note
+        : undefined;
+
+    const formattedCounterParty =
+      editCommand.counterParty !== undefined && !clearFields.includes('counterParty')
+        ? normalizeTransactionText(editCommand.counterParty) || editCommand.counterParty
+        : undefined;
+
+    const isAutoCategoryRequested = Boolean(
+      editCommand.isAutoCategory ||
+      isAutoCategoryToken(editCommand.categoryName)
+    );
+
     let resolvedCategoryId: string | undefined;
     let resolvedCategoryName: string | undefined;
 
-    if (editCommand.categoryName && !clearFields.includes('categoryId')) {
+    if (isAutoCategoryRequested && !clearFields.includes('categoryId')) {
+      const textToClassify = [
+        formattedNote || editCommand.note || mapping.note,
+        formattedCounterParty || editCommand.counterParty || mapping.counterParty,
+      ]
+        .filter(Boolean)
+        .join(' ');
+
+      const autoCategory = await inferCategoryFromText(
+        textToClassify,
+        this.walletCacheService.getCategories(),
+        this.financialAiProvider,
+        this.categoryContextService?.getConfiguration().categoryRules
+      );
+
+      if (autoCategory) {
+        resolvedCategoryId = autoCategory.id;
+        resolvedCategoryName = autoCategory.name;
+      } else {
+        const onlyAutoRequested =
+          editCommand.note === undefined &&
+          editCommand.amount === undefined &&
+          editCommand.counterParty === undefined &&
+          editCommand.targetAccountHint === undefined &&
+          (!editCommand.tags || editCommand.tags.length === 0) &&
+          clearFields.length === 0;
+
+        if (onlyAutoRequested) {
+          await this.messagingGateway.sendMessage(
+            event.channel,
+            event.chatIdentifier,
+            dictionary.errors.recordEditCategoryAutoNotFound(textToClassify || '')
+          );
+          return true;
+        }
+
+        resolvedCategoryId = mapping.categoryId;
+        resolvedCategoryName = mapping.categoryName;
+      }
+    } else if (editCommand.categoryName && !clearFields.includes('categoryId')) {
       const match = this.findAssignableCategory(editCommand.categoryName);
       if (!match) {
         await this.messagingGateway.sendMessage(
@@ -208,17 +267,6 @@ export class ModifyRecordHandler {
         resolvedAmount = editCommand.amount;
       }
     }
-
-    // Auto-capitalize note and counterParty using Smart Title Casing
-    const formattedNote =
-      editCommand.note !== undefined && !clearFields.includes('note')
-        ? normalizeTransactionText(editCommand.note) || editCommand.note
-        : undefined;
-
-    const formattedCounterParty =
-      editCommand.counterParty !== undefined && !clearFields.includes('counterParty')
-        ? normalizeTransactionText(editCommand.counterParty) || editCommand.counterParty
-        : undefined;
 
     const patchPayload: PatchRecordInputPayload = {
       id: mapping.recordId,

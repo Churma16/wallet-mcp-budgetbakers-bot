@@ -1,5 +1,5 @@
 import { extractHashtags } from '../parsers/hashtagParser.js';
-import { KEY_NAME_REGEX, parseTagsHint } from '../../wallet/records/recordEditParser.js';
+import { KEY_NAME_REGEX, parseTagsHint, isAutoCategoryToken } from '../../wallet/records/recordEditParser.js';
 import {
   PendingConfirmationIntent,
   ReconciliationIntent,
@@ -93,6 +93,7 @@ export function detectPendingConfirmationAction(userMessageText: string): Pendin
 
     let customNote: string | undefined;
     let customCategoryHint: string | undefined;
+    let isAutoCategory: boolean | undefined;
     let customTags: string[] | undefined;
     let counterParty: string | undefined;
     let targetAccountHint: string | undefined;
@@ -142,6 +143,10 @@ export function detectPendingConfirmationAction(userMessageText: string): Pendin
               const catPart = cleanVal.slice(0, nextHashIndex).trim().replace(/^["']+|["']+$/g, '').trim();
               const tagPart = cleanVal.slice(nextHashIndex);
               customCategoryHint = catPart.length > 0 ? catPart : undefined;
+              if (isAutoCategoryToken(catPart)) {
+                isAutoCategory = true;
+                customCategoryHint = 'auto';
+              }
               const extracted = extractHashtags(tagPart);
               if (extracted.tags.length > 0) {
                 customTags = [...(customTags || []), ...extracted.tags];
@@ -149,6 +154,10 @@ export function detectPendingConfirmationAction(userMessageText: string): Pendin
             } else {
               const cleaned = cleanVal.replace(/^["']+|["']+$/g, '').trim();
               customCategoryHint = cleaned.length > 0 ? cleaned : undefined;
+              if (isAutoCategoryToken(cleaned)) {
+                isAutoCategory = true;
+                customCategoryHint = 'auto';
+              }
             }
             break;
           }
@@ -215,6 +224,7 @@ export function detectPendingConfirmationAction(userMessageText: string): Pendin
       targetScope,
       customNote,
       customCategoryHint,
+      isAutoCategory,
       customTags,
       counterParty,
       targetAccountHint,

@@ -5,6 +5,7 @@ import {
   TokenUsageStatistics,
   AccountClarificationQuestionContext,
   AccountClarificationProposal,
+  CategoryClassificationProposal,
   UnifiedClarificationCandidate,
 } from '../types.js';
 import { WalletAccountItem, WalletCategoryItem } from '../../wallet/index.js';
@@ -176,6 +177,23 @@ export class FallbackAiProvider implements FinancialAiProvider {
           );
         }
         return currentProvider.interpretAccountClarificationReply(userReplyText, candidates, context);
+      }
+    );
+  }
+
+  public async classifyCategory(
+    text: string,
+    availableCategoryList: WalletCategoryItem[]
+  ): Promise<CategoryClassificationProposal> {
+    return this.executeWithFallback(
+      'classifyCategory',
+      async (currentProvider: FinancialAiProvider) => {
+        if (typeof currentProvider.classifyCategory !== 'function') {
+          throw new Error(
+            `Provider '${currentProvider.providerName}' does not implement classifyCategory.`
+          );
+        }
+        return currentProvider.classifyCategory(text, availableCategoryList);
       }
     );
   }

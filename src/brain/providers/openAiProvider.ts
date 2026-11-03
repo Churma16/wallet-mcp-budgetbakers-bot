@@ -9,17 +9,20 @@ import {
   TokenUsageStatistics,
   AccountClarificationQuestionContext,
   AccountClarificationProposal,
+  CategoryClassificationProposal,
   UnifiedClarificationCandidate,
 } from '../types.js';
 import {
   isAiResponseParseError,
   parseClarificationQuestionResponse,
   parseClarificationProposalResponse,
+  parseCategoryClassificationResponse,
 } from './jsonExtraction.js';
 import { CategoryContextService } from '../category/categoryContext.js';
 import {
   buildAccountClarificationQuestionPrompt,
   buildAccountClarificationReplyPrompt,
+  buildCategoryClassificationPrompt,
 } from '../prompts/prompts.js';
 import {
   SystemInstructionCache,
@@ -238,5 +241,22 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     );
 
     return parseClarificationProposalResponse(result.responseText, result.tokenUsage);
+  }
+
+  public async classifyCategory(
+    text: string,
+    availableCategoryList: WalletCategoryItem[]
+  ): Promise<CategoryClassificationProposal> {
+    const { systemInstruction, promptText } = buildCategoryClassificationPrompt(text, availableCategoryList);
+    const messages = [
+      { role: 'system', content: systemInstruction },
+      { role: 'user', content: promptText },
+    ];
+    const result = await this.executeChatCompletion(
+      messages,
+      `Category classification for "${text.slice(0, 30)}"`
+    );
+
+    return parseCategoryClassificationResponse(result.responseText, result.tokenUsage);
   }
 }

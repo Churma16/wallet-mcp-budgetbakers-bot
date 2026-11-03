@@ -3,11 +3,13 @@ import { ModifyRecordHandler } from '../src/core/handlers/modifyRecordHandler.js
 import { TransactionMessageStore } from '../src/wallet/records/transactionMessageStore.js';
 import type { WalletCacheService, WalletMcpClientService, WalletCategoryItem, WalletAccountItem } from '../src/wallet/index.js';
 import type { MessagingGatewayService, IncomingUserMessageEvent } from '../src/gateway/index.js';
+import type { FinancialAiProvider } from '../src/brain/types.js';
 
 describe('ModifyRecordHandler', () => {
   let mockClient: WalletMcpClientService;
   let mockCache: WalletCacheService;
   let mockGateway: MessagingGatewayService;
+  let mockAiProvider: FinancialAiProvider;
   let store: TransactionMessageStore;
   let handler: ModifyRecordHandler;
 
@@ -55,11 +57,29 @@ describe('ModifyRecordHandler', () => {
 
     store = new TransactionMessageStore();
 
+    mockAiProvider = {
+      providerName: 'gemini',
+      processTextMessage: vi.fn(),
+      processImageMessage: vi.fn(),
+      processEmailTransactionMessage: vi.fn(),
+      classifyCategory: vi.fn(async (text: string) => {
+        if (text.toLowerCase().includes('pertamax') || text.toLowerCase().includes('bensin')) {
+          return { categoryId: 'cat-transport', categoryName: 'Transportasi', confidence: 'high' };
+        }
+        if (text.toLowerCase().includes('kopi') || text.toLowerCase().includes('makan')) {
+          return { categoryId: 'cat-food', categoryName: 'Makanan & Minuman', confidence: 'high' };
+        }
+        return { categoryId: null, categoryName: null };
+      }),
+    };
+
     handler = new ModifyRecordHandler(
       mockClient,
       mockCache,
       mockGateway,
-      store
+      store,
+      undefined,
+      mockAiProvider
     );
   });
 
@@ -647,6 +667,149 @@ describe('ModifyRecordHandler', () => {
       const updated = store.getMessageMapping('msg-tf-1');
       expect(updated?.isTransfer).toBe(false);
       expect(updated?.partnerRecordId).toBeUndefined();
+    });
+  });
+
+  describe('Auto Category Inference on Edit (c:auto)', () => {
+    it('infers and updates category automatically based on newly edited note', async () => {
+      store.recordMessageMapping('msg-edit-auto-1', {
+        recordId: 'rec-1',
+        accountId: 'acc-bca',
+        accountName: 'Jago Expense',
+        amount: -50000,
+        categoryId: 'cat-food',
+        categoryName: 'Makanan & Minuman',
+        note: 'Makan siang',
+      });
+
+      const event: IncomingUserMessageEvent = {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-1',
+        messageType: 'text',
+        textPayload: 'n: Beli Pertamax c:auto',
+        replyToMessageId: 'msg-edit-auto-1',
+      };
+
+      const handled = await handler.handleModifyRecordReply(event, Date.now());
+      expect(handled).toBe(true);
+
+      expect(mockClient.patchRecords).toHaveBeenCalledWith([
+        {
+          id: 'rec-1',
+          categoryId: 'cat-transport',
+          note: 'Beli Pertamax',
+        },
+      ]);
+
+      const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
+      expect(sentMessage).toContain('Transportasi');
+      expect(sentMessage).toContain('Beli Pertamax');
+
+      const updated = store.getMessageMapping('msg-edit-auto-1');
+      expect(updated?.categoryId).toBe('cat-transport');
+      expect(updated?.categoryName).toBe('Transportasi');
+      expect(updated?.note).toBe('Beli Pertamax');
+    });
+
+    it('infers category on standalone c:auto command based on existing note', async () => {
+      store.recordMessageMapping('msg-edit-auto-2', {
+        recordId: 'rec-2',
+        accountId: 'acc-bca',
+        accountName: 'Jago Expense',
+        amount: -35000,
+        categoryId: 'cat-transport',
+        categoryName: 'Transportasi',
+        note: 'Kopi Kenangan Mantan',
+      });
+
+      const event: IncomingUserMessageEvent = {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-1',
+        messageType: 'text',
+        textPayload: 'c:auto',
+        replyToMessageId: 'msg-edit-auto-2',
+      };
+
+      const handled = await handler.handleModifyRecordReply(event, Date.now());
+      expect(handled).toBe(true);
+
+      expect(mockClient.patchRecords).toHaveBeenCalledWith([
+        {
+          id: 'rec-2',
+          categoryId: 'cat-food',
+        },
+      ]);
+
+      const updated = store.getMessageMapping('msg-edit-auto-2');
+      expect(updated?.categoryId).toBe('cat-food');
+      expect(updated?.categoryName).toBe('Makanan & Minuman');
+    });
+
+    it('informs user with friendly error when standalone c:auto cannot infer category', async () => {
+      store.recordMessageMapping('msg-edit-auto-3', {
+        recordId: 'rec-3',
+        accountId: 'acc-bca',
+        accountName: 'Jago Expense',
+        amount: -25000,
+        categoryId: 'cat-food',
+        categoryName: 'Makanan & Minuman',
+        note: 'xyz123abc 9999',
+      });
+
+      const event: IncomingUserMessageEvent = {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-1',
+        messageType: 'text',
+        textPayload: 'c:auto',
+        replyToMessageId: 'msg-edit-auto-3',
+      };
+
+      const handled = await handler.handleModifyRecordReply(event, Date.now());
+      expect(handled).toBe(true);
+
+      expect(mockClient.patchRecords).not.toHaveBeenCalled();
+
+      const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
+      expect(sentMessage).toContain('Tidak dapat menentukan kategori otomatis');
+    });
+
+    it('updates note and retains existing category when c:auto is combined with unclassifiable note', async () => {
+      store.recordMessageMapping('msg-edit-auto-4', {
+        recordId: 'rec-4',
+        accountId: 'acc-bca',
+        accountName: 'Jago Expense',
+        amount: -25000,
+        categoryId: 'cat-food',
+        categoryName: 'Makanan & Minuman',
+        note: 'Kopi',
+      });
+
+      const event: IncomingUserMessageEvent = {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-1',
+        messageType: 'text',
+        textPayload: 'n: Transaksi Khusus 123 c:auto',
+        replyToMessageId: 'msg-edit-auto-4',
+      };
+
+      const handled = await handler.handleModifyRecordReply(event, Date.now());
+      expect(handled).toBe(true);
+
+      expect(mockClient.patchRecords).toHaveBeenCalledWith([
+        {
+          id: 'rec-4',
+          categoryId: 'cat-food',
+          note: 'Transaksi Khusus 123',
+        },
+      ]);
+
+      const updated = store.getMessageMapping('msg-edit-auto-4');
+      expect(updated?.note).toBe('Transaksi Khusus 123');
+      expect(updated?.categoryId).toBe('cat-food');
     });
   });
 });
