@@ -1,5 +1,5 @@
 import type { ChannelMessageFormatter } from './types.js';
-import { decodeHtmlEntities, stripHtmlTags } from './htmlUtils.js';
+import { decodeHtmlEntities, replaceDelimitedMarkup, stripHtmlTags } from './htmlUtils.js';
 
 /**
  * Normalizes messages for interactive terminal / console output:
@@ -17,35 +17,16 @@ export function formatConsolePlainText(sourceText: string): string {
   // 2. Decode HTML entities in a single pass to eliminate double-unescaping
   transformedText = decodeHtmlEntities(transformedText);
 
-  // Delimiter boundaries
-  const boundaryBefore = '(?<=^|[\\s([{<"\'“‘/•—–;\\-])';
-  const boundaryAfter = '(?=$|[\\s)\\]}>"\'”’.,!?:;&/•—–;\\-])';
-
   // 3. Unwrap double-asterisk and single-asterisk bold
-  transformedText = transformedText.replace(
-    new RegExp(`${boundaryBefore}\\*\\*([^\\s*\\n](?:[^*\\n]*[^\\s*\\n])?)\\*\\*${boundaryAfter}`, 'gm'),
-    '$1'
-  );
-  transformedText = transformedText.replace(
-    new RegExp(`${boundaryBefore}\\*([^\\s*\\n](?:[^*\\n]*[^\\s*\\n])?)\\*${boundaryAfter}`, 'gm'),
-    '$1'
-  );
+  transformedText = replaceDelimitedMarkup(transformedText, '**', content => content);
+  transformedText = replaceDelimitedMarkup(transformedText, '*', content => content);
 
   // 4. Unwrap italic
-  transformedText = transformedText.replace(
-    new RegExp(`${boundaryBefore}_([^\\s_\\n](?:[^_\\n]*[^\\s_\\n])?)_${boundaryAfter}`, 'gm'),
-    '$1'
-  );
+  transformedText = replaceDelimitedMarkup(transformedText, '_', content => content);
 
-  // 5. Unwrap strikethrough
-  transformedText = transformedText.replace(
-    new RegExp(`${boundaryBefore}~~([^\\s~\\n](?:[^~\\n]*[^\\s~\\n])?)~~${boundaryAfter}`, 'gm'),
-    '$1'
-  );
-  transformedText = transformedText.replace(
-    new RegExp(`${boundaryBefore}~([^\\s~\\n](?:[^~\\n]*[^\\s~\\n])?)~${boundaryAfter}`, 'gm'),
-    '$1'
-  );
+  // 5. Unwrap double-tilde and single-tilde strikethrough
+  transformedText = replaceDelimitedMarkup(transformedText, '~~', content => content);
+  transformedText = replaceDelimitedMarkup(transformedText, '~', content => content);
 
   return transformedText;
 }

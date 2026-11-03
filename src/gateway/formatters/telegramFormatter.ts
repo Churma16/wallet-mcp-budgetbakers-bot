@@ -1,4 +1,5 @@
 import type { ChannelMessageFormatter } from './types.js';
+import { replaceDelimitedMarkup } from './htmlUtils.js';
 
 /**
  * Helper to escape HTML reserved characters to prevent parsing errors in Telegram HTML parse mode.
@@ -28,39 +29,16 @@ export function formatTelegramHtml(sourceText: string): string {
   // 3. Single-line inline code: `code` -> <code>code</code>
   transformedText = transformedText.replace(/`([^`\n]+)`/g, '<code>$1</code>');
 
-  // Allowed delimiter/punctuation boundaries around formatted markup
-  const boundaryBefore = '(?<=^|[\\s([{<"\'“‘/•—–;\\-])';
-  const boundaryAfter = '(?=$|[\\s)\\]}>"\'”’.,!?:;&/•—–;\\-])';
-
-  // 4a. Double-asterisk bold: **text** -> <b>text</b> (common in standard Markdown/LLM outputs)
-  transformedText = transformedText.replace(
-    new RegExp(`${boundaryBefore}\\*\\*([^\\s*\\n](?:[^*\\n]*[^\\s*\\n])?)\\*\\*${boundaryAfter}`, 'gm'),
-    '<b>$1</b>'
-  );
-
-  // 4b. Single-asterisk bold: *text* -> <b>text</b>
-  transformedText = transformedText.replace(
-    new RegExp(`${boundaryBefore}\\*([^\\s*\\n](?:[^*\\n]*[^\\s*\\n])?)\\*${boundaryAfter}`, 'gm'),
-    '<b>$1</b>'
-  );
+  // 4. Bold: **text** and *text* -> <b>text</b>
+  transformedText = replaceDelimitedMarkup(transformedText, '**', content => `<b>${content}</b>`);
+  transformedText = replaceDelimitedMarkup(transformedText, '*', content => `<b>${content}</b>`);
 
   // 5. Italic: _text_ -> <i>text</i>
-  transformedText = transformedText.replace(
-    new RegExp(`${boundaryBefore}_([^\\s_\\n](?:[^_\\n]*[^\\s_\\n])?)_${boundaryAfter}`, 'gm'),
-    '<i>$1</i>'
-  );
+  transformedText = replaceDelimitedMarkup(transformedText, '_', content => `<i>${content}</i>`);
 
-  // 6a. Double-tilde strikethrough: ~~text~~ -> <s>text</s>
-  transformedText = transformedText.replace(
-    new RegExp(`${boundaryBefore}~~([^\\s~\\n](?:[^~\\n]*[^\\s~\\n])?)~~${boundaryAfter}`, 'gm'),
-    '<s>$1</s>'
-  );
-
-  // 6b. Single-tilde strikethrough: ~text~ -> <s>text</s>
-  transformedText = transformedText.replace(
-    new RegExp(`${boundaryBefore}~([^\\s~\\n](?:[^~\\n]*[^\\s~\\n])?)~${boundaryAfter}`, 'gm'),
-    '<s>$1</s>'
-  );
+  // 6. Strikethrough: ~~text~~ and ~text~ -> <s>text</s>
+  transformedText = replaceDelimitedMarkup(transformedText, '~~', content => `<s>${content}</s>`);
+  transformedText = replaceDelimitedMarkup(transformedText, '~', content => `<s>${content}</s>`);
 
   return transformedText;
 }

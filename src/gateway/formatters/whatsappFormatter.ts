@@ -1,5 +1,5 @@
 import type { ChannelMessageFormatter } from './types.js';
-import { decodeHtmlEntities } from './htmlUtils.js';
+import { decodeHtmlEntities, replaceDelimitedMarkup } from './htmlUtils.js';
 
 /**
  * Normalizes and formats outgoing messages for WhatsApp delivery:
@@ -32,21 +32,9 @@ export function formatWhatsAppMarkdown(sourceText: string): string {
   // 6. Decode HTML entities safely via single-pass matching to prevent double-unescaping
   transformedText = decodeHtmlEntities(transformedText);
 
-  // Delimiter boundaries for standard markdown normalization
-  const boundaryBefore = '(?<=^|[\\s([{<"\'“‘/•—–;\\-])';
-  const boundaryAfter = '(?=$|[\\s)\\]}>"\'”’.,!?:;&/•—–;\\-])';
-
-  // 7. Double-asterisk bold -> single-asterisk WhatsApp bold (**text** -> *text*)
-  transformedText = transformedText.replace(
-    new RegExp(`${boundaryBefore}\\*\\*([^\\s*\\n](?:[^*\\n]*[^\\s*\\n])?)\\*\\*${boundaryAfter}`, 'gm'),
-    '*$1*'
-  );
-
-  // 8. Double-tilde strikethrough -> single-tilde WhatsApp strikethrough (~~text~~ -> ~text~)
-  transformedText = transformedText.replace(
-    new RegExp(`${boundaryBefore}~~([^\\s~\\n](?:[^~\\n]*[^\\s~\\n])?)~~${boundaryAfter}`, 'gm'),
-    '~$1~'
-  );
+  // 7. Normalize Markdown bold and strikethrough for WhatsApp (**bold** -> *bold*, ~~strike~~ -> ~strike~)
+  transformedText = replaceDelimitedMarkup(transformedText, '**', content => `*${content}*`);
+  transformedText = replaceDelimitedMarkup(transformedText, '~~', content => `~${content}~`);
 
   return transformedText;
 }
