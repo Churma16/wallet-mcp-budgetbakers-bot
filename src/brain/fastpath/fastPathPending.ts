@@ -1,4 +1,5 @@
 import { extractHashtags } from '../parsers/hashtagParser.js';
+import { KEY_NAME_REGEX, parseTagsHint } from '../../wallet/records/recordEditParser.js';
 import {
   PendingConfirmationIntent,
   ReconciliationIntent,
@@ -90,46 +91,124 @@ export function detectPendingConfirmationAction(userMessageText: string): Pendin
       }
     }
 
+    let customNote: string | undefined;
     let customCategoryHint: string | undefined;
-    let textToParseForTagsAndNote = rawNote;
+    let customTags: string[] | undefined;
+    let counterParty: string | undefined;
+    let targetAccountHint: string | undefined;
 
-    const categoryTriggerMatch = rawNote.match(/(?:^|\s)(cat|kategori|category):\s*/i);
-    if (categoryTriggerMatch && categoryTriggerMatch.index !== undefined) {
-      const prefixMatchIndex = categoryTriggerMatch.index;
-      const actualPrefixIndex = categoryTriggerMatch[0].startsWith(' ') || categoryTriggerMatch[0].startsWith('\t')
-        ? prefixMatchIndex + 1
-        : prefixMatchIndex;
-      const contentStartIndex = actualPrefixIndex + categoryTriggerMatch[0].trimStart().length;
+    interface KeyToken {
+      key: string;
+      tokenStart: number;
+      valStart: number;
+    }
+    const tokens: KeyToken[] = [];
+    KEY_NAME_REGEX.lastIndex = 0;
+    let match: RegExpExecArray | null;
 
-      const nextHashIndex = rawNote.indexOf('#', contentStartIndex);
-      const rawCategorySnippet = nextHashIndex !== -1
-        ? rawNote.slice(contentStartIndex, nextHashIndex)
-        : rawNote.slice(contentStartIndex);
+    while ((match = KEY_NAME_REGEX.exec(rawNote)) !== null) {
+      tokens.push({
+        key: match[1].toLowerCase(),
+        tokenStart: match.index,
+        valStart: match.index + match[0].length,
+      });
+    }
 
-      const cleanedCategorySnippet = rawCategorySnippet
-        .trim()
-        .replace(/^["']+|["']+$/g, '')
-        .trim();
-
-      if (cleanedCategorySnippet.length > 0) {
-        customCategoryHint = cleanedCategorySnippet;
+    if (tokens.length > 0) {
+      // Leading text before first token (e.g. "makan siang cat:makan nafsu")
+      const leadingText = rawNote.slice(0, tokens[0].tokenStart).trim();
+      if (leadingText.length > 0) {
+        const leadingHashtags = extractHashtags(leadingText);
+        customNote = leadingHashtags.cleanedText.trim() || undefined;
+        if (leadingHashtags.tags.length > 0) {
+          customTags = [...leadingHashtags.tags];
+        }
       }
 
-      const textBeforeCat = rawNote.slice(0, actualPrefixIndex);
-      const textAfterCat = nextHashIndex !== -1 ? rawNote.slice(nextHashIndex) : '';
-      textToParseForTagsAndNote = `${textBeforeCat} ${textAfterCat}`.trim();
+      for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i];
+        const valEnd = i + 1 < tokens.length ? tokens[i + 1].tokenStart : rawNote.length;
+        const rawVal = rawNote.slice(token.valStart, valEnd).trim();
+        if (!rawVal) continue;
+        const cleanVal = rawVal.replace(/^["']+|["']+$/g, '').trim();
+
+        switch (token.key) {
+          case 'c':
+          case 'cat':
+          case 'kategori':
+          case 'category': {
+            const nextHashIndex = cleanVal.indexOf('#');
+            if (nextHashIndex !== -1) {
+              const catPart = cleanVal.slice(0, nextHashIndex).trim().replace(/^["']+|["']+$/g, '').trim();
+              const tagPart = cleanVal.slice(nextHashIndex);
+              customCategoryHint = catPart.length > 0 ? catPart : undefined;
+              const extracted = extractHashtags(tagPart);
+              if (extracted.tags.length > 0) {
+                customTags = [...(customTags || []), ...extracted.tags];
+              }
+            } else {
+              const cleaned = cleanVal.replace(/^["']+|["']+$/g, '').trim();
+              customCategoryHint = cleaned.length > 0 ? cleaned : undefined;
+            }
+            break;
+          }
+
+          case 't':
+          case 'tag':
+          case 'tags':
+          case 'label':
+          case 'labels': {
+            const parsedTags = parseTagsHint(cleanVal);
+            if (parsedTags.length > 0) {
+              customTags = [...(customTags || []), ...parsedTags];
+            }
+            break;
+          }
+
+          case 'n':
+          case 'note':
+          case 'd':
+          case 'des':
+          case 'deskripsi':
+          case 'catatan': {
+            const extracted = extractHashtags(cleanVal);
+            customNote = extracted.cleanedText.trim() || undefined;
+            if (extracted.tags.length > 0) {
+              customTags = [...(customTags || []), ...extracted.tags];
+            }
+            break;
+          }
+
+          case 'p':
+          case 'payee':
+          case 'm':
+          case 'merchant': {
+            counterParty = cleanVal.length > 0 ? cleanVal : undefined;
+            break;
+          }
+
+          case 'rek':
+          case 'acc':
+          case 'rekening':
+          case 'account': {
+            targetAccountHint = cleanVal.length > 0 ? cleanVal : undefined;
+            break;
+          }
+        }
+      }
+    } else {
+      const hashtagResult = extractHashtags(rawNote);
+      const cleanedNote = hashtagResult.cleanedText.trim();
+      const extractedTags = hashtagResult.tags.length > 0 ? hashtagResult.tags : undefined;
+
+      if (extractedTags && extractedTags.length > 0) {
+        customTags = extractedTags;
+        const rawCategoryTag = extractedTags[0];
+        customCategoryHint = rawCategoryTag ? rawCategoryTag.replace(/[-_]+/g, ' ').trim() : undefined;
+      }
+
+      customNote = cleanedNote.length > 0 ? cleanedNote : undefined;
     }
-
-    const hashtagResult = extractHashtags(textToParseForTagsAndNote);
-    const cleanedNote = hashtagResult.cleanedText.trim();
-    const customTags = hashtagResult.tags.length > 0 ? hashtagResult.tags : undefined;
-
-    if (!customCategoryHint) {
-      const rawCategoryTag = customTags ? customTags[0] : undefined;
-      customCategoryHint = rawCategoryTag ? rawCategoryTag.replace(/[-_]+/g, ' ').trim() : undefined;
-    }
-
-    const customNote = cleanedNote.length > 0 ? cleanedNote : undefined;
 
     return {
       actionType: 'CONFIRM',
@@ -137,6 +216,8 @@ export function detectPendingConfirmationAction(userMessageText: string): Pendin
       customNote,
       customCategoryHint,
       customTags,
+      counterParty,
+      targetAccountHint,
       rawCustomInput: rawNote,
     };
   }

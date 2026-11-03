@@ -17,14 +17,14 @@ export function formatPendingConfirmationPromptId(params: PendingConfirmationPro
   const lines: string[] = ['Catat transaksi ini?'];
   if (params.totalPendingCount > 1) {
     lines.push(`• Balas *Ya ${params.ticketId}* (atau *Ya semua*)`);
-    lines.push(`• Balas *Ya ${params.ticketId}: <catatan> cat:<kategori> #<tag>* untuk tambah rincian`);
+    lines.push(`• Balas *Ya ${params.ticketId}: n:<catatan> c:<kategori> t:<tag> m:<merchant> acc:<akun>*`);
     lines.push(`• Balas *Batal ${params.ticketId}*`);
     const otherCount = params.totalPendingCount - 1;
     lines.push('');
     lines.push(`_Ada ${otherCount} transaksi lain yang juga menunggu konfirmasi._`);
   } else {
     lines.push(`• Balas *Ya* atau *Catat* (atau *Ya ${params.ticketId}*)`);
-    lines.push(`• Balas *Ya: <catatan> cat:<kategori> #<tag>* untuk tambah rincian`);
+    lines.push(`• Balas *Ya: n:<catatan> c:<kategori> t:<tag> m:<merchant> acc:<akun>*`);
     lines.push(`• Balas *Batal* atau *Abaikan* (atau *Batal ${params.ticketId}*)`);
   }
   return lines.join('\n');

@@ -16,8 +16,8 @@ export interface ParsedRecordEditCommand {
   readonly hasModifications: boolean;
 }
 
-const KEY_NAME_REGEX =
-  /(?<=^|\s)(c|cat|kategori|t|tag|tags|label|labels|n|note|d|des|deskripsi|catatan|a|amt|amount|nominal|p|payee|m|merchant|rek|acc|rekening|account|tf|transfer):\s*/gi;
+export const KEY_NAME_REGEX =
+  /(?<=^|\s)(c|cat|kategori|category|t|tag|tags|label|labels|n|note|d|des|deskripsi|catatan|a|amt|amount|nominal|p|payee|m|merchant|rek|acc|rekening|account|tf|transfer):\s*/gi;
 
 const CLEAR_VALUE_PATTERN = /^[-–—]$|^(?:none|kosong|hapus|clear|remove|delete)$/i;
 const TRANSFER_UNLINK_PATTERN = /^[-–—]$|^(?:none|kosong|hapus|clear|unlink|lepas|batal|cancel)$/i;
@@ -86,7 +86,7 @@ function parseAmountHint(rawAmount: string): { amount: number; hasExplicitPositi
  * Normalizes tags/labels input from user, splitting comma-separated or space-separated tags
  * and stripping leading '#' symbols.
  */
-function parseTagsHint(rawTags: string): string[] {
+export function parseTagsHint(rawTags: string): string[] {
   const parts = rawTags.includes(',')
     ? rawTags.split(',')
     : rawTags.split(/\s+/);
@@ -179,16 +179,18 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
     const rawVal = text.slice(token.valStart, valEnd).trim();
 
     if (!rawVal) continue;
+    const cleanVal = rawVal.replace(/^["']+|["']+$/g, '').trim();
 
     switch (token.key) {
       case 'c':
       case 'cat':
       case 'kategori':
+      case 'category':
         if (isClearToken(rawVal)) {
           clearFieldsSet.add('categoryId');
           categoryName = undefined;
         } else {
-          categoryName = rawVal;
+          categoryName = cleanVal;
           clearFieldsSet.delete('categoryId');
         }
         break;
@@ -202,7 +204,7 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
           clearFieldsSet.add('labelIds');
           tags = undefined;
         } else {
-          const parsedTags = parseTagsHint(rawVal);
+          const parsedTags = parseTagsHint(cleanVal);
           if (parsedTags.length > 0) {
             tags = parsedTags;
             clearFieldsSet.delete('labelIds');
@@ -222,7 +224,7 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
           note = undefined;
         } else {
           // Safeguard UTF-16 surrogate pairs during truncation
-          note = Array.from(rawVal).slice(0, 255).join('');
+          note = Array.from(cleanVal).slice(0, 255).join('');
           clearFieldsSet.delete('note');
         }
         break;
@@ -247,7 +249,7 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
           clearFieldsSet.add('counterParty');
           counterParty = undefined;
         } else {
-          counterParty = rawVal;
+          counterParty = cleanVal;
           clearFieldsSet.delete('counterParty');
         }
         break;
@@ -256,7 +258,7 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
       case 'acc':
       case 'rekening':
       case 'account':
-        targetAccountHint = rawVal;
+        targetAccountHint = cleanVal;
         break;
 
       case 'tf':

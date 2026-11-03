@@ -212,6 +212,30 @@ export class PendingActionHandler {
       }
     }
 
+    if (confirmationIntent.counterParty) {
+      const normalizedCounterParty =
+        normalizeTransactionText(confirmationIntent.counterParty) || confirmationIntent.counterParty;
+      for (const item of itemsToRecord) {
+        item.counterParty = normalizedCounterParty;
+      }
+    }
+
+    if (confirmationIntent.targetAccountHint && this.walletCacheService) {
+      const cachedAccounts = this.walletCacheService.getAccounts();
+      const normalize = (text: string) =>
+        text.toLowerCase().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+      const hint = normalize(confirmationIntent.targetAccountHint);
+      const matchedAccount =
+        cachedAccounts.find(acc => normalize(acc.name) === hint) ||
+        cachedAccounts.find(acc => normalize(acc.name).includes(hint));
+      if (matchedAccount) {
+        for (const item of itemsToRecord) {
+          item.matchedAccountId = matchedAccount.id;
+          item.accountNameHint = matchedAccount.name;
+        }
+      }
+    }
+
     applicationLogger.mcp(`Processing ${itemsToRecord.length} claimed transaction(s) individually...`);
 
     const createdRecordIds = new Map<number, string>();
