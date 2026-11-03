@@ -24,62 +24,15 @@ import {
   getTelegramBotCommands,
   getTelegramGuideTopicContent,
 } from './telegramMenu.js';
+import {
+  escapeHtmlEntities,
+  formatTelegramHtml,
+  convertWhatsAppMarkupToTelegramHtml,
+} from './formatters/telegramFormatter.js';
 import { getActiveLanguage } from '../i18n/index.js';
 
 export type { TelegramSafeguardConfiguration };
-
-/**
- * Helper to escape HTML reserved characters to prevent parsing errors in Telegram HTML parse mode.
- */
-function escapeHtmlEntities(rawText: string): string {
-  return rawText
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-/**
- * Converts WhatsApp-style markdown formatted text (*bold*, _italic_, ~strike~, `code`)
- * into valid, safe Telegram HTML formatted string.
- */
-export function convertWhatsAppMarkupToTelegramHtml(sourceText: string): string {
-  if (!sourceText) {
-    return '';
-  }
-
-  // 1. First escape HTML special entities
-  let transformedText = escapeHtmlEntities(sourceText);
-
-  // 2. Multi-line code block: ```code``` -> <pre>code</pre>
-  transformedText = transformedText.replace(/```([\s\S]*?)```/g, '<pre>$1</pre>');
-
-  // 3. Single-line inline code: `code` -> <code>code</code>
-  transformedText = transformedText.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-
-  // Allowed delimiter/punctuation boundaries around formatted markup
-  const boundaryBefore = '(?<=^|[\\s([{<"\'“‘/•—–;\\-])';
-  const boundaryAfter = '(?=$|[\\s)\\]}>"\'”’.,!?:;&/•—–;\\-])';
-
-  // 4. Bold: *text* -> <b>text</b> (ensures not matching across lines unnecessarily)
-  transformedText = transformedText.replace(
-    new RegExp(`${boundaryBefore}\\*([^\\s*\\n](?:[^*\\n]*[^\\s*\\n])?)\\*${boundaryAfter}`, 'gm'),
-    '<b>$1</b>'
-  );
-
-  // 5. Italic: _text_ -> <i>text</i>
-  transformedText = transformedText.replace(
-    new RegExp(`${boundaryBefore}_([^\\s_\\n](?:[^_\\n]*[^\\s_\\n])?)_${boundaryAfter}`, 'gm'),
-    '<i>$1</i>'
-  );
-
-  // 6. Strikethrough: ~text~ -> <s>text</s>
-  transformedText = transformedText.replace(
-    new RegExp(`${boundaryBefore}~([^\\s~\\n](?:[^~\\n]*[^\\s~\\n])?)~${boundaryAfter}`, 'gm'),
-    '<s>$1</s>'
-  );
-
-  return transformedText;
-}
+export { escapeHtmlEntities, formatTelegramHtml, convertWhatsAppMarkupToTelegramHtml };
 
 /**
  * Messaging adapter integrating the Telegram Bot API via Grammy, enforcing fail-closed
@@ -349,7 +302,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
 
     if (options?.isHelpMenu) {
       const currentLanguage = getActiveLanguage();
-      const formattedHtmlText = convertWhatsAppMarkupToTelegramHtml(messageText);
+      const formattedHtmlText = formatTelegramHtml(messageText);
       const replyKeyboard = createTelegramMainReplyKeyboard(currentLanguage);
 
       try {
@@ -379,7 +332,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       }
     }
 
-    const formattedHtmlText = convertWhatsAppMarkupToTelegramHtml(messageText);
+    const formattedHtmlText = formatTelegramHtml(messageText);
     const replyMarkup = options?.replyMarkup as any;
 
     try {

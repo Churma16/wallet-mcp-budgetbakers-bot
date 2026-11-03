@@ -1,5 +1,6 @@
 import readline from 'node:readline';
 import { applicationLogger } from '../lib/logger.js';
+import { formatConsolePlainText } from './formatters/consoleFormatter.js';
 import {
   AdapterConnectionState,
   ConsoleAdapterConfiguration,
@@ -239,7 +240,8 @@ export class ConsoleMessagingAdapter implements MessagingAdapter {
   }
 
   public async sendTextMessage(_targetChatIdentifier: string, messageText: string): Promise<void> {
-    this.outputStream.write(`\n${messageText}\n\n`);
+    const formattedText = formatConsolePlainText(messageText);
+    this.outputStream.write(`\n${formattedText}\n\n`);
     if (
       this.isRunning &&
       !this.isShuttingDown &&

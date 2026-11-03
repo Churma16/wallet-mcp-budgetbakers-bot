@@ -25,6 +25,7 @@ import {
   isMediaSizeExceeded,
   rejectOversizedMedia,
 } from './mediaPolicy.js';
+import { formatWhatsAppMarkdown } from './formatters/whatsappFormatter.js';
 
 export type { WhatsappSafeguardConfiguration };
 
@@ -722,12 +723,13 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
       const socket = this.socketInstance;
       if (!socket) throw new Error('[error] WhatsApp socket is not connected');
       try {
+        const formattedText = formatWhatsAppMarkdown(messageText);
         const messageId = generateMessageIDV2(socket.user?.id);
         this.outgoingMessageIds.record(messageId);
-        await socket.sendMessage(targetChatIdentifier, { text: messageText }, { messageId });
+        await socket.sendMessage(targetChatIdentifier, { text: formattedText }, { messageId });
         applicationLogger.fileDetail('whatsapp', 'Dispatched WhatsApp Text Message', {
-          targetChatIdentifier, messageId, messageLength: messageText.length,
-          messagePreview: messageText.substring(0, 120),
+          targetChatIdentifier, messageId, messageLength: formattedText.length,
+          messagePreview: formattedText.substring(0, 120),
         });
       } catch (sendError: unknown) {
         applicationLogger.error(`Failed to send WhatsApp message to ${targetChatIdentifier}: ${sendError}`);
