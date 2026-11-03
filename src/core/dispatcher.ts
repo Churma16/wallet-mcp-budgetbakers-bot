@@ -198,7 +198,8 @@ export class MessageDispatcher {
         context.gateway,
         () => context.email?.listener ?? null,
         context.wallet.cache,
-        context.wallet.transactionMessages
+        context.wallet.transactionMessages,
+        context.brain?.categoryContext
       );
 
     this.financialActionRegistry =
@@ -233,7 +234,8 @@ export class MessageDispatcher {
         context.wallet.client,
         context.wallet.cache,
         context.gateway,
-        context.wallet.transactionMessages
+        context.wallet.transactionMessages,
+        context.brain?.categoryContext
       );
 
     this.fastPathHandler =

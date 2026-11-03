@@ -592,6 +592,11 @@ export const englishDictionary: ResponseDictionary = {
     recordEditCategoryNotFound(categoryHint: string): string {
       return `⚠️ Category "${categoryHint}" not found or cannot be assigned.`;
     },
+    recordEditCategoryAutoNotFound(hint?: string): string {
+      return hint && hint.trim().length > 0
+        ? `⚠️ Could not automatically infer category for "${hint}".`
+        : '⚠️ Could not automatically infer category for this transaction.';
+    },
     recordEditNotFound: '⚠️ Transaction not found or the replied message has expired.',
     recordEditFailed(reason: string): string {
       return `❌ Failed to update transaction: ${reason}`;

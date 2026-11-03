@@ -214,4 +214,41 @@ describe('recordEditParser', () => {
       expect(parseRecordEditCommand('tf: invalid')).toBeNull();
     });
   });
+
+  describe('Auto Category Inference Mode (`c:auto`)', () => {
+    it('parses c:auto and flags isAutoCategory with categoryName "auto"', () => {
+      const parsed = parseRecordEditCommand('n: Beli Pertamax c:auto');
+      expect(parsed).not.toBeNull();
+      expect(parsed?.note).toBe('Beli Pertamax');
+      expect(parsed?.categoryName).toBe('auto');
+      expect(parsed?.isAutoCategory).toBe(true);
+      expect(parsed?.hasModifications).toBe(true);
+    });
+
+    it('parses c: auto with space after colon', () => {
+      const parsed = parseRecordEditCommand('c: auto n: Kopi Susu');
+      expect(parsed).not.toBeNull();
+      expect(parsed?.isAutoCategory).toBe(true);
+      expect(parsed?.note).toBe('Kopi Susu');
+    });
+
+    it('parses alternative auto keywords like cat:auto, kategori:otomatis, or descriptive parens', () => {
+      const parsed1 = parseRecordEditCommand('cat: auto n: Nasi Goreng');
+      expect(parsed1?.isAutoCategory).toBe(true);
+
+      const parsed2 = parseRecordEditCommand('kategori: otomatis n: Bensin');
+      expect(parsed2?.isAutoCategory).toBe(true);
+
+      const parsed3 = parseRecordEditCommand('n: Kopi c:auto(berdasarkan note)');
+      expect(parsed3?.isAutoCategory).toBe(true);
+      expect(parsed3?.note).toBe('Kopi');
+    });
+
+    it('parses standalone c:auto command without note modifications', () => {
+      const parsed = parseRecordEditCommand('c:auto');
+      expect(parsed).not.toBeNull();
+      expect(parsed?.isAutoCategory).toBe(true);
+      expect(parsed?.hasModifications).toBe(true);
+    });
+  });
 });

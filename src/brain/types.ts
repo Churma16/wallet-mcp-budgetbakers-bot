@@ -231,6 +231,7 @@ export interface PendingConfirmationIntent {
   targetScope: 'LATEST' | 'ALL' | number;
   customNote?: string;
   customCategoryHint?: string;
+  isAutoCategory?: boolean;
   customTags?: string[];
   counterParty?: string;
   targetAccountHint?: string;

@@ -949,6 +949,72 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
       expect(dispatchedRecords[0].counterParty).toBe('Rm Sederhana');
       expect(dispatchedRecords[0].accountId).toBe('acc-bca');
     });
+
+    it('end-to-end: infers category automatically when replying with c:auto on pending confirmation', async () => {
+      const pendingService = new PendingTransactionService();
+      let dispatchedRecords: any[] = [];
+      const mockGateway = {
+        sendMessage: vi.fn(),
+      } as unknown as MessagingGatewayService;
+      const mockWalletClient = {
+        createRecords: vi.fn(async records => {
+          dispatchedRecords = records;
+          return {
+            summary: { total: 1, succeeded: 1, failed: 0 },
+            results: [{ inputIndex: 0, success: true, recordId: 'rec-auto-1' }],
+          };
+        }),
+      } as unknown as WalletMcpClientService;
+
+      const mockCacheService = {
+        getCategories: vi.fn(() => [
+          { id: 'cat-food', name: 'Makanan & Minuman' },
+          { id: 'cat-transport', name: 'Transportasi' },
+        ]),
+        getAccounts: vi.fn(() => [
+          { id: 'acc-bca', name: 'BCA', currency: 'IDR' },
+        ]),
+      } as unknown as WalletCacheService;
+
+      const handler = new PendingActionHandler(
+        pendingService,
+        mockWalletClient,
+        mockGateway,
+        () => null,
+        mockCacheService
+      );
+
+      const pendingItem = pendingService.addPendingTransaction({
+        sourceType: 'EMAIL',
+        bankDisplayName: 'BCA',
+        amount: 50000,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        occurredAt: '2026-11-04T00:00:00.000Z',
+        matchedAccountId: 'acc-bca',
+        accountNameHint: 'BCA',
+        note: 'Transaksi pending lama',
+        matchedCategoryId: 'cat-food',
+        matchedCategoryName: 'Makanan & Minuman',
+      });
+
+      const intent = detectPendingConfirmationAction(
+        `Ya ${pendingItem.ticketId}: n: Beli Pertamax c:auto`
+      );
+      expect(intent).not.toBeNull();
+      expect(intent?.isAutoCategory).toBe(true);
+
+      const handled = await handler.handlePendingAction(
+        { channel: 'telegram', senderIdentifier: 'u1', chatIdentifier: 'c1', messageType: 'text', textPayload: `Ya ${pendingItem.ticketId}: n: Beli Pertamax c:auto` },
+        intent!,
+        Date.now()
+      );
+
+      expect(handled).toBe(true);
+      expect(dispatchedRecords).toHaveLength(1);
+      expect(dispatchedRecords[0].note).toBe('Beli Pertamax');
+      expect(dispatchedRecords[0].categoryId).toBe('cat-transport');
+    });
   });
 
   describe('Notification Formatting Hints', () => {

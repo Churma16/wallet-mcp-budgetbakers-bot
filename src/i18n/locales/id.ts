@@ -591,6 +591,11 @@ export const indonesianDictionary: ResponseDictionary = {
     recordEditCategoryNotFound(categoryHint: string): string {
       return `⚠️ Kategori "${categoryHint}" tidak ditemukan atau tidak dapat digunakan.`;
     },
+    recordEditCategoryAutoNotFound(hint?: string): string {
+      return hint && hint.trim().length > 0
+        ? `⚠️ Tidak dapat menentukan kategori otomatis untuk "${hint}".`
+        : '⚠️ Tidak dapat menentukan kategori otomatis untuk transaksi ini.';
+    },
     recordEditNotFound: '⚠️ Transaksi tidak ditemukan atau pesan yang dibalas sudah kedaluwarsa.',
     recordEditFailed(reason: string): string {
       return `❌ Gagal memperbarui transaksi: ${reason}`;
