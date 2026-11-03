@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createDefaultFinancialActionRegistry } from '../src/core/index.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import {
+  buildItemViewModelFromCategoryDraft,
   buildItemViewModelFromClarificationDraft,
   buildItemViewModelFromPendingItem,
   buildTransactionAttentionSummary,
@@ -295,5 +296,50 @@ describe('transaction attention summaries, clarification view models, and fallba
     const en = formatAccountSelectionUnknownOutcome(draft);
     expect(en).toContain('• Transaction (#31)');
     expect(en).toContain('Account: Account');
+  });
+
+  it('builds view model and formats queue summary with category clarification draft', () => {
+    const pendingService = new PendingTransactionService();
+    const categoryDraft = pendingService.addPendingCategorySelectionDraft({
+      channel: 'telegram',
+      chatIdentifier: '123456',
+      senderIdentifier: 'user1',
+      records: [
+        {
+          accountId: 'acc-1',
+          amount: -45000,
+          currency: 'IDR',
+          note: 'Beli obat batuk',
+        },
+      ],
+      pendingRecordIndex: 0,
+      categoryHint: 'obat',
+      candidateCategories: [
+        { id: 'cat-health', name: 'Kesehatan' },
+        { id: 'cat-groceries', name: 'Belanja' },
+      ],
+    });
+
+    const viewModel = buildItemViewModelFromCategoryDraft(categoryDraft, 'WAITING_FOR_CATEGORY', 'id');
+    expect(viewModel.ticketId).toBe(categoryDraft.ticketId);
+    expect(viewModel.status).toBe('WAITING_FOR_CATEGORY');
+    expect(viewModel.description).toBe('Beli obat batuk');
+    expect(viewModel.categoryName).toBe('obat');
+    expect(viewModel.primaryAction).toBe('SELECT_CATEGORY');
+    expect(viewModel.secondaryAction).toBe('CANCEL');
+
+    const summary = buildTransactionAttentionSummary(pendingService, 'id');
+    expect(summary.totalNeedingAttention).toBe(1);
+    expect(summary.waitingCategoryItems.length).toBe(1);
+    expect(summary.waitingCategoryItems[0].ticketId).toBe(categoryDraft.ticketId);
+
+    const formattedId = formatTransactionAttentionSummary(summary, 'id');
+    expect(formattedId).toContain('transaksi menunggu pilihan kategori:');
+    expect(formattedId).toContain(`Beli obat batuk (#${categoryDraft.ticketId})`);
+    expect(formattedId).toContain(`Balas dengan nomor pilihan kategori atau *Batal #${categoryDraft.ticketId}*.`);
+
+    const formattedEn = formatTransactionAttentionSummary(summary, 'en');
+    expect(formattedEn).toContain('transaction(s) waiting for category selection:');
+    expect(formattedEn).toContain(`Reply with chosen category option or *Cancel #${categoryDraft.ticketId}*.`);
   });
 });

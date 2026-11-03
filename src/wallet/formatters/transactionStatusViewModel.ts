@@ -2,6 +2,7 @@ import {
   PendingTransactionService,
   PendingTransactionItem,
   PendingAccountSelectionDraft,
+  PendingCategorySelectionDraft,
 } from '../../core/pending.js';
 import { formatCurrencyAmount } from './humanResponseFormatter.js';
 import { SupportedLanguage } from '../../i18n/index.js';
@@ -9,7 +10,8 @@ import { SupportedLanguage } from '../../i18n/index.js';
 export type TransactionAttentionStatus =
   | 'NEEDS_CHECK'
   | 'WAITING_FOR_CONFIRMATION'
-  | 'WAITING_FOR_ACCOUNT';
+  | 'WAITING_FOR_ACCOUNT'
+  | 'WAITING_FOR_CATEGORY';
 
 export interface TransactionAttentionItemViewModel {
   ticketId: number;
@@ -33,6 +35,7 @@ export interface TransactionAttentionSummaryViewModel {
   needsCheckItems: TransactionAttentionItemViewModel[];
   waitingConfirmationItems: TransactionAttentionItemViewModel[];
   waitingAccountItems: TransactionAttentionItemViewModel[];
+  waitingCategoryItems: TransactionAttentionItemViewModel[];
 }
 
 export function buildItemViewModelFromPendingItem(
@@ -105,6 +108,42 @@ export function buildItemViewModelFromClarificationDraft(
   };
 }
 
+export function buildItemViewModelFromCategoryDraft(
+  draft: PendingCategorySelectionDraft,
+  status: TransactionAttentionStatus,
+  languageCode?: SupportedLanguage
+): TransactionAttentionItemViewModel {
+  const record = draft.records[draft.pendingRecordIndex] || draft.records[0];
+  const draftCurrency = record?.currency;
+  const amount = record ? Number(record.amount) : 0;
+  const formattedAmount = formatCurrencyAmount(amount, draftCurrency, languageCode);
+  const description = record?.note || record?.counterParty || 'Transaksi';
+  const categoryName = draft.categoryHint || draft.candidateCategories[0]?.name || 'Kategori';
+
+  let primaryAction = 'MARK_PRESENT';
+  let secondaryAction = 'MARK_ABSENT';
+  if (status === 'WAITING_FOR_CATEGORY') {
+    primaryAction = 'SELECT_CATEGORY';
+    secondaryAction = 'CANCEL';
+  }
+
+  return {
+    ticketId: draft.ticketId,
+    status,
+    amount,
+    currency: draftCurrency,
+    formattedAmount,
+    description,
+    accountName: 'Akun',
+    categoryName,
+    isTransfer: false,
+    createdAt: draft.createdAt,
+    primaryAction,
+    secondaryAction,
+    sourceKind: 'CLARIFICATION_DRAFT',
+  };
+}
+
 export function buildTransactionAttentionSummary(
   pendingService: PendingTransactionService,
   languageCode?: SupportedLanguage
@@ -112,6 +151,7 @@ export function buildTransactionAttentionSummary(
   const needsCheckItems: TransactionAttentionItemViewModel[] = [];
   const waitingConfirmationItems: TransactionAttentionItemViewModel[] = [];
   const waitingAccountItems: TransactionAttentionItemViewModel[] = [];
+  const waitingCategoryItems: TransactionAttentionItemViewModel[] = [];
 
   const standardItems = pendingService.getAllPendingTransactions();
   for (const item of standardItems) {
@@ -137,18 +177,35 @@ export function buildTransactionAttentionSummary(
     }
   }
 
+  const categoryDrafts = pendingService.getAllPendingCategorySelectionDrafts();
+  for (const draft of categoryDrafts) {
+    const state = pendingService.getPendingCategorySelectionDraftState(draft.ticketId);
+    if (state === 'UNKNOWN') {
+      needsCheckItems.push(buildItemViewModelFromCategoryDraft(draft, 'NEEDS_CHECK', languageCode));
+    } else if (state === 'PENDING') {
+      waitingCategoryItems.push(
+        buildItemViewModelFromCategoryDraft(draft, 'WAITING_FOR_CATEGORY', languageCode)
+      );
+    }
+  }
+
   // Sort by ticketId ascending
   needsCheckItems.sort((first, second) => first.ticketId - second.ticketId);
   waitingConfirmationItems.sort((first, second) => first.ticketId - second.ticketId);
   waitingAccountItems.sort((first, second) => first.ticketId - second.ticketId);
+  waitingCategoryItems.sort((first, second) => first.ticketId - second.ticketId);
 
   const totalNeedingAttention =
-    needsCheckItems.length + waitingConfirmationItems.length + waitingAccountItems.length;
+    needsCheckItems.length +
+    waitingConfirmationItems.length +
+    waitingAccountItems.length +
+    waitingCategoryItems.length;
 
   return {
     totalNeedingAttention,
     needsCheckItems,
     waitingConfirmationItems,
     waitingAccountItems,
+    waitingCategoryItems,
   };
 }

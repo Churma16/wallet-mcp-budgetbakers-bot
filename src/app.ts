@@ -173,7 +173,7 @@ export class Application {
           this.context.config.emailImapPassword,
           this.context.config.emailLookbackMinutes,
           detectedEvent => this.dispatcher.handleEmailTransactionDetected(detectedEvent),
-          undefined,
+          this.context.config.dataStoragePath,
           undefined,
           undefined,
           3,
