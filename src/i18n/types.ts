@@ -229,11 +229,6 @@ export interface ResponseDictionary {
 
   help: {
     welcomeGuidance: string;
-    quickCommandsTitle: string;
-    commandBalance: string;
-    commandBudget: string;
-    commandHistory: string;
-    commandMenu: string;
   };
 
   telegramMenu: TelegramMenuDictionary;

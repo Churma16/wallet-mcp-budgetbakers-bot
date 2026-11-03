@@ -413,11 +413,6 @@ export const indonesianDictionary: ResponseDictionary = {
       '',
       'Atau kirim foto struk — langsung kerekam.',
     ].join('\n'),
-    quickCommandsTitle: '*Perintah Cepat:*',
-    commandBalance: '• *Saldo*: Cek saldo semua rekening',
-    commandBudget: '• *Budget*: Cek status limit anggaran',
-    commandHistory: '• *Riwayat*: Cek riwayat transaksi terakhir',
-    commandMenu: '• *Menu*: Buka menu panduan',
   },
 
   telegramMenu: {

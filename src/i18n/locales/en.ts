@@ -415,11 +415,6 @@ export const englishDictionary: ResponseDictionary = {
       '',
       'Or send a receipt photo — recorded instantly.',
     ].join('\n'),
-    quickCommandsTitle: '*Quick Commands:*',
-    commandBalance: '• *Balance*: Check all account balances',
-    commandBudget: '• *Budget*: Check budget limit status',
-    commandHistory: '• *History*: Check recent transaction history',
-    commandMenu: '• *Menu*: Show guide menu',
   },
 
   telegramMenu: {
