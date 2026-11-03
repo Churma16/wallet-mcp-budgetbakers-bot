@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 import { inferCategoryFromText, selectBestCategory } from '../src/brain/category/categoryScorer.js';
+import { buildCategoryClassificationPrompt } from '../src/brain/prompts/prompts.js';
+import { parseCategoryClassificationResponse } from '../src/brain/providers/jsonExtraction.js';
+import { GeminiAiProvider } from '../src/brain/providers/geminiProvider.js';
+import { OpenAiCompatibleAiProvider } from '../src/brain/providers/openAiProvider.js';
+import { FallbackAiProvider } from '../src/brain/providers/fallbackProvider.js';
 import type { WalletCategoryItem } from '../src/wallet/types.js';
 import type { FinancialAiProvider } from '../src/brain/types.js';
 
@@ -155,6 +160,179 @@ describe('categoryScorer & inferCategoryFromText (AI-driven)', () => {
     it('ignores categoryHint when given "auto" to prevent searching for "auto"', () => {
       const match = selectBestCategory('auto', [], sampleCategories, 'Transportasi');
       expect(match?.id).toBe('cat-transport');
+    });
+  });
+
+  describe('buildCategoryClassificationPrompt', () => {
+    it('formats categories list and wraps untrusted user text safely', () => {
+      const { systemInstruction, promptText } = buildCategoryClassificationPrompt(
+        'Beli bensin pertamax di SPBU',
+        sampleCategories
+      );
+
+      expect(systemInstruction).toContain('ALLOWED CATEGORIES:');
+      expect(systemInstruction).toContain('[ID: cat-food] Makanan & Minuman (Group: Food & Beverage)');
+      expect(systemInstruction).toContain('[ID: cat-transport] Transportasi (Group: Transportation)');
+      expect(promptText).toContain('<untrusted_user_text');
+      expect(promptText).toContain('Beli bensin pertamax di SPBU');
+      expect(promptText).toContain('</untrusted_user_text>');
+    });
+
+    it('handles category group as a string or empty', () => {
+      const customCategories: WalletCategoryItem[] = [
+        { id: 'cat-custom', name: 'Custom Cat', group: 'Custom Group' as any, isAssignable: true },
+        { id: 'cat-nogroup', name: 'No Group Cat', isAssignable: true },
+      ];
+      const { systemInstruction } = buildCategoryClassificationPrompt('Testing', customCategories);
+      expect(systemInstruction).toContain('[ID: cat-custom] Custom Cat (Group: Custom Group)');
+      expect(systemInstruction).toContain('[ID: cat-nogroup] No Group Cat');
+    });
+  });
+
+  describe('parseCategoryClassificationResponse', () => {
+    it('parses valid raw JSON response', () => {
+      const raw = JSON.stringify({
+        categoryId: 'cat-transport',
+        categoryName: 'Transportasi',
+        confidence: 'high',
+      });
+      const parsed = parseCategoryClassificationResponse(raw, { totalTokens: 15 });
+      expect(parsed.categoryId).toBe('cat-transport');
+      expect(parsed.categoryName).toBe('Transportasi');
+      expect(parsed.confidence).toBe('high');
+      expect(parsed.tokenUsage?.totalTokens).toBe(15);
+    });
+
+    it('parses JSON wrapped in markdown code fences', () => {
+      const raw = '```json\n{"categoryId": "cat-food", "categoryName": "Makanan & Minuman", "confidence": "low"}\n```';
+      const parsed = parseCategoryClassificationResponse(raw);
+      expect(parsed.categoryId).toBe('cat-food');
+      expect(parsed.categoryName).toBe('Makanan & Minuman');
+      expect(parsed.confidence).toBe('low');
+    });
+
+    it('normalizes null or whitespace categoryId and handles parsing errors gracefully', () => {
+      const nullParsed = parseCategoryClassificationResponse('{"categoryId": null, "categoryName": null}');
+      expect(nullParsed.categoryId).toBeNull();
+      expect(nullParsed.categoryName).toBeNull();
+
+      const whitespaceParsed = parseCategoryClassificationResponse('{"categoryId": "   ", "categoryName": "  "}');
+      expect(whitespaceParsed.categoryId).toBeNull();
+      expect(whitespaceParsed.categoryName).toBeNull();
+
+      const errorParsed = parseCategoryClassificationResponse('Not valid JSON at all');
+      expect(errorParsed.categoryId).toBeNull();
+      expect(errorParsed.categoryName).toBeNull();
+    });
+  });
+
+  describe('Provider classifyCategory implementations', () => {
+    it('GeminiAiProvider executes classifyCategory with generation fallback', async () => {
+      const geminiProvider = new GeminiAiProvider('mock-key', 'gemini-3.5-flash', []);
+      (geminiProvider as any).googleGenAiClient = {
+        models: {
+          generateContent: async () => ({
+            text: JSON.stringify({
+              categoryId: 'cat-food',
+              categoryName: 'Makanan & Minuman',
+              confidence: 'high',
+            }),
+            usageMetadata: {
+              promptTokenCount: 10,
+              candidatesTokenCount: 5,
+              totalTokenCount: 15,
+            },
+          }),
+        },
+      };
+
+      const result = await geminiProvider.classifyCategory('Beli nasi goreng', sampleCategories);
+      expect(result.categoryId).toBe('cat-food');
+      expect(result.categoryName).toBe('Makanan & Minuman');
+      expect(result.confidence).toBe('high');
+      expect(result.tokenUsage?.totalTokens).toBe(15);
+    });
+
+    it('OpenAiCompatibleAiProvider executes classifyCategory via chat completions', async () => {
+      const openAiProvider = new OpenAiCompatibleAiProvider({
+        baseUrl: 'http://localhost:11434/v1',
+        apiKey: 'test-key',
+        primaryModelName: 'test-model',
+      });
+      (openAiProvider as any).httpClient = {
+        post: async () => ({
+          data: {
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    categoryId: 'cat-transport',
+                    categoryName: 'Transportasi',
+                    confidence: 'high',
+                  }),
+                },
+              },
+            ],
+            usage: {
+              prompt_tokens: 12,
+              completion_tokens: 6,
+              total_tokens: 18,
+            },
+          },
+        }),
+      };
+
+      const result = await openAiProvider.classifyCategory('Beli bensin shell', sampleCategories);
+      expect(result.categoryId).toBe('cat-transport');
+      expect(result.categoryName).toBe('Transportasi');
+      expect(result.confidence).toBe('high');
+      expect(result.tokenUsage?.totalTokens).toBe(18);
+    });
+
+    it('FallbackAiProvider executes classifyCategory and fails over to secondary on recoverable error', async () => {
+      const failingPrimary: FinancialAiProvider = {
+        providerName: 'primary-mock',
+        processTextMessage: vi.fn(),
+        processImageMessage: vi.fn(),
+        processEmailTransactionMessage: vi.fn(),
+        classifyCategory: vi.fn(async () => {
+          const err: any = new Error('Rate limit exceeded (429)');
+          err.response = { status: 429 };
+          throw err;
+        }),
+      };
+
+      const workingSecondary: FinancialAiProvider = {
+        providerName: 'secondary-mock',
+        processTextMessage: vi.fn(),
+        processImageMessage: vi.fn(),
+        processEmailTransactionMessage: vi.fn(),
+        classifyCategory: vi.fn(async () => ({
+          categoryId: 'cat-health',
+          categoryName: 'Kesehatan',
+          confidence: 'high',
+        })),
+      };
+
+      const fallbackProvider = new FallbackAiProvider([failingPrimary, workingSecondary]);
+      const result = await fallbackProvider.classifyCategory('Beli obat flu', sampleCategories);
+      expect(result.categoryId).toBe('cat-health');
+      expect(failingPrimary.classifyCategory).toHaveBeenCalled();
+      expect(workingSecondary.classifyCategory).toHaveBeenCalled();
+    });
+
+    it('FallbackAiProvider throws when provider does not implement classifyCategory', async () => {
+      const nonImplementingProvider: FinancialAiProvider = {
+        providerName: 'no-classify-mock',
+        processTextMessage: vi.fn(),
+        processImageMessage: vi.fn(),
+        processEmailTransactionMessage: vi.fn(),
+      };
+
+      const fallbackProvider = new FallbackAiProvider([nonImplementingProvider]);
+      await expect(
+        fallbackProvider.classifyCategory('Test text', sampleCategories)
+      ).rejects.toThrow("Provider 'no-classify-mock' does not implement classifyCategory.");
     });
   });
 });
