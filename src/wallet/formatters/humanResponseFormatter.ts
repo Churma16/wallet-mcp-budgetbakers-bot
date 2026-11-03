@@ -834,14 +834,7 @@ export function resolveEvidenceSourceIcons(
 
   const icons: string[] = [];
   for (const src of sources) {
-    let icon = '📩';
-    if (src.includes('PUSH_NOTIFICATION')) {
-      icon = '📲';
-    } else if (src.includes('WHATSAPP')) {
-      icon = '💬';
-    } else {
-      icon = '📩';
-    }
+    const icon = src.includes('PUSH_NOTIFICATION') ? '📲' : '📩';
     if (!icons.includes(icon)) {
       icons.push(icon);
     }
