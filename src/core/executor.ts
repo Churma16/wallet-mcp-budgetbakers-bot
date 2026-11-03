@@ -159,15 +159,7 @@ export class FinancialActionExecutor {
     const processingStartTimestamp = executionContext?.processingStartTimestamp ?? Date.now();
     const dictionary = getDictionary();
 
-    const menuText = [
-      dictionary.help.welcomeGuidance,
-      '',
-      dictionary.help.quickCommandsTitle,
-      dictionary.help.commandBalance,
-      dictionary.help.commandBudget,
-      dictionary.help.commandHistory,
-      dictionary.help.commandMenu,
-    ].join('\n');
+    const menuText = dictionary.help.welcomeGuidance;
 
     await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, menuText, {
       isHelpMenu: true,

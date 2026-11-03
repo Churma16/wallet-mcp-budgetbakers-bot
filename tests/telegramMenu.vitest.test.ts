@@ -104,7 +104,7 @@ describe('Telegram Menu and Keyboard Components', () => {
       ['edit_delete', 'Edit &amp; Hapus Transaksi (Via Reply)'],
       ['receipt', 'Kirim Foto Struk Belanja (Vision)'],
       ['summary_filter', 'Rekap &amp; Filter Riwayat'],
-      ['fast_commands', 'Perintah Cepat (0 Token AI)'],
+      ['fast_commands', 'Perintah Cepat'],
     ])('resolves valid Indonesian content for topic "%s"', (topic, expectedKeyword) => {
       const content = getTelegramGuideTopicContent(topic, 'id');
       expect(content).not.toBeNull();
@@ -119,7 +119,7 @@ describe('Telegram Menu and Keyboard Components', () => {
       ['edit_delete', 'Edit &amp; Delete Transactions (Via Reply)'],
       ['receipt', 'Send Receipt Photo (Vision)'],
       ['summary_filter', 'Summary &amp; History Queries'],
-      ['fast_commands', 'Quick Commands (0 AI Tokens)'],
+      ['fast_commands', 'Quick Commands'],
     ])('resolves valid English content for topic "%s"', (topic, expectedKeyword) => {
       const content = getTelegramGuideTopicContent(topic, 'en');
       expect(content).not.toBeNull();
