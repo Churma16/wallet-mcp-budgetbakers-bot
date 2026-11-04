@@ -35,6 +35,7 @@ import {
   createOpenAiHttpClient,
   executeChatCompletionWithFallback,
 } from './openAiClient.js';
+import { RuntimeSettingsManager } from '../../config/index.js';
 
 export type { OpenAiCompatibleProviderConfiguration };
 
@@ -72,6 +73,27 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     );
   }
 
+  private getEffectiveCandidateModels(): string[] {
+    const runtimeManager = RuntimeSettingsManager.getInstance();
+    const storedOverrides = runtimeManager.getStoredOverrides();
+    if (storedOverrides.aiModel) {
+      const fallbacks = storedOverrides.aiFallbackModels && storedOverrides.aiFallbackModels.length > 0
+        ? storedOverrides.aiFallbackModels
+        : this.candidateModelList.slice(1);
+      return Array.from(new Set([storedOverrides.aiModel, ...fallbacks]));
+    }
+    return this.candidateModelList;
+  }
+
+  private getEffectiveTimeoutMs(): number {
+    const runtimeManager = RuntimeSettingsManager.getInstance();
+    const storedOverrides = runtimeManager.getStoredOverrides();
+    if (storedOverrides.aiRequestTimeoutSeconds && storedOverrides.aiRequestTimeoutSeconds > 0) {
+      return storedOverrides.aiRequestTimeoutSeconds * 1000;
+    }
+    return this.requestTimeoutMilliseconds;
+  }
+
   private executeChatCompletion(
     messages: Array<Record<string, unknown>>,
     requestContextDescription?: string,
@@ -79,9 +101,9 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
   ) {
     return executeChatCompletionWithFallback(
       this.httpClient,
-      this.candidateModelList,
+      this.getEffectiveCandidateModels(),
       this.providerName,
-      this.requestTimeoutMilliseconds,
+      this.getEffectiveTimeoutMs(),
       messages,
       requestContextDescription,
       enforceJsonResponseFormat

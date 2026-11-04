@@ -24,6 +24,7 @@ import { getDictionary } from '../../i18n/index.js';
 import { applicationLogger } from '../../lib/logger.js';
 import { CategoryContextService } from '../../brain/category/categoryContext.js';
 import { FINANCIAL_ACTION_TYPES } from '../../brain/constants.js';
+import { RuntimeSettingsManager } from '../../config/index.js';
 
 function formatAccountResolutionIssueMessage(issue: AccountResolutionIssue): string {
   const dictionary = getDictionary();
@@ -69,6 +70,10 @@ export class CreateRecordActionHandler implements FinancialActionHandler<typeof 
   }
 
   private resolveActiveCategoryResolutionMode(): 'ask' | 'auto' {
+    const storedOverride = RuntimeSettingsManager.getInstance().getStoredOverrides().categoryResolutionMode;
+    if (storedOverride) {
+      return storedOverride;
+    }
     const environmentOverride = process.env.CATEGORY_RESOLUTION_MODE?.trim().toLowerCase();
     if (environmentOverride === 'auto' || environmentOverride === 'ask') {
       return environmentOverride;

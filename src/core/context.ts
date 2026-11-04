@@ -2,6 +2,7 @@ import {
   loadEnvironmentConfiguration,
   setRuntimeApplicationConfig,
   ApplicationEnvironmentConfiguration,
+  RuntimeSettingsManager,
 } from '../config/index.js';
 import { setActiveLanguage } from '../i18n/index.js';
 import {
@@ -68,6 +69,7 @@ export interface AppContext {
  */
 export function createAppContext(customConfig?: ApplicationEnvironmentConfiguration): AppContext {
   const config = customConfig || loadEnvironmentConfiguration();
+  RuntimeSettingsManager.getInstance().applyToConfiguration(config);
   setRuntimeApplicationConfig(config);
   setActiveLanguage(config.appLanguage);
 

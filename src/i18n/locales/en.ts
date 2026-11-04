@@ -432,6 +432,7 @@ export const englishDictionary: ResponseDictionary = {
     commandHistoryDescription: 'Check recent transaction history',
     commandSummaryDescription: 'Check this month expense summary',
     commandMenuDescription: 'Open main menu and guide',
+    commandSettingsDescription: 'Open bot settings menu',
 
     topicRecord: '\u{1F4DD} Record Transaction',
     topicTransfer: '\u{1F504} Transfer Funds',
@@ -515,6 +516,79 @@ export const englishDictionary: ResponseDictionary = {
       '\u{2022} <b>History</b> \u{2014} 5 most recent transactions',
       '\u{2022} <b>Guide</b> \u{2014} Show this user guide',
     ].join('\n'),
+  },
+
+  telegramSettings: {
+    title: '<b>⚙️ Bot Settings</b>',
+    subtitle: 'Active runtime configuration and bot operational preferences:',
+    activeSummaryHeader: '📊 <b>Active Runtime Configuration:</b>',
+    savedAlert: '✅ Settings updated successfully!',
+    resetAlert: '🔄 Settings reset to system defaults!',
+    unauthorizedAlert: '⛔ Access denied. Only the bot owner can modify settings.',
+
+    buttonCategoryMode: '🏷 Category Mode',
+    buttonAiModel: '🤖 AI Model & Provider',
+    buttonLanguage: '🌐 Response Language',
+    buttonCurrency: '💱 Currency',
+    buttonAdvanced: '🛠 Advanced Settings',
+    buttonBackToMain: '🔙 Back to Settings Menu',
+    buttonBackToAdvanced: '🔙 Back to Advanced',
+    buttonClose: '✖️ Close Menu',
+
+    categoryTitle: '<b>🏷 Category Resolution Mode</b>',
+    categoryInfo: '[INFO] Function: Determines whether bot asks for clarification on ambiguous categories or chooses automatically.',
+    categoryOptionAsk: 'Ask when ambiguous (ask)',
+    categoryOptionAuto: 'Automatic best-match (auto)',
+
+    aiModelTitle: '<b>🤖 AI Model & Provider</b>',
+    aiModelInfo: '[INFO] Function: Selects the primary LLM model for extracting transactions, receipts, and classifications.',
+    aiModelOptionFlashLite: 'Gemini 3.5 Flash Lite (Fast & Efficient)',
+    aiModelOptionFlash: 'Gemini 3.8 Flash (High Accuracy)',
+    aiModelOptionFallbackChain: 'Fallback Chain (3.6-flash, 3.8-flash)',
+
+    languageTitle: '<b>🌐 Response Language</b>',
+    languageInfo: '[INFO] Function: Configures the language for bot replies, reports, and transaction confirmations.',
+    languageOptionId: '🇮🇩 Bahasa Indonesia (id)',
+    languageOptionEn: '🇬🇧 English (en)',
+
+    currencyTitle: '<b>💱 Default Currency</b>',
+    currencyInfo: '[INFO] Function: Defines the base currency when amounts are recorded without currency symbols.',
+
+    advancedTitle: '<b>🛠 Advanced Settings</b>',
+    advancedInfo: '[INFO] Function: Configures performance, message queuing, log retention, and system sync.',
+    advancedButtonTimezone: '🌍 Timezone',
+    advancedButtonAiTimeout: '⏱ AI Request Timeout',
+    advancedButtonEmailLookback: '📬 Email Lookback',
+    advancedButtonQueueInterval: '⏳ Queue Throttle Interval',
+    advancedButtonLogRetention: '🗄 Log Retention',
+    advancedButtonReset: '🔄 Reset to Defaults',
+
+    timezoneTitle: '<b>🌍 Operational Timezone</b>',
+    timezoneInfo: '[INFO] Function: Sets the operational timezone for transaction timestamping.',
+
+    aiTimeoutTitle: '<b>⏱ AI Request Timeout</b>',
+    aiTimeoutInfo: '[INFO] Function: Maximum duration to await AI responses before switching to fallback models.',
+
+    emailLookbackTitle: '<b>📬 Email Sync Lookback</b>',
+    emailLookbackInfo: '[INFO] Function: Lookback window for fetching inbound transaction emails from IMAP.',
+
+    queueIntervalTitle: '<b>⏳ Message Queue Throttle</b>',
+    queueIntervalInfo: '[INFO] Function: Throttling interval for outgoing messages to prevent API rate limiting.',
+
+    logRetentionTitle: '<b>🗄 Log File Retention</b>',
+    logRetentionInfo: '[INFO] Function: Retention period for application log files before automatic cleanup.',
+
+    resetConfirmTitle: '<b>🔄 Reset Settings to Defaults</b>',
+    resetConfirmInfo: '[INFO] Function: Reverts all runtime configurations back to system initial settings (.env / defaults).',
+    resetConfirmPrompt: '⚠️ <b>Confirm Reset:</b>\nAre you sure you want to delete runtime settings and restore initial values (.env)?',
+    resetConfirmButton: '✅ Yes, Reset Now',
+    resetCancelButton: '❌ Cancel',
+
+    debugToggleLabel: (enabled: boolean) => `🐞 Debug Logging: ${enabled ? 'ACTIVE [ON]' : 'DISABLED [OFF]'}`,
+    debugTitle: '<b>🐞 Debug Payload Logging</b>',
+    debugInfo: '[INFO] Function: Enables verbose payload logging to daily log files for troubleshooting.',
+    debugOptionOn: 'Active (ON)',
+    debugOptionOff: 'Disabled (OFF)',
   },
 
 

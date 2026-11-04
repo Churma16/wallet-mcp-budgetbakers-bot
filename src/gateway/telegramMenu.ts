@@ -12,6 +12,7 @@ export function getTelegramBotCommands(languageCode?: SupportedLanguage): Array<
     { command: 'riwayat', description: dictionary.commandHistoryDescription },
     { command: 'rekap', description: dictionary.commandSummaryDescription },
     { command: 'menu', description: dictionary.commandMenuDescription },
+    { command: 'settings', description: dictionary.commandSettingsDescription },
   ];
 }
 

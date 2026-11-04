@@ -430,6 +430,7 @@ export const indonesianDictionary: ResponseDictionary = {
     commandHistoryDescription: 'Cek transaksi terakhir',
     commandSummaryDescription: 'Cek ringkasan pengeluaran bulan ini',
     commandMenuDescription: 'Buka menu utama dan panduan',
+    commandSettingsDescription: 'Buka menu pengaturan bot',
 
     topicRecord: '\u{1F4DD} Catat Transaksi',
     topicTransfer: '\u{1F504} Cara Transfer',
@@ -513,6 +514,79 @@ export const indonesianDictionary: ResponseDictionary = {
       '\u{2022} <b>Riwayat</b> \u{2014} 5 transaksi terakhir',
       '\u{2022} <b>Panduan</b> \u{2014} Menampilkan menu panduan ini',
     ].join('\n'),
+  },
+
+  telegramSettings: {
+    title: '<b>⚙️ Pengaturan Bot</b>',
+    subtitle: 'Konfigurasi operasional aktif dan preferensi bot saat ini:',
+    activeSummaryHeader: '📊 <b>Status Konfigurasi Aktif:</b>',
+    savedAlert: '✅ Pengaturan berhasil diperbarui!',
+    resetAlert: '🔄 Pengaturan dikembalikan ke nilai default!',
+    unauthorizedAlert: '⛔ Akses ditolak. Hanya pemilik bot yang dapat mengubah pengaturan.',
+
+    buttonCategoryMode: '🏷 Mode Kategori',
+    buttonAiModel: '🤖 Model & Provider AI',
+    buttonLanguage: '🌐 Bahasa Respon',
+    buttonCurrency: '💱 Mata Uang',
+    buttonAdvanced: '🛠 Pengaturan Lanjutan',
+    buttonBackToMain: '🔙 Kembali ke Menu Pengaturan',
+    buttonBackToAdvanced: '🔙 Kembali ke Lanjutan',
+    buttonClose: '✖️ Tutup Menu',
+
+    categoryTitle: '<b>🏷 Mode Resolusi Kategori</b>',
+    categoryInfo: '[INFO] Fungsi: Menentukan apakah bot meminta konfirmasi saat kategori ambigu atau memilih otomatis.',
+    categoryOptionAsk: 'Tanya jika ragu (ask)',
+    categoryOptionAuto: 'Otomatis pilih terbaik (auto)',
+
+    aiModelTitle: '<b>🤖 Model & Provider AI</b>',
+    aiModelInfo: '[INFO] Fungsi: Memilih model LLM utama untuk mengekstrak transaksi, struk, dan klasifikasi.',
+    aiModelOptionFlashLite: 'Gemini 3.5 Flash Lite (Cepat)',
+    aiModelOptionFlash: 'Gemini 3.8 Flash (Akurasi Tinggi)',
+    aiModelOptionFallbackChain: 'Rantai Cadangan (3.6-flash, 3.8-flash)',
+
+    languageTitle: '<b>🌐 Bahasa Respon</b>',
+    languageInfo: '[INFO] Fungsi: Mengatur bahasa pesan balasan, laporan, dan konfirmasi transaksi.',
+    languageOptionId: '🇮🇩 Bahasa Indonesia (id)',
+    languageOptionEn: '🇬🇧 English (en)',
+
+    currencyTitle: '<b>💱 Mata Uang Default</b>',
+    currencyInfo: '[INFO] Fungsi: Menentukan mata uang dasar saat nominal dicatat tanpa simbol mata uang.',
+
+    advancedTitle: '<b>🛠 Pengaturan Lanjutan</b>',
+    advancedInfo: '[INFO] Fungsi: Konfigurasi performa, antrean, retensi log, dan sinkronisasi sistem.',
+    advancedButtonTimezone: '🌍 Zona Waktu',
+    advancedButtonAiTimeout: '⏱ Batas Waktu AI',
+    advancedButtonEmailLookback: '📬 Email Lookback',
+    advancedButtonQueueInterval: '⏳ Interval Antrean',
+    advancedButtonLogRetention: '🗄 Retensi Log',
+    advancedButtonReset: '🔄 Reset ke Default',
+
+    timezoneTitle: '<b>🌍 Zona Waktu Operasional</b>',
+    timezoneInfo: '[INFO] Fungsi: Mengatur zona waktu operasional untuk pencatatan tanggal transaksi.',
+
+    aiTimeoutTitle: '<b>⏱ Batas Waktu Permintaan AI</b>',
+    aiTimeoutInfo: '[INFO] Fungsi: Batas maksimal durasi tunggu respon AI sebelum beralih ke model cadangan.',
+
+    emailLookbackTitle: '<b>📬 Email Sync Lookback</b>',
+    emailLookbackInfo: '[INFO] Fungsi: Rentang waktu penarikan email transaksi masuk dari server IMAP.',
+
+    queueIntervalTitle: '<b>⏳ Interval Antrean Pesan</b>',
+    queueIntervalInfo: '[INFO] Fungsi: Jeda waktu throttling pengiriman pesan keluar untuk mencegah rate limit.',
+
+    logRetentionTitle: '<b>🗄 Retensi Berkas Log</b>',
+    logRetentionInfo: '[INFO] Fungsi: Durasi penyimpanan file log aplikasi sebelum dibersihkan otomatis.',
+
+    resetConfirmTitle: '<b>🔄 Reset Pengaturan ke Default</b>',
+    resetConfirmInfo: '[INFO] Fungsi: Mengembalikan seluruh konfigurasi runtime ke pengaturan awal (.env / default).',
+    resetConfirmPrompt: '⚠️ <b>Konfirmasi Reset:</b>\nApakah Anda yakin ingin menghapus konfigurasi runtime dan kembali ke pengaturan awal (.env)?',
+    resetConfirmButton: '✅ Ya, Reset Sekarang',
+    resetCancelButton: '❌ Batal',
+
+    debugToggleLabel: (enabled: boolean) => `🐞 Debug Logging: ${enabled ? 'AKTIF [ON]' : 'NONAKTIF [OFF]'}`,
+    debugTitle: '<b>🐞 Debug Payload Logging</b>',
+    debugInfo: '[INFO] Fungsi: Mengaktifkan pencatatan detail payload transaksi ke file log untuk debugging.',
+    debugOptionOn: 'Aktif (ON)',
+    debugOptionOff: 'Nonaktif (OFF)',
   },
 
 

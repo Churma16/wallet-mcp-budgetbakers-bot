@@ -29,6 +29,7 @@ An automated personal bookkeeping assistant for **WhatsApp** and **Telegram** in
 - [Everyday Usage & Commands](#everyday-usage--commands)
   - [Direct Chat Recording vs Confirmation Queue](#direct-chat-recording-vs-confirmation-queue)
   - [Supported Commands](#supported-commands)
+  - [Interactive Bot Settings (Telegram)](#interactive-bot-settings-telegram)
 - [Optional Inbound Sync](#optional-inbound-sync)
   - [Bank Email Synchronization (Gmail IMAP IDLE)](#bank-email-synchronization-gmail-imap-idle)
   - [Android Push Notification Forwarder](#android-push-notification-forwarder)
@@ -101,6 +102,9 @@ cp .env.example .env
 > If you live outside Indonesia, set `APP_LANGUAGE=en`, set your local `DEFAULT_CURRENCY` (e.g. `USD`, `EUR`, `SGD`), and select your [IANA timezone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) (e.g. `America/New_York`, `Europe/London`).
 > For full variable documentation, see [.env.example](.env.example) and the [Setup and Diagnostics Guide](docs/setup-and-diagnostics.md).
 
+> [!TIP]
+> Operational preferences like AI models, category resolution mode, language, currency, timezone, and sync rules can also be customized interactively on the fly via `/settings` on Telegram without restarting the bot.
+
 ### 3. Verify Connectivity
 
 Before starting, run the diagnostic doctor command to verify token scopes, AI credentials, and filesystem permissions:
@@ -158,6 +162,20 @@ The bot uses two distinct paths depending on where the transaction originates:
 | **Filtered History** | *"Riwayat pengeluaran makanan bulan ini"* or *"history bca yesterday"* | Composes filters across category, account, type, and date range in a single query. |
 | **Paginated History**| *"Riwayat bca hal 2"* or *"history 5 oldest"* | Navigates history pages with deterministic sorting. |
 | **Text Search** | *"Cari kopi"* or *"search starbucks"* | Searches transaction notes and merchants with case-insensitive keyword matching. |
+| **Bot Settings** | `/settings` or *"pengaturan"* | *(Telegram only)* Opens 2-level interactive inline keyboard to customize AI models, categories, language, currency, and sync options on the fly. |
+
+### Interactive Bot Settings (Telegram)
+
+For Telegram users, runtime behavior can be customized on the fly without editing `.env` or restarting the container. Send `/settings` or type `pengaturan` to open an interactive 2-level inline keyboard menu:
+
+- **AI Model & Fallbacks**: Switch candidate Gemini models (e.g. `gemini-3.5-flash-lite`, `gemini-3.8-flash`) or OpenRouter/custom models, toggle fallback chains, and adjust request timeouts.
+- **Category Resolution Mode**: Toggle between `hybrid` (rule context + AI), `llm` (pure AI classification), or `rule` (deterministic matching).
+- **Language & Regional Preferences**: Change bot language (`id` / `en`), default currency (`IDR`, `USD`, `EUR`, `SGD`), and timezone (`Asia/Jakarta`, `UTC`, `Asia/Singapore`).
+- **Email Sync & Anti-Flood**: Adjust email lookback window (`10m`, `30m`, `60m`, `120m`) and message queue dispatch interval (`1s`, `2s`, `3s`, `5s`).
+- **Diagnostics & Reset**: Configure daily log retention (`3d` to `30d`), toggle financial payload debugging, or reset overrides back to system/`.env` defaults.
+
+> [!NOTE]
+> All custom settings are stored in `auth_session/app-settings.json`. Credentials (API keys, bot tokens, passwords, and user whitelist IDs) remain strictly isolated in `.env` and can never be modified through chat.
 
 ---
 
