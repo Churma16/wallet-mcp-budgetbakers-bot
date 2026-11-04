@@ -1,4 +1,4 @@
-# Adding Bank & Notification Rules
+# Adding Providers (Banks, E-Wallets & Merchants)
 
 This guide explains how to add support for a new bank, digital wallet, or merchant in the bot.
 
