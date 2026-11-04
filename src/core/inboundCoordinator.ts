@@ -1,6 +1,6 @@
 import { ExtractedEmailTransactionData } from '../brain/types.js';
 import { GateEvaluationResult } from '../email/index.js';
-import { PendingTransactionService } from './pending.js';
+import { PendingTransactionService, buildRecordsForPendingItem } from './pending.js';
 import { MessagingGatewayService } from '../gateway/index.js';
 import { TransactionCorrelationService, TransactionEvidence, TransactionEvidenceSource } from '../email/index.js';
 import { WalletCacheService, WalletMcpClientService, WalletRecordItem } from '../wallet/index.js';
@@ -10,7 +10,6 @@ import {
   formatCorrelatedWalletRecordNotification,
   formatPendingConfirmationSuccess,
 } from '../wallet/formatters/humanResponseFormatter.js';
-import { buildRecordsForPendingItem } from './handlers/pendingHandler.js';
 import { TransactionMessageStore } from '../wallet/records/index.js';
 import { RuntimeSettingsManager } from '../config/runtimeSettingsManager.js';
 import { applicationLogger } from '../lib/logger.js';
