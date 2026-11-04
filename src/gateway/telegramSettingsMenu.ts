@@ -40,6 +40,11 @@ export function createSettingsMainInlineKeyboard(
     .row()
     .text(dictionary.buttonAdvanced, 'settings:page:advanced')
     .row()
+    .text(
+      dictionary.autoRecordEnrichedToggleLabel(settings.autoRecordEnriched),
+      'settings:toggle:auto_record_enriched'
+    )
+    .row()
     .text(dictionary.debugToggleLabel(settings.debugLoggingEnabled), 'settings:toggle:debug')
     .row()
     .text(dictionary.buttonClose, 'settings:action:close');
@@ -280,6 +285,7 @@ export function getTelegramSettingsMenuContent(
         '',
         dictionary.activeSummaryHeader,
         `• <b>Mode Kategori:</b> <code>${settings.categoryResolutionMode}</code>`,
+        `• <b>Auto-Record Enriched:</b> <code>${settings.autoRecordEnriched ? 'ON' : 'OFF'}</code>`,
         `• <b>Model AI:</b> <code>${settings.aiModel}</code>`,
         `• <b>Fallback AI:</b> <code>${settings.aiFallbackModels.join(', ') || 'none'}</code>`,
         `• <b>Bahasa Respon:</b> <code>${settings.appLanguage === 'id' ? 'Indonesia (id)' : 'English (en)'}</code>`,

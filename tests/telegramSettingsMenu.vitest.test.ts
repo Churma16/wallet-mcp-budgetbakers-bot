@@ -61,17 +61,19 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
       expect(content.text).toContain('AI Timeout:');
       expect(content.text).toContain('Antrean Pesan:');
       expect(content.text).toContain('Retensi Log:');
+      expect(content.text).toContain('Auto-Record Enriched:');
       expect(content.text).toContain('Debug Logging:');
 
       const markup = content.replyMarkup.inline_keyboard;
-      expect(markup.length).toBe(5);
+      expect(markup.length).toBe(6);
       expect(markup[0][0].callback_data).toBe('settings:page:category');
       expect(markup[0][1].callback_data).toBe('settings:page:ai_model');
       expect(markup[1][0].callback_data).toBe('settings:page:language');
       expect(markup[1][1].callback_data).toBe('settings:page:currency');
       expect(markup[2][0].callback_data).toBe('settings:page:advanced');
-      expect(markup[3][0].callback_data).toBe('settings:toggle:debug');
-      expect(markup[4][0].callback_data).toBe('settings:action:close');
+      expect(markup[3][0].callback_data).toBe('settings:toggle:auto_record_enriched');
+      expect(markup[4][0].callback_data).toBe('settings:toggle:debug');
+      expect(markup[5][0].callback_data).toBe('settings:action:close');
     });
 
     it('renders Category sub-menu with one-line function overview and checkmark on active option', () => {
@@ -240,6 +242,27 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
       const buttons = options.reply_markup.inline_keyboard;
       expect(buttons[1][0].text).toContain('✅');
       expect(buttons[1][0].text).toContain('Otomatis');
+    });
+
+    it('toggles autoRecordEnriched when settings:toggle:auto_record_enriched is received', async () => {
+      const adapter = new TelegramMessagingAdapter(dummyToken, allowedUserId, vi.fn());
+      const mockAnswerCallbackQuery = vi.fn().mockResolvedValue({});
+      const mockEditMessageText = vi.fn().mockResolvedValue({});
+
+      const initialVal = RuntimeSettingsManager.getInstance().getSetting('autoRecordEnriched');
+      expect(initialVal).toBe(false);
+
+      const mockContext: any = {
+        from: { id: Number(allowedUserId) },
+        callbackQuery: { data: 'settings:toggle:auto_record_enriched' },
+        answerCallbackQuery: mockAnswerCallbackQuery,
+        editMessageText: mockEditMessageText,
+      };
+
+      await adapter.handleSettingsCallbackQuery(mockContext, 'settings:toggle:auto_record_enriched');
+
+      const toggledVal = RuntimeSettingsManager.getInstance().getSetting('autoRecordEnriched');
+      expect(toggledVal).toBe(true);
     });
 
     it('toggles debug logging when settings:toggle:debug is received', async () => {

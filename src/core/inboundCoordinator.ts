@@ -8,7 +8,11 @@ import {
   formatPendingEmailTransactionNotification,
   formatEnrichedPendingEmailTransactionNotification,
   formatCorrelatedWalletRecordNotification,
+  formatPendingConfirmationSuccess,
 } from '../wallet/formatters/humanResponseFormatter.js';
+import { buildRecordsForPendingItem } from './handlers/pendingHandler.js';
+import { TransactionMessageStore } from '../wallet/records/index.js';
+import { RuntimeSettingsManager } from '../config/runtimeSettingsManager.js';
 import { applicationLogger } from '../lib/logger.js';
 
 export interface InboundTransactionCandidateContext {
@@ -30,6 +34,8 @@ export interface InboundTransactionCoordinatorDependencies {
   defaultCurrency: string;
   correlationService: TransactionCorrelationService;
   walletMcpClient?: WalletMcpClientService;
+  transactionMessageStore?: TransactionMessageStore;
+  runtimeSettingsManager?: RuntimeSettingsManager;
 }
 
 /**
@@ -212,6 +218,134 @@ export async function coordinateInboundTransactionCandidate(
     }
 
     if (enrichedItem) {
+      const activeSettings = (deps.runtimeSettingsManager || RuntimeSettingsManager.getInstance()).getSettings();
+      const isAutoRecordEnriched = Boolean(activeSettings.autoRecordEnriched);
+
+      const hasValidAccount = Boolean(
+        enrichedItem.matchedAccountId &&
+        (cachedAccounts.length === 0 || cachedAccounts.some(acc => acc.id === enrichedItem.matchedAccountId))
+      );
+
+      const categories = walletCacheService.getCategories();
+      const resolvedCategory = enrichedItem.matchedCategoryId
+        ? categories.find(c => c.id === enrichedItem.matchedCategoryId)
+        : (enrichedItem.matchedCategoryName
+            ? categories.find(c => c.name.toLowerCase() === enrichedItem.matchedCategoryName?.trim().toLowerCase())
+            : undefined);
+
+      const hasValidCategory = Boolean(
+        (resolvedCategory &&
+          resolvedCategory.isAssignable !== false &&
+          resolvedCategory.group?.id !== 'system_categories' &&
+          enrichedItem.matchedCategoryName !== 'Unknown') ||
+        (!resolvedCategory &&
+          categories.length === 0 &&
+          enrichedItem.matchedCategoryName &&
+          enrichedItem.matchedCategoryName !== 'Unknown')
+      );
+
+      const isTransferEligible =
+        enrichedItem.transactionType !== 'TRANSFER' ||
+        Boolean(enrichedItem.transfer?.pairingMode === 'existing' || enrichedItem.matchedDestinationAccountId);
+
+      const isEligibleForAutoRecord =
+        isAutoRecordEnriched &&
+        Boolean(walletMcpClient) &&
+        hasValidAccount &&
+        hasValidCategory &&
+        enrichedItem.amount !== 0 &&
+        isTransferEligible;
+
+      if (isEligibleForAutoRecord && walletMcpClient) {
+        try {
+          applicationLogger.mcp(
+            `[Auto-Record Enriched] Ticket #${enrichedItem.ticketId} qualifies for immediate dispatch. Recording to Wallet MCP...`
+          );
+
+          if (resolvedCategory && !enrichedItem.matchedCategoryId) {
+            enrichedItem.matchedCategoryId = resolvedCategory.id;
+          }
+
+          const recordsToCreate = buildRecordsForPendingItem(enrichedItem, walletCacheService);
+          const createResult = await walletMcpClient.createRecords(recordsToCreate);
+          const createdId = createResult?.results?.[0]?.id;
+
+          pendingTransactionManager.resolvePendingTransaction(enrichedItem.ticketId);
+          applicationLogger.success(
+            `[Auto-Record Enriched] Ticket #${enrichedItem.ticketId} successfully recorded to Wallet MCP (recordId=${createdId || 'n/a'}).`
+          );
+
+          if (onRecordProcessed) {
+            const allRefs = [
+              ...(enrichedItem.referenceNumbers || []),
+              ...(enrichedItem.referenceNumber ? [enrichedItem.referenceNumber] : []),
+            ];
+            for (const ref of allRefs) {
+              onRecordProcessed(ref);
+            }
+          }
+
+          const successNotification = formatPendingConfirmationSuccess(enrichedItem);
+          let wasEdited = false;
+          if (
+            enrichedItem.notificationMessageIds &&
+            Object.keys(enrichedItem.notificationMessageIds).length > 0 &&
+            typeof messagingGateway.editBroadcastNotification === 'function'
+          ) {
+            wasEdited = await messagingGateway.editBroadcastNotification(
+              enrichedItem.notificationMessageIds,
+              successNotification
+            );
+          }
+
+          let finalReceipts: Record<string, any> = {};
+          if (wasEdited && enrichedItem.notificationMessageIds) {
+            for (const [channel, messageId] of Object.entries(enrichedItem.notificationMessageIds)) {
+              finalReceipts[channel] = { messageId };
+            }
+          } else {
+            finalReceipts = (await messagingGateway.broadcastNotification(successNotification)) || {};
+          }
+
+          if (deps.transactionMessageStore && createdId) {
+            for (const [channel, receipt] of Object.entries(finalReceipts)) {
+              const messageId =
+                typeof receipt === 'object' && receipt !== null && 'messageId' in receipt
+                  ? String(receipt.messageId)
+                  : typeof receipt === 'string'
+                    ? receipt
+                    : undefined;
+
+              if (messageId) {
+                deps.transactionMessageStore.recordMessageMapping(messageId, {
+                  recordId: createdId,
+                  accountId: enrichedItem.matchedAccountId,
+                  accountName: enrichedItem.bankDisplayName || enrichedItem.accountNameHint,
+                  currency: enrichedItem.currency,
+                  recordDate: enrichedItem.recordDate,
+                  note: enrichedItem.note,
+                  categoryId: enrichedItem.matchedCategoryId,
+                  categoryName: enrichedItem.matchedCategoryName,
+                  labels: enrichedItem.labels,
+                  amount: enrichedItem.amount,
+                  counterParty: enrichedItem.counterParty,
+                  channel,
+                  isTransfer: enrichedItem.transactionType === 'TRANSFER',
+                });
+              }
+            }
+          }
+
+          return;
+        } catch (autoRecordError) {
+          applicationLogger.error(
+            `[Auto-Record Error] Ticket #${enrichedItem.ticketId} auto-record failed: ${
+              autoRecordError instanceof Error ? autoRecordError.message : String(autoRecordError)
+            }. Retaining in pending queue.`
+          );
+        }
+      }
+
       const totalPendingCount = pendingTransactionManager.getAllPendingTransactions().length;
       const notificationText = formatEnrichedPendingEmailTransactionNotification(
         enrichedItem,

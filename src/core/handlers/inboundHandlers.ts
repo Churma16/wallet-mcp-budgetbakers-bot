@@ -7,6 +7,7 @@ import {
 import { FinancialAiProvider } from '../../brain/index.js';
 import { PendingTransactionService } from '../pending.js';
 import { WalletCacheService, WalletMcpClientService } from '../../wallet/index.js';
+import { TransactionMessageStore } from '../../wallet/records/index.js';
 import { coordinateInboundTransactionCandidate } from '../inboundCoordinator.js';
 import { evaluateNotificationThroughGate } from '../../config/notificationRules.js';
 import { applicationLogger } from '../../lib/logger.js';
@@ -24,7 +25,8 @@ export class EmailTransactionHandler {
     private readonly defaultCurrency: string = 'IDR',
     private readonly correlationService: TransactionCorrelationService = new TransactionCorrelationService(),
     private readonly emailListenerServiceGetter?: () => EmailListenerService | null,
-    private readonly walletMcpClient?: WalletMcpClientService
+    private readonly walletMcpClient?: WalletMcpClientService,
+    private readonly transactionMessageStore?: TransactionMessageStore
   ) {}
 
   /**
@@ -95,6 +97,7 @@ export class EmailTransactionHandler {
         defaultCurrency: this.defaultCurrency,
         correlationService: this.correlationService,
         walletMcpClient: this.walletMcpClient,
+        transactionMessageStore: this.transactionMessageStore,
       }
     );
   }
@@ -112,7 +115,8 @@ export class NotificationTransactionHandler {
     private readonly messagingGateway: MessagingGatewayService,
     private readonly defaultCurrency: string = 'IDR',
     private readonly correlationService: TransactionCorrelationService = new TransactionCorrelationService(),
-    private readonly walletMcpClient?: WalletMcpClientService
+    private readonly walletMcpClient?: WalletMcpClientService,
+    private readonly transactionMessageStore?: TransactionMessageStore
   ) {}
 
   /**
@@ -217,6 +221,7 @@ export class NotificationTransactionHandler {
         defaultCurrency: this.defaultCurrency,
         correlationService: this.correlationService,
         walletMcpClient: this.walletMcpClient,
+        transactionMessageStore: this.transactionMessageStore,
       }
     );
   }

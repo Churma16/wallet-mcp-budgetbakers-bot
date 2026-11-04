@@ -276,6 +276,7 @@ describe('RuntimeSettingsManager', () => {
     it('contains only approved keys in ALLOWED_RUNTIME_SETTINGS_KEYS', () => {
       expect(ALLOWED_RUNTIME_SETTINGS_KEYS).toEqual([
         'categoryResolutionMode',
+        'autoRecordEnriched',
         'aiModel',
         'aiFallbackModels',
         'appLanguage',
@@ -337,6 +338,23 @@ describe('RuntimeSettingsManager', () => {
       fs.writeFileSync(testSettingsFilePath, '{ corrupted JSON !!!', 'utf-8');
       const manager = new RuntimeSettingsManager(testSettingsFilePath);
       expect(manager.getStoredOverrides()).toEqual({});
+    });
+
+    it('handles autoRecordEnriched boolean and string values accurately', async () => {
+      const manager = new RuntimeSettingsManager(testSettingsFilePath);
+      expect(manager.getSetting('autoRecordEnriched')).toBe(false);
+
+      await manager.updateSetting('autoRecordEnriched', true);
+      expect(manager.getSetting('autoRecordEnriched')).toBe(true);
+
+      await manager.updateSettings({ autoRecordEnriched: 'false' as any });
+      expect(manager.getSetting('autoRecordEnriched')).toBe(false);
+
+      await manager.updateSettings({ autoRecordEnriched: 'true' as any });
+      expect(manager.getSetting('autoRecordEnriched')).toBe(true);
+
+      await manager.updateSettings({ autoRecordEnriched: 'invalid_str' as any });
+      expect(manager.getSetting('autoRecordEnriched')).toBe(true);
     });
 
     it('ignores invalid categoryResolutionMode', async () => {
