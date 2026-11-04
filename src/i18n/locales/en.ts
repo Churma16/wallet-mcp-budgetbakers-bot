@@ -536,26 +536,26 @@ export const englishDictionary: ResponseDictionary = {
     buttonClose: '✖️ Close Menu',
 
     categoryTitle: '<b>🏷 Category Resolution Mode</b>',
-    categoryInfo: '[INFO] Function: Determines whether bot asks for clarification on ambiguous categories or chooses automatically.',
+    categoryInfo: 'Function: Determines whether bot asks for clarification on ambiguous categories or chooses automatically.',
     categoryOptionAsk: 'Ask when ambiguous (ask)',
     categoryOptionAuto: 'Automatic best-match (auto)',
 
     aiModelTitle: '<b>🤖 AI Model & Provider</b>',
-    aiModelInfo: '[INFO] Function: Selects the primary LLM model for extracting transactions, receipts, and classifications.',
+    aiModelInfo: 'Function: Selects the primary LLM model for extracting transactions, receipts, and classifications.',
     aiModelOptionFlashLite: 'Gemini 3.5 Flash Lite (Fast & Efficient)',
     aiModelOptionFlash: 'Gemini 3.8 Flash (High Accuracy)',
     aiModelOptionFallbackChain: 'Fallback Chain (3.6-flash, 3.8-flash)',
 
     languageTitle: '<b>🌐 Response Language</b>',
-    languageInfo: '[INFO] Function: Configures the language for bot replies, reports, and transaction confirmations.',
+    languageInfo: 'Function: Configures the language for bot replies, reports, and transaction confirmations.',
     languageOptionId: '🇮🇩 Bahasa Indonesia (id)',
     languageOptionEn: '🇬🇧 English (en)',
 
     currencyTitle: '<b>💱 Default Currency</b>',
-    currencyInfo: '[INFO] Function: Defines the base currency when amounts are recorded without currency symbols.',
+    currencyInfo: 'Function: Defines the base currency when amounts are recorded without currency symbols.',
 
     advancedTitle: '<b>🛠 Advanced Settings</b>',
-    advancedInfo: '[INFO] Function: Configures performance, message queuing, log retention, and system sync.',
+    advancedInfo: 'Function: Configures performance, message queuing, log retention, and system sync.',
     advancedButtonTimezone: '🌍 Timezone',
     advancedButtonAiTimeout: '⏱ AI Request Timeout',
     advancedButtonEmailLookback: '📬 Email Lookback',
@@ -564,29 +564,29 @@ export const englishDictionary: ResponseDictionary = {
     advancedButtonReset: '🔄 Reset to Defaults',
 
     timezoneTitle: '<b>🌍 Operational Timezone</b>',
-    timezoneInfo: '[INFO] Function: Sets the operational timezone for transaction timestamping.',
+    timezoneInfo: 'Function: Sets the operational timezone for transaction timestamping.',
 
     aiTimeoutTitle: '<b>⏱ AI Request Timeout</b>',
-    aiTimeoutInfo: '[INFO] Function: Maximum duration to await AI responses before switching to fallback models.',
+    aiTimeoutInfo: 'Function: Maximum duration to await AI responses before switching to fallback models.',
 
     emailLookbackTitle: '<b>📬 Email Sync Lookback</b>',
-    emailLookbackInfo: '[INFO] Function: Lookback window for fetching inbound transaction emails from IMAP.',
+    emailLookbackInfo: 'Function: Lookback window for fetching inbound transaction emails from IMAP.',
 
     queueIntervalTitle: '<b>⏳ Message Queue Throttle</b>',
-    queueIntervalInfo: '[INFO] Function: Throttling interval for outgoing messages to prevent API rate limiting.',
+    queueIntervalInfo: 'Function: Throttling interval for outgoing messages to prevent API rate limiting.',
 
     logRetentionTitle: '<b>🗄 Log File Retention</b>',
-    logRetentionInfo: '[INFO] Function: Retention period for application log files before automatic cleanup.',
+    logRetentionInfo: 'Function: Retention period for application log files before automatic cleanup.',
 
     resetConfirmTitle: '<b>🔄 Reset Settings to Defaults</b>',
-    resetConfirmInfo: '[INFO] Function: Reverts all runtime configurations back to system initial settings (.env / defaults).',
+    resetConfirmInfo: 'Function: Reverts all runtime configurations back to system initial settings (.env / defaults).',
     resetConfirmPrompt: '⚠️ <b>Confirm Reset:</b>\nAre you sure you want to delete runtime settings and restore initial values (.env)?',
     resetConfirmButton: '✅ Yes, Reset Now',
     resetCancelButton: '❌ Cancel',
 
     debugToggleLabel: (enabled: boolean) => `🐞 Debug Logging: ${enabled ? 'ACTIVE [ON]' : 'DISABLED [OFF]'}`,
     debugTitle: '<b>🐞 Debug Payload Logging</b>',
-    debugInfo: '[INFO] Function: Enables verbose payload logging to daily log files for troubleshooting.',
+    debugInfo: 'Function: Enables verbose payload logging to daily log files for troubleshooting.',
     debugOptionOn: 'Active (ON)',
     debugOptionOff: 'Disabled (OFF)',
   },
