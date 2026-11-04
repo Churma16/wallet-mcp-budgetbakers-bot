@@ -8,8 +8,10 @@ import {
   DEFAULT_APP_LANGUAGE,
   DEFAULT_APP_TIMEZONE,
   isValidIanaTimezone,
+  loadEnvironmentConfiguration,
   resolveSafeTimezone,
 } from './environmentConfig.js';
+import { isFinancialPayloadDebugEnabled } from '../lib/financialLoggingPolicy.js';
 import { setRuntimeApplicationConfig, getRuntimeApplicationConfig } from './applicationConfig.js';
 
 export interface RuntimeSettings {
@@ -135,56 +137,39 @@ export class RuntimeSettingsManager {
 
   /**
    * Resolves cascading environment configuration defaults (.env -> SYSTEM_DEFAULT_RUNTIME_SETTINGS).
+   * Dynamically reflects currently active environment values from loaded configuration.
    */
   public getEnvironmentDefaults(): RuntimeSettings {
-    const rawCategoryResolution = process.env.CATEGORY_RESOLUTION_MODE?.trim().toLowerCase();
-    const categoryResolutionMode: 'ask' | 'auto' =
-      rawCategoryResolution === 'auto' ? 'auto' : 'ask';
+    const config = loadEnvironmentConfiguration();
+    const isGeminiPrimary = config.aiProvider === 'gemini';
 
-    const aiModel = process.env.AI_MODEL || process.env.GEMINI_MODEL || SYSTEM_DEFAULT_RUNTIME_SETTINGS.aiModel;
+    const aiModel = isGeminiPrimary
+      ? (config.geminiModel || SYSTEM_DEFAULT_RUNTIME_SETTINGS.aiModel)
+      : (config.aiModel || config.geminiModel || SYSTEM_DEFAULT_RUNTIME_SETTINGS.aiModel);
 
-    const rawFallback = process.env.AI_FALLBACK_MODELS || process.env.GEMINI_FALLBACK_MODELS;
-    const aiFallbackModels = rawFallback
-      ? rawFallback.split(',').map(item => item.trim()).filter(Boolean)
-      : SYSTEM_DEFAULT_RUNTIME_SETTINGS.aiFallbackModels;
+    const aiFallbackModels = isGeminiPrimary && config.geminiFallbackModels && config.geminiFallbackModels.length > 0
+      ? config.geminiFallbackModels
+      : (config.aiFallbackModels && config.aiFallbackModels.length > 0
+          ? config.aiFallbackModels
+          : (config.geminiFallbackModels || SYSTEM_DEFAULT_RUNTIME_SETTINGS.aiFallbackModels));
 
-    const rawLanguage = (process.env.APP_LANGUAGE || process.env.BOT_LANGUAGE || DEFAULT_APP_LANGUAGE).toLowerCase().trim();
-    const appLanguage: 'id' | 'en' = rawLanguage === 'en' ? 'en' : 'id';
+    const aiRequestTimeoutSeconds = isGeminiPrimary
+      ? Math.round(config.geminiRequestTimeoutMilliseconds / 1000)
+      : Math.round(config.aiRequestTimeoutMilliseconds / 1000);
 
-    const rawCurrency = (process.env.DEFAULT_CURRENCY || DEFAULT_APP_CURRENCY).trim().toUpperCase();
-    const defaultCurrency = rawCurrency || DEFAULT_APP_CURRENCY;
-
-    const rawTimezone = process.env.APP_TIMEZONE?.trim();
-    const appTimezone = rawTimezone ? resolveSafeTimezone(rawTimezone) : DEFAULT_APP_TIMEZONE;
-
-    const parsedAiTimeout = Number.parseInt(
-      process.env.AI_TIMEOUT_SECONDS || process.env.GEMINI_TIMEOUT_SECONDS || '20',
-      10
-    );
-    const aiRequestTimeoutSeconds = !Number.isNaN(parsedAiTimeout) && parsedAiTimeout > 0 ? parsedAiTimeout : 20;
-
-    const parsedEmailLookback = Number.parseInt(process.env.EMAIL_LOOKBACK_MINUTES || '10', 10);
-    const emailLookbackMinutes = !Number.isNaN(parsedEmailLookback) && parsedEmailLookback > 0 ? parsedEmailLookback : 10;
-
-    const parsedQueueInterval = Number.parseInt(process.env.WHATSAPP_MESSAGE_QUEUE_INTERVAL_MS || '1000', 10);
-    const whatsappMessageQueueIntervalMs = !Number.isNaN(parsedQueueInterval) && parsedQueueInterval > 0 ? parsedQueueInterval : 1000;
-
-    const parsedLogRetention = Number.parseInt(process.env.LOG_RETENTION_DAYS || '7', 10);
-    const logRetentionDays = !Number.isNaN(parsedLogRetention) && parsedLogRetention > 0 ? parsedLogRetention : 7;
-
-    const debugLoggingEnabled = (process.env.DEBUG_FINANCIAL_PAYLOADS || '').trim().toLowerCase() === 'true';
+    const debugLoggingEnabled = isFinancialPayloadDebugEnabled();
 
     return {
-      categoryResolutionMode,
+      categoryResolutionMode: config.categoryResolutionMode,
       aiModel,
       aiFallbackModels,
-      appLanguage,
-      defaultCurrency,
-      appTimezone,
-      aiRequestTimeoutSeconds,
-      emailLookbackMinutes,
-      whatsappMessageQueueIntervalMs,
-      logRetentionDays,
+      appLanguage: config.appLanguage,
+      defaultCurrency: config.defaultCurrency,
+      appTimezone: config.appTimezone,
+      aiRequestTimeoutSeconds: aiRequestTimeoutSeconds > 0 ? aiRequestTimeoutSeconds : 20,
+      emailLookbackMinutes: config.emailLookbackMinutes,
+      whatsappMessageQueueIntervalMs: config.whatsappMessageQueueIntervalMs,
+      logRetentionDays: config.logRetentionDays,
       debugLoggingEnabled,
     };
   }

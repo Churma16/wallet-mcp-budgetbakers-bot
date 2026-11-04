@@ -206,9 +206,11 @@ export function createEmailLookbackInlineKeyboard(
   return new InlineKeyboard()
     .text(`${activeMinutes === 5 ? '✅ ' : ''}5m`, 'settings:set:email_lookback:5')
     .text(`${activeMinutes === 10 ? '✅ ' : ''}10m`, 'settings:set:email_lookback:10')
-    .row()
     .text(`${activeMinutes === 15 ? '✅ ' : ''}15m`, 'settings:set:email_lookback:15')
+    .row()
     .text(`${activeMinutes === 30 ? '✅ ' : ''}30m`, 'settings:set:email_lookback:30')
+    .text(`${activeMinutes === 60 ? '✅ ' : ''}60m`, 'settings:set:email_lookback:60')
+    .text(`${activeMinutes === 120 ? '✅ ' : ''}120m`, 'settings:set:email_lookback:120')
     .row()
     .text(dictionary.buttonBackToAdvanced, 'settings:page:advanced');
 }

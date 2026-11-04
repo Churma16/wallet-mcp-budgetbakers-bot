@@ -515,7 +515,7 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
       expect(timeoutKb.inline_keyboard[1][1].text).toContain('✅ 45s');
 
       const emailKb = createEmailLookbackInlineKeyboard(30, 'id');
-      expect(emailKb.inline_keyboard[1][1].text).toContain('✅ 30m');
+      expect(emailKb.inline_keyboard[1][0].text).toContain('✅ 30m');
 
       const queueKb = createQueueIntervalInlineKeyboard(3000, 'id');
       expect(queueKb.inline_keyboard[1][1].text).toContain('✅ 3000ms');
