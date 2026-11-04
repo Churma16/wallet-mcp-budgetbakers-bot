@@ -16,6 +16,7 @@ import { setRuntimeApplicationConfig, getRuntimeApplicationConfig } from './appl
 
 export interface RuntimeSettings {
   categoryResolutionMode: 'ask' | 'auto';
+  autoRecordEnriched: boolean;
   aiModel: string;
   aiFallbackModels: string[];
   appLanguage: 'id' | 'en';
@@ -30,6 +31,7 @@ export interface RuntimeSettings {
 
 export const SYSTEM_DEFAULT_RUNTIME_SETTINGS: RuntimeSettings = {
   categoryResolutionMode: 'ask',
+  autoRecordEnriched: false,
   aiModel: 'gemini-3.5-flash-lite',
   aiFallbackModels: ['gemini-3.6-flash', 'gemini-3.8-flash'],
   appLanguage: 'id',
@@ -67,6 +69,7 @@ export function resolveTimezoneFromAliasOrIana(input: string): string {
 
 export const ALLOWED_RUNTIME_SETTINGS_KEYS: ReadonlyArray<keyof RuntimeSettings> = [
   'categoryResolutionMode',
+  'autoRecordEnriched',
   'aiModel',
   'aiFallbackModels',
   'appLanguage',
@@ -161,6 +164,7 @@ export class RuntimeSettingsManager {
 
     return {
       categoryResolutionMode: config.categoryResolutionMode,
+      autoRecordEnriched: Boolean(config.autoRecordEnriched),
       aiModel,
       aiFallbackModels,
       appLanguage: config.appLanguage,
@@ -182,6 +186,7 @@ export class RuntimeSettingsManager {
     const envDefaults = this.getEnvironmentDefaults();
     return {
       categoryResolutionMode: this.inMemoryOverrides.categoryResolutionMode ?? envDefaults.categoryResolutionMode,
+      autoRecordEnriched: this.inMemoryOverrides.autoRecordEnriched ?? envDefaults.autoRecordEnriched,
       aiModel: this.inMemoryOverrides.aiModel ?? envDefaults.aiModel,
       aiFallbackModels: this.inMemoryOverrides.aiFallbackModels ?? envDefaults.aiFallbackModels,
       appLanguage: this.inMemoryOverrides.appLanguage ?? envDefaults.appLanguage,
@@ -265,6 +270,7 @@ export class RuntimeSettingsManager {
     const active = this.getSettings();
 
     targetConfig.categoryResolutionMode = active.categoryResolutionMode;
+    targetConfig.autoRecordEnriched = active.autoRecordEnriched;
     targetConfig.aiModel = active.aiModel;
     targetConfig.geminiModel = active.aiModel;
     targetConfig.aiFallbackModels = active.aiFallbackModels;
@@ -333,6 +339,18 @@ export class RuntimeSettingsManager {
           const str = String(val).trim().toLowerCase();
           if (str === 'auto' || str === 'ask') {
             sanitized.categoryResolutionMode = str;
+          }
+          break;
+        }
+
+        case 'autoRecordEnriched': {
+          if (typeof val === 'boolean') {
+            sanitized.autoRecordEnriched = val;
+          } else if (typeof val === 'string') {
+            const str = val.trim().toLowerCase();
+            if (str === 'true' || str === 'false') {
+              sanitized.autoRecordEnriched = str === 'true';
+            }
           }
           break;
         }

@@ -95,6 +95,7 @@ export interface ApplicationEnvironmentConfiguration {
   pendingTransactionsStoragePath: string;
   transactionMessageStoragePath: string;
   categoryResolutionMode: 'ask' | 'auto';
+  autoRecordEnriched: boolean;
   notificationWebhookEnabled: boolean;
   notificationWebhookPort: number;
   notificationWebhookHost: string;
@@ -348,6 +349,8 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
   const rawCategoryResolutionMode = process.env.CATEGORY_RESOLUTION_MODE?.trim().toLowerCase();
   const categoryResolutionMode: 'ask' | 'auto' = rawCategoryResolutionMode === 'auto' ? 'auto' : 'ask';
 
+  const autoRecordEnriched = process.env.AUTO_RECORD_ENRICHED === 'true';
+
   const notificationWebhookEnabled = process.env.NOTIFICATION_WEBHOOK_ENABLED === 'true';
   const parsedWebhookPort = Number.parseInt(process.env.NOTIFICATION_WEBHOOK_PORT || '3000', 10);
   const notificationWebhookPort = Number.isNaN(parsedWebhookPort) || parsedWebhookPort <= 0 ? 3000 : parsedWebhookPort;
@@ -396,6 +399,7 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     pendingTransactionsStoragePath,
     transactionMessageStoragePath,
     categoryResolutionMode,
+    autoRecordEnriched,
     notificationWebhookEnabled,
     notificationWebhookPort,
     notificationWebhookHost,

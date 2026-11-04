@@ -714,6 +714,11 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
         await settingsManager.resetToDefaults();
         feedbackAlert = dictionary.resetAlert;
         targetPage = 'home';
+      } else if (callbackData === 'settings:toggle:auto_record_enriched') {
+        const currentAutoRecord = settingsManager.getSetting('autoRecordEnriched');
+        await settingsManager.updateSetting('autoRecordEnriched', !currentAutoRecord);
+        feedbackAlert = dictionary.savedAlert;
+        targetPage = 'home';
       } else if (callbackData === 'settings:toggle:debug') {
         const currentDebug = settingsManager.getSetting('debugLoggingEnabled');
         await settingsManager.updateSetting('debugLoggingEnabled', !currentDebug);

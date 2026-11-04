@@ -582,6 +582,7 @@ export const indonesianDictionary: ResponseDictionary = {
     resetConfirmButton: '✅ Ya, Reset Sekarang',
     resetCancelButton: '❌ Batal',
 
+    autoRecordEnrichedToggleLabel: (enabled: boolean) => `⚡ Auto-Record Enriched: ${enabled ? 'AKTIF [ON]' : 'NONAKTIF [OFF]'}`,
     debugToggleLabel: (enabled: boolean) => `🐞 Debug Logging: ${enabled ? 'AKTIF [ON]' : 'NONAKTIF [OFF]'}`,
     debugTitle: '<b>🐞 Debug Payload Logging</b>',
     debugInfo: 'Fungsi: Mengaktifkan pencatatan detail payload transaksi ke file log untuk debugging.',

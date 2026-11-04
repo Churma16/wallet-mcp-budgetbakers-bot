@@ -184,6 +184,7 @@ export interface TelegramSettingsDictionary {
   resetConfirmButton: string;
   resetCancelButton: string;
 
+  autoRecordEnrichedToggleLabel(enabled: boolean): string;
   debugToggleLabel(enabled: boolean): string;
   debugTitle: string;
   debugInfo: string;

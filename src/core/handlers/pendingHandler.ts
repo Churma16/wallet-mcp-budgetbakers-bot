@@ -1,4 +1,4 @@
-import { PendingTransactionService, PendingTransactionItem } from '../pending.js';
+import { PendingTransactionService, PendingTransactionItem, buildRecordsForPendingItem } from '../pending.js';
 import {
   WalletMcpClientService,
   WalletCacheService,
@@ -278,7 +278,7 @@ export class PendingActionHandler {
 
     for (const item of itemsToRecord) {
       try {
-        const recordsForThisTransaction = this.buildRecordsForPendingItem(item);
+        const recordsForThisTransaction = buildRecordsForPendingItem(item, this.walletCacheService);
         applicationLogger.mcp(`[Ticket #${item.ticketId}] Submitting transaction...`);
         const createResult = await this.walletMcpClient.createRecords(recordsForThisTransaction);
         const createdId = createResult?.results?.[0]?.id;
@@ -412,63 +412,8 @@ export class PendingActionHandler {
       this.pendingTransactionManager.getUncertainAccountSelectionDrafts().length;
   }
 
-  private buildRecordsForPendingItem(item: PendingTransactionItem): CreateRecordInputPayload[] {
-    if (item.transactionType === 'TRANSFER') {
-      if (item.transfer?.pairingMode === 'existing') {
-        return [{
-          accountId: item.matchedAccountId,
-          amount: item.amount < 0 ? -Math.abs(item.amount) : Math.abs(item.amount),
-          recordDate: item.recordDate,
-          note: item.note || `Transfer ke ${item.destinationAccountNameHint || 'akun lain'}`,
-          counterParty: item.destinationAccountNameHint || '',
-          transfer: item.transfer,
-        }];
-      }
-
-      if (!item.matchedDestinationAccountId) {
-        throw new WalletMcpRequestError(
-          'Transfer destination account was not resolved before dispatch',
-          'DEFINITIVE_FAILURE'
-        );
-      }
-      return [{
-        accountId: item.matchedAccountId,
-        amount: -Math.abs(item.amount),
-        recordDate: item.recordDate,
-        note: item.note || `Transfer ke ${item.destinationAccountNameHint || 'akun lain'}`,
-        counterParty: item.destinationAccountNameHint || '',
-        transfer: {
-          pairingMode: 'new',
-          accountId: item.matchedDestinationAccountId,
-        },
-      }];
-    }
-
-    const finalAmount = item.transactionType === 'EXPENSE'
-      ? -Math.abs(item.amount)
-      : Math.abs(item.amount);
-
-    let resolvedCategoryId = item.matchedCategoryId?.trim() || undefined;
-    if (resolvedCategoryId && this.walletCacheService) {
-      const category = this.walletCacheService
-        .getCategories()
-        .find(c => c.id === resolvedCategoryId);
-      if (category && (category.isAssignable === false || category.group?.id === 'system_categories')) {
-        resolvedCategoryId = undefined;
-      }
-    }
-
-    return [
-      {
-        accountId: item.matchedAccountId,
-        categoryId: resolvedCategoryId,
-        amount: finalAmount,
-        recordDate: item.recordDate,
-        note: item.note,
-        counterParty: item.counterParty,
-        labels: item.labels,
-      },
-    ];
+  public buildRecordsForPendingItem(item: PendingTransactionItem): CreateRecordInputPayload[] {
+    return buildRecordsForPendingItem(item, this.walletCacheService);
   }
 
   private async sendConfirmationOutcomeMessage(

@@ -584,6 +584,7 @@ export const englishDictionary: ResponseDictionary = {
     resetConfirmButton: '✅ Yes, Reset Now',
     resetCancelButton: '❌ Cancel',
 
+    autoRecordEnrichedToggleLabel: (enabled: boolean) => `⚡ Auto-Record Enriched: ${enabled ? 'ACTIVE [ON]' : 'DISABLED [OFF]'}`,
     debugToggleLabel: (enabled: boolean) => `🐞 Debug Logging: ${enabled ? 'ACTIVE [ON]' : 'DISABLED [OFF]'}`,
     debugTitle: '<b>🐞 Debug Payload Logging</b>',
     debugInfo: 'Function: Enables verbose payload logging to daily log files for troubleshooting.',

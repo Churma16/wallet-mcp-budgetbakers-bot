@@ -848,6 +848,7 @@ export class MessageDispatcher {
         defaultCurrency: this.context.config.defaultCurrency,
         correlationService: this.context.email.correlation,
         walletMcpClient: this.context.wallet.client,
+        transactionMessageStore: this.context.wallet?.transactionMessages,
       }
     );
   }
@@ -863,7 +864,8 @@ export class MessageDispatcher {
       this.context.gateway,
       this.context.config.defaultCurrency,
       this.context.email?.correlation || new TransactionCorrelationService(),
-      this.context.wallet.client
+      this.context.wallet.client,
+      this.context.wallet?.transactionMessages
     );
     await handler.handleNotificationReceived(payload);
   }
