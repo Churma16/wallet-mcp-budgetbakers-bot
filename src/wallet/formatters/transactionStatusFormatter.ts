@@ -71,11 +71,26 @@ export function formatTransactionAttentionSummary(
     }
   }
 
+  // 4. Items waiting for category selection (draft PENDING items)
+  if (summary.waitingCategoryItems && summary.waitingCategoryItems.length > 0) {
+    parts.push('', dictionary.status.waitingCategoryHeader(summary.waitingCategoryItems.length));
+
+    for (const item of summary.waitingCategoryItems) {
+      const ticketLabel = `(#${item.ticketId})`;
+      const line = `• *${item.formattedAmount}* • ${item.description} ${ticketLabel}`.trim();
+      const actionHint = dictionary.languageCode === 'id'
+        ? `  Balas dengan nomor pilihan kategori atau *Batal #${item.ticketId}*.`
+        : `  Reply with chosen category option or *Cancel #${item.ticketId}*.`;
+      parts.push(line, actionHint);
+    }
+  }
+
   // If there are ONLY uncertain items, explicitly reassure that there are no normal pending items
   if (
     summary.needsCheckItems.length > 0 &&
     summary.waitingConfirmationItems.length === 0 &&
-    summary.waitingAccountItems.length === 0
+    summary.waitingAccountItems.length === 0 &&
+    (!summary.waitingCategoryItems || summary.waitingCategoryItems.length === 0)
   ) {
     parts.push('', dictionary.status.noOtherTransactionsWaiting);
   }

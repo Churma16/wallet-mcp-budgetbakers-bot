@@ -292,6 +292,9 @@ export const englishDictionary: ResponseDictionary = {
     waitingAccountHeader(count: number): string {
       return `⏳ *${count} transaction(s) waiting for account selection:*`;
     },
+    waitingCategoryHeader(count: number): string {
+      return `🏷️ *${count} transaction(s) waiting for category selection:*`;
+    },
     noOtherTransactionsWaiting: 'No other transactions waiting for confirmation.',
   },
 

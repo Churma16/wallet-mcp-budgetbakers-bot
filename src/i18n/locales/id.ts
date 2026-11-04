@@ -290,6 +290,9 @@ export const indonesianDictionary: ResponseDictionary = {
     waitingAccountHeader(count: number): string {
       return `⏳ *${count} transaksi menunggu pilihan akun:*`;
     },
+    waitingCategoryHeader(count: number): string {
+      return `🏷️ *${count} transaksi menunggu pilihan kategori:*`;
+    },
     noOtherTransactionsWaiting: 'Tidak ada transaksi lain yang menunggu konfirmasi.',
   },
 

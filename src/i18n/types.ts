@@ -196,6 +196,7 @@ export interface ResponseDictionary {
     needsCheckHeader(count: number): string;
     waitingConfirmationHeader(count: number): string;
     waitingAccountHeader(count: number): string;
+    waitingCategoryHeader(count: number): string;
     noOtherTransactionsWaiting: string;
   };
 

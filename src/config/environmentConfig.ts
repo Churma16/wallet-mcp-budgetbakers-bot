@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import dotenv from 'dotenv';
 import { applicationLogger } from '../lib/logger.js';
@@ -90,6 +91,7 @@ export interface ApplicationEnvironmentConfiguration {
   telegramStartupRetryDelayMs: number;
   maxMediaDownloadMb: number;
   categoryContextFilePath: string;
+  dataStoragePath: string;
   pendingTransactionsStoragePath: string;
   transactionMessageStoragePath: string;
   categoryResolutionMode: 'ask' | 'auto';
@@ -302,14 +304,44 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     'config/category-context.json'
   ).trim();
 
+  const dataStoragePath = (
+    process.env.DATA_STORAGE_PATH ||
+    process.env.DATA_DIR ||
+    './data'
+  ).trim();
+
+  const resolveStoragePathWithMigration = (filename: string): string => {
+    const dataTarget = path.join(dataStoragePath, filename);
+    const legacyTarget = path.join(whatsappSessionPath, filename);
+
+    if (fs.existsSync(dataTarget)) {
+      return dataTarget;
+    }
+
+    if (fs.existsSync(legacyTarget)) {
+      try {
+        const targetDir = path.dirname(dataTarget);
+        if (!fs.existsSync(targetDir)) {
+          fs.mkdirSync(targetDir, { recursive: true });
+        }
+        fs.copyFileSync(legacyTarget, dataTarget);
+        return dataTarget;
+      } catch {
+        return legacyTarget;
+      }
+    }
+
+    return dataTarget;
+  };
+
   const pendingTransactionsStoragePath = (
     process.env.PENDING_TRANSACTIONS_STORAGE_PATH ||
-    path.join(whatsappSessionPath, 'pending_transactions.json')
+    resolveStoragePathWithMigration('pending_transactions.json')
   ).trim();
 
   const transactionMessageStoragePath = (
     process.env.TRANSACTION_MESSAGE_STORAGE_PATH ||
-    path.join(whatsappSessionPath, 'transaction_message_mappings.json')
+    resolveStoragePathWithMigration('transaction_message_mappings.json')
   ).trim();
 
 
@@ -360,6 +392,7 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     telegramStartupRetryDelayMs,
     maxMediaDownloadMb,
     categoryContextFilePath,
+    dataStoragePath,
     pendingTransactionsStoragePath,
     transactionMessageStoragePath,
     categoryResolutionMode,
