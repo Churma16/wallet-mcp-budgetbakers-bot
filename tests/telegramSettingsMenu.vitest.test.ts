@@ -325,9 +325,10 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
       expect(mockAnswerCallbackQuery).toHaveBeenCalledTimes(1);
     });
 
-    it('registers /settings and /pengaturan command in setupBotHandlers', () => {
+    it('registers /settings and /pengaturan command in setupBotHandlers and handles text commands', async () => {
       const adapter = new TelegramMessagingAdapter(dummyToken, allowedUserId, vi.fn());
       const registeredCommands: Record<string, any> = {};
+      const registeredListeners: Record<string, any> = {};
 
       const mockBot: any = {
         use: vi.fn(),
@@ -340,7 +341,9 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
             registeredCommands[cmd] = handler;
           }
         }),
-        on: vi.fn(),
+        on: vi.fn((evt: string, handler: any) => {
+          registeredListeners[evt] = handler;
+        }),
         catch: vi.fn(),
       };
 
@@ -348,6 +351,180 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
 
       expect(registeredCommands['settings']).toBeDefined();
       expect(registeredCommands['pengaturan']).toBeDefined();
+
+      // Test bot.command invocation
+      const mockReply = vi.fn().mockResolvedValue({});
+      await registeredCommands['settings']({ reply: mockReply });
+      expect(mockReply).toHaveBeenCalledTimes(1);
+      expect(mockReply.mock.calls[0][0]).toContain('Pengaturan Bot');
+
+      // Test message:text listener for /settings, settings, /pengaturan, pengaturan
+      const textHandler = registeredListeners['message:text'];
+      expect(textHandler).toBeDefined();
+
+      for (const cmdText of ['/settings', 'settings', '/pengaturan', 'pengaturan']) {
+        const textReply = vi.fn().mockResolvedValue({});
+        await textHandler({
+          message: { text: cmdText },
+          chat: { id: 12345 },
+          from: { id: Number(allowedUserId) },
+          reply: textReply,
+        });
+        expect(textReply).toHaveBeenCalledTimes(1);
+        expect(textReply.mock.calls[0][0]).toContain('Pengaturan Bot');
+      }
+    });
+
+    it('handles all sub-setting update callbacks in handleSettingsCallbackQuery', async () => {
+      const adapter = new TelegramMessagingAdapter(dummyToken, allowedUserId, vi.fn());
+      const manager = RuntimeSettingsManager.getInstance();
+
+      const testCases = [
+        { callback: 'settings:set:ai_model:gemini-3.8-flash', check: () => expect(manager.getSetting('aiModel')).toBe('gemini-3.8-flash') },
+        { callback: 'settings:set:language:en', check: () => expect(manager.getSetting('appLanguage')).toBe('en') },
+        { callback: 'settings:set:currency:USD', check: () => expect(manager.getSetting('defaultCurrency')).toBe('USD') },
+        { callback: 'settings:set:timezone:WITA', check: () => expect(manager.getSetting('appTimezone')).toBe('Asia/Makassar') },
+        { callback: 'settings:set:ai_timeout:45', check: () => expect(manager.getSetting('aiRequestTimeoutSeconds')).toBe(45) },
+        { callback: 'settings:set:email_lookback:30', check: () => expect(manager.getSetting('emailLookbackMinutes')).toBe(30) },
+        { callback: 'settings:set:queue_interval:3000', check: () => expect(manager.getSetting('whatsappMessageQueueIntervalMs')).toBe(3000) },
+        { callback: 'settings:set:log_retention:30', check: () => expect(manager.getSetting('logRetentionDays')).toBe(30) },
+        { callback: 'settings:home', check: () => {} },
+      ];
+
+      for (const tc of testCases) {
+        const mockEdit = vi.fn().mockResolvedValue({});
+        const mockAnswer = vi.fn().mockResolvedValue({});
+        const ctx: any = {
+          from: { id: Number(allowedUserId) },
+          callbackQuery: { data: tc.callback },
+          answerCallbackQuery: mockAnswer,
+          editMessageText: mockEdit,
+        };
+
+        await adapter.handleSettingsCallbackQuery(ctx, tc.callback);
+        expect(mockEdit).toHaveBeenCalled();
+        expect(mockAnswer).toHaveBeenCalled();
+        tc.check();
+      }
+    });
+
+    it('toggles AI fallback chain on and off', async () => {
+      const adapter = new TelegramMessagingAdapter(dummyToken, allowedUserId, vi.fn());
+      const manager = RuntimeSettingsManager.getInstance();
+
+      // First toggle: currently has fallbacks, so toggles to empty
+      const mockEdit1 = vi.fn().mockResolvedValue({});
+      const mockAnswer1 = vi.fn().mockResolvedValue({});
+      await adapter.handleSettingsCallbackQuery(
+        {
+          from: { id: Number(allowedUserId) },
+          callbackQuery: { data: 'settings:toggle:ai_fallback' },
+          answerCallbackQuery: mockAnswer1,
+          editMessageText: mockEdit1,
+        } as any,
+        'settings:toggle:ai_fallback'
+      );
+      expect(manager.getSetting('aiFallbackModels')).toEqual([]);
+
+      // Second toggle: empty, so restores default fallbacks
+      const mockEdit2 = vi.fn().mockResolvedValue({});
+      const mockAnswer2 = vi.fn().mockResolvedValue({});
+      await adapter.handleSettingsCallbackQuery(
+        {
+          from: { id: Number(allowedUserId) },
+          callbackQuery: { data: 'settings:toggle:ai_fallback' },
+          answerCallbackQuery: mockAnswer2,
+          editMessageText: mockEdit2,
+        } as any,
+        'settings:toggle:ai_fallback'
+      );
+      expect(manager.getSetting('aiFallbackModels')).toEqual(['gemini-3.6-flash', 'gemini-3.8-flash']);
+    });
+
+    it('falls back to editing message if deleteMessage fails on close', async () => {
+      const adapter = new TelegramMessagingAdapter(dummyToken, allowedUserId, vi.fn());
+      const mockDelete = vi.fn().mockRejectedValue(new Error('Cannot delete'));
+      const mockEdit = vi.fn().mockResolvedValue({});
+      const mockAnswer = vi.fn().mockResolvedValue({});
+
+      await adapter.handleSettingsCallbackQuery(
+        {
+          from: { id: Number(allowedUserId) },
+          callbackQuery: { data: 'settings:action:close' },
+          deleteMessage: mockDelete,
+          editMessageText: mockEdit,
+          answerCallbackQuery: mockAnswer,
+        } as any,
+        'settings:action:close'
+      );
+
+      expect(mockDelete).toHaveBeenCalled();
+      expect(mockEdit).toHaveBeenCalledWith(
+        expect.stringContaining('ditutup'),
+        expect.objectContaining({ parse_mode: 'HTML' })
+      );
+    });
+
+    it('catches and answers callback query if an internal error occurs', async () => {
+      const adapter = new TelegramMessagingAdapter(dummyToken, allowedUserId, vi.fn());
+      const mockAnswer = vi.fn().mockResolvedValue({});
+      vi.spyOn(RuntimeSettingsManager.getInstance(), 'getSettings').mockImplementationOnce(() => {
+        throw new Error('Fatal storage bug');
+      });
+
+      await adapter.handleSettingsCallbackQuery(
+        {
+          from: { id: Number(allowedUserId) },
+          callbackQuery: { data: 'settings:home' },
+          editMessageText: vi.fn(),
+          answerCallbackQuery: mockAnswer,
+        } as any,
+        'settings:home'
+      );
+
+      expect(mockAnswer).toHaveBeenCalledWith(
+        expect.objectContaining({ text: expect.stringContaining('Error') })
+      );
+    });
+
+    it('renders all options with checkmarks when non-default values are active', () => {
+      const customSettings = {
+        categoryResolutionMode: 'auto' as const,
+        aiModel: 'gemini-3.8-flash',
+        aiFallbackModels: [],
+        appLanguage: 'en' as const,
+        defaultCurrency: 'EUR',
+        appTimezone: 'UTC',
+        aiRequestTimeoutSeconds: 45,
+        emailLookbackMinutes: 30,
+        whatsappMessageQueueIntervalMs: 3000,
+        logRetentionDays: 30,
+        debugLoggingEnabled: true,
+      };
+
+      const langKb = createLanguageInlineKeyboard('en', 'en');
+      expect(langKb.inline_keyboard[1][0].text).toContain('✅');
+
+      const currKb = createCurrencyInlineKeyboard('EUR', 'id');
+      expect(currKb.inline_keyboard[1][1].text).toContain('✅ EUR');
+
+      const tzKb = createTimezoneInlineKeyboard('UTC', 'id');
+      expect(tzKb.inline_keyboard[3][0].text).toContain('✅ UTC');
+
+      const timeoutKb = createAiTimeoutInlineKeyboard(45, 'id');
+      expect(timeoutKb.inline_keyboard[1][1].text).toContain('✅ 45s');
+
+      const emailKb = createEmailLookbackInlineKeyboard(30, 'id');
+      expect(emailKb.inline_keyboard[1][1].text).toContain('✅ 30m');
+
+      const queueKb = createQueueIntervalInlineKeyboard(3000, 'id');
+      expect(queueKb.inline_keyboard[1][1].text).toContain('✅ 3000ms');
+
+      const logKb = createLogRetentionInlineKeyboard(30, 'id');
+      expect(logKb.inline_keyboard[1][1].text).toContain('✅ 30d');
+
+      const fallbackHome = getTelegramSettingsMenuContent('unknown_page' as any, 'id', settingsManager);
+      expect(fallbackHome.text).toContain('Pengaturan Bot');
     });
   });
 });

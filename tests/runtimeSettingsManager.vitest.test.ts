@@ -290,7 +290,55 @@ describe('RuntimeSettingsManager', () => {
     });
   });
 
-  describe('Input Validation', () => {
+  describe('Input Validation and Flexible Formats', () => {
+    it('returns storage file path accurately', () => {
+      const manager = new RuntimeSettingsManager(testSettingsFilePath);
+      expect(manager.getStorageFilePath()).toBe(testSettingsFilePath);
+    });
+
+    it('handles aiFallbackModels as comma-separated string', async () => {
+      const manager = new RuntimeSettingsManager(testSettingsFilePath);
+      await manager.updateSettings({
+        aiFallbackModels: 'model-a,model-b' as any,
+      });
+
+      expect(manager.getSetting('aiFallbackModels')).toEqual(['model-a', 'model-b']);
+    });
+
+    it('handles debugLoggingEnabled as string', async () => {
+      const manager = new RuntimeSettingsManager(testSettingsFilePath);
+      await manager.updateSettings({
+        debugLoggingEnabled: 'true' as any,
+      });
+      expect(manager.getSetting('debugLoggingEnabled')).toBe(true);
+
+      await manager.updateSettings({
+        debugLoggingEnabled: 'false' as any,
+      });
+      expect(manager.getSetting('debugLoggingEnabled')).toBe(false);
+    });
+
+    it('handles numeric properties provided as string digits', async () => {
+      const manager = new RuntimeSettingsManager(testSettingsFilePath);
+      await manager.updateSettings({
+        aiRequestTimeoutSeconds: '35' as any,
+        emailLookbackMinutes: '25' as any,
+        whatsappMessageQueueIntervalMs: '1500' as any,
+        logRetentionDays: '14' as any,
+      });
+
+      expect(manager.getSetting('aiRequestTimeoutSeconds')).toBe(35);
+      expect(manager.getSetting('emailLookbackMinutes')).toBe(25);
+      expect(manager.getSetting('whatsappMessageQueueIntervalMs')).toBe(1500);
+      expect(manager.getSetting('logRetentionDays')).toBe(14);
+    });
+
+    it('handles corrupted JSON file on disk gracefully without crashing', () => {
+      fs.writeFileSync(testSettingsFilePath, '{ corrupted JSON !!!', 'utf-8');
+      const manager = new RuntimeSettingsManager(testSettingsFilePath);
+      expect(manager.getStoredOverrides()).toEqual({});
+    });
+
     it('ignores invalid categoryResolutionMode', async () => {
       const manager = new RuntimeSettingsManager(testSettingsFilePath);
       await manager.updateSettings({
@@ -309,6 +357,76 @@ describe('RuntimeSettingsManager', () => {
 
       expect(manager.getStoredOverrides().aiRequestTimeoutSeconds).toBeUndefined();
       expect(manager.getStoredOverrides().logRetentionDays).toBeUndefined();
+    });
+  });
+
+  describe('AI Providers and Handlers Dynamic Overrides Integration', () => {
+    it('verifies GeminiAiProvider dynamically adopts runtime model and timeout overrides', async () => {
+      const { GeminiAiProvider } = await import('../src/brain/providers/geminiProvider.js');
+      const manager = RuntimeSettingsManager.getInstance(testSettingsFilePath);
+      const provider = new GeminiAiProvider('dummy_api_key', 'gemini-3.5-flash-lite', ['gemini-3.6-flash'], 20000);
+
+      // Default state
+      expect((provider as any).getEffectiveCandidateModels()).toEqual(['gemini-3.5-flash-lite', 'gemini-3.6-flash']);
+      expect((provider as any).getEffectiveTimeoutMs()).toBe(20000);
+
+      // Apply runtime overrides
+      await manager.updateSettings({
+        aiModel: 'gemini-3.8-flash',
+        aiFallbackModels: ['gemini-custom-fallback'],
+        aiRequestTimeoutSeconds: 40,
+      });
+
+      expect((provider as any).getEffectiveCandidateModels()).toEqual(['gemini-3.8-flash', 'gemini-custom-fallback']);
+      expect((provider as any).getEffectiveTimeoutMs()).toBe(40000);
+    });
+
+    it('verifies OpenAiCompatibleAiProvider dynamically adopts runtime model and timeout overrides', async () => {
+      const { OpenAiCompatibleAiProvider } = await import('../src/brain/providers/openAiProvider.js');
+      const manager = RuntimeSettingsManager.getInstance(testSettingsFilePath);
+      const provider = new OpenAiCompatibleAiProvider({
+        providerName: 'groq',
+        baseUrl: 'https://api.groq.com/openai/v1',
+        apiKey: 'dummy_key',
+        primaryModelName: 'llama-3.3-70b-versatile',
+        fallbackModelList: ['llama-3.1-8b-instant'],
+        requestTimeoutMilliseconds: 25000,
+      });
+
+      expect((provider as any).getEffectiveCandidateModels()).toEqual(['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']);
+      expect((provider as any).getEffectiveTimeoutMs()).toBe(25000);
+
+      await manager.updateSettings({
+        aiModel: 'llama-override',
+        aiFallbackModels: [],
+        aiRequestTimeoutSeconds: 50,
+      });
+
+      expect((provider as any).getEffectiveCandidateModels()).toEqual(['llama-override', 'llama-3.1-8b-instant']);
+      expect((provider as any).getEffectiveTimeoutMs()).toBe(50000);
+    });
+
+    it('verifies CreateRecordActionHandler dynamically respects categoryResolutionMode override', async () => {
+      const { CreateRecordActionHandler } = await import('../src/core/handlers/createRecordHandler.js');
+      const manager = RuntimeSettingsManager.getInstance(testSettingsFilePath);
+      const handler = new CreateRecordActionHandler(
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        {} as any,
+        undefined,
+        undefined,
+        'ask'
+      );
+
+      expect((handler as any).resolveActiveCategoryResolutionMode()).toBe('ask');
+
+      await manager.updateSetting('categoryResolutionMode', 'auto');
+      expect((handler as any).resolveActiveCategoryResolutionMode()).toBe('auto');
+
+      await manager.updateSetting('categoryResolutionMode', 'ask');
+      expect((handler as any).resolveActiveCategoryResolutionMode()).toBe('ask');
     });
   });
 });
