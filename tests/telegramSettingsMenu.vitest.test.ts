@@ -77,7 +77,7 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
     it('renders Category sub-menu with one-line function overview and checkmark on active option', () => {
       const content = getTelegramSettingsMenuContent('category', 'id', settingsManager);
 
-      expect(content.text).toContain('[INFO] Fungsi: Menentukan apakah bot meminta konfirmasi saat kategori ambigu atau memilih otomatis.');
+      expect(content.text).toContain('Fungsi: Menentukan apakah bot meminta konfirmasi saat kategori ambigu atau memilih otomatis.');
 
       const buttons = content.replyMarkup.inline_keyboard;
       // Option 1: 'ask' (active by default)
@@ -97,7 +97,7 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
     it('renders AI Model sub-menu with one-line function overview and model choices', () => {
       const content = getTelegramSettingsMenuContent('ai_model', 'id', settingsManager);
 
-      expect(content.text).toContain('[INFO] Fungsi: Memilih model LLM utama untuk mengekstrak transaksi, struk, dan klasifikasi.');
+      expect(content.text).toContain('Fungsi: Memilih model LLM utama untuk mengekstrak transaksi, struk, dan klasifikasi.');
 
       const buttons = content.replyMarkup.inline_keyboard;
       // Default model is gemini-3.5-flash-lite
@@ -116,7 +116,7 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
     it('renders Language sub-menu with one-line function overview in English when requested', () => {
       const content = getTelegramSettingsMenuContent('language', 'en', settingsManager);
 
-      expect(content.text).toContain('[INFO] Function: Configures the language for bot replies, reports, and transaction confirmations.');
+      expect(content.text).toContain('Function: Configures the language for bot replies, reports, and transaction confirmations.');
 
       const buttons = content.replyMarkup.inline_keyboard;
       expect(buttons[0][0].text).toContain('Bahasa Indonesia');
@@ -128,7 +128,7 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
     it('renders Currency sub-menu with one-line function overview and supported currency buttons', () => {
       const content = getTelegramSettingsMenuContent('currency', 'id', settingsManager);
 
-      expect(content.text).toContain('[INFO] Fungsi: Menentukan mata uang dasar saat nominal dicatat tanpa simbol mata uang.');
+      expect(content.text).toContain('Fungsi: Menentukan mata uang dasar saat nominal dicatat tanpa simbol mata uang.');
 
       const buttons = content.replyMarkup.inline_keyboard;
       expect(buttons[0][0].text).toContain('✅ IDR');
@@ -143,30 +143,30 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
 
     it('renders Advanced settings hub and each of its sub-pages with function overviews', () => {
       const advanced = getTelegramSettingsMenuContent('advanced', 'id', settingsManager);
-      expect(advanced.text).toContain('[INFO] Fungsi: Konfigurasi performa, antrean, retensi log, dan sinkronisasi sistem.');
+      expect(advanced.text).toContain('Fungsi: Konfigurasi performa, antrean, retensi log, dan sinkronisasi sistem.');
 
       const tz = getTelegramSettingsMenuContent('timezone', 'id', settingsManager);
-      expect(tz.text).toContain('[INFO] Fungsi: Mengatur zona waktu operasional untuk pencatatan tanggal transaksi.');
+      expect(tz.text).toContain('Fungsi: Mengatur zona waktu operasional untuk pencatatan tanggal transaksi.');
       expect(tz.replyMarkup.inline_keyboard[0][0].text).toContain('✅ WIB');
 
       const timeout = getTelegramSettingsMenuContent('ai_timeout', 'id', settingsManager);
-      expect(timeout.text).toContain('[INFO] Fungsi: Batas maksimal durasi tunggu respon AI sebelum beralih ke model cadangan.');
+      expect(timeout.text).toContain('Fungsi: Batas maksimal durasi tunggu respon AI sebelum beralih ke model cadangan.');
       expect(timeout.replyMarkup.inline_keyboard[0][1].text).toContain('✅ 20s');
 
       const email = getTelegramSettingsMenuContent('email_lookback', 'id', settingsManager);
-      expect(email.text).toContain('[INFO] Fungsi: Rentang waktu penarikan email transaksi masuk dari server IMAP.');
+      expect(email.text).toContain('Fungsi: Rentang waktu penarikan email transaksi masuk dari server IMAP.');
       expect(email.replyMarkup.inline_keyboard[0][1].text).toContain('✅ 10m');
 
       const queue = getTelegramSettingsMenuContent('queue_interval', 'id', settingsManager);
-      expect(queue.text).toContain('[INFO] Fungsi: Jeda waktu throttling pengiriman pesan keluar untuk mencegah rate limit.');
+      expect(queue.text).toContain('Fungsi: Jeda waktu throttling pengiriman pesan keluar untuk mencegah rate limit.');
       expect(queue.replyMarkup.inline_keyboard[0][1].text).toContain('✅ 1000ms');
 
       const logs = getTelegramSettingsMenuContent('log_retention', 'id', settingsManager);
-      expect(logs.text).toContain('[INFO] Fungsi: Durasi penyimpanan file log aplikasi sebelum dibersihkan otomatis.');
+      expect(logs.text).toContain('Fungsi: Durasi penyimpanan file log aplikasi sebelum dibersihkan otomatis.');
       expect(logs.replyMarkup.inline_keyboard[0][1].text).toContain('✅ 7d');
 
       const resetConfirm = getTelegramSettingsMenuContent('reset_confirm', 'id', settingsManager);
-      expect(resetConfirm.text).toContain('[INFO] Fungsi: Mengembalikan seluruh konfigurasi runtime ke pengaturan awal (.env / default).');
+      expect(resetConfirm.text).toContain('Fungsi: Mengembalikan seluruh konfigurasi runtime ke pengaturan awal (.env / default).');
     });
   });
 
