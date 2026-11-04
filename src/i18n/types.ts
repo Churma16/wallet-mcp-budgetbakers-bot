@@ -98,6 +98,7 @@ export interface TelegramMenuDictionary {
   commandHistoryDescription: string;
   commandSummaryDescription: string;
   commandMenuDescription: string;
+  commandSettingsDescription: string;
 
   topicRecord: string;
   topicTransfer: string;
@@ -115,6 +116,79 @@ export interface TelegramMenuDictionary {
   guideReceiptContent: string;
   guideSummaryFilterContent: string;
   guideFastCommandsContent: string;
+}
+
+export interface TelegramSettingsDictionary {
+  title: string;
+  subtitle: string;
+  activeSummaryHeader: string;
+  savedAlert: string;
+  resetAlert: string;
+  unauthorizedAlert: string;
+
+  buttonCategoryMode: string;
+  buttonAiModel: string;
+  buttonLanguage: string;
+  buttonCurrency: string;
+  buttonAdvanced: string;
+  buttonBackToMain: string;
+  buttonBackToAdvanced: string;
+  buttonClose: string;
+
+  categoryTitle: string;
+  categoryInfo: string;
+  categoryOptionAsk: string;
+  categoryOptionAuto: string;
+
+  aiModelTitle: string;
+  aiModelInfo: string;
+  aiModelOptionFlashLite: string;
+  aiModelOptionFlash: string;
+  aiModelOptionFallbackChain: string;
+
+  languageTitle: string;
+  languageInfo: string;
+  languageOptionId: string;
+  languageOptionEn: string;
+
+  currencyTitle: string;
+  currencyInfo: string;
+
+  advancedTitle: string;
+  advancedInfo: string;
+  advancedButtonTimezone: string;
+  advancedButtonAiTimeout: string;
+  advancedButtonEmailLookback: string;
+  advancedButtonQueueInterval: string;
+  advancedButtonLogRetention: string;
+  advancedButtonReset: string;
+
+  timezoneTitle: string;
+  timezoneInfo: string;
+
+  aiTimeoutTitle: string;
+  aiTimeoutInfo: string;
+
+  emailLookbackTitle: string;
+  emailLookbackInfo: string;
+
+  queueIntervalTitle: string;
+  queueIntervalInfo: string;
+
+  logRetentionTitle: string;
+  logRetentionInfo: string;
+
+  resetConfirmTitle: string;
+  resetConfirmInfo: string;
+  resetConfirmPrompt: string;
+  resetConfirmButton: string;
+  resetCancelButton: string;
+
+  debugToggleLabel(enabled: boolean): string;
+  debugTitle: string;
+  debugInfo: string;
+  debugOptionOn: string;
+  debugOptionOff: string;
 }
 
 export interface ResponseDictionary {
@@ -234,6 +308,7 @@ export interface ResponseDictionary {
   };
 
   telegramMenu: TelegramMenuDictionary;
+  telegramSettings: TelegramSettingsDictionary;
 
   errors: {
     aiBusy(timestampString: string): string;

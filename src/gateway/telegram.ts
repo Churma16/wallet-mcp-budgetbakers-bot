@@ -25,11 +25,16 @@ import {
   getTelegramGuideTopicContent,
 } from './telegramMenu.js';
 import {
+  getTelegramSettingsMenuContent,
+  TelegramSettingsMenuPage,
+} from './telegramSettingsMenu.js';
+import { RuntimeSettingsManager } from '../config/runtimeSettingsManager.js';
+import {
   escapeHtmlEntities,
   formatTelegramHtml,
   convertWhatsAppMarkupToTelegramHtml,
 } from './formatters/telegramFormatter.js';
-import { getActiveLanguage } from '../i18n/index.js';
+import { getActiveLanguage, getDictionary } from '../i18n/index.js';
 
 export type { TelegramSafeguardConfiguration };
 export { escapeHtmlEntities, formatTelegramHtml, convertWhatsAppMarkupToTelegramHtml };
@@ -454,7 +459,19 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       await this.handleInboundMiddleware(ctx, next);
     });
 
-    // 2. Handle Interactive Guide Callback Queries
+    // 2. Official Settings Bot Command
+    if (typeof bot.command === 'function') {
+      bot.command(['settings', 'pengaturan'], async ctx => {
+        const currentLanguage = getActiveLanguage();
+        const menuContent = getTelegramSettingsMenuContent('home', currentLanguage);
+        await ctx.reply(menuContent.text, {
+          parse_mode: 'HTML',
+          reply_markup: menuContent.replyMarkup,
+        });
+      });
+    }
+
+    // 3. Handle Interactive Callback Queries (Guide & Settings)
     bot.on('callback_query:data', async ctx => {
       const callbackData = ctx.callbackQuery.data;
       if (!callbackData) {
@@ -479,15 +496,33 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
           }
         }
         await ctx.answerCallbackQuery();
+      } else if (callbackData.startsWith('settings:')) {
+        await this.handleSettingsCallbackQuery(ctx, callbackData);
       } else {
         await ctx.answerCallbackQuery();
       }
     });
 
-    // 3. Handle Text Messages
+    // 4. Handle Text Messages
     bot.on('message:text', async ctx => {
       const textContent = ctx.message.text?.trim();
       if (!textContent) {
+        return;
+      }
+
+      const lowerText = textContent.toLowerCase();
+      if (
+        lowerText === '/settings' ||
+        lowerText === 'settings' ||
+        lowerText === '/pengaturan' ||
+        lowerText === 'pengaturan'
+      ) {
+        const currentLanguage = getActiveLanguage();
+        const menuContent = getTelegramSettingsMenuContent('home', currentLanguage);
+        await ctx.reply(menuContent.text, {
+          parse_mode: 'HTML',
+          reply_markup: menuContent.replyMarkup,
+        });
         return;
       }
 
@@ -644,6 +679,155 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       },
       additionalMetadata,
     });
+  }
+
+  public async handleSettingsCallbackQuery(ctx: Context, callbackData: string): Promise<void> {
+    const senderUserId = ctx.from?.id ? String(ctx.from.id) : '';
+    if (!this.isAuthorizedSender(senderUserId, ctx.from?.username)) {
+      try {
+        await ctx.answerCallbackQuery({ text: 'Akses ditolak / Unauthorized', show_alert: true });
+      } catch {
+        // Ignore failure
+      }
+      return;
+    }
+
+    const settingsManager = RuntimeSettingsManager.getInstance();
+    const currentLanguage = getActiveLanguage();
+    const dictionary = getDictionary(currentLanguage).telegramSettings;
+
+    let targetPage: TelegramSettingsMenuPage = 'home';
+    let feedbackAlert: string | undefined;
+
+    try {
+      if (callbackData === 'settings:home') {
+        targetPage = 'home';
+      } else if (callbackData === 'settings:action:close') {
+        try {
+          await ctx.deleteMessage();
+        } catch {
+          await ctx.editMessageText('<i>Menu pengaturan ditutup.</i>', { parse_mode: 'HTML' });
+        }
+        await ctx.answerCallbackQuery();
+        return;
+      } else if (callbackData === 'settings:action:reset') {
+        await settingsManager.resetToDefaults();
+        feedbackAlert = dictionary.resetAlert;
+        targetPage = 'home';
+      } else if (callbackData === 'settings:toggle:debug') {
+        const currentDebug = settingsManager.getSetting('debugLoggingEnabled');
+        await settingsManager.updateSetting('debugLoggingEnabled', !currentDebug);
+        feedbackAlert = dictionary.savedAlert;
+        targetPage = 'home';
+      } else if (callbackData === 'settings:toggle:ai_fallback') {
+        const currentFallbacks = settingsManager.getSetting('aiFallbackModels');
+        const hasFallbacks = Array.isArray(currentFallbacks) && currentFallbacks.length > 0;
+        await settingsManager.updateSetting(
+          'aiFallbackModels',
+          hasFallbacks ? [] : ['gemini-3.6-flash', 'gemini-3.8-flash']
+        );
+        feedbackAlert = dictionary.savedAlert;
+        targetPage = 'ai_model';
+      } else if (callbackData.startsWith('settings:page:')) {
+        targetPage = callbackData.replace('settings:page:', '') as TelegramSettingsMenuPage;
+      } else if (callbackData.startsWith('settings:set:')) {
+        const settingPayload = callbackData.replace('settings:set:', '');
+        const firstColonIndex = settingPayload.indexOf(':');
+        if (firstColonIndex > 0) {
+          const settingKey = settingPayload.slice(0, firstColonIndex);
+          const settingValue = settingPayload.slice(firstColonIndex + 1);
+
+          switch (settingKey) {
+            case 'category': {
+              if (settingValue === 'ask' || settingValue === 'auto') {
+                await settingsManager.updateSetting('categoryResolutionMode', settingValue);
+              }
+              targetPage = 'category';
+              break;
+            }
+            case 'ai_model': {
+              await settingsManager.updateSetting('aiModel', settingValue);
+              targetPage = 'ai_model';
+              break;
+            }
+            case 'language': {
+              if (settingValue === 'id' || settingValue === 'en') {
+                await settingsManager.updateSetting('appLanguage', settingValue);
+              }
+              targetPage = 'language';
+              break;
+            }
+            case 'currency': {
+              await settingsManager.updateSetting('defaultCurrency', settingValue.toUpperCase());
+              targetPage = 'currency';
+              break;
+            }
+            case 'timezone': {
+              await settingsManager.updateSetting('appTimezone', settingValue);
+              targetPage = 'timezone';
+              break;
+            }
+            case 'ai_timeout': {
+              const seconds = Number.parseInt(settingValue, 10);
+              if (!Number.isNaN(seconds) && seconds > 0) {
+                await settingsManager.updateSetting('aiRequestTimeoutSeconds', seconds);
+              }
+              targetPage = 'ai_timeout';
+              break;
+            }
+            case 'email_lookback': {
+              const minutes = Number.parseInt(settingValue, 10);
+              if (!Number.isNaN(minutes) && minutes > 0) {
+                await settingsManager.updateSetting('emailLookbackMinutes', minutes);
+              }
+              targetPage = 'email_lookback';
+              break;
+            }
+            case 'queue_interval': {
+              const ms = Number.parseInt(settingValue, 10);
+              if (!Number.isNaN(ms) && ms > 0) {
+                await settingsManager.updateSetting('whatsappMessageQueueIntervalMs', ms);
+              }
+              targetPage = 'queue_interval';
+              break;
+            }
+            case 'log_retention': {
+              const days = Number.parseInt(settingValue, 10);
+              if (!Number.isNaN(days) && days > 0) {
+                await settingsManager.updateSetting('logRetentionDays', days);
+              }
+              targetPage = 'log_retention';
+              break;
+            }
+          }
+          feedbackAlert = dictionary.savedAlert;
+        }
+      }
+
+      const activeLanguage = getActiveLanguage();
+      const menuContent = getTelegramSettingsMenuContent(targetPage, activeLanguage, settingsManager);
+
+      try {
+        await ctx.editMessageText(menuContent.text, {
+          parse_mode: 'HTML',
+          reply_markup: menuContent.replyMarkup,
+        });
+      } catch (editError: unknown) {
+        const errorMsg = editError instanceof Error ? editError.message : String(editError);
+        if (!errorMsg.includes('message is not modified')) {
+          applicationLogger.warn(`Failed to edit settings menu message: ${errorMsg}`);
+        }
+      }
+
+      await ctx.answerCallbackQuery(feedbackAlert ? { text: feedbackAlert } : undefined);
+    } catch (handlerError: unknown) {
+      applicationLogger.error(`Error handling settings callback query: ${handlerError}`);
+      try {
+        await ctx.answerCallbackQuery({ text: 'Error updating setting' });
+      } catch {
+        // Ignore
+      }
+    }
   }
 
   public async stopConnection(): Promise<void> {

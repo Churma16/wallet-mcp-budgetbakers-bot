@@ -29,6 +29,7 @@ import {
   parseCategoryClassificationResponse,
 } from './jsonExtraction.js';
 import { executeGeminiGenerationWithFallback } from './geminiClient.js';
+import { RuntimeSettingsManager } from '../../config/index.js';
 
 /**
  * AI Provider implementation for Google Gemini SDK.
@@ -76,6 +77,27 @@ export class GeminiAiProvider implements FinancialAiProvider {
     return this.systemInstructionCache.getCacheKey();
   }
 
+  private getEffectiveCandidateModels(): string[] {
+    const runtimeManager = RuntimeSettingsManager.getInstance();
+    const storedOverrides = runtimeManager.getStoredOverrides();
+    if (storedOverrides.aiModel) {
+      const fallbacks = storedOverrides.aiFallbackModels && storedOverrides.aiFallbackModels.length > 0
+        ? storedOverrides.aiFallbackModels
+        : this.candidateModelList.slice(1);
+      return Array.from(new Set([storedOverrides.aiModel, ...fallbacks]));
+    }
+    return this.candidateModelList;
+  }
+
+  private getEffectiveTimeoutMs(): number {
+    const runtimeManager = RuntimeSettingsManager.getInstance();
+    const storedOverrides = runtimeManager.getStoredOverrides();
+    if (storedOverrides.aiRequestTimeoutSeconds && storedOverrides.aiRequestTimeoutSeconds > 0) {
+      return storedOverrides.aiRequestTimeoutSeconds * 1000;
+    }
+    return this.requestTimeoutMilliseconds;
+  }
+
   private executeGeneration(options: {
     contents: any;
     systemInstruction: string;
@@ -83,8 +105,8 @@ export class GeminiAiProvider implements FinancialAiProvider {
   }) {
     return executeGeminiGenerationWithFallback({
       googleGenAiClient: this.googleGenAiClient,
-      candidateModelList: this.candidateModelList,
-      requestTimeoutMilliseconds: this.requestTimeoutMilliseconds,
+      candidateModelList: this.getEffectiveCandidateModels(),
+      requestTimeoutMilliseconds: this.getEffectiveTimeoutMs(),
       contents: options.contents,
       systemInstruction: options.systemInstruction,
       requestContextDescription: options.requestContextDescription || 'Gemini financial processing',

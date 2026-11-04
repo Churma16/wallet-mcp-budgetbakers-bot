@@ -20,6 +20,7 @@ describe('Telegram Menu and Keyboard Components', () => {
         { command: 'riwayat', description: 'Cek transaksi terakhir' },
         { command: 'rekap', description: 'Cek ringkasan pengeluaran bulan ini' },
         { command: 'menu', description: 'Buka menu utama dan panduan' },
+        { command: 'settings', description: 'Buka menu pengaturan bot' },
       ]);
     });
 
@@ -32,6 +33,7 @@ describe('Telegram Menu and Keyboard Components', () => {
         { command: 'riwayat', description: 'Check recent transaction history' },
         { command: 'rekap', description: 'Check this month expense summary' },
         { command: 'menu', description: 'Open main menu and guide' },
+        { command: 'settings', description: 'Open bot settings menu' },
       ]);
     });
   });
