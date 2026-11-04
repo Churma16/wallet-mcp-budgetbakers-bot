@@ -181,6 +181,9 @@ For Telegram users, runtime behavior can be customized on the fly without editin
 
 ## Optional Inbound Sync
 
+> [!TIP]
+> **Want to add support for your bank or wallet?** Check out the [Adding Providers Guide](ADDING_PROVIDERS.md) to add rules yourself, or open an issue with a sanitized sample and we'll add it for you.
+
 ### Bank Email Synchronization (Gmail IMAP IDLE)
 
 The bot can monitor bank and e-wallet notification emails in real time via IMAP IDLE:

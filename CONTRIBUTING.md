@@ -118,6 +118,8 @@ When introducing a new feature, consider the modular architecture of the codebas
 - **Account-Aware Multi-Currency**:
   - When outputting financial values, look up the target account's configured currency code (`account.currency`).
   - Utilize the helper functions in `src/utils/humanResponseFormatter.ts` to ensure consistent currency symbols and decimal precision (e.g., zero decimals for `IDR`, two decimals for `USD`/`EUR`).
+- **Bank & Notification Inbound Rules**:
+  - To add or update parsing rules for bank emails or Android push notifications, refer to the dedicated [Adding Providers Guide](ADDING_PROVIDERS.md).
 - **Fast-Path Optimization (Zero-Token)**:
   - If a user command or confirmation pattern can be determined deterministically (such as simple commands, cancellations, or ticket numbers), route it through `src/utils/fastPathIntentDetector.ts` to conserve AI tokens and reduce response latency.
 
