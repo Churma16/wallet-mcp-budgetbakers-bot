@@ -326,12 +326,13 @@ export class MessageDispatcher {
 
           if (isBareCancellation) {
             const manager = this.context.pending as Partial<PendingTransactionService>;
-            if (
+            const hasRequiredMethods =
               typeof manager.getLatestPendingAccountSelectionDraft === 'function' &&
               typeof manager.getPendingAccountSelectionDraftState === 'function' &&
               typeof manager.getAllPendingTransactions === 'function' &&
-              typeof manager.getPendingTransactionState === 'function'
-            ) {
+              typeof manager.getPendingTransactionState === 'function';
+
+            if (hasRequiredMethods) {
               const accountDraft = manager.getLatestPendingAccountSelectionDraft?.(
                 event.channel,
                 event.chatIdentifier,
@@ -361,7 +362,7 @@ export class MessageDispatcher {
                 );
               }
 
-              const pendingStandardItems = manager.getAllPendingTransactions().filter(
+              const pendingStandardItems = (manager.getAllPendingTransactions?.() || []).filter(
                 item => manager.getPendingTransactionState?.(item.ticketId) === 'PENDING'
               );
               const standardPendingItem = pendingStandardItems[pendingStandardItems.length - 1];
@@ -583,84 +584,7 @@ export class MessageDispatcher {
           requestReferenceInstant,
         });
 
-        if (boundaryDecision.accepted) {
-          if (!this.financialActionRegistry.hasHandler(boundaryDecision.context.action)) {
-            applicationLogger.error(
-              `[SemanticToolBoundary] Accepted action has no registered handler: ${boundaryDecision.context.action}.`
-            );
-            return;
-          }
-
-          if (deferredHistoryFastPathOptions) {
-            if (boundaryDecision.context.action !== FINANCIAL_ACTION_TYPES.TRANSACTION_HISTORY) {
-              applicationLogger.warn(
-                `Semantic history resolution proposed ${boundaryDecision.context.action}; action was not executed.`
-              );
-              const rawCategory = deferredHistoryFastPathOptions.categoryName || event.textPayload || '';
-              const unresolvedMessage = getDictionary().history.unresolvedFilters([
-                {
-                  filterKey: 'category',
-                  rawValue: rawCategory,
-                  reason: 'NOT_FOUND',
-                  message: `Category "${rawCategory}" not found in Wallet cache.`,
-                },
-              ]);
-              await this.context.gateway.sendMessage(
-                event.channel,
-                event.chatIdentifier,
-                unresolvedMessage
-              );
-              return;
-            } else {
-              const semanticCategoryId = boundaryDecision.context.queryOptions?.categoryId;
-              const semanticSearchQuery = boundaryDecision.context.queryOptions?.searchQuery;
-              if (!semanticCategoryId && !semanticSearchQuery) {
-                applicationLogger.warn(
-                  'Semantic category resolution omitted categoryId and searchQuery; history query was not executed.'
-                );
-                const rawCategory = deferredHistoryFastPathOptions.categoryName || event.textPayload || '';
-                const unresolvedMessage = getDictionary().history.unresolvedFilters([
-                  {
-                    filterKey: 'category',
-                    rawValue: rawCategory,
-                    reason: 'NOT_FOUND',
-                    message: `Category "${rawCategory}" not found in Wallet cache.`,
-                  },
-                ]);
-                await this.context.gateway.sendMessage(
-                  event.channel,
-                  event.chatIdentifier,
-                  unresolvedMessage
-                );
-                return;
-              } else {
-                const semanticRecordType = boundaryDecision.context.queryOptions?.recordType;
-                const mergedRecordType = deferredHistoryFastPathOptions.recordType || semanticRecordType;
-                const mergedQueryOptions: TransactionHistoryQueryOptions = {
-                  ...deferredHistoryFastPathOptions,
-                  ...(mergedRecordType ? { recordType: mergedRecordType } : {}),
-                  ...(semanticCategoryId ? { categoryId: semanticCategoryId } : {}),
-                  ...(boundaryDecision.context.queryOptions?.categoryGroup
-                    ? { categoryGroup: boundaryDecision.context.queryOptions.categoryGroup }
-                    : {}),
-                  ...(boundaryDecision.context.queryOptions?.isGroupQuery !== undefined
-                    ? { isGroupQuery: boundaryDecision.context.queryOptions.isGroupQuery }
-                    : {}),
-                  ...(semanticSearchQuery ? { searchQuery: semanticSearchQuery } : {}),
-                };
-                delete mergedQueryOptions.categoryName;
-                await this.financialActionRegistry.execute({
-                  ...boundaryDecision.context,
-                  queryOptions: mergedQueryOptions,
-                });
-                return;
-              }
-            }
-          } else {
-            await this.financialActionRegistry.execute(boundaryDecision.context);
-            return;
-          }
-        } else {
+        if (!boundaryDecision.accepted) {
           applicationLogger.warn(
             `[SemanticToolBoundary] Rejected ${semanticToolProposal.tool}: ${boundaryDecision.code}.`
           );
@@ -700,6 +624,79 @@ export class MessageDispatcher {
             );
             return;
           }
+        } else if (!this.financialActionRegistry.hasHandler(boundaryDecision.context.action)) {
+          applicationLogger.error(
+            `[SemanticToolBoundary] Accepted action has no registered handler: ${boundaryDecision.context.action}.`
+          );
+          return;
+        } else if (!deferredHistoryFastPathOptions) {
+          await this.financialActionRegistry.execute(boundaryDecision.context);
+          return;
+        } else {
+          if (boundaryDecision.context.action !== FINANCIAL_ACTION_TYPES.TRANSACTION_HISTORY) {
+            applicationLogger.warn(
+              `Semantic history resolution proposed ${boundaryDecision.context.action}; action was not executed.`
+            );
+            const rawCategory = deferredHistoryFastPathOptions.categoryName || event.textPayload || '';
+            const unresolvedMessage = getDictionary().history.unresolvedFilters([
+              {
+                filterKey: 'category',
+                rawValue: rawCategory,
+                reason: 'NOT_FOUND',
+                message: `Category "${rawCategory}" not found in Wallet cache.`,
+              },
+            ]);
+            await this.context.gateway.sendMessage(
+              event.channel,
+              event.chatIdentifier,
+              unresolvedMessage
+            );
+            return;
+          }
+
+          const semanticCategoryId = boundaryDecision.context.queryOptions?.categoryId;
+          const semanticSearchQuery = boundaryDecision.context.queryOptions?.searchQuery;
+          if (!semanticCategoryId && !semanticSearchQuery) {
+            applicationLogger.warn(
+              'Semantic category resolution omitted categoryId and searchQuery; history query was not executed.'
+            );
+            const rawCategory = deferredHistoryFastPathOptions.categoryName || event.textPayload || '';
+            const unresolvedMessage = getDictionary().history.unresolvedFilters([
+              {
+                filterKey: 'category',
+                rawValue: rawCategory,
+                reason: 'NOT_FOUND',
+                message: `Category "${rawCategory}" not found in Wallet cache.`,
+              },
+            ]);
+            await this.context.gateway.sendMessage(
+              event.channel,
+              event.chatIdentifier,
+              unresolvedMessage
+            );
+            return;
+          }
+
+          const semanticRecordType = boundaryDecision.context.queryOptions?.recordType;
+          const mergedRecordType = deferredHistoryFastPathOptions.recordType || semanticRecordType;
+          const mergedQueryOptions: TransactionHistoryQueryOptions = {
+            ...deferredHistoryFastPathOptions,
+            ...(mergedRecordType ? { recordType: mergedRecordType } : {}),
+            ...(semanticCategoryId ? { categoryId: semanticCategoryId } : {}),
+            ...(boundaryDecision.context.queryOptions?.categoryGroup
+              ? { categoryGroup: boundaryDecision.context.queryOptions.categoryGroup }
+              : {}),
+            ...(boundaryDecision.context.queryOptions?.isGroupQuery !== undefined
+              ? { isGroupQuery: boundaryDecision.context.queryOptions.isGroupQuery }
+              : {}),
+            ...(semanticSearchQuery ? { searchQuery: semanticSearchQuery } : {}),
+          };
+          delete mergedQueryOptions.categoryName;
+          await this.financialActionRegistry.execute({
+            ...boundaryDecision.context,
+            queryOptions: mergedQueryOptions,
+          });
+          return;
         }
       } else if (deferredHistoryFastPathOptions && extractedIntent.action !== 'GENERAL_REPLY') {
         applicationLogger.warn(

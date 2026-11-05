@@ -450,17 +450,14 @@ export class WhatsappInboundMessageProcessor {
       if (!targetsSelf && remoteJid.endsWith('@lid') && socket) {
         try {
           const signalRepo = (socket as unknown as { signalRepository?: { lidMapping?: { getPNForLID?: (jid: string) => Promise<string | undefined> } } }).signalRepository;
-          const lidStore = signalRepo?.lidMapping;
-          if (lidStore && typeof lidStore.getPNForLID === 'function') {
-            const mappedPn = await lidStore.getPNForLID(remoteJid);
-            if (mappedPn) {
-              const mappedDigits = digitsOnly(mappedPn);
-              if (
-                (botPhoneNumber && mappedDigits === botPhoneNumber) ||
-                this.normalizedAllowedPhoneNumbers.includes(mappedDigits)
-              ) {
-                targetsSelf = true;
-              }
+          const mappedPn = await signalRepo?.lidMapping?.getPNForLID?.(remoteJid);
+          if (mappedPn) {
+            const mappedDigits = digitsOnly(mappedPn);
+            if (
+              (botPhoneNumber && mappedDigits === botPhoneNumber) ||
+              this.normalizedAllowedPhoneNumbers.includes(mappedDigits)
+            ) {
+              targetsSelf = true;
             }
           }
         } catch {
