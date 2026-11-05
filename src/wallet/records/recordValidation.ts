@@ -288,18 +288,40 @@ export function validateCreateRecordsResponse(
 
   return typedResult;
 }
-export function validateDeleteRecordsResponse(
-  deleteRecordsResult: unknown,
-  expectedRecordCount: number
-): WalletDeleteRecordsResponse {
-  if (!deleteRecordsResult || typeof deleteRecordsResult !== 'object' || Array.isArray(deleteRecordsResult)) {
+interface StandardBatchMutationResponse {
+  summary?: {
+    total: number;
+    succeeded: number;
+    failed?: number;
+    clientErrors?: number;
+    serverErrors?: number;
+    documentsWritten?: number;
+  };
+  results?: Array<{
+    id?: string;
+    inputIndex?: number;
+    success: boolean;
+    error?: string;
+    errorType?: string;
+    fields?: string[];
+  }>;
+}
+
+function validateStandardBatchMutationResponse<T extends StandardBatchMutationResponse>(
+  rawResult: unknown,
+  expectedRecordCount: number,
+  toolName: 'delete_documents' | 'patch_records',
+  operationNoun: 'deletion' | 'update',
+  operationPastVerb: 'deleted' | 'updated'
+): T {
+  if (!rawResult || typeof rawResult !== 'object' || Array.isArray(rawResult)) {
     throw new WalletMcpRequestError(
-      "[error] MCP Tool 'delete_documents' returned an unverifiable response",
+      `[error] MCP Tool '${toolName}' returned an unverifiable response`,
       'UNKNOWN'
     );
   }
 
-  const typedResult = deleteRecordsResult as WalletDeleteRecordsResponse;
+  const typedResult = rawResult as T;
   const summary = typedResult.summary;
   const results = typedResult.results;
   const hasSummary = summary !== undefined;
@@ -307,7 +329,7 @@ export function validateDeleteRecordsResponse(
 
   if (!hasSummary && !hasResults) {
     throw new WalletMcpRequestError(
-      "[error] MCP Tool 'delete_documents' returned no recognized success evidence",
+      `[error] MCP Tool '${toolName}' returned no recognized success evidence`,
       'UNKNOWN'
     );
   }
@@ -323,7 +345,7 @@ export function validateDeleteRecordsResponse(
     const expectedSummaryTotal = hasResults ? results.length : expectedRecordCount;
     if (!totalValid || !succeededValid || summary?.total !== expectedSummaryTotal) {
       throw new WalletMcpRequestError(
-        "[error] MCP Tool 'delete_documents' returned an invalid or mismatched summary",
+        `[error] MCP Tool '${toolName}' returned an invalid or mismatched summary`,
         'UNKNOWN'
       );
     }
@@ -336,7 +358,7 @@ export function validateDeleteRecordsResponse(
       summaryResolvedErrors = (summary?.clientErrors ?? 0) + (summary?.serverErrors ?? 0);
       if (hasFailed && summary?.failed !== summaryResolvedErrors) {
         throw new WalletMcpRequestError(
-          "[error] MCP Tool 'delete_documents' returned an invalid or mismatched summary",
+          `[error] MCP Tool '${toolName}' returned an invalid or mismatched summary`,
           'UNKNOWN'
         );
       }
@@ -347,7 +369,7 @@ export function validateDeleteRecordsResponse(
     if (summaryResolvedErrors !== undefined) {
       if ((summary?.succeeded ?? 0) + summaryResolvedErrors !== expectedRecordCount) {
         throw new WalletMcpRequestError(
-          "[error] MCP Tool 'delete_documents' returned an invalid or mismatched summary",
+          `[error] MCP Tool '${toolName}' returned an invalid or mismatched summary`,
           'UNKNOWN'
         );
       }
@@ -360,7 +382,7 @@ export function validateDeleteRecordsResponse(
   if (hasResults) {
     if (results.length < expectedRecordCount) {
       throw new WalletMcpRequestError(
-        "[error] MCP Tool 'delete_documents' returned an unexpected number of per-record results",
+        `[error] MCP Tool '${toolName}' returned an unexpected number of per-record results`,
         'UNKNOWN'
       );
     }
@@ -368,7 +390,7 @@ export function validateDeleteRecordsResponse(
     const invalidResultShape = results.some(result => !result || typeof result.success !== 'boolean');
     if (invalidResultShape) {
       throw new WalletMcpRequestError(
-        "[error] MCP Tool 'delete_documents' returned invalid per-record results",
+        `[error] MCP Tool '${toolName}' returned invalid per-record results`,
         'UNKNOWN'
       );
     }
@@ -380,7 +402,7 @@ export function validateDeleteRecordsResponse(
   if (hasSummary && hasResults) {
     if (summary?.succeeded !== resultSuccessCount) {
       throw new WalletMcpRequestError(
-        "[error] MCP Tool 'delete_documents' returned inconsistent summary and per-record results",
+        `[error] MCP Tool '${toolName}' returned inconsistent summary and per-record results`,
         'UNKNOWN'
       );
     }
@@ -408,7 +430,7 @@ export function validateDeleteRecordsResponse(
       : 'DEFINITIVE_FAILURE';
 
     throw new WalletMcpRequestError(
-      `[error] MCP Tool 'delete_documents' rejected deletion of ${failureCount} record(s)` +
+      `[error] MCP Tool '${toolName}' rejected ${operationNoun} of ${failureCount} record(s)` +
         (firstFailureDetail ? `: ${firstFailureDetail}` : ''),
       dispatchOutcome
     );
@@ -425,7 +447,7 @@ export function validateDeleteRecordsResponse(
 
   if (!summaryConfirmsFullSuccess && !resultsConfirmFullSuccess) {
     throw new WalletMcpRequestError(
-      `[error] MCP Tool 'delete_documents' did not provide positive evidence for all ${expectedRecordCount} deleted record(s)`,
+      `[error] MCP Tool '${toolName}' did not provide positive evidence for all ${expectedRecordCount} ${operationPastVerb} record(s)`,
       'UNKNOWN'
     );
   }
@@ -433,147 +455,28 @@ export function validateDeleteRecordsResponse(
   return typedResult;
 }
 
+export function validateDeleteRecordsResponse(
+  deleteRecordsResult: unknown,
+  expectedRecordCount: number
+): WalletDeleteRecordsResponse {
+  return validateStandardBatchMutationResponse<WalletDeleteRecordsResponse>(
+    deleteRecordsResult,
+    expectedRecordCount,
+    'delete_documents',
+    'deletion',
+    'deleted'
+  );
+}
+
 export function validatePatchRecordsResponse(
   patchRecordsResult: unknown,
   expectedRecordCount: number
 ): WalletPatchRecordsResponse {
-  if (!patchRecordsResult || typeof patchRecordsResult !== 'object' || Array.isArray(patchRecordsResult)) {
-    throw new WalletMcpRequestError(
-      "[error] MCP Tool 'patch_records' returned an unverifiable response",
-      'UNKNOWN'
-    );
-  }
-
-  const typedResult = patchRecordsResult as WalletPatchRecordsResponse;
-  const summary = typedResult.summary;
-  const results = typedResult.results;
-  const hasSummary = summary !== undefined;
-  const hasResults = Array.isArray(results);
-
-  if (!hasSummary && !hasResults) {
-    throw new WalletMcpRequestError(
-      "[error] MCP Tool 'patch_records' returned no recognized success evidence",
-      'UNKNOWN'
-    );
-  }
-
-  let summaryResolvedErrors: number | undefined;
-
-  if (hasSummary) {
-    const totalValid =
-      typeof summary?.total === 'number' && Number.isInteger(summary.total) && summary.total >= 0;
-    const succeededValid =
-      typeof summary?.succeeded === 'number' && Number.isInteger(summary.succeeded) && summary.succeeded >= 0;
-
-    const expectedSummaryTotal = hasResults ? results.length : expectedRecordCount;
-    if (!totalValid || !succeededValid || summary?.total !== expectedSummaryTotal) {
-      throw new WalletMcpRequestError(
-        "[error] MCP Tool 'patch_records' returned an invalid or mismatched summary",
-        'UNKNOWN'
-      );
-    }
-
-    const hasClientErrors = summary?.clientErrors !== undefined;
-    const hasServerErrors = summary?.serverErrors !== undefined;
-    const hasFailed = summary?.failed !== undefined;
-
-    if (hasClientErrors && hasServerErrors) {
-      summaryResolvedErrors = (summary?.clientErrors ?? 0) + (summary?.serverErrors ?? 0);
-      if (hasFailed && summary?.failed !== summaryResolvedErrors) {
-        throw new WalletMcpRequestError(
-          "[error] MCP Tool 'patch_records' returned an invalid or mismatched summary",
-          'UNKNOWN'
-        );
-      }
-    } else if (hasFailed) {
-      summaryResolvedErrors = summary?.failed;
-    }
-
-    if (summaryResolvedErrors !== undefined) {
-      if ((summary?.succeeded ?? 0) + summaryResolvedErrors !== expectedRecordCount) {
-        throw new WalletMcpRequestError(
-          "[error] MCP Tool 'patch_records' returned an invalid or mismatched summary",
-          'UNKNOWN'
-        );
-      }
-    }
-  }
-
-  let resultSuccessCount = 0;
-  let resultFailureCount = 0;
-
-  if (hasResults) {
-    if (results.length < expectedRecordCount) {
-      throw new WalletMcpRequestError(
-        "[error] MCP Tool 'patch_records' returned an unexpected number of per-record results",
-        'UNKNOWN'
-      );
-    }
-
-    const invalidResultShape = results.some(result => !result || typeof result.success !== 'boolean');
-    if (invalidResultShape) {
-      throw new WalletMcpRequestError(
-        "[error] MCP Tool 'patch_records' returned invalid per-record results",
-        'UNKNOWN'
-      );
-    }
-
-    resultSuccessCount = results.filter(result => result.success === true).length;
-    resultFailureCount = results.length - resultSuccessCount;
-  }
-
-  if (hasSummary && hasResults) {
-    if (summary?.succeeded !== resultSuccessCount) {
-      throw new WalletMcpRequestError(
-        "[error] MCP Tool 'patch_records' returned inconsistent summary and per-record results",
-        'UNKNOWN'
-      );
-    }
-  }
-
-  const totalFailureCount = summaryResolvedErrors !== undefined
-    ? summaryResolvedErrors
-    : resultFailureCount;
-
-  if (totalFailureCount > 0 || (hasResults && resultFailureCount > 0)) {
-    const failureCount = Math.max(totalFailureCount, resultFailureCount);
-    const firstFailureItem = hasResults
-      ? results.find(result => result.success === false)
-      : undefined;
-    const firstFailureDetail = firstFailureItem?.error;
-
-    const hasServerErrors = (summary?.serverErrors !== undefined && summary.serverErrors > 0) ||
-      (hasResults && results.some(r => r.success === false && r.errorType === 'server_error'));
-
-    const hasPartialSuccess = (summary?.succeeded !== undefined && summary.succeeded > 0) ||
-      (hasResults && resultSuccessCount > 0);
-
-    const dispatchOutcome: WalletMcpDispatchOutcome = (hasServerErrors || hasPartialSuccess)
-      ? 'UNKNOWN'
-      : 'DEFINITIVE_FAILURE';
-
-    throw new WalletMcpRequestError(
-      `[error] MCP Tool 'patch_records' rejected update of ${failureCount} record(s)` +
-        (firstFailureDetail ? `: ${firstFailureDetail}` : ''),
-      dispatchOutcome
-    );
-  }
-
-  const summaryConfirmsFullSuccess = Boolean(
-    hasSummary && summary?.succeeded === expectedRecordCount
+  return validateStandardBatchMutationResponse<WalletPatchRecordsResponse>(
+    patchRecordsResult,
+    expectedRecordCount,
+    'patch_records',
+    'update',
+    'updated'
   );
-  const resultsConfirmFullSuccess = Boolean(
-    hasResults &&
-    resultSuccessCount === expectedRecordCount &&
-    resultFailureCount === 0
-  );
-
-  if (!summaryConfirmsFullSuccess && !resultsConfirmFullSuccess) {
-    throw new WalletMcpRequestError(
-      `[error] MCP Tool 'patch_records' did not provide positive evidence for all ${expectedRecordCount} updated record(s)`,
-      'UNKNOWN'
-    );
-  }
-
-  return typedResult;
 }
