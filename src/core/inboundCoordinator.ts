@@ -141,7 +141,7 @@ export async function coordinateInboundTransactionCandidate(
   if (walletMcpClient) {
     try {
       const page = await walletMcpClient.fetchRecords({
-        limit: 10,
+        limit: context.isReplay ? 50 : 15,
         sort: 'newest',
       });
       recentRecords = page?.records || [];
