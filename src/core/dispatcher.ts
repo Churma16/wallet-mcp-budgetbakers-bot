@@ -200,7 +200,8 @@ export class MessageDispatcher {
         context.wallet.cache,
         context.wallet.transactionMessages,
         context.brain?.categoryContext,
-        context.brain?.provider
+        context.brain?.provider,
+        context.wallet.enrichmentPool
       );
 
     this.financialActionRegistry =
@@ -846,6 +847,7 @@ export class MessageDispatcher {
         correlationService: this.context.email.correlation,
         walletMcpClient: this.context.wallet.client,
         transactionMessageStore: this.context.wallet?.transactionMessages,
+        enrichmentPoolService: this.context.wallet?.enrichmentPool,
       }
     );
   }
@@ -862,7 +864,8 @@ export class MessageDispatcher {
       this.context.config.defaultCurrency,
       this.context.email?.correlation || new TransactionCorrelationService(),
       this.context.wallet.client,
-      this.context.wallet?.transactionMessages
+      this.context.wallet?.transactionMessages,
+      this.context.wallet?.enrichmentPool
     );
     await handler.handleNotificationReceived(payload);
   }

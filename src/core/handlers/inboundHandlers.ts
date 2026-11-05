@@ -7,7 +7,7 @@ import {
 import { FinancialAiProvider } from '../../brain/index.js';
 import { PendingTransactionService } from '../pending.js';
 import { WalletCacheService, WalletMcpClientService } from '../../wallet/index.js';
-import { TransactionMessageStore } from '../../wallet/records/index.js';
+import { TransactionMessageStore, EnrichmentPoolService } from '../../wallet/records/index.js';
 import { coordinateInboundTransactionCandidate } from '../inboundCoordinator.js';
 import { evaluateNotificationThroughGate } from '../../config/notificationRules.js';
 import { applicationLogger } from '../../lib/logger.js';
@@ -26,7 +26,8 @@ export class EmailTransactionHandler {
     private readonly correlationService: TransactionCorrelationService = new TransactionCorrelationService(),
     private readonly emailListenerServiceGetter?: () => EmailListenerService | null,
     private readonly walletMcpClient?: WalletMcpClientService,
-    private readonly transactionMessageStore?: TransactionMessageStore
+    private readonly transactionMessageStore?: TransactionMessageStore,
+    private readonly enrichmentPoolService?: EnrichmentPoolService
   ) {}
 
   /**
@@ -98,6 +99,7 @@ export class EmailTransactionHandler {
         correlationService: this.correlationService,
         walletMcpClient: this.walletMcpClient,
         transactionMessageStore: this.transactionMessageStore,
+        enrichmentPoolService: this.enrichmentPoolService,
       }
     );
   }
@@ -116,7 +118,8 @@ export class NotificationTransactionHandler {
     private readonly defaultCurrency: string = 'IDR',
     private readonly correlationService: TransactionCorrelationService = new TransactionCorrelationService(),
     private readonly walletMcpClient?: WalletMcpClientService,
-    private readonly transactionMessageStore?: TransactionMessageStore
+    private readonly transactionMessageStore?: TransactionMessageStore,
+    private readonly enrichmentPoolService?: EnrichmentPoolService
   ) {}
 
   /**
@@ -222,6 +225,7 @@ export class NotificationTransactionHandler {
         correlationService: this.correlationService,
         walletMcpClient: this.walletMcpClient,
         transactionMessageStore: this.transactionMessageStore,
+        enrichmentPoolService: this.enrichmentPoolService,
       }
     );
   }

@@ -6,3 +6,4 @@ export * from './labelResolver.js';
 export * from './records.js';
 export * from './recordEditParser.js';
 export * from './transactionMessageStore.js';
+export * from './enrichmentPool.js';

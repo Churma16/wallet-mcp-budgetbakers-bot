@@ -6,6 +6,8 @@ import {
   isWalletMcpDefinitiveFailure,
   isWalletMcpDispatchOutcomeUnknown,
   TransactionMessageStore,
+  EnrichmentPoolService,
+  isEligibleForEnrichmentPool,
 } from '../../wallet/index.js';
 import { MessagingGatewayService, IncomingUserMessageEvent } from '../../gateway/index.js';
 import { EmailListenerService } from '../../email/index.js';
@@ -52,7 +54,8 @@ export class PendingActionHandler {
     private readonly walletCacheService?: WalletCacheService,
     private readonly transactionMessageStore?: TransactionMessageStore,
     private readonly categoryContextService?: CategoryContextService,
-    private readonly financialAiProvider?: FinancialAiProvider
+    private readonly financialAiProvider?: FinancialAiProvider,
+    private readonly enrichmentPoolService?: EnrichmentPoolService
   ) {}
 
   /**
@@ -284,6 +287,32 @@ export class PendingActionHandler {
         const createdId = createResult?.results?.[0]?.id;
         if (createdId) {
           createdRecordIds.set(item.ticketId, createdId);
+
+          if (
+            this.enrichmentPoolService &&
+            isEligibleForEnrichmentPool({
+              counterParty: item.counterParty,
+              categoryName: item.matchedCategoryName,
+              categoryId: item.matchedCategoryId,
+              note: item.note,
+            })
+          ) {
+            this.enrichmentPoolService.addCandidate({
+              recordId: createdId,
+              accountId: item.matchedAccountId,
+              accountName: item.bankDisplayName || item.accountNameHint,
+              amount: item.amount,
+              currency: item.currency,
+              recordDate: item.recordDate,
+              counterParty: item.counterParty,
+              note: item.note,
+              categoryId: item.matchedCategoryId,
+              categoryName: item.matchedCategoryName,
+              labels: item.labels,
+              notificationMessageIds: item.notificationMessageIds,
+              channel: event.channel,
+            });
+          }
         }
 
         if (activeEmailListener) {
@@ -460,6 +489,17 @@ export class PendingActionHandler {
             channel: event.channel,
             isTransfer: item.transactionType === 'TRANSFER',
           });
+
+          if (this.enrichmentPoolService) {
+            const candidate = this.enrichmentPoolService.getCandidate(recordId);
+            if (candidate) {
+              const currentNotifIds = candidate.notificationMessageIds || {};
+              currentNotifIds[event.channel] = sendReceipt.messageId;
+              this.enrichmentPoolService.updateCandidate(recordId, {
+                notificationMessageIds: currentNotifIds,
+              });
+            }
+          }
         }
       }
       return;

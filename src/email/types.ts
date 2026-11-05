@@ -99,6 +99,7 @@ export interface TransactionEvidence {
   note?: string;
   categoryId?: string;
   categoryName?: string;
+  labels?: string[];
   transactionType?: InternalTransactionTypeValue;
   isBankSyncedAccount?: boolean;
   rawPayload?: Record<string, unknown>;
