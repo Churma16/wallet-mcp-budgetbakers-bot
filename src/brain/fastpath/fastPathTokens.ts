@@ -16,6 +16,35 @@ export const KNOWN_CATEGORY_KEYWORDS = new Set([
   'others', 'shopping', 'system_categories', 'transportation', 'unknown_records', 'unknown', 'uncategorized', 'vehicle',
 ]);
 
+export const FAST_PATH_OPERATOR_MAP: Readonly<Record<string, string>> = Object.freeze({
+  '>': 'gt',
+  'gt': 'gt',
+  '>=': 'gte',
+  'gte': 'gte',
+  '<': 'lt',
+  'lt': 'lt',
+  '<=': 'lte',
+  'lte': 'lte',
+});
+
+export const FAST_PATH_PERIOD_MAP: Readonly<Record<string, NonNullable<TransactionHistoryQueryOptions['datePeriod']>>> = Object.freeze({
+  'hari ini': 'today',
+  'today': 'today',
+  'kemarin': 'yesterday',
+  'yesterday': 'yesterday',
+  'semalam': 'yesterday',
+  'minggu ini': 'this_week',
+  'this week': 'this_week',
+  'minggu lalu': 'last_week',
+  'last week': 'last_week',
+  'bulan ini': 'this_month',
+  'this month': 'this_month',
+  'bulan lalu': 'last_month',
+  'last month': 'last_month',
+  'tahun ini': 'this_year',
+  'this year': 'this_year',
+});
+
 /**
  * Extracts and normalizes transaction history options from unstructured natural language query tokens.
  */
@@ -101,10 +130,7 @@ export function extractHistoryQueryOptionsFromTokens(
     let resolvedOp = 'eq';
     if (singleMatch.operator) {
       const cleanOp = singleMatch.operator.replace('.', '');
-      if (cleanOp === '>' || cleanOp === 'gt') resolvedOp = 'gt';
-      else if (cleanOp === '>=' || cleanOp === 'gte') resolvedOp = 'gte';
-      else if (cleanOp === '<' || cleanOp === 'lt') resolvedOp = 'lt';
-      else if (cleanOp === '<=' || cleanOp === 'lte') resolvedOp = 'lte';
+      resolvedOp = FAST_PATH_OPERATOR_MAP[cleanOp] || resolvedOp;
     }
     resolvedDateRange = [`${resolvedOp}.${singleMatch.dateString}`];
     remainingTokens = remainingTokens.replace(singleMatch.fullMatch, ' ').trim();
@@ -115,15 +141,13 @@ export function extractHistoryQueryOptionsFromTokens(
     let firstOp = 'gte';
     if (firstMatch.operator) {
       const cleanOp = firstMatch.operator.replace('.', '');
-      if (cleanOp === '>' || cleanOp === 'gt') firstOp = 'gt';
-      else if (cleanOp === '>=' || cleanOp === 'gte') firstOp = 'gte';
+      firstOp = FAST_PATH_OPERATOR_MAP[cleanOp] || firstOp;
     }
 
     let secondOp = 'lte';
     if (secondMatch.operator) {
       const cleanOp = secondMatch.operator.replace('.', '');
-      if (cleanOp === '<' || cleanOp === 'lt') secondOp = 'lt';
-      else if (cleanOp === '<=' || cleanOp === 'lte') secondOp = 'lte';
+      secondOp = FAST_PATH_OPERATOR_MAP[cleanOp] || secondOp;
     }
 
     resolvedDateRange = [`${firstOp}.${firstMatch.dateString}`, `${secondOp}.${secondMatch.dateString}`];
@@ -161,13 +185,7 @@ export function extractHistoryQueryOptionsFromTokens(
   const datePeriodMatch = remainingTokens.match(datePeriodPattern);
   if (datePeriodMatch) {
     const rawPeriod = datePeriodMatch[1].toLowerCase();
-    if (rawPeriod === 'hari ini' || rawPeriod === 'today') resolvedDatePeriod = 'today';
-    else if (rawPeriod === 'kemarin' || rawPeriod === 'yesterday' || rawPeriod === 'semalam') resolvedDatePeriod = 'yesterday';
-    else if (rawPeriod === 'minggu ini' || rawPeriod === 'this week') resolvedDatePeriod = 'this_week';
-    else if (rawPeriod === 'minggu lalu' || rawPeriod === 'last week') resolvedDatePeriod = 'last_week';
-    else if (rawPeriod === 'bulan ini' || rawPeriod === 'this month') resolvedDatePeriod = 'this_month';
-    else if (rawPeriod === 'bulan lalu' || rawPeriod === 'last month') resolvedDatePeriod = 'last_month';
-    else if (rawPeriod === 'tahun ini' || rawPeriod === 'this year') resolvedDatePeriod = 'this_year';
+    resolvedDatePeriod = FAST_PATH_PERIOD_MAP[rawPeriod];
     remainingTokens = remainingTokens.replace(datePeriodMatch[0], ' ').trim();
   }
 
