@@ -205,7 +205,9 @@ export class TransactionCorrelationService {
       const isBankSynced = record.source === 'bank_sync' || Boolean(evidence.isBankSyncedAccount);
 
       const isIncomingSpecificPayment =
-        (evidence.sourceType === 'EMAIL_PAYMENT' || evidence.sourceType === 'RECEIPT') &&
+        (evidence.sourceType === 'EMAIL_PAYMENT' ||
+          evidence.sourceType === 'RECEIPT' ||
+          evidence.sourceType === 'PUSH_NOTIFICATION') &&
         Boolean(evidence.merchant) &&
         !isGenericMerchant(evidence.merchant) &&
         (evidence.merchant?.length ?? 0) >= 2;
@@ -443,7 +445,9 @@ export class TransactionCorrelationService {
       // If plausible but ambiguous within tight window, mark for medium confidence
       // For merchant payments/receipts (e.g. food delivery GrabFood/GoFood), delays up to 45 mins between bank debit and final receipt are normal
       const effectiveTightWindow =
-        evidence.sourceType === 'EMAIL_PAYMENT' || evidence.sourceType === 'RECEIPT'
+        evidence.sourceType === 'EMAIL_PAYMENT' ||
+        evidence.sourceType === 'RECEIPT' ||
+        evidence.sourceType === 'PUSH_NOTIFICATION'
           ? Math.max(this.tightWindowMilliseconds, 45 * 60 * 1000)
           : this.tightWindowMilliseconds;
 

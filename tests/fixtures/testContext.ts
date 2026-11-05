@@ -6,6 +6,7 @@ import {
 } from '../../src/brain/index.js';
 import { TransactionMessageStore, WalletRecordPreparationService } from '../../src/wallet/index.js';
 import { TransactionCorrelationService } from '../../src/email/index.js';
+import { InboundNotificationStore } from '../../src/gateway/notificationStore.js';
 
 export interface TestAppContextOptions {
   config?: any;
@@ -76,6 +77,7 @@ export function createTestAppContext(options: TestAppContextOptions = {}): AppCo
       listener: null,
     },
     webhook: options.webhook || null,
+    notificationStore: (options as any).notificationStore || new InboundNotificationStore(),
   };
 }
 

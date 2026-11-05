@@ -35,6 +35,7 @@ export interface InboundTransactionCandidateContext {
   sourceDisplayName: string;
   fallbackNote: string;
   onRecordProcessed?: (reference: string) => void;
+  isReplay?: boolean;
 }
 
 export interface InboundTransactionCoordinatorDependencies {
@@ -353,6 +354,13 @@ export async function coordinateInboundTransactionCandidate(
           }. Falling back to correlation notice.`
         );
       }
+    }
+
+    if (context.isReplay) {
+      applicationLogger.info(
+        `[InboundRescan Replay] Suppressing duplicate correlation broadcast for record ${matchedRecord.id}.`
+      );
+      return;
     }
 
     const notif = formatCorrelatedWalletRecordNotification(

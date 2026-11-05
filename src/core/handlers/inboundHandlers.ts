@@ -1,4 +1,8 @@
-import { PushNotificationPayload, MessagingGatewayService } from '../../gateway/index.js';
+import {
+  PushNotificationPayload,
+  MessagingGatewayService,
+  InboundNotificationStore,
+} from '../../gateway/index.js';
 import {
   EmailTransactionDetectedEvent,
   EmailListenerService,
@@ -27,7 +31,8 @@ export class EmailTransactionHandler {
     private readonly emailListenerServiceGetter?: () => EmailListenerService | null,
     private readonly walletMcpClient?: WalletMcpClientService,
     private readonly transactionMessageStore?: TransactionMessageStore,
-    private readonly enrichmentPoolService?: EnrichmentPoolService
+    private readonly enrichmentPoolService?: EnrichmentPoolService,
+    private readonly notificationStore?: InboundNotificationStore
   ) {}
 
   /**
@@ -119,14 +124,16 @@ export class NotificationTransactionHandler {
     private readonly correlationService: TransactionCorrelationService = new TransactionCorrelationService(),
     private readonly walletMcpClient?: WalletMcpClientService,
     private readonly transactionMessageStore?: TransactionMessageStore,
-    private readonly enrichmentPoolService?: EnrichmentPoolService
+    private readonly enrichmentPoolService?: EnrichmentPoolService,
+    private readonly notificationStore?: InboundNotificationStore
   ) {}
 
   /**
    * Primary entry point for push notification payloads.
    */
   public async handleNotificationReceived(
-    payload: PushNotificationPayload
+    payload: PushNotificationPayload,
+    options?: { skipStoreRecord?: boolean; isReplay?: boolean }
   ): Promise<void> {
     applicationLogger.info(
       `[NotificationWebhook] Processing notification from package: ${payload.packageName}`
@@ -165,6 +172,18 @@ export class NotificationTransactionHandler {
       await this.messagingGateway.broadcastNotification(pingMessage);
       applicationLogger.info('[NotificationWebhook] Test ping broadcasted successfully to messaging channels.');
       return;
+    }
+
+    if (this.notificationStore && !options?.skipStoreRecord) {
+      try {
+        this.notificationStore.recordNotification(payload);
+      } catch (storeError) {
+        applicationLogger.warn(
+          `Failed to record notification to history store: ${
+            storeError instanceof Error ? storeError.message : String(storeError)
+          }`
+        );
+      }
     }
 
     const gateResult = evaluateNotificationThroughGate(payload);
@@ -216,6 +235,7 @@ export class NotificationTransactionHandler {
           ? `${payload.title} - ${payload.text}`
           : payload.text,
         onRecordProcessed: () => {},
+        isReplay: options?.isReplay,
       },
       {
         walletCacheService: this.walletCacheService,

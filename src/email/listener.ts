@@ -180,6 +180,28 @@ export class EmailListenerService {
     );
   }
 
+  public isConnected(): boolean {
+    return Boolean(this.imapClient?.usable && this.isServiceRunning);
+  }
+
+  /**
+   * Rescans messages arriving in a configurable lookback window, optionally bypassing
+   * the persistent deduplication cache to re-evaluate potential missed or generic transactions.
+   */
+  public async rescanMessages(
+    lookbackMinutes: number = 60,
+    options?: { bypassProcessedCache?: boolean }
+  ): Promise<{ scannedUids: number; detectedCount: number }> {
+    if (!this.imapClient || !this.imapClient.usable) {
+      return { scannedUids: 0, detectedCount: 0 };
+    }
+
+    return this.performMessagesScan({
+      lookbackMinutes,
+      bypassProcessedCache: options?.bypassProcessedCache ?? true,
+    });
+  }
+
   /**
    * Checks whether a message ID is currently in-flight
    */
@@ -530,21 +552,34 @@ export class EmailListenerService {
    * Executes a single recent message scan pass across the INBOX
    */
   private async performRecentMessagesScan(): Promise<void> {
+    await this.performMessagesScan();
+  }
+
+  private async performMessagesScan(scanOptions?: {
+    lookbackMinutes?: number;
+    bypassProcessedCache?: boolean;
+  }): Promise<{ scannedUids: number; detectedCount: number }> {
     if (!this.imapClient || !this.imapClient.usable) {
-      return;
+      return { scannedUids: 0, detectedCount: 0 };
     }
+
+    const effectiveLookbackMinutes = scanOptions?.lookbackMinutes ?? this.lookbackMinutes;
+    const bypassProcessedCache = scanOptions?.bypassProcessedCache ?? false;
+    let detectedCount = 0;
 
     try {
       // Use sliding lookback window with 1-min buffer while never querying before startupCutoffTimestamp
       const searchBufferMs = 60000;
-      const slidingLookbackMs = this.lookbackMinutes * 60 * 1000;
+      const slidingLookbackMs = effectiveLookbackMinutes * 60 * 1000;
       const slidingCutoffDate = new Date(Date.now() - slidingLookbackMs - searchBufferMs);
-      const searchDate = new Date(
-        Math.max(
-          this.startupCutoffTimestamp.getTime() - searchBufferMs,
-          slidingCutoffDate.getTime()
-        )
-      );
+      const searchDate = scanOptions?.lookbackMinutes !== undefined
+        ? slidingCutoffDate
+        : new Date(
+            Math.max(
+              this.startupCutoffTimestamp.getTime() - searchBufferMs,
+              slidingCutoffDate.getTime()
+            )
+          );
 
       const searchResultUids = await this.imapClient.search(
         { since: searchDate },
@@ -552,7 +587,7 @@ export class EmailListenerService {
       );
 
       if (!searchResultUids || searchResultUids.length === 0) {
-        return;
+        return { scannedUids: 0, detectedCount: 0 };
       }
 
       // Fetch message sources for the matching UIDs
@@ -583,7 +618,7 @@ export class EmailListenerService {
               (this.isMessageAlreadyProcessed(envelopeMessageId) || this.isMessageInFlight(envelopeMessageId))
           );
 
-          if (isEnvelopeAlreadyProcessed) {
+          if (isEnvelopeAlreadyProcessed && !bypassProcessedCache) {
             continue;
           }
 
@@ -609,7 +644,7 @@ export class EmailListenerService {
           currentDate = emailDate;
 
           // Fast deduplication check: Has this email message ID already been processed or claimed by another scan?
-          if (this.isMessageAlreadyProcessed(rawMessageId) || this.isMessageInFlight(rawMessageId)) {
+          if (!bypassProcessedCache && (this.isMessageAlreadyProcessed(rawMessageId) || this.isMessageInFlight(rawMessageId))) {
             continue;
           }
 
@@ -622,14 +657,16 @@ export class EmailListenerService {
             senderAddress,
             cleanBodyText,
             emailDate,
-            this.startupCutoffTimestamp,
-            this.processedReferenceNumberSet
+            searchDate,
+            bypassProcessedCache ? new Set<string>() : this.processedReferenceNumberSet
           );
 
           if (!gateResult.passed) {
-            // Gate 1 rejection is terminal for this message, so cache immediately to avoid redundant evaluation.
-            this.markMessageAsProcessed(rawMessageId);
-            this.savePersistentCache();
+            if (!bypassProcessedCache) {
+              // Gate 1 rejection is terminal for this message, so cache immediately to avoid redundant evaluation.
+              this.markMessageAsProcessed(rawMessageId);
+              this.savePersistentCache();
+            }
 
             applicationLogger.info('[Gate 1 Skip] Email rejected by initial transaction gate.');
             applicationLogger.fileDetail('email', 'Gate 1 Rejected Email Candidate', {
@@ -661,6 +698,7 @@ export class EmailListenerService {
               rawMessageId,
             });
 
+            detectedCount++;
             // Only persist a transaction candidate after downstream handling succeeds.
             this.markMessageAsProcessed(rawMessageId);
             this.savePersistentCache();
@@ -723,8 +761,10 @@ export class EmailListenerService {
           });
         }
       }
+      return { scannedUids: searchResultUids.length, detectedCount };
     } catch (scanError) {
       applicationLogger.error(`Error during IMAP scan: ${scanError}`);
+      return { scannedUids: 0, detectedCount };
     }
   }
 

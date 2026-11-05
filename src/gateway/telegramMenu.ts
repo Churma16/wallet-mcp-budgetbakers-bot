@@ -13,6 +13,7 @@ export function getTelegramBotCommands(languageCode?: SupportedLanguage): Array<
     { command: 'rekap', description: dictionary.commandSummaryDescription },
     { command: 'menu', description: dictionary.commandMenuDescription },
     { command: 'settings', description: dictionary.commandSettingsDescription },
+    { command: 'rescan', description: dictionary.commandRescanDescription },
   ];
 }
 

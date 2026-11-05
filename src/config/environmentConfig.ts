@@ -95,6 +95,7 @@ export interface ApplicationEnvironmentConfiguration {
   pendingTransactionsStoragePath: string;
   transactionMessageStoragePath: string;
   enrichmentPoolStoragePath: string;
+  inboundNotificationStoragePath: string;
   categoryResolutionMode: 'ask' | 'auto';
   autoRecordEnriched: boolean;
   notificationWebhookEnabled: boolean;
@@ -351,6 +352,11 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     resolveStoragePathWithMigration('enrichment_pool.json')
   ).trim();
 
+  const inboundNotificationStoragePath = (
+    process.env.INBOUND_NOTIFICATION_STORAGE_PATH ||
+    resolveStoragePathWithMigration('inbound_notifications.json')
+  ).trim();
+
 
   const rawCategoryResolutionMode = process.env.CATEGORY_RESOLUTION_MODE?.trim().toLowerCase();
   const categoryResolutionMode: 'ask' | 'auto' = rawCategoryResolutionMode === 'auto' ? 'auto' : 'ask';
@@ -405,6 +411,7 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     pendingTransactionsStoragePath,
     transactionMessageStoragePath,
     enrichmentPoolStoragePath,
+    inboundNotificationStoragePath,
     categoryResolutionMode,
     autoRecordEnriched,
     notificationWebhookEnabled,
