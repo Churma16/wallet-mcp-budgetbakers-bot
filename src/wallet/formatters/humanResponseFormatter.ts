@@ -973,6 +973,54 @@ export function formatCorrelatedWalletRecordNotification(
   return `ℹ️ *Transaksi Sudah Tercatat*\nNotifikasi untuk *${merchant || 'Transaksi'}* (${formattedAmount}) sudah tercatat di Wallet (ID: \`${recordId}\`). Tidak dibuat tiket duplikat.`;
 }
 
+/**
+ * Formats a notification when an existing Wallet MCP record has been retroactively
+ * enriched with merchant receipt details (category, merchant name, itemized note, labels).
+ */
+export function formatRetroactivelyEnrichedWalletRecordNotification(params: {
+  recordId: string;
+  merchant: string;
+  amount: number;
+  currency?: string;
+  categoryName?: string;
+  accountName?: string;
+  note?: string;
+  languageCode?: SupportedLanguage;
+}): string {
+  const { recordId, merchant, amount, currency = 'IDR', categoryName, accountName, note, languageCode } = params;
+  const formattedAmount = formatCurrencyAmount(amount, currency, languageCode);
+  const isEnglish = (languageCode || getActiveLanguage()) === 'en';
+
+  const details: string[] = [];
+  if (accountName) {
+    details.push(`💳 ${accountName}`);
+  }
+  if (categoryName) {
+    details.push(`📂 ${categoryName}`);
+  }
+  const detailsLine = details.length > 0 ? details.join(' • ') : '';
+
+  if (isEnglish) {
+    const lines = [
+      `✨ *Transaction Details Updated!*`,
+      `💸 *${merchant || 'Purchase'}* — ${formattedAmount}`,
+    ];
+    if (detailsLine) lines.push(detailsLine);
+    if (note && note !== merchant) lines.push(`📝 _${note}_`);
+    lines.push(`(ID: \`${recordId}\`)`);
+    return lines.join('\n');
+  }
+
+  const lines = [
+    `✨ *Detail Transaksi Diperbarui!*`,
+    `💸 *${merchant || 'Transaksi'}* — ${formattedAmount}`,
+  ];
+  if (detailsLine) lines.push(detailsLine);
+  if (note && note !== merchant) lines.push(`📝 _${note}_`);
+  lines.push(`(ID: \`${recordId}\`)`);
+  return lines.join('\n');
+}
+
 
 /**
  * Formats success message after user confirms a single pending transaction

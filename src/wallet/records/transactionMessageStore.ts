@@ -99,6 +99,37 @@ export class TransactionMessageStore {
     this.saveToStorage();
   }
 
+  public findMessageMappingsByRecordId(
+    recordId: string
+  ): Array<{ messageId: string; mapping: StoredRecordMessageMapping }> {
+    if (!recordId) return [];
+    this.pruneOldMappings();
+    const results: Array<{ messageId: string; mapping: StoredRecordMessageMapping }> = [];
+    for (const [msgId, mapping] of this.mappingMap.entries()) {
+      if (mapping.recordId === recordId) {
+        results.push({ messageId: msgId, mapping });
+      }
+    }
+    return results;
+  }
+
+  public updateMessageMappingsByRecordId(
+    recordId: string,
+    updates: Partial<StoredRecordMessageMapping>
+  ): void {
+    if (!recordId) return;
+    let modified = false;
+    for (const mapping of this.mappingMap.values()) {
+      if (mapping.recordId === recordId) {
+        Object.assign(mapping, updates);
+        modified = true;
+      }
+    }
+    if (modified) {
+      this.saveToStorage();
+    }
+  }
+
   public hasMapping(messageId: string): boolean {
     return this.getMessageMapping(messageId) !== undefined;
   }

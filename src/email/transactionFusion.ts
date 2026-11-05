@@ -437,6 +437,41 @@ export function resolveNote(
 }
 
 /**
+ * Evaluates whether a category name represents a generic or unclassified placeholder
+ * (e.g. "Unknown expense", "Belanja", "General", "Lain-lain").
+ */
+export function isGenericCategory(categoryName: string | undefined | null): boolean {
+  if (!categoryName) return true;
+  const lower = categoryName.trim().toLowerCase();
+  if (!lower || lower === 'unknown') return true;
+
+  const exactGenerics = [
+    'belanja',
+    'shopping',
+    'pengeluaran',
+    'expense',
+    'expenses',
+    'transaksi',
+    'transaction',
+  ];
+  if (exactGenerics.includes(lower)) return true;
+
+  const prefixOrContains = [
+    'unknown',
+    'uncategorized',
+    'umum',
+    'general',
+    'lain-lain',
+    'lain nya',
+    'lainnya',
+    'other',
+    'others',
+  ];
+
+  return prefixOrContains.some(token => lower.includes(token));
+}
+
+/**
  * Resolves transaction category where specific merchant categories take precedence over generic bank categories.
  */
 export function resolveCategory(
@@ -447,16 +482,7 @@ export function resolveCategory(
   let resolvedCategoryName = candidate.matchedCategoryName;
 
   if (incoming.categoryId && incoming.categoryName) {
-    const isCandidateCategoryGeneric =
-      !candidate.matchedCategoryName ||
-      candidate.matchedCategoryName.toLowerCase().includes('umum') ||
-      candidate.matchedCategoryName.toLowerCase().includes('lain') ||
-      candidate.matchedCategoryName.toLowerCase().includes('belanja') ||
-      candidate.matchedCategoryName.toLowerCase().includes('shopping') ||
-      candidate.matchedCategoryName.toLowerCase().includes('general') ||
-      candidate.matchedCategoryName.toLowerCase().includes('other') ||
-      candidate.matchedCategoryName.toLowerCase().includes('others') ||
-      candidate.matchedCategoryName.toLowerCase() === 'uncategorized';
+    const isCandidateCategoryGeneric = isGenericCategory(candidate.matchedCategoryName);
 
     if (isCandidateCategoryGeneric) {
       resolvedCategoryId = incoming.categoryId;

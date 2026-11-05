@@ -3,14 +3,25 @@ import { GateEvaluationResult } from '../email/index.js';
 import { PendingTransactionService, buildRecordsForPendingItem } from './pending.js';
 import { MessagingGatewayService } from '../gateway/index.js';
 import { TransactionCorrelationService, TransactionEvidence, TransactionEvidenceSource } from '../email/index.js';
-import { WalletCacheService, WalletMcpClientService, WalletRecordItem } from '../wallet/index.js';
+import { isGenericMerchant, isGenericCategory } from '../email/transactionFusion.js';
+import {
+  WalletCacheService,
+  WalletMcpClientService,
+  WalletRecordItem,
+  PatchRecordInputPayload,
+} from '../wallet/index.js';
 import {
   formatPendingEmailTransactionNotification,
   formatEnrichedPendingEmailTransactionNotification,
   formatCorrelatedWalletRecordNotification,
+  formatRetroactivelyEnrichedWalletRecordNotification,
   formatPendingConfirmationSuccess,
 } from '../wallet/formatters/humanResponseFormatter.js';
-import { TransactionMessageStore } from '../wallet/records/index.js';
+import {
+  TransactionMessageStore,
+  EnrichmentPoolService,
+  isEligibleForEnrichmentPool,
+} from '../wallet/records/index.js';
 import { RuntimeSettingsManager } from '../config/runtimeSettingsManager.js';
 import { applicationLogger } from '../lib/logger.js';
 
@@ -35,6 +46,7 @@ export interface InboundTransactionCoordinatorDependencies {
   walletMcpClient?: WalletMcpClientService;
   transactionMessageStore?: TransactionMessageStore;
   runtimeSettingsManager?: RuntimeSettingsManager;
+  enrichmentPoolService?: EnrichmentPoolService;
 }
 
 /**
@@ -118,6 +130,7 @@ export async function coordinateInboundTransactionCandidate(
     note: parsedData.note || fallbackNote,
     categoryId: parsedData.matchedCategoryId,
     categoryName: parsedData.matchedCategoryName,
+    labels: evidenceSourceType === 'EMAIL_PAYMENT' ? ['e-receipt'] : undefined,
     transactionType: parsedData.transactionType,
     isBankSyncedAccount: Boolean(matchedAccountItem?.isBankSynced),
   };
@@ -140,22 +153,205 @@ export async function coordinateInboundTransactionCandidate(
     }
   }
 
+  // Combine with active enrichment pool candidates for immediate in-memory correlation
+  const poolCandidates = deps.enrichmentPoolService ? deps.enrichmentPoolService.getAllCandidates() : [];
+  const combinedRecords: WalletRecordItem[] = [...recentRecords];
+  const existingRecordIds = new Set(recentRecords.map(r => r.id));
+
+  for (const candidate of poolCandidates) {
+    if (!existingRecordIds.has(candidate.recordId)) {
+      existingRecordIds.add(candidate.recordId);
+      combinedRecords.push({
+        id: candidate.recordId,
+        accountId: candidate.accountId,
+        accountName: candidate.accountName,
+        amount: candidate.amount,
+        currency: candidate.currency || defaultCurrency,
+        recordDate: candidate.recordDate,
+        recordType: candidate.amount < 0 ? 'expense' : 'income',
+        counterParty: candidate.counterParty,
+        note: candidate.note,
+        category: candidate.categoryId
+          ? { id: candidate.categoryId, name: candidate.categoryName || '' }
+          : undefined,
+        labels: candidate.labels?.map(lbl => ({ id: lbl, name: lbl })),
+      });
+    }
+  }
+
   const correlationResult = correlationService.correlateEvidence(
     incomingEvidence,
     pendingTransactionManager.getAllPendingTransactions(),
-    recentRecords
+    combinedRecords
   );
 
   // Case 1: Correlates with existing native Wallet record (bank sync or manual write)
   if (correlationResult.suggestedAction === 'ATTACH_WALLET_RECORD') {
     const matchedRecord = (correlationResult.matchTarget as { type: 'WALLET_RECORD'; record: any }).record;
     applicationLogger.info(
-      `[Correlation Matched Wallet Record] ${sourceType} matches existing Wallet record (${matchedRecord.id}). Skipping duplicate candidate.`
+      `[Correlation Matched Wallet Record] ${sourceType} matches existing Wallet record (${matchedRecord.id}).`
     );
 
     if (onRecordProcessed) {
       for (const ref of extractedRefs) {
         onRecordProcessed(ref);
+      }
+    }
+
+    const poolCandidate = deps.enrichmentPoolService?.getCandidate(matchedRecord.id);
+    const isEligible = isEligibleForEnrichmentPool({
+      counterParty: matchedRecord.counterParty,
+      categoryName: matchedRecord.category?.name || poolCandidate?.categoryName,
+      categoryId: matchedRecord.category?.id || poolCandidate?.categoryId,
+      note: matchedRecord.note || poolCandidate?.note,
+    });
+
+    // Check if incoming evidence provides richer details
+    const categories = walletCacheService.getCategories();
+    let incomingCategoryId = incomingEvidence.categoryId;
+    let incomingCategoryName = incomingEvidence.categoryName;
+    if (!incomingCategoryId && incomingCategoryName) {
+      const matchedCat = categories.find(
+        c => c.name.toLowerCase() === incomingCategoryName!.toLowerCase()
+      );
+      if (matchedCat) {
+        incomingCategoryId = matchedCat.id;
+        incomingCategoryName = matchedCat.name;
+      }
+    }
+
+    const currentCategoryName = matchedRecord.category?.name || poolCandidate?.categoryName;
+    const hasGenericCategory = !currentCategoryName || isGenericCategory(currentCategoryName);
+    const incomingHasSpecificCategory = Boolean(incomingCategoryName && !isGenericCategory(incomingCategoryName));
+    const shouldPatchCategory = hasGenericCategory && incomingHasSpecificCategory && Boolean(incomingCategoryId);
+
+    const currentMerchant = matchedRecord.counterParty || poolCandidate?.counterParty;
+    const hasGenericMerchant = !currentMerchant || isGenericMerchant(currentMerchant);
+    const incomingHasSpecificMerchant = Boolean(incomingEvidence.merchant && !isGenericMerchant(incomingEvidence.merchant));
+    const shouldPatchMerchant = hasGenericMerchant && incomingHasSpecificMerchant;
+
+    const currentNote = matchedRecord.note || poolCandidate?.note || '';
+    const noteLower = currentNote.trim().toLowerCase();
+    const isBoilerplateNote =
+      !noteLower ||
+      noteLower === 'pembayaran qris' ||
+      noteLower.startsWith('pembayaran kartu debit') ||
+      noteLower === 'transaksi' ||
+      noteLower === (currentMerchant || '').trim().toLowerCase();
+    const incomingNote = incomingEvidence.note && incomingEvidence.note !== fallbackNote ? incomingEvidence.note : undefined;
+    const shouldPatchNote = isBoilerplateNote && Boolean(incomingNote && incomingNote !== currentNote);
+
+    const incomingLabels = incomingEvidence.labels || [];
+    const existingLabels = (matchedRecord.labels || poolCandidate?.labels || []).map((l: any) =>
+      typeof l === 'string' ? l : l.name || l.id
+    );
+    const newLabels = incomingLabels.filter((l: string) => !existingLabels.includes(l));
+    const shouldPatchLabels = newLabels.length > 0;
+
+    const hasCoreEnrichment = shouldPatchMerchant || shouldPatchCategory || shouldPatchNote;
+    const canEnrich = Boolean(
+      walletMcpClient &&
+      (poolCandidate || isEligible) &&
+      hasCoreEnrichment
+    );
+
+    if (canEnrich && walletMcpClient) {
+      try {
+        const patchPayload: PatchRecordInputPayload = {
+          id: matchedRecord.id,
+        };
+        if (shouldPatchMerchant) {
+          patchPayload.counterParty = incomingEvidence.merchant;
+        }
+        if (shouldPatchCategory && incomingCategoryId) {
+          patchPayload.categoryId = incomingCategoryId;
+        }
+        if (shouldPatchNote && incomingNote) {
+          patchPayload.note = incomingNote;
+        }
+        if (shouldPatchLabels) {
+          patchPayload.labels = Array.from(new Set([...existingLabels, ...incomingLabels]));
+        }
+
+        applicationLogger.mcp(
+          `[Retroactive Enrichment] Patching Wallet MCP record ${matchedRecord.id} with incoming receipt evidence...`
+        );
+        await walletMcpClient.patchRecords([patchPayload]);
+        applicationLogger.success(
+          `[Retroactive Enrichment] Successfully patched Wallet MCP record ${matchedRecord.id}.`
+        );
+
+        // Prune from enrichment pool
+        deps.enrichmentPoolService?.removeCandidate(matchedRecord.id);
+
+        // Auto-dismiss matching dangling pending tickets
+        const allPending = pendingTransactionManager.getAllPendingTransactions();
+        const evidenceAmountAbs = Math.abs(incomingEvidence.amount);
+        for (const pending of allPending) {
+          if (Math.abs(pending.amount) === evidenceAmountAbs) {
+            const timeDiff = Math.abs(new Date(pending.recordDate).getTime() - new Date(incomingEvidence.occurredAt).getTime());
+            const isTimeMatch = Number.isNaN(timeDiff) || timeDiff <= 48 * 60 * 60 * 1000;
+            const isMerchantMatch =
+              !pending.counterParty ||
+              !incomingEvidence.merchant ||
+              isGenericMerchant(pending.counterParty) ||
+              pending.counterParty.toLowerCase() === incomingEvidence.merchant.toLowerCase() ||
+              incomingEvidence.merchant.toLowerCase().includes(pending.counterParty.toLowerCase()) ||
+              incomingEvidence.merchant.toLowerCase().includes('grab');
+
+            if (isTimeMatch && isMerchantMatch) {
+              applicationLogger.info(
+                `[Retroactive Enrichment] Auto-dismissing superseded pending ticket #${pending.ticketId}.`
+              );
+              pendingTransactionManager.rejectPendingTransaction(pending.ticketId);
+            }
+          }
+        }
+
+        // Update TransactionMessageStore mappings if present
+        if (deps.transactionMessageStore) {
+          deps.transactionMessageStore.updateMessageMappingsByRecordId(matchedRecord.id, {
+            ...(patchPayload.counterParty ? { counterParty: patchPayload.counterParty } : {}),
+            ...(patchPayload.categoryId ? { categoryId: patchPayload.categoryId, categoryName: incomingCategoryName } : {}),
+            ...(patchPayload.note ? { note: patchPayload.note } : {}),
+            ...(patchPayload.labels ? { labels: patchPayload.labels } : {}),
+          });
+        }
+
+        // Send enriched notification
+        const enrichedNotif = formatRetroactivelyEnrichedWalletRecordNotification({
+          recordId: matchedRecord.id,
+          merchant: patchPayload.counterParty || matchedRecord.counterParty || incomingEvidence.merchant || 'Transaksi',
+          amount: incomingEvidence.amount,
+          currency: incomingEvidence.currency,
+          categoryName: incomingCategoryName || currentCategoryName,
+          accountName: matchedRecord.accountName || poolCandidate?.accountName || resolvedAccountName,
+          note: patchPayload.note || matchedRecord.note || poolCandidate?.note,
+        });
+
+        let wasEdited = false;
+        const originalMessageIds = poolCandidate?.notificationMessageIds;
+        if (
+          originalMessageIds &&
+          Object.keys(originalMessageIds).length > 0 &&
+          typeof messagingGateway.editBroadcastNotification === 'function'
+        ) {
+          wasEdited = await messagingGateway.editBroadcastNotification(
+            originalMessageIds,
+            enrichedNotif
+          );
+        }
+
+        if (!wasEdited) {
+          await messagingGateway.broadcastNotification(enrichedNotif);
+        }
+        return;
+      } catch (enrichError) {
+        applicationLogger.error(
+          `[Retroactive Enrichment Error] Failed to patch record ${matchedRecord.id}: ${
+            enrichError instanceof Error ? enrichError.message : String(enrichError)
+          }. Falling back to correlation notice.`
+        );
       }
     }
 
@@ -236,11 +432,13 @@ export async function coordinateInboundTransactionCandidate(
         (resolvedCategory &&
           resolvedCategory.isAssignable !== false &&
           resolvedCategory.group?.id !== 'system_categories' &&
-          enrichedItem.matchedCategoryName !== 'Unknown') ||
+          enrichedItem.matchedCategoryName !== 'Unknown' &&
+          !isGenericCategory(enrichedItem.matchedCategoryName)) ||
         (!resolvedCategory &&
           categories.length === 0 &&
           enrichedItem.matchedCategoryName &&
-          enrichedItem.matchedCategoryName !== 'Unknown')
+          enrichedItem.matchedCategoryName !== 'Unknown' &&
+          !isGenericCategory(enrichedItem.matchedCategoryName))
       );
 
       const isTransferEligible =
@@ -268,6 +466,35 @@ export async function coordinateInboundTransactionCandidate(
           const recordsToCreate = buildRecordsForPendingItem(enrichedItem, walletCacheService);
           const createResult = await walletMcpClient.createRecords(recordsToCreate);
           const createdId = createResult?.results?.[0]?.id;
+
+          if (deps.enrichmentPoolService && createdId) {
+            if (
+              isEligibleForEnrichmentPool({
+                counterParty: enrichedItem.counterParty,
+                categoryName: enrichedItem.matchedCategoryName,
+                categoryId: enrichedItem.matchedCategoryId,
+                note: enrichedItem.note,
+              })
+            ) {
+              deps.enrichmentPoolService.addCandidate({
+                recordId: createdId,
+                accountId: enrichedItem.matchedAccountId,
+                accountName: enrichedItem.bankDisplayName || enrichedItem.accountNameHint,
+                amount: enrichedItem.amount,
+                currency: enrichedItem.currency,
+                recordDate: enrichedItem.recordDate,
+                counterParty: enrichedItem.counterParty,
+                note: enrichedItem.note,
+                categoryId: enrichedItem.matchedCategoryId,
+                categoryName: enrichedItem.matchedCategoryName,
+                labels: enrichedItem.labels,
+                notificationMessageIds: enrichedItem.notificationMessageIds,
+                channel: enrichedItem.notificationMessageIds
+                  ? Object.keys(enrichedItem.notificationMessageIds)[0]
+                  : undefined,
+              });
+            }
+          }
 
           pendingTransactionManager.resolvePendingTransaction(enrichedItem.ticketId);
           applicationLogger.success(
