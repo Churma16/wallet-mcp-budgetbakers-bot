@@ -681,49 +681,52 @@ export class PendingActionHandler {
         return true;
       }
 
-      if (totalUncertainCount === 1) {
-        const singleTransaction = uncertainTransactions[0];
-        const singleDraft = uncertainDrafts[0];
-        const singleTicketId = singleTransaction?.ticketId ?? singleDraft?.ticketId;
-
-        if (intent.actionType === 'CONFIRM_RECORDED') {
-          if (singleTransaction) {
-            this.pendingTransactionManager.resolvePendingTransaction(singleTicketId);
-            const activeEmailListener = this.emailListenerServiceGetter();
-            if (activeEmailListener) {
-              activeEmailListener.recordProcessedTransaction(undefined, singleTransaction.referenceNumber);
-            }
-          } else if (singleDraft) {
-            this.pendingTransactionManager.resolvePendingAccountSelectionDraft(singleTicketId);
-          }
-
-          const replyMessage = formatReconciliationRecordedResponse();
-          await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
-          const durationMs = Date.now() - processingStartTimestamp;
-          applicationLogger.success(
-            `[Ticket #${singleTicketId}] Reconciled as recorded via unnumbered reply (${durationMs}ms).`
-          );
-          return true;
-        }
-
-        if (intent.actionType === 'CONFIRM_ABSENT') {
-          this.pendingTransactionManager.reopenUnknownTransactionAsPending(singleTicketId);
-          const replyMessage = singleDraft
-            ? formatAccountSelectionPrompt(singleDraft, [])
-            : formatReconciliationAbsentResponse();
-          await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
-          const durationMs = Date.now() - processingStartTimestamp;
-          applicationLogger.info(
-            `[Ticket #${singleTicketId}] Reconciled as absent via unnumbered reply; reset to PENDING (${durationMs}ms).`
-          );
-          return true;
-        }
+      if (totalUncertainCount > 1) {
+        // Ambiguous: multiple uncertain items exist
+        const summary = buildTransactionAttentionSummary(this.pendingTransactionManager);
+        const ambiguousMessage = formatReconciliationAmbiguousResponse(summary.needsCheckItems);
+        await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, ambiguousMessage);
+        return true;
       }
 
-      // Ambiguous: multiple uncertain items exist
-      const summary = buildTransactionAttentionSummary(this.pendingTransactionManager);
-      const ambiguousMessage = formatReconciliationAmbiguousResponse(summary.needsCheckItems);
-      await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, ambiguousMessage);
+      // Exactly 1 uncertain item exists (totalUncertainCount === 1)
+      const singleTransaction = uncertainTransactions[0];
+      const singleDraft = uncertainDrafts[0];
+      const singleTicketId = singleTransaction?.ticketId ?? singleDraft?.ticketId;
+
+      if (intent.actionType === 'CONFIRM_RECORDED') {
+        if (singleTransaction) {
+          this.pendingTransactionManager.resolvePendingTransaction(singleTicketId);
+          const activeEmailListener = this.emailListenerServiceGetter();
+          if (activeEmailListener) {
+            activeEmailListener.recordProcessedTransaction(undefined, singleTransaction.referenceNumber);
+          }
+        } else if (singleDraft) {
+          this.pendingTransactionManager.resolvePendingAccountSelectionDraft(singleTicketId);
+        }
+
+        const replyMessage = formatReconciliationRecordedResponse();
+        await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
+        const durationMs = Date.now() - processingStartTimestamp;
+        applicationLogger.success(
+          `[Ticket #${singleTicketId}] Reconciled as recorded via unnumbered reply (${durationMs}ms).`
+        );
+        return true;
+      }
+
+      if (intent.actionType === 'CONFIRM_ABSENT') {
+        this.pendingTransactionManager.reopenUnknownTransactionAsPending(singleTicketId);
+        const replyMessage = singleDraft
+          ? formatAccountSelectionPrompt(singleDraft, [])
+          : formatReconciliationAbsentResponse();
+        await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, replyMessage);
+        const durationMs = Date.now() - processingStartTimestamp;
+        applicationLogger.info(
+          `[Ticket #${singleTicketId}] Reconciled as absent via unnumbered reply; reset to PENDING (${durationMs}ms).`
+        );
+        return true;
+      }
+
       return true;
     }
 

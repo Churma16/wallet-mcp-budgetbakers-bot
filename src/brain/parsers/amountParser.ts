@@ -141,26 +141,26 @@ export function parseFinancialAmount(
         return null;
       }
       return buildResult(standardizedNumber);
-    } else {
-      // European/Indonesian format: dots are thousands separators, last comma is decimal separator (e.g. 1.234,50)
-      if (commaCount > 1) {
-        return null;
-      }
-      const integerSection = withoutCurrency.slice(0, lastCommaIndex);
-      const decimalSection = withoutCurrency.slice(lastCommaIndex + 1);
-
-      if (!/^\d{1,3}(\.\d{3})*$/.test(integerSection) || !/^\d{1,4}$/.test(decimalSection)) {
-        return null;
-      }
-
-      const standardizedNumber = Number.parseFloat(
-        withoutCurrency.replace(/\./g, '').replace(',', '.')
-      );
-      if (!Number.isFinite(standardizedNumber) || standardizedNumber === 0) {
-        return null;
-      }
-      return buildResult(standardizedNumber);
     }
+
+    // European/Indonesian format: dots are thousands separators, last comma is decimal separator (e.g. 1.234,50)
+    if (commaCount > 1) {
+      return null;
+    }
+    const integerSection = withoutCurrency.slice(0, lastCommaIndex);
+    const decimalSection = withoutCurrency.slice(lastCommaIndex + 1);
+
+    if (!/^\d{1,3}(\.\d{3})*$/.test(integerSection) || !/^\d{1,4}$/.test(decimalSection)) {
+      return null;
+    }
+
+    const standardizedNumber = Number.parseFloat(
+      withoutCurrency.replace(/\./g, '').replace(',', '.')
+    );
+    if (!Number.isFinite(standardizedNumber) || standardizedNumber === 0) {
+      return null;
+    }
+    return buildResult(standardizedNumber);
   }
 
   // Case C: Multiple dots, no comma (thousands separators, e.g. 1.500.000)
@@ -195,72 +195,54 @@ export function parseFinancialAmount(
   if (isDot) {
     if (isIdr) {
       // In IDR, dot is thousands separator (e.g. Rp10.079, Rp15.100)
-      if (trailingDigitsCount === 3 && /^\d{1,3}$/.test(integerPart)) {
-        const parsedNumber = Number(`${integerPart}${fractionalOrThousandsPart}`);
-        if (!Number.isFinite(parsedNumber) || parsedNumber === 0) {
-          return null;
-        }
-        return buildResult(parsedNumber);
+      if (trailingDigitsCount !== 3 || !/^\d{1,3}$/.test(integerPart)) {
+        return null;
       }
-      // Non-3-digit dots with Rp are ambiguous or invalid in IDR
-      return null;
+      const parsedNumber = Number(`${integerPart}${fractionalOrThousandsPart}`);
+      return Number.isFinite(parsedNumber) && parsedNumber !== 0 ? buildResult(parsedNumber) : null;
     }
 
     if (isDecimalCurrency) {
       // In USD/EUR/GBP, dot with 1 or 2 trailing digits is standard cents (e.g. $10.50, $10.5)
-      if (trailingDigitsCount === 1 || trailingDigitsCount === 2) {
-        const parsedNumber = Number.parseFloat(withoutCurrency);
-        if (!Number.isFinite(parsedNumber) || parsedNumber === 0) {
-          return null;
-        }
-        return buildResult(parsedNumber);
+      if (trailingDigitsCount !== 1 && trailingDigitsCount !== 2) {
+        return null;
       }
-      // Dot with 3 trailing digits under decimal currency (e.g. $10.500) is ambiguous
-      return null;
+      const parsedNumber = Number.parseFloat(withoutCurrency);
+      return Number.isFinite(parsedNumber) && parsedNumber !== 0 ? buildResult(parsedNumber) : null;
     }
 
     // No explicit currency indicator
     // A single dot followed by 1 or 2 digits is decimal scale (thousands separators never have 1 or 2 digits)
     if (trailingDigitsCount === 1 || trailingDigitsCount === 2) {
       const parsedNumber = Number.parseFloat(withoutCurrency);
-      if (!Number.isFinite(parsedNumber) || parsedNumber === 0) {
-        return null;
-      }
-      return buildResult(parsedNumber);
+      return Number.isFinite(parsedNumber) && parsedNumber !== 0 ? buildResult(parsedNumber) : null;
     }
 
     // Dot followed by 3 digits with no currency (e.g. "10.079", "10.500") is ambiguous between decimal and thousands
     return null;
-  } else {
-    // Single comma
-    if (isIdr) {
-      // In IDR, comma is decimal for cents (e.g. Rp50,50)
-      if (trailingDigitsCount === 1 || trailingDigitsCount === 2) {
-        const parsedNumber = Number.parseFloat(`${integerPart}.${fractionalOrThousandsPart}`);
-        if (!Number.isFinite(parsedNumber) || parsedNumber === 0) {
-          return null;
-        }
-        return buildResult(parsedNumber);
-      }
-      return null;
-    }
-
-    if (isDecimalCurrency) {
-      // In USD, comma followed by 3 digits is integer thousands (e.g. $1,234)
-      if (trailingDigitsCount === 3 && /^\d{1,3}$/.test(integerPart)) {
-        const parsedNumber = Number(`${integerPart}${fractionalOrThousandsPart}`);
-        if (!Number.isFinite(parsedNumber) || parsedNumber === 0) {
-          return null;
-        }
-        return buildResult(parsedNumber);
-      }
-      // Comma with 1 or 2 digits under USD ($10,50) is ambiguous European notation
-      return null;
-    }
-
-    // Single comma without currency indicator is ambiguous
-    return null;
   }
+
+  // Single comma
+  if (isIdr) {
+    // In IDR, comma is decimal for cents (e.g. Rp50,50)
+    if (trailingDigitsCount !== 1 && trailingDigitsCount !== 2) {
+      return null;
+    }
+    const parsedNumber = Number.parseFloat(`${integerPart}.${fractionalOrThousandsPart}`);
+    return Number.isFinite(parsedNumber) && parsedNumber !== 0 ? buildResult(parsedNumber) : null;
+  }
+
+  if (isDecimalCurrency) {
+    // In USD, comma followed by 3 digits is integer thousands (e.g. $1,234)
+    if (trailingDigitsCount !== 3 || !/^\d{1,3}$/.test(integerPart)) {
+      return null;
+    }
+    const parsedNumber = Number(`${integerPart}${fractionalOrThousandsPart}`);
+    return Number.isFinite(parsedNumber) && parsedNumber !== 0 ? buildResult(parsedNumber) : null;
+  }
+
+  // Single comma without currency indicator is ambiguous
+  return null;
 }
 
 /**

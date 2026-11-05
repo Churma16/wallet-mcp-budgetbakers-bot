@@ -284,38 +284,37 @@ export async function deleteRecords(
     );
   }
 
-  if (
+  const rawResults =
     deleteResult &&
     typeof deleteResult === 'object' &&
     'results' in deleteResult &&
     Array.isArray((deleteResult as { results: unknown[] }).results)
-  ) {
-    const results = (deleteResult as { results: Array<{ success?: boolean; error?: string }> }).results;
-    const failedItem = results.find(r => r.success === false && typeof r.error === 'string');
-    if (failedItem?.error) {
-      const partnerId = extractPartnerLegId(failedItem.error);
-      if (partnerId && sanitizedList.length < 20) {
-        applicationLogger.info(
-          `[INFO] Detected paired transfer partner leg '${partnerId}' from result error, retrying atomic deletion...`
-        );
-        try {
-          const retryResult = await callDeleteDocuments(client, {
-            type: 'records',
-            ids: [...sanitizedList, partnerId],
-          });
-          return validateDeleteRecordsResponse(retryResult, sanitizedList.length + 1);
-        } catch (retryError) {
-          if (retryError instanceof WalletMcpRequestError) {
-            throw retryError;
-          }
-          throw new WalletMcpRequestError(
-            `[error] MCP Tool 'delete_documents' failed during paired transfer atomic retry: ${
-              retryError instanceof Error ? retryError.message : String(retryError)
-            }`,
-            'UNKNOWN'
-          );
-        }
+      ? (deleteResult as { results: Array<{ success?: boolean; error?: string }> }).results
+      : undefined;
+
+  const failedItem = rawResults?.find(r => r.success === false && typeof r.error === 'string');
+  const partnerId = failedItem?.error ? extractPartnerLegId(failedItem.error) : null;
+
+  if (partnerId && sanitizedList.length < 20) {
+    applicationLogger.info(
+      `[INFO] Detected paired transfer partner leg '${partnerId}' from result error, retrying atomic deletion...`
+    );
+    try {
+      const retryResult = await callDeleteDocuments(client, {
+        type: 'records',
+        ids: [...sanitizedList, partnerId],
+      });
+      return validateDeleteRecordsResponse(retryResult, sanitizedList.length + 1);
+    } catch (retryError) {
+      if (retryError instanceof WalletMcpRequestError) {
+        throw retryError;
       }
+      throw new WalletMcpRequestError(
+        `[error] MCP Tool 'delete_documents' failed during paired transfer atomic retry: ${
+          retryError instanceof Error ? retryError.message : String(retryError)
+        }`,
+        'UNKNOWN'
+      );
     }
   }
 
