@@ -290,7 +290,7 @@ export async function coordinateInboundTransactionCandidate(
         for (const pending of allPending) {
           if (Math.abs(pending.amount) === evidenceAmountAbs) {
             const timeDiff = Math.abs(new Date(pending.recordDate).getTime() - new Date(incomingEvidence.occurredAt).getTime());
-            const isTimeMatch = isNaN(timeDiff) || timeDiff <= 48 * 60 * 60 * 1000;
+            const isTimeMatch = Number.isNaN(timeDiff) || timeDiff <= 48 * 60 * 60 * 1000;
             const isMerchantMatch =
               !pending.counterParty ||
               !incomingEvidence.merchant ||
