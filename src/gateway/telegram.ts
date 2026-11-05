@@ -520,15 +520,24 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     const replyMarkup = options?.replyMarkup as any;
 
     try {
-      await this.botInstance.api.editMessageText(
-        targetChatIdentifier,
-        numericMessageId,
-        formattedHtmlText,
-        {
-          parse_mode: 'HTML',
-          ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
-        }
-      );
+      if (replyMarkup) {
+        await this.botInstance.api.editMessageText(
+          targetChatIdentifier,
+          numericMessageId,
+          formattedHtmlText,
+          {
+            parse_mode: 'HTML',
+            reply_markup: replyMarkup,
+          }
+        );
+      } else {
+        await this.botInstance.api.editMessageText(
+          targetChatIdentifier,
+          numericMessageId,
+          formattedHtmlText,
+          { parse_mode: 'HTML' }
+        );
+      }
       return true;
     } catch (htmlEditError: unknown) {
       const errorMessage = htmlEditError instanceof Error ? htmlEditError.message : String(htmlEditError);
@@ -541,14 +550,20 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       );
 
       try {
-        await this.botInstance.api.editMessageText(
-          targetChatIdentifier,
-          numericMessageId,
-          messageText,
-          {
-            ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
-          }
-        );
+        if (replyMarkup) {
+          await this.botInstance.api.editMessageText(
+            targetChatIdentifier,
+            numericMessageId,
+            messageText,
+            { reply_markup: replyMarkup }
+          );
+        } else {
+          await this.botInstance.api.editMessageText(
+            targetChatIdentifier,
+            numericMessageId,
+            messageText
+          );
+        }
         return true;
       } catch (fallbackEditError: unknown) {
         applicationLogger.warn(
