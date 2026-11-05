@@ -39,6 +39,102 @@ import { getActiveLanguage, getDictionary } from '../i18n/index.js';
 export type { TelegramSafeguardConfiguration };
 export { escapeHtmlEntities, formatTelegramHtml, convertWhatsAppMarkupToTelegramHtml };
 
+type SettingPropertyUpdater = (value: string, manager: RuntimeSettingsManager) => Promise<void>;
+
+const SETTING_PROPERTY_UPDATERS: Record<string, SettingPropertyUpdater> = {
+  category: async (val, mgr) => {
+    if (val === 'ask' || val === 'auto') {
+      await mgr.updateSetting('categoryResolutionMode', val);
+    }
+  },
+  ai_model: async (val, mgr) => {
+    await mgr.updateSetting('aiModel', val);
+  },
+  language: async (val, mgr) => {
+    if (val === 'id' || val === 'en') {
+      await mgr.updateSetting('appLanguage', val);
+    }
+  },
+  currency: async (val, mgr) => {
+    await mgr.updateSetting('defaultCurrency', val.toUpperCase());
+  },
+  timezone: async (val, mgr) => {
+    await mgr.updateSetting('appTimezone', val);
+  },
+  ai_timeout: async (val, mgr) => {
+    const seconds = Number.parseInt(val, 10);
+    if (!Number.isNaN(seconds) && seconds > 0) {
+      await mgr.updateSetting('aiRequestTimeoutSeconds', seconds);
+    }
+  },
+  email_lookback: async (val, mgr) => {
+    const minutes = Number.parseInt(val, 10);
+    if (!Number.isNaN(minutes) && minutes > 0) {
+      await mgr.updateSetting('emailLookbackMinutes', minutes);
+    }
+  },
+  queue_interval: async (val, mgr) => {
+    const ms = Number.parseInt(val, 10);
+    if (!Number.isNaN(ms) && ms > 0) {
+      await mgr.updateSetting('whatsappMessageQueueIntervalMs', ms);
+    }
+  },
+  log_retention: async (val, mgr) => {
+    const days = Number.parseInt(val, 10);
+    if (!Number.isNaN(days) && days > 0) {
+      await mgr.updateSetting('logRetentionDays', days);
+    }
+  },
+};
+
+interface StaticSettingsActionResult {
+  targetPage?: TelegramSettingsMenuPage;
+  feedbackAlert?: string;
+  handled?: boolean;
+}
+
+type StaticSettingsActionHandler = (
+  ctx: Context,
+  manager: RuntimeSettingsManager,
+  dictionary: ReturnType<typeof getDictionary>['telegramSettings']
+) => Promise<StaticSettingsActionResult>;
+
+const STATIC_SETTINGS_ACTIONS: Record<string, StaticSettingsActionHandler> = {
+  'settings:home': async () => ({ targetPage: 'home' }),
+  'settings:action:close': async (ctx) => {
+    try {
+      await ctx.deleteMessage();
+    } catch {
+      await ctx.editMessageText('<i>Menu pengaturan ditutup.</i>', { parse_mode: 'HTML' });
+    }
+    await ctx.answerCallbackQuery();
+    return { handled: true };
+  },
+  'settings:action:reset': async (_ctx, mgr, dict) => {
+    await mgr.resetToDefaults();
+    return { targetPage: 'home', feedbackAlert: dict.resetAlert };
+  },
+  'settings:toggle:auto_record_enriched': async (_ctx, mgr, dict) => {
+    const currentAutoRecord = mgr.getSetting('autoRecordEnriched');
+    await mgr.updateSetting('autoRecordEnriched', !currentAutoRecord);
+    return { targetPage: 'home', feedbackAlert: dict.savedAlert };
+  },
+  'settings:toggle:debug': async (_ctx, mgr, dict) => {
+    const currentDebug = mgr.getSetting('debugLoggingEnabled');
+    await mgr.updateSetting('debugLoggingEnabled', !currentDebug);
+    return { targetPage: 'home', feedbackAlert: dict.savedAlert };
+  },
+  'settings:toggle:ai_fallback': async (_ctx, mgr, dict) => {
+    const currentFallbacks = mgr.getSetting('aiFallbackModels');
+    const hasFallbacks = Array.isArray(currentFallbacks) && currentFallbacks.length > 0;
+    await mgr.updateSetting(
+      'aiFallbackModels',
+      hasFallbacks ? [] : ['gemini-3.6-flash', 'gemini-3.8-flash']
+    );
+    return { targetPage: 'ai_model', feedbackAlert: dict.savedAlert };
+  },
+};
+
 /**
  * Messaging adapter integrating the Telegram Bot API via Grammy, enforcing fail-closed
  * user authorization, long-polling resilience, interactive menus, and media download protections.
@@ -700,39 +796,14 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     let feedbackAlert: string | undefined;
 
     try {
-      if (callbackData === 'settings:home') {
-        targetPage = 'home';
-      } else if (callbackData === 'settings:action:close') {
-        try {
-          await ctx.deleteMessage();
-        } catch {
-          await ctx.editMessageText('<i>Menu pengaturan ditutup.</i>', { parse_mode: 'HTML' });
+      const staticAction = STATIC_SETTINGS_ACTIONS[callbackData];
+      if (staticAction) {
+        const actionResult = await staticAction(ctx, settingsManager, dictionary);
+        if (actionResult.handled) {
+          return;
         }
-        await ctx.answerCallbackQuery();
-        return;
-      } else if (callbackData === 'settings:action:reset') {
-        await settingsManager.resetToDefaults();
-        feedbackAlert = dictionary.resetAlert;
-        targetPage = 'home';
-      } else if (callbackData === 'settings:toggle:auto_record_enriched') {
-        const currentAutoRecord = settingsManager.getSetting('autoRecordEnriched');
-        await settingsManager.updateSetting('autoRecordEnriched', !currentAutoRecord);
-        feedbackAlert = dictionary.savedAlert;
-        targetPage = 'home';
-      } else if (callbackData === 'settings:toggle:debug') {
-        const currentDebug = settingsManager.getSetting('debugLoggingEnabled');
-        await settingsManager.updateSetting('debugLoggingEnabled', !currentDebug);
-        feedbackAlert = dictionary.savedAlert;
-        targetPage = 'home';
-      } else if (callbackData === 'settings:toggle:ai_fallback') {
-        const currentFallbacks = settingsManager.getSetting('aiFallbackModels');
-        const hasFallbacks = Array.isArray(currentFallbacks) && currentFallbacks.length > 0;
-        await settingsManager.updateSetting(
-          'aiFallbackModels',
-          hasFallbacks ? [] : ['gemini-3.6-flash', 'gemini-3.8-flash']
-        );
-        feedbackAlert = dictionary.savedAlert;
-        targetPage = 'ai_model';
+        targetPage = actionResult.targetPage || 'home';
+        feedbackAlert = actionResult.feedbackAlert;
       } else if (callbackData.startsWith('settings:page:')) {
         targetPage = callbackData.replace('settings:page:', '') as TelegramSettingsMenuPage;
       } else if (callbackData.startsWith('settings:set:')) {
@@ -741,71 +812,12 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
         if (firstColonIndex > 0) {
           const settingKey = settingPayload.slice(0, firstColonIndex);
           const settingValue = settingPayload.slice(firstColonIndex + 1);
-
-          switch (settingKey) {
-            case 'category': {
-              if (settingValue === 'ask' || settingValue === 'auto') {
-                await settingsManager.updateSetting('categoryResolutionMode', settingValue);
-              }
-              targetPage = 'category';
-              break;
-            }
-            case 'ai_model': {
-              await settingsManager.updateSetting('aiModel', settingValue);
-              targetPage = 'ai_model';
-              break;
-            }
-            case 'language': {
-              if (settingValue === 'id' || settingValue === 'en') {
-                await settingsManager.updateSetting('appLanguage', settingValue);
-              }
-              targetPage = 'language';
-              break;
-            }
-            case 'currency': {
-              await settingsManager.updateSetting('defaultCurrency', settingValue.toUpperCase());
-              targetPage = 'currency';
-              break;
-            }
-            case 'timezone': {
-              await settingsManager.updateSetting('appTimezone', settingValue);
-              targetPage = 'timezone';
-              break;
-            }
-            case 'ai_timeout': {
-              const seconds = Number.parseInt(settingValue, 10);
-              if (!Number.isNaN(seconds) && seconds > 0) {
-                await settingsManager.updateSetting('aiRequestTimeoutSeconds', seconds);
-              }
-              targetPage = 'ai_timeout';
-              break;
-            }
-            case 'email_lookback': {
-              const minutes = Number.parseInt(settingValue, 10);
-              if (!Number.isNaN(minutes) && minutes > 0) {
-                await settingsManager.updateSetting('emailLookbackMinutes', minutes);
-              }
-              targetPage = 'email_lookback';
-              break;
-            }
-            case 'queue_interval': {
-              const ms = Number.parseInt(settingValue, 10);
-              if (!Number.isNaN(ms) && ms > 0) {
-                await settingsManager.updateSetting('whatsappMessageQueueIntervalMs', ms);
-              }
-              targetPage = 'queue_interval';
-              break;
-            }
-            case 'log_retention': {
-              const days = Number.parseInt(settingValue, 10);
-              if (!Number.isNaN(days) && days > 0) {
-                await settingsManager.updateSetting('logRetentionDays', days);
-              }
-              targetPage = 'log_retention';
-              break;
-            }
+          const updater = SETTING_PROPERTY_UPDATERS[settingKey];
+          if (updater) {
+            await updater(settingValue, settingsManager);
+            targetPage = settingKey as TelegramSettingsMenuPage;
+            feedbackAlert = dictionary.savedAlert;
           }
-          feedbackAlert = dictionary.savedAlert;
         }
       }
 
