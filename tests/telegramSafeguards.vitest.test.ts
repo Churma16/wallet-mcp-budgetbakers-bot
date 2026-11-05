@@ -303,5 +303,37 @@ describe('TelegramMessagingAdapter safeguards', () => {
       expect(result).toBe(true);
       expect(mockEdit).toHaveBeenCalledTimes(2);
     });
+
+    it('edits message with custom replyMarkup in HTML and fallback plain text mode', async () => {
+      const adapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback);
+      const mockEditHtml = vi.fn().mockResolvedValue({});
+      (adapter as any).botInstance = {
+        api: {
+          editMessageText: mockEditHtml,
+        },
+      };
+
+      const dummyMarkup = { inline_keyboard: [] };
+      const res1 = await adapter.editTextMessage('123456789', '42', '*With Markup*', { replyMarkup: dummyMarkup });
+      expect(res1).toBe(true);
+      expect(mockEditHtml).toHaveBeenCalledWith('123456789', 42, '<b>With Markup</b>', {
+        parse_mode: 'HTML',
+        reply_markup: dummyMarkup,
+      });
+
+      // Fallback with markup
+      const mockEditFallback = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('HTML error'))
+        .mockResolvedValueOnce({});
+      (adapter as any).botInstance.api.editMessageText = mockEditFallback;
+
+      const res2 = await adapter.editTextMessage('123456789', '42', 'Plain', { replyMarkup: dummyMarkup });
+      expect(res2).toBe(true);
+      expect(mockEditFallback).toHaveBeenCalledTimes(2);
+      expect(mockEditFallback).toHaveBeenLastCalledWith('123456789', 42, 'Plain', {
+        reply_markup: dummyMarkup,
+      });
+    });
   });
 });
