@@ -26,6 +26,7 @@ import {
 import {
   MessagingGatewayService,
   NotificationWebhookServer,
+  InboundNotificationStore,
 } from '../gateway/index.js';
 import { EmailListenerService, TransactionCorrelationService } from '../email/index.js';
 import { PendingTransactionService } from './pending.js';
@@ -61,6 +62,7 @@ export interface AppContext {
     listener: EmailListenerService | null;
   };
   webhook: NotificationWebhookServer | null;
+  readonly notificationStore: InboundNotificationStore;
 }
 
 /**
@@ -101,6 +103,7 @@ export function createAppContext(customConfig?: ApplicationEnvironmentConfigurat
   const gateway = new MessagingGatewayService();
   const pending = new PendingTransactionService(config.pendingTransactionsStoragePath);
   const emailCorrelation = new TransactionCorrelationService();
+  const notificationStore = new InboundNotificationStore(config.inboundNotificationStoragePath);
 
   return {
     config,
@@ -128,6 +131,7 @@ export function createAppContext(customConfig?: ApplicationEnvironmentConfigurat
       listener: null,
     },
     webhook: null,
+    notificationStore,
   };
 }
 

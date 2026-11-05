@@ -5,6 +5,7 @@ export * from './whatsapp.js';
 export * from './telegram.js';
 export * from './console.js';
 export * from './webhook.js';
+export * from './notificationStore.js';
 export * from './telegramMenu.js';
 export * from './telegramSettingsMenu.js';
 export * from './formatters/index.js';

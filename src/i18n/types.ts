@@ -99,6 +99,7 @@ export interface TelegramMenuDictionary {
   commandSummaryDescription: string;
   commandMenuDescription: string;
   commandSettingsDescription: string;
+  commandRescanDescription: string;
 
   topicRecord: string;
   topicTransfer: string;

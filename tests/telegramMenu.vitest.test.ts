@@ -21,6 +21,7 @@ describe('Telegram Menu and Keyboard Components', () => {
         { command: 'rekap', description: 'Cek ringkasan pengeluaran bulan ini' },
         { command: 'menu', description: 'Buka menu utama dan panduan' },
         { command: 'settings', description: 'Buka menu pengaturan bot' },
+        { command: 'rescan', description: 'Tarik ulang & selaraskan email & notifikasi (misal: /rescan 60)' },
       ]);
     });
 
@@ -34,6 +35,7 @@ describe('Telegram Menu and Keyboard Components', () => {
         { command: 'rekap', description: 'Check this month expense summary' },
         { command: 'menu', description: 'Open main menu and guide' },
         { command: 'settings', description: 'Open bot settings menu' },
+        { command: 'rescan', description: 'Rescan and reconcile inbound emails & notifications (e.g. /rescan 60)' },
       ]);
     });
   });

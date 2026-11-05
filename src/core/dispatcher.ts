@@ -31,6 +31,8 @@ import {
 } from './handlers/financialActionRegistry.js';
 import { coordinateInboundTransactionCandidate } from './inboundCoordinator.js';
 import { NotificationTransactionHandler } from './handlers/inboundHandlers.js';
+import { InboundRescanService, parseRescanDurationMinutes } from './inboundRescanService.js';
+import { formatInboundRescanResponse } from '../wallet/formatters/inboundRescanFormatter.js';
 import { TransactionCorrelationService } from '../email/index.js';
 import {
   normalizeTransactionHistoryFilters,
@@ -119,6 +121,8 @@ export interface DispatcherOverrides {
   categoryResolutionMode?: 'ask' | 'auto';
   deleteRecordHandler?: DeleteRecordHandler;
   modifyRecordHandler?: ModifyRecordHandler;
+  notificationHandler?: NotificationTransactionHandler;
+  inboundRescanService?: InboundRescanService;
 }
 
 /**
@@ -136,6 +140,8 @@ export class MessageDispatcher {
   public readonly modifyRecordHandler: ModifyRecordHandler;
   public readonly semanticToolBoundary: SemanticToolBoundary;
   public readonly semanticToolAuthorizationResolver: SemanticToolAuthorizationResolver;
+  public readonly notificationHandler: NotificationTransactionHandler;
+  public readonly inboundRescanService: InboundRescanService;
 
   public readonly context: AppContext;
   public readonly recordPreparationService?: WalletRecordPreparationService;
@@ -261,6 +267,37 @@ export class MessageDispatcher {
 
     this.semanticToolAuthorizationResolver =
       overrides?.semanticToolAuthorizationResolver || resolveGatewayAuthorization;
+
+    this.notificationHandler =
+      overrides?.notificationHandler ||
+      new NotificationTransactionHandler(
+        context.brain.provider,
+        context.wallet.cache,
+        context.pending,
+        context.gateway,
+        context.config?.defaultCurrency || 'IDR',
+        context.email?.correlation || new TransactionCorrelationService(),
+        context.wallet?.client,
+        context.wallet?.transactionMessages,
+        context.wallet?.enrichmentPool,
+        context.notificationStore
+      );
+
+    this.inboundRescanService =
+      overrides?.inboundRescanService ||
+      new InboundRescanService({
+        notificationStore: context.notificationStore,
+        notificationHandler: this.notificationHandler,
+        emailListener: () => context.email?.listener,
+        pendingTransactionManager: context.pending,
+        correlationService: context.email?.correlation || new TransactionCorrelationService(),
+        walletCacheService: context.wallet.cache,
+        messagingGateway: context.gateway,
+        walletMcpClient: context.wallet?.client,
+        transactionMessageStore: context.wallet?.transactionMessages,
+        enrichmentPoolService: context.wallet?.enrichmentPool,
+        defaultCurrency: context.config?.defaultCurrency || 'IDR',
+      });
   }
 
   /**
@@ -413,6 +450,43 @@ export class MessageDispatcher {
           if (handled) {
             return;
           }
+        }
+      }
+
+      // 2.1 Inbound Rescan / Replay command (e.g. /rescan, /rescan 30, /replay 2h, /rescan 1d)
+      if (event.messageType === 'text' && event.textPayload) {
+        const trimmedText = event.textPayload.trim();
+        const rescanMatch = trimmedText.match(/^(?:\/)?(?:rescan|replay)(?:@\w+)?(?:\s+(.+))?$/i);
+        if (rescanMatch) {
+          const dictionary = getDictionary();
+          if (this.inboundRescanService.isRunning()) {
+            const inProgressMsg =
+              dictionary.languageCode === 'en'
+                ? '⚠️ *Inbound rescan is currently in progress.* Please wait until it completes.'
+                : '⚠️ *Proses rescan transaksi sedang berjalan.* Mohon tunggu hingga selesai.';
+            await this.context.gateway.sendMessage(event.channel, event.chatIdentifier, inProgressMsg);
+            return;
+          }
+
+          const durationArg = rescanMatch[1];
+          const durationMinutes = parseRescanDurationMinutes(durationArg);
+          const durationLabel =
+            durationMinutes >= 60
+              ? durationMinutes % 60 === 0
+                ? `${durationMinutes / 60} ${dictionary.languageCode === 'en' ? 'hour(s)' : 'jam'}`
+                : `${durationMinutes} ${dictionary.languageCode === 'en' ? 'minutes' : 'menit'}`
+              : `${durationMinutes} ${dictionary.languageCode === 'en' ? 'minutes' : 'menit'}`;
+
+          const startMsg =
+            dictionary.languageCode === 'en'
+              ? `⏳ *Starting inbound rescan (last ${durationLabel})...*`
+              : `⏳ *Memulai rescan transaksi (${durationLabel} terakhir)...*`;
+          await this.context.gateway.sendMessage(event.channel, event.chatIdentifier, startMsg);
+
+          const result = await this.inboundRescanService.rescanInbound(durationMinutes);
+          const responseMsg = formatInboundRescanResponse(result, dictionary.languageCode as any);
+          await this.context.gateway.sendMessage(event.channel, event.chatIdentifier, responseMsg);
+          return;
         }
       }
 
@@ -781,7 +855,9 @@ export class MessageDispatcher {
         humanErrorMessage
       );
     } finally {
-      await this.context.gateway.clearTypingPresence(event.channel, event.chatIdentifier);
+      if (typeof this.context.gateway.clearTypingPresence === 'function') {
+        await this.context.gateway.clearTypingPresence(event.channel, event.chatIdentifier);
+      }
     }
   }
 
@@ -855,19 +931,11 @@ export class MessageDispatcher {
   /**
    * Processes mobile push notifications from the webhook receiver.
    */
-  public async handleNotificationReceived(payload: PushNotificationPayload): Promise<void> {
-    const handler = new NotificationTransactionHandler(
-      this.context.brain.provider,
-      this.context.wallet.cache,
-      this.context.pending,
-      this.context.gateway,
-      this.context.config.defaultCurrency,
-      this.context.email?.correlation || new TransactionCorrelationService(),
-      this.context.wallet.client,
-      this.context.wallet?.transactionMessages,
-      this.context.wallet?.enrichmentPool
-    );
-    await handler.handleNotificationReceived(payload);
+  public async handleNotificationReceived(
+    payload: PushNotificationPayload,
+    options?: { skipStoreRecord?: boolean; isReplay?: boolean }
+  ): Promise<void> {
+    await this.notificationHandler.handleNotificationReceived(payload, options);
   }
 }
 
