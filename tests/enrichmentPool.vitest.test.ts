@@ -1,4 +1,4 @@
-import { beforeEach, afterEach, describe, expect, it } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -7,6 +7,10 @@ import {
   isEligibleForEnrichmentPool,
   DEFAULT_ENRICHMENT_POOL_TTL_MS,
 } from '../src/wallet/records/enrichmentPool.js';
+import { TransactionMessageStore } from '../src/wallet/records/transactionMessageStore.js';
+import { formatRetroactivelyEnrichedWalletRecordNotification } from '../src/wallet/formatters/humanResponseFormatter.js';
+import { PendingActionHandler } from '../src/core/handlers/pendingHandler.js';
+import { PendingTransactionService } from '../src/core/pending.js';
 
 describe('EnrichmentPoolService and Eligibility', () => {
   let tempDir: string;
@@ -210,6 +214,212 @@ describe('EnrichmentPoolService and Eligibility', () => {
       expect(pool.getCandidate('rec-1')).toBeUndefined(); // oldest pruned
       expect(pool.getCandidate('rec-2')).toBeDefined();
       expect(pool.getCandidate('rec-3')).toBeDefined();
+    });
+
+    it('finds matching candidates by amount, currency, account, and timestamp', () => {
+      const pool = new EnrichmentPoolService(tempStoragePath);
+      pool.addCandidate({
+        recordId: 'rec-grab',
+        accountId: 'acc-jago',
+        amount: -65800,
+        currency: 'IDR',
+        recordDate: '2026-11-05T18:32:00.000Z',
+        counterParty: 'Merchant',
+      });
+
+      // 1. Matches when evidence aligns
+      const match = pool.findMatchingCandidate({
+        sourceType: 'EMAIL_PAYMENT',
+        amount: -65800,
+        currency: 'IDR',
+        occurredAt: '2026-11-05T19:21:00.000Z',
+        accountId: 'acc-jago',
+      });
+      expect(match?.recordId).toBe('rec-grab');
+
+      // 2. Matches when evidence account is cash fallback
+      const cashMatch = pool.findMatchingCandidate({
+        sourceType: 'EMAIL_PAYMENT',
+        amount: -65800,
+        currency: 'IDR',
+        occurredAt: '2026-11-05T19:21:00.000Z',
+        accountId: 'acc-cash',
+      });
+      expect(cashMatch?.recordId).toBe('rec-grab');
+
+      // 3. Fails when amount differs
+      const amountMismatch = pool.findMatchingCandidate({
+        sourceType: 'EMAIL_PAYMENT',
+        amount: -70000,
+        currency: 'IDR',
+        occurredAt: '2026-11-05T19:21:00.000Z',
+        accountId: 'acc-jago',
+      });
+      expect(amountMismatch).toBeUndefined();
+
+      // 4. Fails when currency differs
+      const currencyMismatch = pool.findMatchingCandidate({
+        sourceType: 'EMAIL_PAYMENT',
+        amount: -65800,
+        currency: 'USD',
+        occurredAt: '2026-11-05T19:21:00.000Z',
+        accountId: 'acc-jago',
+      });
+      expect(currencyMismatch).toBeUndefined();
+
+      // 5. Fails when distinct non-cash account differs
+      const accountMismatch = pool.findMatchingCandidate({
+        sourceType: 'EMAIL_PAYMENT',
+        amount: -65800,
+        currency: 'IDR',
+        occurredAt: '2026-11-05T19:21:00.000Z',
+        accountId: 'acc-mandiri',
+      });
+      expect(accountMismatch).toBeUndefined();
+
+      // 6. Fails when time exceeds max difference
+      const timeMismatch = pool.findMatchingCandidate({
+        sourceType: 'EMAIL_PAYMENT',
+        amount: -65800,
+        currency: 'IDR',
+        occurredAt: '2026-11-10T18:32:00.000Z',
+        accountId: 'acc-jago',
+      });
+      expect(timeMismatch).toBeUndefined();
+    });
+
+    it('clears pool completely', () => {
+      const pool = new EnrichmentPoolService(tempStoragePath);
+      pool.addCandidate({
+        recordId: 'rec-c1',
+        accountId: 'acc-1',
+        amount: -1000,
+        recordDate: '2026-11-05T10:00:00.000Z',
+      });
+      expect(pool.size()).toBe(1);
+      pool.clear();
+      expect(pool.size()).toBe(0);
+      expect(pool.getAllCandidates()).toHaveLength(0);
+    });
+  });
+
+  describe('TransactionMessageStore Record-Id Queries', () => {
+    it('finds and updates message mappings by record ID', () => {
+      const messageStorePath = path.join(tempDir, 'messages.json');
+      const store = new TransactionMessageStore(messageStorePath);
+
+      store.recordMessageMapping('msg-100', {
+        recordId: 'rec-target-1',
+        accountId: 'acc-jago',
+        amount: -50000,
+        currency: 'IDR',
+        recordDate: '2026-11-05T10:00:00.000Z',
+        counterParty: 'Merchant',
+      });
+
+      const found = store.findMessageMappingsByRecordId('rec-target-1');
+      expect(found).toHaveLength(1);
+      expect(found[0].messageId).toBe('msg-100');
+      expect(found[0].mapping.counterParty).toBe('Merchant');
+
+      expect(store.findMessageMappingsByRecordId('non-existent')).toHaveLength(0);
+
+      store.updateMessageMappingsByRecordId('rec-target-1', {
+        counterParty: 'Starbucks',
+        categoryName: 'Kopi',
+      });
+
+      const updated = store.getMessageMapping('msg-100');
+      expect(updated?.counterParty).toBe('Starbucks');
+      expect(updated?.categoryName).toBe('Kopi');
+    });
+  });
+
+  describe('HumanResponseFormatter Retroactive Enrichment Formatting', () => {
+    it('formats English retroactive notification correctly', () => {
+      const formattedEn = formatRetroactivelyEnrichedWalletRecordNotification({
+        recordId: 'rec-en-1',
+        merchant: 'Uber',
+        amount: -25.5,
+        currency: 'USD',
+        categoryName: 'Rideshare',
+        accountName: 'Chase Sapphire',
+        note: 'Ride to airport',
+        languageCode: 'en',
+      });
+
+      expect(formattedEn).toContain('Transaction Details Updated!');
+      expect(formattedEn).toContain('Uber');
+      expect(formattedEn).toContain('Chase Sapphire');
+      expect(formattedEn).toContain('Rideshare');
+      expect(formattedEn).toContain('Ride to airport');
+      expect(formattedEn).toContain('rec-en-1');
+    });
+  });
+
+  describe('PendingActionHandler Integration with EnrichmentPool', () => {
+    it('adds confirmed transaction with generic details to enrichment pool and updates notificationMessageIds', async () => {
+      const pool = new EnrichmentPoolService(tempStoragePath);
+      const pending = new PendingTransactionService();
+      const messageStorePath = path.join(tempDir, 'handler_messages.json');
+      const messageStore = new TransactionMessageStore(messageStorePath);
+
+      const ticket = pending.addPendingTransaction({
+        sourceType: 'PUSH_NOTIFICATION',
+        bankDisplayName: 'Bank Jago',
+        accountNameHint: 'Jago Expense',
+        counterParty: 'Merchant',
+        amount: -65800,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        matchedAccountId: 'acc-jago',
+        matchedCategoryId: 'cat-unknown',
+        matchedCategoryName: 'Unknown expense',
+        note: 'Pembayaran kartu debit',
+        recordDate: '2026-11-05T18:32:00.000Z',
+      });
+
+      const mockMcpClient = {
+        createRecords: vi.fn().mockResolvedValue({
+          results: [{ id: 'rec-created-456' }],
+        }),
+      };
+
+      const mockGateway = {
+        sendMessage: vi.fn().mockResolvedValue({ messageId: 'tg-msg-777' }),
+      };
+
+      const handler = new PendingActionHandler(
+        pending,
+        mockMcpClient as any,
+        mockGateway as any,
+        () => null,
+        undefined,
+        messageStore,
+        undefined,
+        undefined,
+        pool
+      );
+
+      await handler.handlePendingAction(
+        {
+          channel: 'telegram',
+          chatIdentifier: '12345',
+          senderIdentifier: 'user-1',
+          messageText: 'Ya 1',
+        } as any,
+        {
+          actionType: 'CONFIRM',
+          targetScope: ticket.ticketId,
+        } as any,
+        Date.now()
+      );
+
+      expect(pool.size()).toBe(1);
+      const poolItem = pool.getCandidate('rec-created-456');
+      expect(poolItem).toBeDefined();
+      expect(poolItem?.counterParty).toBe('Merchant');
+      expect(poolItem?.notificationMessageIds).toEqual({ telegram: 'tg-msg-777' });
     });
   });
 });

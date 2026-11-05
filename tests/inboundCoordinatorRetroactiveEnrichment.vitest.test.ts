@@ -283,4 +283,67 @@ describe('InboundCoordinator Retroactive Record Enrichment', () => {
     expect(notifArg).toContain('Transaksi Sudah Tercatat');
     expect(notifArg).toContain('rec-specific-99');
   });
+
+  it('handles patchRecords error gracefully and falls back to duplicate advisory', async () => {
+    const recordId = 'rec-err-fallback';
+
+    enrichmentPool.addCandidate({
+      recordId,
+      accountId: 'acc-jago',
+      amount: -45000,
+      currency: 'IDR',
+      recordDate: '2026-11-05T14:00:00.000Z',
+      counterParty: 'Merchant',
+    });
+
+    const mockMcpClient = {
+      fetchRecords: vi.fn().mockResolvedValue({ records: [] }),
+      patchRecords: vi.fn().mockRejectedValue(new Error('MCP Server Timeout')),
+    };
+
+    const mockMessaging = {
+      broadcastNotification: vi.fn().mockResolvedValue({}),
+      editBroadcastNotification: vi.fn(),
+    };
+
+    await coordinateInboundTransactionCandidate(
+      {
+        parsedData: {
+          isTransaction: true,
+          transactionType: 'EXPENSE',
+          amount: -45000,
+          counterParty: 'Bakmi GM',
+          accountNameHint: 'Jago Expense',
+          matchedAccountId: 'acc-jago',
+          matchedCategoryId: 'cat-food',
+          matchedCategoryName: 'Makanan & Minuman',
+          note: 'Bakmi Spesial GM',
+          recordDate: '2026-11-05T14:00:00.000Z',
+          explanation: 'Bakmi GM receipt',
+        },
+        gateResult: { isCandidate: true },
+        sourceType: 'EMAIL',
+        evidenceSourceType: 'EMAIL_PAYMENT',
+        sourceId: 'email-bakmi-1',
+        sourceDate: new Date('2026-11-05T14:20:00.000Z'),
+        sourceDisplayName: 'Bakmi GM',
+        fallbackNote: 'Bakmi Receipt',
+      },
+      {
+        walletCacheService: mockWalletCache as any,
+        pendingTransactionManager: pendingManager,
+        messagingGateway: mockMessaging as any,
+        defaultCurrency: 'IDR',
+        correlationService,
+        walletMcpClient: mockMcpClient as any,
+        enrichmentPoolService: enrichmentPool,
+      }
+    );
+
+    // Fallback broadcast was sent despite patch error
+    expect(mockMessaging.broadcastNotification).toHaveBeenCalledTimes(1);
+    const notifArg = mockMessaging.broadcastNotification.mock.calls[0][0];
+    expect(notifArg).toContain('Transaksi Sudah Tercatat');
+    expect(notifArg).toContain('rec-err-fallback');
+  });
 });
