@@ -85,6 +85,16 @@ describe('InboundRescanService and Rescan Infrastructure', () => {
       };
       const idOutputHour = formatInboundRescanResponse(resultHours, 'id');
       expect(idOutputHour).toContain('2 jam terakhir');
+
+      const resultMixed = {
+        durationMinutes: 90,
+        notificationsReplayed: 1,
+        emailsScanned: 5,
+        emailsDetected: 0,
+        reconciledPendingCount: 0,
+      };
+      const idOutputMixed = formatInboundRescanResponse(resultMixed, 'id');
+      expect(idOutputMixed).toContain('90 menit terakhir');
     });
 
     it('formats English response correctly', () => {
@@ -102,6 +112,16 @@ describe('InboundRescanService and Rescan Infrastructure', () => {
       expect(enOutput).toContain('Push Notifications Evaluated*: 5');
       expect(enOutput).toContain('Emails Scanned*: 10 (2 transactions detected)');
       expect(enOutput).toContain('Pending Tickets Reconciled*: 2');
+
+      const resultEnMixed = {
+        durationMinutes: 90,
+        notificationsReplayed: 1,
+        emailsScanned: 2,
+        emailsDetected: 0,
+        reconciledPendingCount: 0,
+      };
+      const enOutputMixed = formatInboundRescanResponse(resultEnMixed, 'en');
+      expect(enOutputMixed).toContain('last 90 minutes');
     });
   });
 
@@ -390,6 +410,229 @@ describe('InboundRescanService and Rescan Infrastructure', () => {
       await firstRunPromise;
       expect(service.isRunning()).toBe(false);
     });
+
+    it('handles notification replay handler errors gracefully and continues', async () => {
+      mockNotificationStore.getNotificationsSince.mockReturnValue([
+        {
+          id: 'notif-fail',
+          receivedAt: Date.now(),
+          payload: { packageName: 'com.fail', title: 'Fail', text: 'Error' },
+        },
+        {
+          id: 'notif-ok',
+          receivedAt: Date.now(),
+          payload: { packageName: 'com.ok', title: 'Ok', text: 'Success' },
+        },
+      ]);
+
+      mockNotificationHandler.handleNotificationReceived
+        .mockRejectedValueOnce(new Error('Handler crashed'))
+        .mockResolvedValueOnce(undefined);
+
+      const service = new InboundRescanService({
+        notificationStore: mockNotificationStore,
+        notificationHandler: mockNotificationHandler,
+        emailListener: mockEmailListener,
+        pendingTransactionManager: mockPendingManager,
+        correlationService: mockCorrelationService,
+        walletCacheService: mockWalletCacheService,
+        messagingGateway: mockMessagingGateway,
+        walletMcpClient: mockWalletMcpClient,
+      });
+
+      const result = await service.rescanInbound(30);
+      expect(result.notificationsReplayed).toBe(1);
+    });
+
+    it('handles email rescan and pending reconciliation errors gracefully', async () => {
+      mockEmailListener.rescanMessages.mockRejectedValue(new Error('IMAP network drop'));
+      mockPendingManager.hasPendingTransactions.mockReturnValue(true);
+      mockWalletMcpClient.fetchRecords.mockRejectedValue(new Error('MCP server down'));
+
+      const service = new InboundRescanService({
+        notificationStore: mockNotificationStore,
+        notificationHandler: mockNotificationHandler,
+        emailListener: mockEmailListener,
+        pendingTransactionManager: mockPendingManager,
+        correlationService: mockCorrelationService,
+        walletCacheService: mockWalletCacheService,
+        messagingGateway: mockMessagingGateway,
+        walletMcpClient: mockWalletMcpClient,
+      });
+
+      const result = await service.rescanInbound(60);
+      expect(result.emailsScanned).toBe(0);
+      expect(result.reconciledPendingCount).toBe(0);
+    });
+
+    it('handles pending reconciliation with non-pending tickets and non-enrichable records', async () => {
+      const ticketProcessing = {
+        ticketId: 10,
+        sourceType: 'PUSH_NOTIFICATION',
+        bankDisplayName: 'Bank',
+        accountNameHint: 'Jago Expense',
+        counterParty: 'Merchant',
+        amount: -50000,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        matchedAccountId: 'acc-jago',
+        note: 'Note',
+        recordDate: '2026-11-05T10:00:00.000Z',
+        createdAt: new Date(),
+        expiresAt: new Date(Date.now() + 86400000),
+      };
+
+      const ticketAlreadySpecific = {
+        ticketId: 11,
+        sourceType: 'PUSH_NOTIFICATION',
+        bankDisplayName: 'Bank',
+        accountNameHint: 'Jago Expense',
+        counterParty: 'Starbucks',
+        amount: -45000,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        matchedAccountId: 'acc-jago',
+        matchedCategoryName: 'Ojol',
+        note: 'Coffee',
+        recordDate: '2026-11-05T10:00:00.000Z',
+        createdAt: new Date(),
+        expiresAt: new Date(Date.now() + 86400000),
+      };
+
+      const specificWalletRecord = {
+        id: 'rec-specific',
+        accountId: 'acc-jago',
+        accountName: 'Jago Expense',
+        amount: -45000,
+        currency: 'IDR',
+        recordDate: '2026-11-05T10:00:00.000Z',
+        recordType: 'expense',
+        counterParty: 'Starbucks',
+        category: { id: 'cat-ojol', name: 'Ojol' },
+        note: 'Coffee',
+      };
+
+      mockPendingManager.hasPendingTransactions.mockReturnValue(true);
+      mockPendingManager.getAllPendingTransactions.mockReturnValue([ticketProcessing, ticketAlreadySpecific]);
+      mockPendingManager.getPendingTransactionState.mockImplementation((id: number) => {
+        return id === 10 ? 'PROCESSING' : 'PENDING';
+      });
+
+      mockWalletMcpClient.fetchRecords.mockResolvedValue({ records: [specificWalletRecord] });
+
+      mockCorrelationService.correlateEvidence.mockReturnValue({
+        confidence: 'HIGH',
+        matchTarget: { type: 'WALLET_RECORD', record: specificWalletRecord },
+        suggestedAction: 'ATTACH_WALLET_RECORD',
+      });
+
+      const service = new InboundRescanService({
+        notificationStore: mockNotificationStore,
+        notificationHandler: mockNotificationHandler,
+        emailListener: mockEmailListener,
+        pendingTransactionManager: mockPendingManager,
+        correlationService: mockCorrelationService,
+        walletCacheService: mockWalletCacheService,
+        messagingGateway: mockMessagingGateway,
+        walletMcpClient: mockWalletMcpClient,
+        enrichmentPoolService: {
+          getAllCandidates: vi.fn().mockReturnValue([
+            { recordId: 'pool-1', accountId: 'acc-jago', accountName: 'Jago', amount: -20000, recordDate: '2026-11-05' },
+          ]),
+          getCandidate: vi.fn().mockReturnValue(undefined),
+          removeCandidate: vi.fn(),
+        } as any,
+      });
+
+      const result = await service.rescanInbound(60);
+
+      // Ticket 10 was PROCESSING so skipped. Ticket 11 was already specific so no patchRecords call, but correlation notification broadcasted and ticket rejected.
+      expect(mockWalletMcpClient.patchRecords).not.toHaveBeenCalled();
+      expect(mockMessagingGateway.broadcastNotification).toHaveBeenCalledWith(
+        expect.stringContaining('Transaksi Sudah Tercatat')
+      );
+      expect(mockPendingManager.rejectPendingTransaction).toHaveBeenCalledWith(11);
+      expect(result.reconciledPendingCount).toBe(1);
+    });
+
+    it('handles patchRecords error gracefully during pending reconciliation', async () => {
+      const ticketToPatch = {
+        ticketId: 20,
+        sourceType: 'PUSH_NOTIFICATION',
+        bankDisplayName: 'Grab',
+        accountNameHint: 'Jago Expense',
+        counterParty: 'Grab',
+        amount: -65800,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        matchedAccountId: 'acc-jago',
+        matchedCategoryName: 'ojol', // lowercase to test case-insensitive match
+        note: 'Trip',
+        recordDate: '2026-11-05T10:00:00.000Z',
+        createdAt: new Date(),
+        expiresAt: new Date(Date.now() + 86400000),
+      };
+
+      const genericRecord = {
+        id: 'rec-generic-err',
+        accountId: 'acc-jago',
+        accountName: 'Jago Expense',
+        amount: -65800,
+        currency: 'IDR',
+        recordDate: '2026-11-05T10:00:00.000Z',
+        recordType: 'expense',
+        counterParty: 'Merchant',
+        category: { id: 'cat-unknown', name: 'Unknown expense' },
+        note: 'Pembayaran kartu debit',
+      };
+
+      mockPendingManager.hasPendingTransactions.mockReturnValue(true);
+      mockPendingManager.getAllPendingTransactions.mockReturnValue([ticketToPatch]);
+      mockPendingManager.getPendingTransactionState.mockReturnValue('PENDING');
+
+      mockWalletMcpClient.fetchRecords.mockResolvedValue({ records: [genericRecord] });
+      mockWalletMcpClient.patchRecords.mockRejectedValue(new Error('Network timeout'));
+
+      mockCorrelationService.correlateEvidence.mockReturnValue({
+        confidence: 'HIGH',
+        matchTarget: { type: 'WALLET_RECORD', record: genericRecord },
+        suggestedAction: 'ATTACH_WALLET_RECORD',
+      });
+
+      const service = new InboundRescanService({
+        notificationStore: mockNotificationStore,
+        notificationHandler: mockNotificationHandler,
+        emailListener: mockEmailListener,
+        pendingTransactionManager: mockPendingManager,
+        correlationService: mockCorrelationService,
+        walletCacheService: mockWalletCacheService,
+        messagingGateway: mockMessagingGateway,
+        walletMcpClient: mockWalletMcpClient,
+      });
+
+      const result = await service.rescanInbound(60);
+      expect(mockPendingManager.rejectPendingTransaction).toHaveBeenCalledWith(20);
+      expect(result.reconciledPendingCount).toBe(1);
+    });
+
+    it('returns 0 reconciled when recentRecords is empty or walletMcpClient is missing', async () => {
+      mockPendingManager.hasPendingTransactions.mockReturnValue(true);
+      mockWalletMcpClient.fetchRecords.mockResolvedValue({ records: [] });
+
+      const service = new InboundRescanService({
+        notificationStore: mockNotificationStore,
+        notificationHandler: mockNotificationHandler,
+        emailListener: mockEmailListener,
+        pendingTransactionManager: mockPendingManager,
+        correlationService: mockCorrelationService,
+        walletCacheService: mockWalletCacheService,
+        messagingGateway: mockMessagingGateway,
+        walletMcpClient: mockWalletMcpClient,
+      });
+
+      const result = await service.rescanInbound(60);
+      expect(result.reconciledPendingCount).toBe(0);
+    });
   });
 
   describe('MessageDispatcher /rescan command routing', () => {
@@ -471,6 +714,105 @@ describe('InboundRescanService and Rescan Infrastructure', () => {
       expect(mockRescanService.rescanInbound).not.toHaveBeenCalled();
       expect(messages).toHaveLength(1);
       expect(messages[0]).toContain('Proses rescan transaksi sedang berjalan');
+    });
+  });
+
+  describe('NotificationTransactionHandler options and error recovery', () => {
+    it('skips storing notification when options.skipStoreRecord is true', async () => {
+      const { NotificationTransactionHandler } = await import('../src/core/handlers/inboundHandlers.js');
+      const mockStore = {
+        recordNotification: vi.fn(),
+      };
+      const mockGateway = {
+        broadcastNotification: vi.fn(),
+      };
+      const mockCache = {
+        getAccounts: vi.fn().mockReturnValue([]),
+        getCategories: vi.fn().mockReturnValue([]),
+      };
+      const mockAi = {
+        processEmailTransactionMessage: vi.fn().mockResolvedValue({ isTransaction: false }),
+      };
+
+      const handler = new NotificationTransactionHandler(
+        mockAi as any,
+        mockCache as any,
+        {} as any,
+        mockGateway as any,
+        'IDR',
+        {} as any,
+        undefined,
+        undefined,
+        undefined,
+        mockStore as any
+      );
+
+      // Replay call with skipStoreRecord: true
+      await handler.handleNotificationReceived(
+        { packageName: 'com.bca', title: 'BCA', text: 'Transfer Rp 50.000' },
+        { skipStoreRecord: true, isReplay: true }
+      );
+
+      expect(mockStore.recordNotification).not.toHaveBeenCalled();
+
+      // Normal call without options
+      await handler.handleNotificationReceived({
+        packageName: 'com.bca',
+        title: 'BCA',
+        text: 'Transfer Rp 50.000',
+      });
+
+      expect(mockStore.recordNotification).toHaveBeenCalledTimes(1);
+    });
+
+    it('catches notificationStore.recordNotification error and proceeds', async () => {
+      const { NotificationTransactionHandler } = await import('../src/core/handlers/inboundHandlers.js');
+      const mockStore = {
+        recordNotification: vi.fn().mockImplementation(() => {
+          throw new Error('Disk full');
+        }),
+      };
+      const mockAi = {
+        processEmailTransactionMessage: vi.fn().mockResolvedValue({ isTransaction: false }),
+      };
+
+      const handler = new NotificationTransactionHandler(
+        mockAi as any,
+        { getAccounts: () => [], getCategories: () => [] } as any,
+        {} as any,
+        { broadcastNotification: vi.fn() } as any,
+        'IDR',
+        {} as any,
+        undefined,
+        undefined,
+        undefined,
+        mockStore as any
+      );
+
+      await expect(
+        handler.handleNotificationReceived({
+          packageName: 'com.bca',
+          title: 'BCA',
+          text: 'Transfer Rp 50.000',
+        })
+      ).resolves.not.toThrow();
+    });
+  });
+
+  describe('EmailListenerService.rescanMessages offline safety', () => {
+    it('returns { scannedUids: 0, detectedCount: 0 } when not connected', async () => {
+      const { EmailListenerService } = await import('../src/email/listener.js');
+      const listener = new EmailListenerService({
+        imapHost: 'imap.gmail.com',
+        imapPort: 993,
+        imapUser: 'test@gmail.com',
+        imapPassword: 'password',
+        onTransactionDetected: vi.fn(),
+      } as any);
+
+      expect(listener.isConnected()).toBe(false);
+      const res = await listener.rescanMessages(60);
+      expect(res).toEqual({ scannedUids: 0, detectedCount: 0 });
     });
   });
 });

@@ -137,4 +137,33 @@ describe('InboundNotificationStore', () => {
     const reloaded = new InboundNotificationStore(storagePath);
     expect(reloaded.size()).toBe(0);
   });
+
+  it('supports in-memory mode when storageFilePath is undefined', () => {
+    const memoryStore = new InboundNotificationStore();
+    expect(memoryStore.size()).toBe(0);
+    memoryStore.recordNotification(samplePayload);
+    expect(memoryStore.size()).toBe(1);
+    expect(memoryStore.getAllNotifications()[0].payload.title).toBe('Grab');
+    memoryStore.clear();
+    expect(memoryStore.size()).toBe(0);
+  });
+
+  it('handles corrupted storage file gracefully by starting empty', () => {
+    fs.mkdirSync(path.dirname(storagePath), { recursive: true });
+    fs.writeFileSync(storagePath, 'invalid { json corrupt content', 'utf8');
+
+    const store = new InboundNotificationStore(storagePath);
+    expect(store.size()).toBe(0);
+
+    store.recordNotification(samplePayload);
+    expect(store.size()).toBe(1);
+  });
+
+  it('handles empty storage file gracefully', () => {
+    fs.mkdirSync(path.dirname(storagePath), { recursive: true });
+    fs.writeFileSync(storagePath, '   \n  ', 'utf8');
+
+    const store = new InboundNotificationStore(storagePath);
+    expect(store.size()).toBe(0);
+  });
 });
