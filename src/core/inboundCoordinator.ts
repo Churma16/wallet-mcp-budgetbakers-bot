@@ -189,6 +189,7 @@ export async function coordinateInboundTransactionCandidate(
   // Case 1: Correlates with existing native Wallet record (bank sync or manual write)
   if (correlationResult.suggestedAction === 'ATTACH_WALLET_RECORD') {
     const matchedRecord = (correlationResult.matchTarget as { type: 'WALLET_RECORD'; record: any }).record;
+    let didFailPatch = false;
     applicationLogger.info(
       `[Correlation Matched Wallet Record] ${sourceType} matches existing Wallet record (${matchedRecord.id}).`
     );
@@ -348,29 +349,36 @@ export async function coordinateInboundTransactionCandidate(
         }
         return;
       } catch (enrichError) {
+        didFailPatch = true;
         applicationLogger.error(
           `[Retroactive Enrichment Error] Failed to patch record ${matchedRecord.id}: ${
             enrichError instanceof Error ? enrichError.message : String(enrichError)
-          }. Falling back to correlation notice.`
+          }. Purging stale candidate.`
         );
+        deps.enrichmentPoolService?.removeCandidate(matchedRecord.id);
+        if (deps.transactionMessageStore) {
+          deps.transactionMessageStore.deleteMessageMappingsByRecordId?.(matchedRecord.id);
+        }
       }
     }
 
-    if (context.isReplay) {
-      applicationLogger.info(
-        `[InboundRescan Replay] Suppressing duplicate correlation broadcast for record ${matchedRecord.id}.`
+    if (!didFailPatch) {
+      if (context.isReplay) {
+        applicationLogger.info(
+          `[InboundRescan Replay] Suppressing duplicate correlation broadcast for record ${matchedRecord.id}.`
+        );
+        return;
+      }
+
+      const notif = formatCorrelatedWalletRecordNotification(
+        matchedRecord.id,
+        incomingEvidence.merchant || matchedRecord.counterParty || 'Transaksi',
+        incomingEvidence.amount,
+        incomingEvidence.currency
       );
+      await messagingGateway.broadcastNotification(notif);
       return;
     }
-
-    const notif = formatCorrelatedWalletRecordNotification(
-      matchedRecord.id,
-      incomingEvidence.merchant || matchedRecord.counterParty || 'Transaksi',
-      incomingEvidence.amount,
-      incomingEvidence.currency
-    );
-    await messagingGateway.broadcastNotification(notif);
-    return;
   }
 
   // Case 1.5: Correlates with an existing unlinked record as a paired transfer counterpart

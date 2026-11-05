@@ -608,11 +608,14 @@ describe('InboundRescanService and Rescan Infrastructure', () => {
         walletCacheService: mockWalletCacheService,
         messagingGateway: mockMessagingGateway,
         walletMcpClient: mockWalletMcpClient,
+        enrichmentPoolService: mockEnrichmentPoolService,
+        transactionMessageStore: mockTransactionMessageStore,
       });
 
       const result = await service.rescanInbound(60);
-      expect(mockPendingManager.rejectPendingTransaction).toHaveBeenCalledWith(20);
-      expect(result.reconciledPendingCount).toBe(1);
+      expect(mockPendingManager.rejectPendingTransaction).not.toHaveBeenCalled();
+      expect(result.reconciledPendingCount).toBe(0);
+      expect(mockEnrichmentPoolService.removeCandidate).toHaveBeenCalledWith('rec-generic-err');
     });
 
     it('returns 0 reconciled when recentRecords is empty or walletMcpClient is missing', async () => {
@@ -673,7 +676,10 @@ describe('InboundRescanService and Rescan Infrastructure', () => {
         textPayload: '/rescan 30',
       } as any);
 
-      expect(mockRescanService.rescanInbound).toHaveBeenCalledWith(30);
+      expect(mockRescanService.rescanInbound).toHaveBeenCalledWith(
+        30,
+        expect.objectContaining({ onProgress: expect.any(Function) })
+      );
       expect(messages).toHaveLength(2);
       expect(messages[0]).toContain('Memulai rescan transaksi');
       expect(messages[0]).toContain('30 menit');
@@ -714,6 +720,91 @@ describe('InboundRescanService and Rescan Infrastructure', () => {
       expect(mockRescanService.rescanInbound).not.toHaveBeenCalled();
       expect(messages).toHaveLength(1);
       expect(messages[0]).toContain('Proses rescan transaksi sedang berjalan');
+    });
+
+    it('presents 2-column duration inline keyboard when /rescan is called without duration in Telegram', async () => {
+      const { createTestUserMessageHandler } = await import('./fixtures/testContext.js');
+      const sentPayloads: any[] = [];
+      const gateway = {
+        sendTypingPresence: vi.fn().mockResolvedValue(undefined),
+        clearTypingPresence: vi.fn().mockResolvedValue(undefined),
+        sendMessage: vi.fn(async (_channel: string, _chat: string, message: string, options?: any) => {
+          sentPayloads.push({ message, options });
+        }),
+      };
+
+      const mockRescanService = {
+        isRunning: vi.fn().mockReturnValue(false),
+        rescanInbound: vi.fn(),
+      };
+
+      const handler = createTestUserMessageHandler({
+        messagingGateway: gateway,
+      } as any);
+      (handler as any).inboundRescanService = mockRescanService;
+
+      await handler.handleIncomingUserMessage({
+        channel: 'telegram',
+        chatIdentifier: 'chat-1',
+        senderIdentifier: 'user-1',
+        messageType: 'text',
+        textPayload: '/rescan',
+      } as any);
+
+      expect(mockRescanService.rescanInbound).not.toHaveBeenCalled();
+      expect(sentPayloads).toHaveLength(1);
+      expect(sentPayloads[0].message).toContain('Pilih Rentang Waktu Rescan');
+      expect(sentPayloads[0].options?.replyMarkup).toBeDefined();
+    });
+
+    it('updates progress in real-time via gateway.editMessage', async () => {
+      const { createTestUserMessageHandler } = await import('./fixtures/testContext.js');
+      const editedMessages: string[] = [];
+      const gateway = {
+        sendTypingPresence: vi.fn().mockResolvedValue(undefined),
+        clearTypingPresence: vi.fn().mockResolvedValue(undefined),
+        sendMessage: vi.fn(async () => ({ messageId: 'msg-start-123' })),
+        editMessage: vi.fn(async (_chan, _chat, _id, text) => {
+          editedMessages.push(text);
+          return true;
+        }),
+      };
+
+      const mockRescanService = {
+        isRunning: vi.fn().mockReturnValue(false),
+        rescanInbound: vi.fn(async (_minutes: number, options?: any) => {
+          await options?.onProgress?.('notifications');
+          await options?.onProgress?.('emails');
+          await options?.onProgress?.('pending');
+          await options?.onProgress?.('completed');
+          return {
+            durationMinutes: 60,
+            notificationsReplayed: 1,
+            emailsScanned: 2,
+            emailsDetected: 1,
+            reconciledPendingCount: 1,
+          };
+        }),
+      };
+
+      const handler = createTestUserMessageHandler({
+        messagingGateway: gateway,
+      } as any);
+      (handler as any).inboundRescanService = mockRescanService;
+
+      await handler.handleIncomingUserMessage({
+        channel: 'telegram',
+        chatIdentifier: 'chat-1',
+        senderIdentifier: 'user-1',
+        messageType: 'text',
+        textPayload: '/rescan 60m',
+      } as any);
+
+      expect(gateway.editMessage).toHaveBeenCalledTimes(4);
+      expect(editedMessages[0]).toContain('Memeriksa push notification');
+      expect(editedMessages[1]).toContain('Memindai email masuk');
+      expect(editedMessages[2]).toContain('Menyelaraskan tiket pending');
+      expect(editedMessages[3]).toContain('Selesai');
     });
   });
 

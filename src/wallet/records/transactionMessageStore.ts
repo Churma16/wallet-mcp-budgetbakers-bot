@@ -130,6 +130,22 @@ export class TransactionMessageStore {
     }
   }
 
+  public deleteMessageMappingsByRecordId(recordId: string): number {
+    if (!recordId) return 0;
+    this.pruneOldMappings();
+    let deletedCount = 0;
+    for (const [msgId, mapping] of this.mappingMap.entries()) {
+      if (mapping.recordId === recordId) {
+        this.mappingMap.delete(msgId);
+        deletedCount++;
+      }
+    }
+    if (deletedCount > 0) {
+      this.saveToStorage();
+    }
+    return deletedCount;
+  }
+
   public hasMapping(messageId: string): boolean {
     return this.getMessageMapping(messageId) !== undefined;
   }

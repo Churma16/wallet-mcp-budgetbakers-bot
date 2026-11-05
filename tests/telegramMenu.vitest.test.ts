@@ -3,6 +3,7 @@ import {
   createTelegramBackButtonInlineKeyboard,
   createTelegramGuideInlineKeyboard,
   createTelegramMainReplyKeyboard,
+  createTelegramRescanInlineKeyboard,
   getTelegramBotCommands,
   getTelegramGuideTopicContent,
 } from '../src/gateway/telegramMenu.js';
@@ -97,6 +98,60 @@ describe('Telegram Menu and Keyboard Components', () => {
 
       expect(payload.length).toBe(1);
       expect(payload[0][0].callback_data).toBe('guide:home');
+    });
+  });
+
+  describe('Rescan Inline Keyboard Creation', () => {
+    it('creates a 2-column inline keyboard with 5 duration options in Indonesian', () => {
+      const keyboard = createTelegramRescanInlineKeyboard('id');
+      const rows = keyboard.inline_keyboard;
+
+      expect(rows.length).toBe(3);
+
+      // Row 1: 1 Jam & 3 Jam
+      expect(rows[0].length).toBe(2);
+      expect(rows[0][0].text).toBe('1 Jam');
+      expect(rows[0][0].callback_data).toBe('rescan:60');
+      expect(rows[0][1].text).toBe('3 Jam');
+      expect(rows[0][1].callback_data).toBe('rescan:180');
+
+      // Row 2: 6 Jam & 12 Jam
+      expect(rows[1].length).toBe(2);
+      expect(rows[1][0].text).toBe('6 Jam');
+      expect(rows[1][0].callback_data).toBe('rescan:360');
+      expect(rows[1][1].text).toBe('12 Jam');
+      expect(rows[1][1].callback_data).toBe('rescan:720');
+
+      // Row 3: 24 Jam
+      expect(rows[2].length).toBe(1);
+      expect(rows[2][0].text).toBe('24 Jam');
+      expect(rows[2][0].callback_data).toBe('rescan:1440');
+    });
+
+    it('creates a 2-column inline keyboard with 5 duration options in English', () => {
+      const keyboard = createTelegramRescanInlineKeyboard('en');
+      const rows = keyboard.inline_keyboard;
+
+      expect(rows.length).toBe(3);
+
+      // Row 1: 1 Hour & 3 Hours
+      expect(rows[0].length).toBe(2);
+      expect(rows[0][0].text).toBe('1 Hour');
+      expect(rows[0][0].callback_data).toBe('rescan:60');
+      expect(rows[0][1].text).toBe('3 Hours');
+      expect(rows[0][1].callback_data).toBe('rescan:180');
+
+      // Row 2: 6 Hours & 12 Hours
+      expect(rows[1].length).toBe(2);
+      expect(rows[1][0].text).toBe('6 Hours');
+      expect(rows[1][0].callback_data).toBe('rescan:360');
+      expect(rows[1][1].text).toBe('12 Hours');
+      expect(rows[1][1].callback_data).toBe('rescan:720');
+
+      // Row 3: 24 Hours
+      expect(rows[2].length).toBe(1);
+      expect(rows[2][0].text).toBe('24 Hours');
+      expect(rows[2][0].callback_data).toBe('rescan:1440');
     });
   });
 

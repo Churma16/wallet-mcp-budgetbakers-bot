@@ -2,7 +2,9 @@ import { AppContext } from './context.js';
 import {
   IncomingUserMessageEvent,
   PushNotificationPayload,
+  SentMessageReceipt,
 } from '../gateway/index.js';
+import { createTelegramRescanInlineKeyboard } from '../gateway/telegramMenu.js';
 import { EmailTransactionDetectedEvent } from '../email/index.js';
 import {
   ExtractedFinancialIntent,
@@ -31,7 +33,7 @@ import {
 } from './handlers/financialActionRegistry.js';
 import { coordinateInboundTransactionCandidate } from './inboundCoordinator.js';
 import { NotificationTransactionHandler } from './handlers/inboundHandlers.js';
-import { InboundRescanService, parseRescanDurationMinutes } from './inboundRescanService.js';
+import { InboundRescanService, parseRescanDurationMinutes, type InboundRescanStage } from './inboundRescanService.js';
 import { formatInboundRescanResponse } from '../wallet/formatters/inboundRescanFormatter.js';
 import { TransactionCorrelationService } from '../email/index.js';
 import {
@@ -469,6 +471,18 @@ export class MessageDispatcher {
           }
 
           const durationArg = rescanMatch[1];
+          if (!durationArg && event.channel === 'telegram') {
+            const rescanPrompt =
+              dictionary.languageCode === 'en'
+                ? '🔄 *Choose Rescan Lookback Range*\nSelect how far back to rescan incoming push notifications and emails:'
+                : '🔄 *Pilih Rentang Waktu Rescan*\nPilih rentang waktu untuk memeriksa ulang notifikasi dan email masuk:';
+
+            await this.context.gateway.sendMessage(event.channel, event.chatIdentifier, rescanPrompt, {
+              replyMarkup: createTelegramRescanInlineKeyboard(dictionary.languageCode as any),
+            });
+            return;
+          }
+
           const durationMinutes = parseRescanDurationMinutes(durationArg);
           const durationLabel =
             durationMinutes >= 60
@@ -481,9 +495,37 @@ export class MessageDispatcher {
             dictionary.languageCode === 'en'
               ? `⏳ *Starting inbound rescan (last ${durationLabel})...*`
               : `⏳ *Memulai rescan transaksi (${durationLabel} terakhir)...*`;
-          await this.context.gateway.sendMessage(event.channel, event.chatIdentifier, startMsg);
+          const receipt = await this.context.gateway.sendMessage(event.channel, event.chatIdentifier, startMsg);
+          const startMessageId = (receipt as SentMessageReceipt | undefined)?.messageId;
 
-          const result = await this.inboundRescanService.rescanInbound(durationMinutes);
+          const progressLabels: Record<InboundRescanStage, string> =
+            dictionary.languageCode === 'en'
+              ? {
+                  notifications: '📲 _Checking push notifications..._',
+                  emails: '📬 _Scanning inbound emails..._',
+                  pending: '🎫 _Reconciling pending tickets..._',
+                  completed: '✅ _Rescan completed._',
+                }
+              : {
+                  notifications: '📲 _Memeriksa push notification..._',
+                  emails: '📬 _Memindai email masuk..._',
+                  pending: '🎫 _Menyelaraskan tiket pending..._',
+                  completed: '✅ _Selesai._',
+                };
+
+          const onProgress = async (stage: InboundRescanStage) => {
+            if (startMessageId && typeof this.context.gateway.editMessage === 'function') {
+              const updatedText = `${startMsg}\n${progressLabels[stage]}`;
+              await this.context.gateway.editMessage(
+                event.channel,
+                event.chatIdentifier,
+                startMessageId,
+                updatedText
+              );
+            }
+          };
+
+          const result = await this.inboundRescanService.rescanInbound(durationMinutes, { onProgress });
           const responseMsg = formatInboundRescanResponse(result, dictionary.languageCode as any);
           await this.context.gateway.sendMessage(event.channel, event.chatIdentifier, responseMsg);
           return;

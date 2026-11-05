@@ -59,6 +59,16 @@ export function parseRescanDurationMinutes(input?: string): number {
   return Math.min(Math.max(minutes, MIN_RESCAN_DURATION_MINUTES), MAX_RESCAN_DURATION_MINUTES);
 }
 
+export type InboundRescanStage = 'notifications' | 'emails' | 'pending' | 'completed';
+
+export interface InboundRescanProgressCallback {
+  (stage: InboundRescanStage): Promise<void> | void;
+}
+
+export interface InboundRescanOptions {
+  onProgress?: InboundRescanProgressCallback;
+}
+
 export interface InboundRescanServiceDependencies {
   notificationStore: InboundNotificationStore;
   notificationHandler: NotificationTransactionHandler;
@@ -88,7 +98,10 @@ export class InboundRescanService {
     return this.isRescanRunning;
   }
 
-  public async rescanInbound(durationMinutes: number): Promise<InboundRescanResult> {
+  public async rescanInbound(
+    durationMinutes: number = DEFAULT_RESCAN_DURATION_MINUTES,
+    options?: InboundRescanOptions
+  ): Promise<InboundRescanResult> {
     if (this.isRescanRunning) {
       throw new Error('A rescan is already in progress');
     }
@@ -108,6 +121,7 @@ export class InboundRescanService {
 
     try {
       // Step 1: Push Notification Replay from persistent store
+      await options?.onProgress?.('notifications');
       const storedNotifications = this.deps.notificationStore.getNotificationsSince(cutoffTimestampMs);
       applicationLogger.info(
         `[InboundRescan] Found ${storedNotifications.length} stored push notification(s) within lookback window.`
@@ -134,6 +148,7 @@ export class InboundRescanService {
       }
 
       // Step 2: Email IMAP Rescan with cache bypass
+      await options?.onProgress?.('emails');
       const emailListener =
         typeof this.deps.emailListener === 'function'
           ? this.deps.emailListener()
@@ -164,6 +179,7 @@ export class InboundRescanService {
       }
 
       // Step 3: Pending Queue Reconciliation against Wallet MCP
+      await options?.onProgress?.('pending');
       if (this.deps.pendingTransactionManager.hasPendingTransactions() && this.deps.walletMcpClient) {
         try {
           reconciledPendingCount = await this.reconcilePendingQueueAgainstWalletRecords();
@@ -175,6 +191,8 @@ export class InboundRescanService {
           );
         }
       }
+
+      await options?.onProgress?.('completed');
 
       const elapsed = Date.now() - startTime;
       applicationLogger.info(
@@ -383,12 +401,20 @@ export class InboundRescanService {
             });
 
             await this.deps.messagingGateway.broadcastNotification(enrichedNotif);
+
+            // Dismiss the superseded pending ticket ONLY upon successful enrichment
+            this.deps.pendingTransactionManager.rejectPendingTransaction(item.ticketId);
+            reconciledCount++;
           } catch (patchErr) {
             applicationLogger.warn(
               `[InboundRescan] Failed to patch record ${matchedRecord.id}: ${
                 patchErr instanceof Error ? patchErr.message : String(patchErr)
               }`
             );
+            // Stale or deleted record: purge candidate from enrichment pool and message mappings
+            this.deps.enrichmentPoolService?.removeCandidate(matchedRecord.id);
+            this.deps.transactionMessageStore?.deleteMessageMappingsByRecordId?.(matchedRecord.id);
+            // Do NOT dismiss item.ticketId! Keep it active in pending queue.
           }
         } else {
           const notif = formatCorrelatedWalletRecordNotification(
@@ -398,11 +424,9 @@ export class InboundRescanService {
             evidence.currency
           );
           await this.deps.messagingGateway.broadcastNotification(notif);
+          this.deps.pendingTransactionManager.rejectPendingTransaction(item.ticketId);
+          reconciledCount++;
         }
-
-        // Dismiss the superseded pending ticket
-        this.deps.pendingTransactionManager.rejectPendingTransaction(item.ticketId);
-        reconciledCount++;
       }
     }
 

@@ -248,4 +248,60 @@ describe('TelegramMessagingAdapter safeguards', () => {
       expect(nextInvoked).toBe(false);
     });
   });
+
+  describe('editTextMessage and editBroadcastNotification', () => {
+    it('returns false when botInstance is not initialized or messageId is invalid', async () => {
+      const adapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback);
+      expect(await adapter.editTextMessage('123', 'invalid-id', 'test')).toBe(false);
+      expect(await adapter.editBroadcastNotification('invalid-id', 'test')).toBe(false);
+    });
+
+    it('edits message successfully using botInstance.api.editMessageText', async () => {
+      const adapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback);
+      const mockEditMessageText = vi.fn().mockResolvedValue({});
+      (adapter as any).botInstance = {
+        api: {
+          editMessageText: mockEditMessageText,
+        },
+      };
+
+      const result = await adapter.editTextMessage('123456789', '42', '*Updated*');
+      expect(result).toBe(true);
+      expect(mockEditMessageText).toHaveBeenCalledWith(
+        '123456789',
+        42,
+        '<b>Updated</b>',
+        { parse_mode: 'HTML' }
+      );
+    });
+
+    it('treats "message is not modified" error as success', async () => {
+      const adapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback);
+      (adapter as any).botInstance = {
+        api: {
+          editMessageText: vi.fn().mockRejectedValue(new Error('Bad Request: message is not modified')),
+        },
+      };
+
+      const result = await adapter.editTextMessage('123456789', '42', 'Same');
+      expect(result).toBe(true);
+    });
+
+    it('falls back to plain text edit when HTML edit fails', async () => {
+      const adapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback);
+      const mockEdit = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('Bad Request: can\'t parse entities'))
+        .mockResolvedValueOnce({});
+      (adapter as any).botInstance = {
+        api: {
+          editMessageText: mockEdit,
+        },
+      };
+
+      const result = await adapter.editTextMessage('123456789', '42', 'Text with <unclosed tag');
+      expect(result).toBe(true);
+      expect(mockEdit).toHaveBeenCalledTimes(2);
+    });
+  });
 });

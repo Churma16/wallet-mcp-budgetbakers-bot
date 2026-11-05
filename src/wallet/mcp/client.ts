@@ -50,7 +50,7 @@ import {
 } from '../entities.js';
 import { fetchRecords } from '../history/history.js';
 import { createRecords, patchRecords, deleteRecords } from '../records/records.js';
-import { validateCreateRecordsResponse } from '../records/recordValidation.js';
+import { validateCreateRecordsResponse, validatePatchRecordsResponse } from '../records/recordValidation.js';
 import {
   fetchRecordsAggregation,
   validateRecordAggregationResponse,
@@ -341,6 +341,13 @@ public deleteRecords(
     expectedRecordCount: number
   ): WalletCreateRecordsResponse {
     return validateCreateRecordsResponse(createRecordsResult, expectedRecordCount);
+  }
+
+  public validatePatchRecordsResponse(
+    patchRecordsResult: unknown,
+    expectedRecordCount: number
+  ): WalletPatchRecordsResponse {
+    return validatePatchRecordsResponse(patchRecordsResult, expectedRecordCount);
   }
 
   public validateRecordAggregationResponse(

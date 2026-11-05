@@ -1,5 +1,5 @@
 import { InlineKeyboard, Keyboard } from 'grammy';
-import { getDictionary, SupportedLanguage } from '../i18n/index.js';
+import { getDictionary, getActiveLanguage, SupportedLanguage } from '../i18n/index.js';
 
 /**
  * Standard Telegram bot command specifications registered via bot.api.setMyCommands.
@@ -54,6 +54,30 @@ export function createTelegramGuideInlineKeyboard(languageCode?: SupportedLangua
 export function createTelegramBackButtonInlineKeyboard(languageCode?: SupportedLanguage): InlineKeyboard {
   const dictionary = getDictionary(languageCode).telegramMenu;
   return new InlineKeyboard().text(dictionary.buttonBack, 'guide:home');
+}
+
+/**
+ * Creates a 2-column inline keyboard offering duration choices for /rescan.
+ * Options: 1 Jam (60m) | 3 Jam (180m)
+ *          6 Jam (360m) | 12 Jam (720m)
+ *          24 Jam (1440m)
+ */
+export function createTelegramRescanInlineKeyboard(languageCode?: SupportedLanguage): InlineKeyboard {
+  const isEnglish = (languageCode || getActiveLanguage()) === 'en';
+  const label1h = isEnglish ? '1 Hour' : '1 Jam';
+  const label3h = isEnglish ? '3 Hours' : '3 Jam';
+  const label6h = isEnglish ? '6 Hours' : '6 Jam';
+  const label12h = isEnglish ? '12 Hours' : '12 Jam';
+  const label24h = isEnglish ? '24 Hours' : '24 Jam';
+
+  return new InlineKeyboard()
+    .text(label1h, 'rescan:60')
+    .text(label3h, 'rescan:180')
+    .row()
+    .text(label6h, 'rescan:360')
+    .text(label12h, 'rescan:720')
+    .row()
+    .text(label24h, 'rescan:1440');
 }
 
 export interface TelegramGuideTopicContent {
