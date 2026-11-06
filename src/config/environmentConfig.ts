@@ -4,7 +4,12 @@ import dotenv from 'dotenv';
 import { applicationLogger } from '../lib/logger.js';
 import { digitsOnly } from '../lib/digits.js';
 
-dotenv.config();
+const defaultEnvPath = process.env.ENV_FILE || path.join(process.cwd(), '.env');
+if (fs.existsSync(defaultEnvPath)) {
+  dotenv.config({ path: defaultEnvPath });
+} else {
+  dotenv.config();
+}
 
 export type SupportedAiProviderType = 'gemini' | 'openrouter' | 'groq' | 'ollama' | 'openai' | 'custom';
 
@@ -191,7 +196,87 @@ function enforceE164LengthLimit(digitsOnlyNumber: string, originalRawNumber: str
   return digitsOnlyNumber;
 }
 
-export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfiguration {
+export const APPLICATION_CONFIG_ENV_KEYS: readonly string[] = [
+  'AI_PROVIDER',
+  'AI_API_KEY',
+  'AI_BASE_URL',
+  'AI_MODEL',
+  'AI_FALLBACK_MODELS',
+  'AI_TIMEOUT_SECONDS',
+  'GEMINI_API_KEY',
+  'GEMINI_MODEL',
+  'GEMINI_FALLBACK_MODELS',
+  'GEMINI_TIMEOUT_SECONDS',
+  'OPENROUTER_API_KEY',
+  'GROQ_API_KEY',
+  'OPENAI_API_KEY',
+  'WALLET_MCP_BASE_URL',
+  'WALLET_MCP_ACCESS_TOKEN',
+  'ALLOWED_PHONE_NUMBER',
+  'OWNER_PHONE_NUMBER',
+  'WHATSAPP_SESSION_PATH',
+  'TELEGRAM_BOT_TOKEN',
+  'TELEGRAM_ALLOWED_USER_ID',
+  'ENABLED_MESSENGER_CHANNELS',
+  'LOG_RETENTION_DAYS',
+  'EMAIL_SYNC_ENABLED',
+  'EMAIL_IMAP_HOST',
+  'EMAIL_IMAP_PORT',
+  'EMAIL_IMAP_USER',
+  'EMAIL_IMAP_PASSWORD',
+  'EMAIL_LOOKBACK_MINUTES',
+  'APP_LANGUAGE',
+  'BOT_LANGUAGE',
+  'DEFAULT_CURRENCY',
+  'APP_TIMEZONE',
+  'WHATSAPP_MAX_RECONNECT_ATTEMPTS',
+  'WHATSAPP_RECONNECT_MAX_BACKOFF_SECONDS',
+  'WHATSAPP_MESSAGE_QUEUE_INTERVAL_MS',
+  'WHATSAPP_TYPING_PRESENCE_COOLDOWN_MS',
+  'TELEGRAM_MAX_STARTUP_ATTEMPTS',
+  'TELEGRAM_STARTUP_RETRY_DELAY_MS',
+  'MAX_MEDIA_DOWNLOAD_MB',
+  'CATEGORY_CONTEXT_PATH',
+  'CUSTOM_CATEGORY_CONTEXT_PATH',
+  'DATA_STORAGE_PATH',
+  'DATA_DIR',
+  'PENDING_TRANSACTIONS_STORAGE_PATH',
+  'TRANSACTION_MESSAGE_STORAGE_PATH',
+  'ENRICHMENT_POOL_STORAGE_PATH',
+  'INBOUND_NOTIFICATION_STORAGE_PATH',
+  'CATEGORY_RESOLUTION_MODE',
+  'AUTO_RECORD_ENRICHED',
+  'NOTIFICATION_WEBHOOK_ENABLED',
+  'NOTIFICATION_WEBHOOK_PORT',
+  'NOTIFICATION_WEBHOOK_HOST',
+  'NOTIFICATION_WEBHOOK_SECRET',
+  'NOTIFY_ON_STARTUP',
+];
+
+export interface LoadEnvironmentConfigurationOptions {
+  envPath?: string;
+  isolateEnv?: boolean;
+}
+
+export function loadEnvironmentConfiguration(
+  optionsOrPath?: string | LoadEnvironmentConfigurationOptions
+): ApplicationEnvironmentConfiguration {
+  const options: LoadEnvironmentConfigurationOptions =
+    typeof optionsOrPath === 'string'
+      ? { envPath: optionsOrPath, isolateEnv: true }
+      : (optionsOrPath || {});
+
+  if (options.envPath && fs.existsSync(options.envPath)) {
+    if (options.isolateEnv ?? true) {
+      for (const key of APPLICATION_CONFIG_ENV_KEYS) {
+        delete process.env[key];
+      }
+    }
+    const fileContent = fs.readFileSync(options.envPath, 'utf8');
+    const parsedValues = dotenv.parse(fileContent);
+    Object.assign(process.env, parsedValues);
+  }
+
   const allowedProviderTypes: SupportedAiProviderType[] = ['gemini', 'openrouter', 'groq', 'ollama', 'openai', 'custom'];
   const rawAiProviderEnv = (process.env.AI_PROVIDER || 'gemini').toLowerCase().trim();
 
