@@ -3,6 +3,7 @@ import { getDictionary } from '../src/i18n/index.js';
 import { Application } from '../src/app.js';
 import { loadEnvironmentConfiguration } from '../src/config/environmentConfig.js';
 import { createTestAppContext } from './fixtures/testContext.js';
+import { applicationLogger } from '../src/lib/index.js';
 
 describe('System Startup Notification (UX Option 2)', () => {
   describe('Dictionary Formatting', () => {
@@ -92,6 +93,140 @@ describe('System Startup Notification (UX Option 2)', () => {
       const message = mockGateway.broadcastNotification.mock.calls[0][0];
       expect(message).toContain('• Telegram & Webhook: Nonaktif');
       expect(message).toContain('• Gmail Sync: Nonaktif');
+    });
+
+    it('formats English broadcast with individual connected and disabled states', async () => {
+      const mockGateway = {
+        isChannelConnected: vi.fn().mockReturnValue(true),
+        broadcastNotification: vi.fn().mockResolvedValue({}),
+      };
+
+      const context = createTestAppContext({
+        config: {
+          appLanguage: 'en',
+          notificationWebhookEnabled: false,
+          emailSyncEnabled: false,
+          notifyOnStartup: true,
+        } as any,
+        gateway: mockGateway as any,
+        webhook: null,
+        email: { listener: null },
+      });
+
+      const app = new Application(context);
+
+      await app.dispatchStartupNotification();
+
+      expect(mockGateway.broadcastNotification).toHaveBeenCalledTimes(1);
+      const message = mockGateway.broadcastNotification.mock.calls[0][0];
+      expect(message).toContain('🤖 *Wallet Bot is ready to use*');
+      expect(message).toContain('• Telegram & Webhook: Connected');
+      expect(message).toContain('• Gmail Sync: Disabled');
+    });
+
+    it('formats English broadcast with active webhook and connected gmail', async () => {
+      const mockGateway = {
+        isChannelConnected: vi.fn().mockReturnValue(true),
+        broadcastNotification: vi.fn().mockResolvedValue({}),
+      };
+
+      const context = createTestAppContext({
+        config: {
+          appLanguage: 'en',
+          notificationWebhookEnabled: true,
+          emailSyncEnabled: true,
+          notifyOnStartup: true,
+        } as any,
+        gateway: mockGateway as any,
+        webhook: { port: 3000 },
+        email: { listener: { isConnected: true } },
+      });
+
+      const app = new Application(context);
+
+      await app.dispatchStartupNotification();
+
+      expect(mockGateway.broadcastNotification).toHaveBeenCalledTimes(1);
+      const message = mockGateway.broadcastNotification.mock.calls[0][0];
+      expect(message).toContain('• Telegram & Webhook: Active');
+      expect(message).toContain('• Gmail Sync: Connected');
+    });
+
+    it('formats English broadcast with inactive telegram and disabled gmail', async () => {
+      const mockGateway = {
+        isChannelConnected: vi.fn().mockReturnValue(false),
+        broadcastNotification: vi.fn().mockResolvedValue({}),
+      };
+
+      const context = createTestAppContext({
+        config: {
+          appLanguage: 'en',
+          notificationWebhookEnabled: false,
+          emailSyncEnabled: false,
+          notifyOnStartup: true,
+        } as any,
+        gateway: mockGateway as any,
+        webhook: null,
+        email: { listener: null },
+      });
+
+      const app = new Application(context);
+
+      await app.dispatchStartupNotification();
+
+      expect(mockGateway.broadcastNotification).toHaveBeenCalledTimes(1);
+      const message = mockGateway.broadcastNotification.mock.calls[0][0];
+      expect(message).toContain('• Telegram & Webhook: Inactive');
+      expect(message).toContain('• Gmail Sync: Disabled');
+    });
+  });
+
+  describe('Application.start notification lifecycle', () => {
+    it('dispatches startup notification during start() lifecycle and logs warning on failure', async () => {
+      const warnSpy = vi.spyOn(applicationLogger, 'warn').mockImplementation(() => {});
+      const mockGateway = {
+        isChannelConnected: vi.fn().mockReturnValue(true),
+        broadcastNotification: vi.fn().mockRejectedValue(new Error('Network offline')),
+        registerAdapter: vi.fn(),
+        startAll: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const context = createTestAppContext({
+        config: {
+          appLanguage: 'id',
+          enabledMessengerChannels: [],
+          emailSyncEnabled: false,
+          notificationWebhookEnabled: false,
+          notifyOnStartup: true,
+          logRetentionDays: 30,
+        } as any,
+        gateway: mockGateway as any,
+        wallet: {
+          client: { listTools: vi.fn().mockResolvedValue([]) },
+          cache: {
+            initialize: vi.fn().mockResolvedValue(undefined),
+            getAccounts: () => [],
+            getCategories: () => [],
+          },
+        },
+      });
+
+      const app = new Application(context);
+      (app as any).validateConfiguration = vi.fn();
+
+      await app.start();
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to dispatch startup notification: Network offline')
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('initializes context when constructor receives configuration object', () => {
+      const app = new Application({
+        walletMcpBaseUrl: 'https://example.com',
+      } as any);
+      expect(app.context).toBeDefined();
     });
   });
 
