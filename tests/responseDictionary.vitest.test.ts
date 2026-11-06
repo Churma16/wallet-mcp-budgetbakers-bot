@@ -430,15 +430,58 @@ describe('response dictionaries and localized formatting', () => {
       expect(formatted).toContain('#kopi #jajan');
       expect(formatted).toContain('Custom Field');
       if (lang === 'id') {
-        expect(formatted).toContain('✅ Transaksi berhasil diperbarui:');
+        expect(formatted).toContain('✅ *Kopi Kenangan* berhasil diperbarui!');
         expect(formatted).toContain('Catatan');
         expect(formatted).toContain('Tag / Label');
         expect(formatted).toContain('Status Transfer');
       } else {
-        expect(formatted).toContain('✅ Transaction updated successfully:');
+        expect(formatted).toContain('✅ *Kopi Kenangan* updated successfully!');
         expect(formatted).toContain('Note');
         expect(formatted).toContain('Tags / Labels');
         expect(formatted).toContain('Transfer Link');
+      }
+    });
+
+    it.each([
+      ['id', indonesianDictionary],
+      ['en', englishDictionary],
+    ] as const)('formats deleteSuccess receipt for expense and transfer in %s', (lang, dictionary) => {
+      const expenseDeleted = dictionary.records.deleteSuccess({
+        transactionTitle: 'Kopi Kenangan',
+        formattedAmount: 'Rp 25.000',
+        accountName: 'BCA Prioritas',
+        categoryName: 'Makanan & Minuman',
+        recordTimestampDisplay: '13 Sep 2026 13:00',
+        transactionTypeIcon: '💸',
+        labels: ['kopi', '#jajan'],
+      });
+
+      expect(expenseDeleted).toContain('Kopi Kenangan');
+      expect(expenseDeleted).toContain('Rp 25.000');
+      expect(expenseDeleted).toContain('BCA Prioritas');
+      expect(expenseDeleted).toContain('🔖 #kopi #jajan');
+      if (lang === 'id') {
+        expect(expenseDeleted).toContain('🗑️ *Kopi Kenangan* berhasil dihapus!');
+      } else {
+        expect(expenseDeleted).toContain('🗑️ *Kopi Kenangan* deleted successfully!');
+      }
+
+      const transferDeleted = dictionary.records.deleteSuccess({
+        transactionTitle: 'Transfer',
+        formattedAmount: 'Rp 100.000',
+        accountName: 'BCA',
+        destinationAccountName: 'Jago',
+        categoryName: 'Transfer',
+        recordTimestampDisplay: '13 Sep 2026 13:00',
+        transactionTypeIcon: '🔄',
+        isTransfer: true,
+      });
+
+      expect(transferDeleted).toContain('BCA ➔ Jago');
+      if (lang === 'id') {
+        expect(transferDeleted).toContain('🗑️ *Transfer berhasil dihapus!*');
+      } else {
+        expect(transferDeleted).toContain('🗑️ *Transfer deleted successfully!*');
       }
     });
 

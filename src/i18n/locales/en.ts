@@ -3,6 +3,7 @@ import {
   ResponseDictionary,
   RecordMessageParams,
   RecordEditSuccessParams,
+  RecordDeleteSuccessParams,
   MultipleRecordsItemParams,
   PendingEmailNotificationParams,
   PendingConfirmationPromptParams,
@@ -32,7 +33,8 @@ export function formatPendingConfirmationPromptEn(params: PendingConfirmationPro
 
 
 const englishEditReceiptConfig: EditReceiptLocaleConfig = {
-  header: '✅ Transaction updated successfully:',
+  header: (title: string, isTransfer?: boolean) =>
+    isTransfer ? '✅ *Transfer updated successfully!*' : `✅ *${title}* updated successfully!`,
   accountMoved: (from, to) => `🏦 Account moved from: ${from} ➔ ${to}`,
   clearedFieldsHeader: '🧹 Cleared fields:',
   fieldNames: {
@@ -94,6 +96,32 @@ export const englishDictionary: ResponseDictionary = {
 
     editSuccess(params: RecordEditSuccessParams): string {
       return formatEditSuccessReceipt(params, englishEditReceiptConfig);
+    },
+
+    deleteSuccess(params: RecordDeleteSuccessParams): string {
+      if (params.isTransfer) {
+        const route = params.destinationAccountName
+          ? `${params.accountName} ➔ ${params.destinationAccountName}`
+          : params.accountName;
+        return [
+          `🗑️ *Transfer deleted successfully!*`,
+          '',
+          `🔁 ${params.formattedAmount}`,
+          `💳 ${route}`,
+          `⏰ ${params.recordTimestampDisplay}`,
+        ].join('\n');
+      }
+
+      const labelLine = params.labels && params.labels.length > 0
+        ? `\n🔖 ${params.labels.map(label => `#${label.replace(/^#/, '')}`).join(' ')}`
+        : '';
+
+      return [
+        `🗑️ *${params.transactionTitle}* deleted successfully!`,
+        '',
+        `${params.transactionTypeIcon} ${params.formattedAmount}  •  ${params.accountName}`,
+        `🏷️ ${params.categoryName}  •  ${params.recordTimestampDisplay}${labelLine}`,
+      ].join('\n');
     },
   },
 

@@ -173,7 +173,7 @@ describe('DeleteRecordHandler', () => {
     expect(mockGateway.sendMessage).toHaveBeenCalledWith(
       'telegram',
       'chat-1',
-      expect.stringContaining('Transaksi berhasil dihapus:')
+      expect.stringContaining('berhasil dihapus!')
     );
     expect(mockGateway.sendMessage).toHaveBeenCalledWith(
       'telegram',
@@ -226,7 +226,7 @@ describe('DeleteRecordHandler', () => {
     expect(mockGateway.sendMessage).toHaveBeenCalledWith(
       'telegram',
       'chat-1',
-      expect.stringContaining('Transaksi transfer berhasil dihapus:')
+      expect.stringContaining('Transfer berhasil dihapus!')
     );
   });
 
@@ -317,7 +317,7 @@ describe('MessageDispatcher delete routing integration', () => {
     expect(mockGateway.sendMessage).toHaveBeenCalledWith(
       'whatsapp',
       'chat-1',
-      expect.stringContaining('Transaksi berhasil dihapus:')
+      expect.stringContaining('berhasil dihapus!')
     );
   });
   it('passes through edit commands like "c: Makan t: #jajan n: Kopi" to modifyRecordHandler', async () => {

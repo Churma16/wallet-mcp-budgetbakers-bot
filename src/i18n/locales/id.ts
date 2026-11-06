@@ -3,6 +3,7 @@ import {
   ResponseDictionary,
   RecordMessageParams,
   RecordEditSuccessParams,
+  RecordDeleteSuccessParams,
   MultipleRecordsItemParams,
   PendingEmailNotificationParams,
   PendingConfirmationPromptParams,
@@ -32,7 +33,8 @@ export function formatPendingConfirmationPromptId(params: PendingConfirmationPro
 
 
 const indonesianEditReceiptConfig: EditReceiptLocaleConfig = {
-  header: '✅ Transaksi berhasil diperbarui:',
+  header: (title: string, isTransfer?: boolean) =>
+    isTransfer ? '✅ *Transfer berhasil diperbarui!*' : `✅ *${title}* berhasil diperbarui!`,
   accountMoved: (from, to) => `🏦 Akun dipindahkan dari: ${from} ➔ ${to}`,
   clearedFieldsHeader: '🧹 Bidang dibersihkan:',
   fieldNames: {
@@ -94,6 +96,32 @@ export const indonesianDictionary: ResponseDictionary = {
 
     editSuccess(params: RecordEditSuccessParams): string {
       return formatEditSuccessReceipt(params, indonesianEditReceiptConfig);
+    },
+
+    deleteSuccess(params: RecordDeleteSuccessParams): string {
+      if (params.isTransfer) {
+        const route = params.destinationAccountName
+          ? `${params.accountName} ➔ ${params.destinationAccountName}`
+          : params.accountName;
+        return [
+          `🗑️ *Transfer berhasil dihapus!*`,
+          '',
+          `🔁 ${params.formattedAmount}`,
+          `💳 ${route}`,
+          `⏰ ${params.recordTimestampDisplay}`,
+        ].join('\n');
+      }
+
+      const labelLine = params.labels && params.labels.length > 0
+        ? `\n🔖 ${params.labels.map(label => `#${label.replace(/^#/, '')}`).join(' ')}`
+        : '';
+
+      return [
+        `🗑️ *${params.transactionTitle}* berhasil dihapus!`,
+        '',
+        `${params.transactionTypeIcon} ${params.formattedAmount}  •  ${params.accountName}`,
+        `🏷️ ${params.categoryName}  •  ${params.recordTimestampDisplay}${labelLine}`,
+      ].join('\n');
     },
   },
 

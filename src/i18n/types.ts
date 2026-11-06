@@ -24,6 +24,20 @@ export interface RecordEditSuccessParams {
   movedFromAccountName?: string;
   clearedFields?: ClearableRecordField[];
   clearedFieldLabels?: string[];
+  isTransfer?: boolean;
+  destinationAccountName?: string;
+}
+
+export interface RecordDeleteSuccessParams {
+  transactionTitle: string;
+  formattedAmount: string;
+  accountName: string;
+  categoryName: string;
+  recordTimestampDisplay: string;
+  transactionTypeIcon: string;
+  labels?: string[];
+  isTransfer?: boolean;
+  destinationAccountName?: string;
 }
 
 export interface MultipleRecordsItemParams {
@@ -218,6 +232,7 @@ export interface ResponseDictionary {
     multipleSuccessHeader(totalRecordsCount: number, currentTimestamp: string): string;
     multipleRecordItem(params: MultipleRecordsItemParams): string;
     editSuccess(params: RecordEditSuccessParams): string;
+    deleteSuccess(params: RecordDeleteSuccessParams): string;
   };
 
   balance: {

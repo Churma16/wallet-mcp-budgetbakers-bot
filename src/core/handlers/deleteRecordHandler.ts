@@ -4,9 +4,11 @@ import { TransactionMessageStore } from '../../wallet/index.js';
 import {
   formatCurrencyAmount,
   formatTransactionDate,
+  resolveTransactionDisplayTitle,
 } from '../../wallet/formatters/humanResponseFormatter.js';
 import { getDefaultCurrency } from '../../config/applicationConfig.js';
 import { applicationLogger } from '../../lib/logger.js';
+import { getDictionary } from '../../i18n/index.js';
 
 const DELETE_COMMAND_PATTERN = /^(?:\/)?(?:hapus|delete|del|rm|batal|cancel)(?:\s+(?:ini|this|transaksi|transaction|transactions|rekor|catatan|record)){0,2}[!?.]*$/i;
 
@@ -69,6 +71,7 @@ export class DeleteRecordHandler {
       this.transactionMessageStore.deleteMessageMapping(event.replyToMessageId);
 
       // Format response receipt
+      const dictionary = getDictionary();
       const finalAmount = mapping.amount ?? 0;
       const isTransfer = mapping.isTransfer === true;
       const isExpense = finalAmount < 0;
@@ -77,34 +80,45 @@ export class DeleteRecordHandler {
       const cachedAccounts = this.walletCacheService.getAccounts();
       const targetAccount = cachedAccounts.find(account => account.id === mapping.accountId);
       const resolvedCurrency = mapping.currency || targetAccount?.currency || getDefaultCurrency();
-      const formattedAmount = formatCurrencyAmount(finalAmount, resolvedCurrency, 'id');
+      const formattedAmount = formatCurrencyAmount(finalAmount, resolvedCurrency, dictionary.languageCode);
       const resolvedAccountName = targetAccount?.name || mapping.accountName || 'Wallet';
 
       const cachedCategories = this.walletCacheService.getCategories();
+      const defaultCategoryName = isTransfer ? dictionary.labels.transfer : (dictionary.labels.defaultCategory || 'Umum');
       const finalCategoryName =
         mapping.categoryName ||
         cachedCategories.find(category => category.id === mapping.categoryId)?.name ||
-        (isTransfer ? 'Transfer' : 'Umum');
+        defaultCategoryName;
 
       const recordTimestampDisplay = formatTransactionDate(
         mapping.recordDate || mapping.createdAt,
-        'id'
+        dictionary.languageCode
       );
 
-      const displayTitle = mapping.note || mapping.counterParty || (isTransfer ? 'Transfer' : isExpense ? 'Pengeluaran' : 'Pemasukan');
+      const defaultTitle = isTransfer
+        ? dictionary.labels.transfer
+        : (isExpense ? dictionary.labels.expense : dictionary.labels.income);
+      const displayTitle = resolveTransactionDisplayTitle({
+        counterParty: mapping.counterParty,
+        note: mapping.note,
+        defaultTitle,
+      });
 
-      const responseLines = [
-        isTransfer ? '🗑️ Transaksi transfer berhasil dihapus:' : '🗑️ Transaksi berhasil dihapus:',
-        '',
-        displayTitle,
-        `${transactionTypeIcon} ${formattedAmount}  •  ${resolvedAccountName}`,
-        `🏷️ ${finalCategoryName}  •  ${recordTimestampDisplay}`,
-      ];
+      const responseText = dictionary.records.deleteSuccess({
+        transactionTitle: displayTitle,
+        formattedAmount,
+        accountName: resolvedAccountName,
+        categoryName: finalCategoryName,
+        recordTimestampDisplay,
+        transactionTypeIcon,
+        isTransfer,
+        labels: mapping.labels,
+      });
 
       await this.messagingGateway.sendMessage(
         event.channel,
         event.chatIdentifier,
-        responseLines.join('\n')
+        responseText
       );
 
       return true;

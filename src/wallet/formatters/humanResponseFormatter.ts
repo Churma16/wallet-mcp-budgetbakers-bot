@@ -401,7 +401,11 @@ function formatMultipleRecordsSuccess(
     const transactionTypeIcon = isExpense ? '💸' : '💰';
     const categoryName = availableCategories.find(category => category.id === recordItem.categoryId)?.name || dictionary.labels.defaultCategory;
     const defaultDescription = isExpense ? dictionary.labels.expense : dictionary.labels.income;
-    const transactionDescription = recordItem.note || recordItem.counterParty || defaultDescription;
+    const transactionDescription = resolveTransactionDisplayTitle({
+      counterParty: recordItem.counterParty,
+      note: recordItem.note,
+      defaultTitle: defaultDescription,
+    });
 
     return dictionary.records.multipleRecordItem({
       itemIndex: recordIndex,
@@ -1189,9 +1193,16 @@ export function formatBulkPendingConfirmationSuccess(
 
   const bulkItemParams = items.map(item => {
     const itemCurrency = item.currency || getDefaultCurrency();
+    const defaultTitle = item.transactionType === 'TRANSFER'
+      ? dictionary.labels.transfer
+      : (item.amount < 0 ? dictionary.labels.expense : dictionary.labels.income);
     return {
       ticketId: item.ticketId,
-      title: item.counterParty || item.note || item.bankDisplayName,
+      title: resolveTransactionDisplayTitle({
+        counterParty: item.counterParty || item.bankDisplayName,
+        note: item.note,
+        defaultTitle,
+      }),
       formattedAmount: formatCurrencyAmount(item.amount, itemCurrency, languageCode),
       accountNameHint: item.accountNameHint || dictionary.labels.defaultAccount,
     };
@@ -1216,7 +1227,14 @@ export function formatPendingCancellationMessage(
   }
   const itemCurrency = item.currency || getDefaultCurrency();
   const formattedAmount = formatCurrencyAmount(item.amount, itemCurrency, languageCode);
-  const title = item.counterParty || item.note || item.bankDisplayName;
+  const defaultTitle = item.transactionType === 'TRANSFER'
+    ? dictionary.labels.transfer
+    : (item.amount < 0 ? dictionary.labels.expense : dictionary.labels.income);
+  const title = resolveTransactionDisplayTitle({
+    counterParty: item.counterParty || item.bankDisplayName,
+    note: item.note,
+    defaultTitle,
+  });
   return dictionary.confirmation.cancellation({
     isBulk: false,
     ticketId: item.ticketId,

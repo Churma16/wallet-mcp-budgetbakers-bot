@@ -7,7 +7,7 @@ import {
   formatPendingEmailTransactionNotification,
   formatEnrichedPendingEmailTransactionNotification,
 } from '../src/wallet/formatters/humanResponseFormatter.js';
-import { setActiveLanguage } from '../src/i18n/index.js';
+import { setActiveLanguage, getDictionary } from '../src/i18n/index.js';
 import type { PendingTransactionItem } from '../src/services/pendingTransactionService.js';
 import type { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/wallet/mcp/types.js';
 
@@ -378,5 +378,100 @@ describe('Unified Final Transaction Card Structure Parity', () => {
     expect(transferCard).toContain('🔄 *Transfer Baru*');
     expect(transferCard).toContain('🔁 Rp 500.000');
     expect(transferCard).toContain('💳 BCA Prioritas ➔ Jago Expense');
+  });
+
+  it('standardizes edit receipt cards for expense and transfer to unified action header', () => {
+    const idDict = getDictionary('id');
+
+    const editExpenseReceipt = idDict.records.editSuccess({
+      transactionTitle: 'Bliblimart Sarana Jaya - Offline Store - Nasi Uduk + Telur, Bakwan Sayur',
+      formattedAmount: 'Rp 14.100',
+      accountName: 'Jago Expense',
+      categoryName: 'Makan Nafsu',
+      recordTimestampDisplay: '4 Nov 2026, 09:34 WIB',
+      transactionTypeIcon: '💸',
+      labels: ['makan', '#sarapan'],
+    });
+
+    expect(editExpenseReceipt).toContain('✅ *Bliblimart Sarana Jaya - Offline Store - Nasi Uduk + Telur, Bakwan Sayur* berhasil diperbarui!');
+    expect(editExpenseReceipt).toContain('💸 Rp 14.100  •  Jago Expense');
+    expect(editExpenseReceipt).toContain('🏷️ Makan Nafsu  •  4 Nov 2026, 09:34 WIB');
+    expect(editExpenseReceipt).toContain('🔖 #makan #sarapan');
+
+    const editTransferReceipt = idDict.records.editSuccess({
+      transactionTitle: 'Transfer',
+      formattedAmount: 'Rp 500.000',
+      accountName: 'BCA Prioritas',
+      destinationAccountName: 'Jago Expense',
+      categoryName: 'Transfer',
+      recordTimestampDisplay: '4 Nov 2026, 09:34 WIB',
+      transactionTypeIcon: '🔄',
+      isTransfer: true,
+    });
+
+    expect(editTransferReceipt).toContain('✅ *Transfer berhasil diperbarui!*');
+    expect(editTransferReceipt).toContain('🔁 Rp 500.000');
+    expect(editTransferReceipt).toContain('💳 BCA Prioritas ➔ Jago Expense');
+    expect(editTransferReceipt).toContain('⏰ 4 Nov 2026, 09:34 WIB');
+  });
+
+  it('standardizes delete receipt cards for expense and transfer to unified action header', () => {
+    const idDict = getDictionary('id');
+
+    const deleteExpenseReceipt = idDict.records.deleteSuccess({
+      transactionTitle: 'Bliblimart Sarana Jaya - Offline Store - Nasi Uduk + Telur, Bakwan Sayur',
+      formattedAmount: 'Rp 14.100',
+      accountName: 'Jago Expense',
+      categoryName: 'Makan Nafsu',
+      recordTimestampDisplay: '4 Nov 2026, 09:34 WIB',
+      transactionTypeIcon: '💸',
+      labels: ['makan'],
+    });
+
+    expect(deleteExpenseReceipt).toContain('🗑️ *Bliblimart Sarana Jaya - Offline Store - Nasi Uduk + Telur, Bakwan Sayur* berhasil dihapus!');
+    expect(deleteExpenseReceipt).toContain('💸 Rp 14.100  •  Jago Expense');
+    expect(deleteExpenseReceipt).toContain('🏷️ Makan Nafsu  •  4 Nov 2026, 09:34 WIB');
+    expect(deleteExpenseReceipt).toContain('🔖 #makan');
+
+    const deleteTransferReceipt = idDict.records.deleteSuccess({
+      transactionTitle: 'Transfer',
+      formattedAmount: 'Rp 500.000',
+      accountName: 'BCA Prioritas',
+      destinationAccountName: 'Jago Expense',
+      categoryName: 'Transfer',
+      recordTimestampDisplay: '4 Nov 2026, 09:34 WIB',
+      transactionTypeIcon: '🔄',
+      isTransfer: true,
+    });
+
+    expect(deleteTransferReceipt).toContain('🗑️ *Transfer berhasil dihapus!*');
+    expect(deleteTransferReceipt).toContain('🔁 Rp 500.000');
+    expect(deleteTransferReceipt).toContain('💳 BCA Prioritas ➔ Jago Expense');
+    expect(deleteTransferReceipt).toContain('⏰ 4 Nov 2026, 09:34 WIB');
+  });
+
+  it('unifies title resolution in multiple records success layout', () => {
+    const payload: CreateRecordInputPayload[] = [
+      {
+        accountId: 'acc-jago',
+        categoryId: 'cat-food',
+        amount: -14100,
+        counterParty: 'Bliblimart',
+        note: 'Nasi Uduk',
+        recordDate: fixedDate.toISOString(),
+      },
+      {
+        accountId: 'acc-bca',
+        categoryId: 'cat-ojol',
+        amount: -25000,
+        counterParty: 'Gojek',
+        recordDate: fixedDate.toISOString(),
+      },
+    ];
+
+    const card = formatRecordSuccessMessage(payload, mockAccounts, mockCategories, 'id');
+    expect(card).toContain('✅ *2 transaksi* berhasil dicatat!');
+    expect(card).toContain('1. 💸 Bliblimart - Nasi Uduk — *Rp 14.100* dari Jago Expense');
+    expect(card).toContain('2. 💸 Gojek — *Rp 25.000* dari BCA Prioritas');
   });
 });
