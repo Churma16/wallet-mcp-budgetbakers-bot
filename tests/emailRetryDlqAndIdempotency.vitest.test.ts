@@ -474,7 +474,7 @@ describe('Email AI Error Propagation, Retry DLQ, and Idempotency', () => {
       // No new pending item created
       expect(pendingService.getAllPendingTransactions()).toHaveLength(0);
       expect(mockMessaging.broadcastNotification).toHaveBeenCalledWith(
-        expect.stringContaining('rec-wallet-jago-99')
+        expect.stringContaining('sudah tercatat di Wallet!')
       );
     });
   });
