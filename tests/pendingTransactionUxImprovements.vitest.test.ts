@@ -116,7 +116,7 @@ describe('Pending Transaction UX & Concurrency Improvements', () => {
         Date.now()
       );
       expect(handledFirst).toBe(true);
-      expect(sentMessages[0]).toContain('(#1)');
+      expect(sentMessages[0]).toContain('berhasil dicatat!');
       expect(sentMessages[0]).toContain('BLIBLI.COM KUDUS - ID');
 
       // User sends "Ya 2" (numbered confirmation) -> Claims Ticket 2
@@ -126,7 +126,7 @@ describe('Pending Transaction UX & Concurrency Improvements', () => {
         Date.now()
       );
       expect(handledSecond).toBe(true);
-      expect(sentMessages[1]).toContain('(#2)');
+      expect(sentMessages[1]).toContain('berhasil dicatat!');
       expect(sentMessages[1]).toContain('BAROKAH JENG SRI');
 
       // All tickets resolved
