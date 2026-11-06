@@ -8,6 +8,7 @@ import {
   RecordMessageParams,
   RecordEditSuccessParams,
   RecordDeleteSuccessParams,
+  RecordDeleteConfirmPromptParams,
   MultipleRecordsItemParams,
   PendingEmailNotificationParams,
   PendingConfirmationPromptParams,
@@ -118,6 +119,31 @@ export const englishDictionary: ResponseDictionary = {
         labels: params.labels,
       });
     },
+
+    deleteConfirmPrompt(params: RecordDeleteConfirmPromptParams): string {
+      const actionHeader = params.isTransfer
+        ? '⚠️ *Delete this Transfer?*'
+        : `⚠️ *Delete transaction ${params.transactionTitle}?*`;
+
+      return buildActionReceiptCard({
+        actionHeader,
+        formattedAmount: params.formattedAmount,
+        accountName: params.accountName,
+        categoryName: params.categoryName,
+        recordTimestampDisplay: params.recordTimestampDisplay,
+        transactionTypeIcon: params.transactionTypeIcon,
+        isTransfer: params.isTransfer,
+        destinationAccountName: params.destinationAccountName,
+        labels: params.labels,
+        extraLines: [
+          '',
+          'Confirm delete this transaction? This action cannot be undone.',
+        ],
+      });
+    },
+    deleteConfirmButton: '🗑️ Delete',
+    deleteCancelButton: '❌ Cancel',
+    deleteCancelledText: '❌ _Transaction deletion cancelled._',
   },
 
   balance: {

@@ -650,6 +650,36 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
           senderIdentifier,
           textPayload: `/rescan ${minutes}m`,
         });
+      } else if (callbackData.startsWith('delete:confirm:')) {
+        await ctx.answerCallbackQuery();
+        const targetMessageId = callbackData.replace('delete:confirm:', '');
+        const chatId = String(ctx.chat?.id);
+        const senderIdentifier = ctx.from?.id ? String(ctx.from.id) : chatId;
+
+        try {
+          const currentLanguage = getActiveLanguage();
+          const deletingText = currentLanguage === 'en' ? '<i>Deleting transaction...</i>' : '<i>Menghapus transaksi...</i>';
+          await ctx.editMessageText(deletingText, { parse_mode: 'HTML' });
+        } catch {
+          // ignore edit errors
+        }
+
+        await this.onUserMessageReceived({
+          channel: 'telegram',
+          messageType: 'text',
+          chatIdentifier: chatId,
+          senderIdentifier,
+          textPayload: `/delete_confirm ${targetMessageId}`,
+        });
+      } else if (callbackData.startsWith('delete:cancel:')) {
+        await ctx.answerCallbackQuery();
+        const currentLanguage = getActiveLanguage();
+        const cancelledText = getDictionary(currentLanguage).records.deleteCancelledText;
+        try {
+          await ctx.editMessageText(formatTelegramHtml(cancelledText), { parse_mode: 'HTML' });
+        } catch {
+          // ignore edit errors
+        }
       } else {
         await ctx.answerCallbackQuery();
       }

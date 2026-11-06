@@ -393,7 +393,8 @@ export type DeleteDocumentsEntityType =
   | string;
 
 export interface DeleteDocumentsToolArgs {
-  readonly type: DeleteDocumentsEntityType;
+  readonly documentType?: DeleteDocumentsEntityType;
+  readonly type?: DeleteDocumentsEntityType;
   readonly ids: readonly string[];
 }
 
@@ -566,8 +567,12 @@ export async function callDeleteDocuments(
   client: WalletToolCaller,
   args: DeleteDocumentsToolArgs
 ): Promise<RawDeleteDocumentsResponse> {
+  const documentType = args.documentType ?? args.type ?? 'records';
   return client.callMcpTool<RawDeleteDocumentsResponse>(
     WALLET_MCP_TOOL_NAMES.DELETE_DOCUMENTS,
-    serializeToolArguments(args)
+    serializeToolArguments({
+      documentType,
+      ids: args.ids,
+    })
   );
 }

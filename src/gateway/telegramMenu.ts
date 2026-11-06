@@ -80,6 +80,22 @@ export function createTelegramRescanInlineKeyboard(languageCode?: SupportedLangu
     .text(label24h, 'rescan:1440');
 }
 
+/**
+ * Creates an inline keyboard with confirmation and cancellation buttons for transaction deletion.
+ */
+export function createTelegramDeleteConfirmInlineKeyboard(
+  targetMessageId: string,
+  languageCode?: SupportedLanguage
+): InlineKeyboard {
+  const dictionary = getDictionary(languageCode).records;
+  const deleteButtonText = dictionary.deleteConfirmButton || '🗑️ Hapus';
+  const cancelButtonText = dictionary.deleteCancelButton || '❌ Batal';
+
+  return new InlineKeyboard()
+    .text(deleteButtonText, `delete:confirm:${targetMessageId}`)
+    .text(cancelButtonText, `delete:cancel:${targetMessageId}`);
+}
+
 export interface TelegramGuideTopicContent {
   readonly text: string;
   readonly replyMarkup: InlineKeyboard;

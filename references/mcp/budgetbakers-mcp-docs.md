@@ -116,7 +116,7 @@ In `get_records` and `get_records_aggregation`:
 - Conversions use historical exchange rates matching the transaction date.
 
 ### 3.7 Deletion Semantics & Paired Transfers
-- Tool name is **`delete_documents`** (accepts `{ type: "records", ids: ["..."] }`).
+- Tool name is **`delete_documents`** (accepts `{ documentType: "records", ids: ["..."] }`).
 - Deleting paired transfers requires providing **both record IDs** in the same request. Deleting only one leg returns an error identifying the missing partner leg ID.
 - Check references via `get_references` before deleting categories, accounts, or labels.
 

@@ -46,6 +46,18 @@ export interface RecordDeleteSuccessParams {
   destinationAccountName?: string;
 }
 
+export interface RecordDeleteConfirmPromptParams {
+  transactionTitle: string;
+  formattedAmount: string;
+  accountName: string;
+  categoryName: string;
+  recordTimestampDisplay: string;
+  transactionTypeIcon: string;
+  labels?: string[];
+  isTransfer?: boolean;
+  destinationAccountName?: string;
+}
+
 export interface MultipleRecordsItemParams {
   itemIndex: number;
   transactionTypeIcon: string;
@@ -239,6 +251,10 @@ export interface ResponseDictionary {
     multipleRecordItem(params: MultipleRecordsItemParams): string;
     editSuccess(params: RecordEditSuccessParams): string;
     deleteSuccess(params: RecordDeleteSuccessParams): string;
+    deleteConfirmPrompt(params: RecordDeleteConfirmPromptParams): string;
+    deleteConfirmButton: string;
+    deleteCancelButton: string;
+    deleteCancelledText: string;
   };
 
   balance: {

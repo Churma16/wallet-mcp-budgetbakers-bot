@@ -7,6 +7,7 @@ import { TransactionMessageStore } from '../src/wallet/records/transactionMessag
 import { MessageDispatcher } from '../src/core/dispatcher.js';
 import { createTestAppContext } from './fixtures/testContext.js';
 import { applicationLogger } from '../src/lib/logger.js';
+import { getDictionary } from '../src/i18n/index.js';
 import type { IncomingUserMessageEvent, MessagingGatewayService } from '../src/gateway/index.js';
 import type { WalletCacheService, WalletMcpClientService } from '../src/wallet/index.js';
 
@@ -207,7 +208,7 @@ describe('DeleteRecordHandler', () => {
     );
   });
 
-  it('deletes single expense transaction, removes store mapping, and sends receipt', async () => {
+  it('prompts for confirmation with inline keyboard when delete command is received and deletes upon confirmation', async () => {
     messageStore.recordMessageMapping('msg-receipt-1', {
       recordId: 'rec-123',
       accountId: 'acc-bca',
@@ -229,8 +230,30 @@ describe('DeleteRecordHandler', () => {
       replyToMessageId: 'msg-receipt-1',
     };
 
+    // 1. First reply prompts for confirmation and does NOT delete immediately
     const handled = await handler.handleDeleteRecordReply(event, Date.now());
     expect(handled).toBe(true);
+    expect(mockMcpClient.deleteRecords).not.toHaveBeenCalled();
+    expect(messageStore.hasMapping('msg-receipt-1')).toBe(true);
+
+    expect(mockGateway.sendMessage).toHaveBeenCalledWith(
+      'telegram',
+      'chat-1',
+      expect.stringContaining('Hapus transaksi Makan Malam Sushi?'),
+      expect.objectContaining({ replyMarkup: expect.anything() })
+    );
+
+    // 2. Confirmation command triggers actual deletion
+    const confirmEvent: IncomingUserMessageEvent = {
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: '/delete_confirm msg-receipt-1',
+    };
+
+    const confirmHandled = await handler.handleDeleteConfirmationCommand(confirmEvent);
+    expect(confirmHandled).toBe(true);
 
     expect(mockMcpClient.deleteRecords).toHaveBeenCalledWith(['rec-123']);
     expect(messageStore.hasMapping('msg-receipt-1')).toBe(false);
@@ -252,7 +275,90 @@ describe('DeleteRecordHandler', () => {
     );
   });
 
-  it('deletes paired transfer transaction deleting both legs atomically', async () => {
+  it('cancels deletion when cancellation command is issued', async () => {
+    messageStore.recordMessageMapping('msg-receipt-cancel', {
+      recordId: 'rec-cancel',
+      accountId: 'acc-bca',
+      amount: -50000,
+      channel: 'telegram',
+    });
+
+    const cancelEvent: IncomingUserMessageEvent = {
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: '/delete_cancel msg-receipt-cancel',
+    };
+
+    const handled = await handler.handleDeleteCancellationCommand(cancelEvent);
+    expect(handled).toBe(true);
+    expect(mockMcpClient.deleteRecords).not.toHaveBeenCalled();
+    expect(messageStore.hasMapping('msg-receipt-cancel')).toBe(true);
+    expect(mockGateway.sendMessage).toHaveBeenCalledWith(
+      'telegram',
+      'chat-1',
+      expect.stringContaining('dibatalkan')
+    );
+  });
+
+  it('handles conversational confirmation "ya" and "batal" for active delete prompts', async () => {
+    messageStore.recordMessageMapping('msg-receipt-conv', {
+      recordId: 'rec-conv-1',
+      accountId: 'acc-bca',
+      amount: -25000,
+      channel: 'whatsapp',
+    });
+
+    // Prompt for confirmation
+    await handler.handleDeleteRecordReply({
+      channel: 'whatsapp',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-conv',
+      messageType: 'text',
+      textPayload: 'hapus',
+      replyToMessageId: 'msg-receipt-conv',
+    }, Date.now());
+
+    expect(handler.hasActiveConfirmation('chat-conv')).toBe(true);
+
+    // Cancel conversationally
+    const cancelHandled = await handler.handleConversationalReply({
+      channel: 'whatsapp',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-conv',
+      messageType: 'text',
+      textPayload: 'batal',
+    });
+
+    expect(cancelHandled).toBe(true);
+    expect(mockMcpClient.deleteRecords).not.toHaveBeenCalled();
+    expect(handler.hasActiveConfirmation('chat-conv')).toBe(false);
+
+    // Prompt again and confirm conversationally
+    await handler.handleDeleteRecordReply({
+      channel: 'whatsapp',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-conv',
+      messageType: 'text',
+      textPayload: 'hapus',
+      replyToMessageId: 'msg-receipt-conv',
+    }, Date.now());
+
+    const confirmHandled = await handler.handleConversationalReply({
+      channel: 'whatsapp',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-conv',
+      messageType: 'text',
+      textPayload: 'ya',
+    });
+
+    expect(confirmHandled).toBe(true);
+    expect(mockMcpClient.deleteRecords).toHaveBeenCalledWith(['rec-conv-1']);
+    expect(messageStore.hasMapping('msg-receipt-conv')).toBe(false);
+  });
+
+  it('deletes paired transfer transaction deleting both legs atomically upon confirmation', async () => {
     messageStore.recordMessageMapping('msg-receipt-transfer', {
       recordId: 'rec-leg-1',
       partnerRecordId: 'rec-leg-2',
@@ -284,6 +390,18 @@ describe('DeleteRecordHandler', () => {
 
     const handled = await handler.handleDeleteRecordReply(event, Date.now());
     expect(handled).toBe(true);
+    expect(mockMcpClient.deleteRecords).not.toHaveBeenCalled();
+
+    const confirmEvent: IncomingUserMessageEvent = {
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: '/delete_confirm msg-receipt-transfer',
+    };
+
+    const confirmHandled = await handler.handleDeleteConfirmationCommand(confirmEvent);
+    expect(confirmHandled).toBe(true);
 
     expect(mockMcpClient.deleteRecords).toHaveBeenCalledWith(['rec-leg-1', 'rec-leg-2']);
     expect(messageStore.hasMapping('msg-receipt-transfer')).toBe(false);
@@ -319,6 +437,17 @@ describe('DeleteRecordHandler', () => {
 
     const handled = await handler.handleDeleteRecordReply(event, Date.now());
     expect(handled).toBe(true);
+
+    const confirmEvent: IncomingUserMessageEvent = {
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: '/delete_confirm msg-error',
+    };
+
+    const confirmHandled = await handler.handleDeleteConfirmationCommand(confirmEvent);
+    expect(confirmHandled).toBe(true);
 
     expect(mockGateway.sendMessage).toHaveBeenCalledWith(
       'telegram',
@@ -382,6 +511,24 @@ describe('MessageDispatcher delete routing integration', () => {
       replyToMessageId: 'receipt-msg-99',
     });
 
+    // Deletion is not executed immediately, prompt is sent
+    expect(mockMcpClient.deleteRecords).not.toHaveBeenCalled();
+    expect(mockGateway.sendMessage).toHaveBeenCalledWith(
+      'whatsapp',
+      'chat-1',
+      expect.stringContaining('Hapus transaksi Kopi Kenangan?'),
+      expect.anything()
+    );
+
+    // Confirm conversationally via "ya"
+    await dispatcher.handleIncomingUserMessage({
+      channel: 'whatsapp',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: 'ya',
+    });
+
     expect(mockMcpClient.deleteRecords).toHaveBeenCalledWith(['rec-intercept']);
     expect(messageStore.hasMapping('receipt-msg-99')).toBe(false);
     expect(mockGateway.sendMessage).toHaveBeenCalledWith(
@@ -419,6 +566,104 @@ describe('MessageDispatcher delete routing integration', () => {
     });
 
     expect(mockModifyRecordHandler.handleModifyRecordReply).toHaveBeenCalled();
+  });
+
+  it('handles explicit /delete_confirm and /delete_cancel via MessageDispatcher', async () => {
+    const mockMcpClient = {
+      deleteRecords: vi.fn().mockResolvedValue({
+        summary: { total: 1, succeeded: 1 },
+        results: [{ id: 'rec-dispatch-1', success: true }],
+      }),
+    };
+
+    const mockGateway = {
+      sendMessage: vi.fn().mockResolvedValue({ messageId: 'reply-del' } as any),
+      sendTypingPresence: vi.fn().mockResolvedValue(undefined),
+      clearTypingPresence: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const messageStore = new TransactionMessageStore();
+    messageStore.recordMessageMapping('receipt-msg-cancel-cmd', {
+      recordId: 'rec-cancel-1',
+      accountId: 'acc-1',
+      amount: -15000,
+      channel: 'telegram',
+    });
+    messageStore.recordMessageMapping('receipt-msg-confirm-cmd', {
+      recordId: 'rec-dispatch-1',
+      accountId: 'acc-1',
+      amount: -30000,
+      channel: 'telegram',
+    });
+
+    const context = createTestAppContext({
+      gateway: mockGateway,
+      wallet: {
+        client: mockMcpClient,
+        cache: {
+          getAccounts: () => [{ id: 'acc-1', name: 'BCA', currency: 'IDR' }],
+          getCategories: () => [{ id: 'cat-1', name: 'Makan' }],
+        },
+        transactionMessages: messageStore,
+      },
+    });
+
+    const dispatcher = new MessageDispatcher(context);
+
+    // 1. Cancel via command
+    await dispatcher.handleIncomingUserMessage({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: '/delete_cancel receipt-msg-cancel-cmd',
+    });
+    expect(mockMcpClient.deleteRecords).not.toHaveBeenCalled();
+    expect(mockGateway.sendMessage).toHaveBeenCalledWith(
+      'telegram',
+      'chat-1',
+      expect.stringContaining('dibatalkan')
+    );
+
+    // 2. Confirm via command
+    await dispatcher.handleIncomingUserMessage({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: '/delete_confirm receipt-msg-confirm-cmd',
+    });
+    expect(mockMcpClient.deleteRecords).toHaveBeenCalledWith(['rec-dispatch-1']);
+    expect(messageStore.hasMapping('receipt-msg-confirm-cmd')).toBe(false);
+  });
+
+  it('renders English locale delete confirm prompt correctly', () => {
+    const enDict = getDictionary('en');
+    const prompt = enDict.records.deleteConfirmPrompt({
+      transactionTitle: 'Coffee at Starbucks',
+      formattedAmount: '$5.50',
+      accountName: 'Chase Checking',
+      categoryName: 'Food & Drinks',
+      recordTimestampDisplay: '11/06/2026, 21:00',
+      transactionTypeIcon: '💸',
+      isTransfer: false,
+    });
+    expect(prompt).toContain('Delete transaction Coffee at Starbucks?');
+    expect(prompt).toContain('Chase Checking');
+    expect(prompt).toContain('Confirm delete this transaction?');
+
+    const transferPrompt = enDict.records.deleteConfirmPrompt({
+      transactionTitle: 'Transfer',
+      formattedAmount: '$500.00',
+      accountName: 'Checking',
+      destinationAccountName: 'Savings',
+      categoryName: 'Transfer',
+      recordTimestampDisplay: '11/06/2026, 21:00',
+      transactionTypeIcon: '🔄',
+      isTransfer: true,
+    });
+    expect(transferPrompt).toContain('Delete this Transfer?');
+    expect(transferPrompt).toContain('Checking ➔ Savings');
   });
 
 });

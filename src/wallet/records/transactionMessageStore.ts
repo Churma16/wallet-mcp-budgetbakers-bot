@@ -20,6 +20,7 @@ export interface StoredRecordMessageMapping {
   channel?: string;
   partnerRecordId?: string;
   isTransfer?: boolean;
+  destinationAccountName?: string;
 }
 
 export interface TransactionMessageStoreSnapshot {
