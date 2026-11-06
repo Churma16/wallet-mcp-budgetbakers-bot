@@ -146,7 +146,7 @@ describe('ModifyRecordHandler', () => {
     const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
     
     // Verifies receipt card format requested by user
-    expect(sentMessage).toContain('✅ Transaksi berhasil diperbarui:');
+    expect(sentMessage).toContain('✅ *Tahu Risol* berhasil diperbarui!');
     expect(sentMessage).toContain('Tahu Risol');
     expect(sentMessage).toContain('💸 Rp 50.000  •  Jago Expense');
     expect(sentMessage).toContain('🏷️ Makanan & Minuman');
@@ -176,7 +176,7 @@ describe('ModifyRecordHandler', () => {
     expect(handled).toBe(true);
 
     const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
-    expect(sentMessage).toContain('✅ Transaksi berhasil diperbarui:');
+    expect(sentMessage).toContain('✅ *Kopi Susu* berhasil diperbarui!');
     expect(sentMessage).toContain('🔖 #jajan #kopi');
   });
 
@@ -426,7 +426,7 @@ describe('ModifyRecordHandler', () => {
       ]);
 
       const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
-      expect(sentMessage).toContain('✅ Transaksi berhasil diperbarui:');
+      expect(sentMessage).toContain('berhasil diperbarui!');
       expect(sentMessage).toContain('🏦 Akun dipindahkan dari: Jago Expense ➔ Mandiri Checking');
 
       const updated = store.getMessageMapping('msg-move-1');

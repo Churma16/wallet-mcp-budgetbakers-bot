@@ -145,8 +145,8 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
       expect(formatted).toContain('Starbucks Coffee');
       expect(formatted).toContain('BCA Prioritas');
 
-      // Single pending notification includes ticket ID badge so subsequent items do not cause ambiguity
-      expect(formatted).toContain('(#101)');
+      // Single pending notification includes ticket ID in confirmation prompt
+      expect(formatted).toContain('Ya 101');
 
       // Clear action choices without jargon
       expect(formatted).toContain('Balas *Ya* atau *Catat*');
@@ -163,7 +163,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
       expect(formatted).toContain('Pembayaran Baru');
       expect(formatted).toContain('Starbucks Coffee');
       expect(formatted).toContain('2 transaksi lain');
-      expect(formatted).toContain('(#101)');
+      expect(formatted).toContain('Ya 101');
       expect(formatted).toContain('Balas *Ya 101*');
       expect(formatted).toContain('Balas *Batal 101*');
       expect(formatted).toContain('*Ya semua*');
@@ -176,7 +176,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
       expect(formatted).toContain('New Payment');
       expect(formatted).toContain('Starbucks Coffee');
       expect(formatted).toContain('BCA Prioritas');
-      expect(formatted).toContain('(#101)');
+      expect(formatted).toContain('Yes 101');
       expect(formatted).toContain('Reply *Yes* or *Record*');
       expect(formatted).toContain('Reply *Cancel*');
     });
@@ -1104,8 +1104,8 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         totalPendingCount: 1,
       });
       expect(nonTransferSingleId).toContain('Pembayaran Baru');
-      expect(nonTransferSingleId).toContain('Akun: BCA');
-      expect(nonTransferSingleId).toContain('Kategori: Belanja');
+      expect(nonTransferSingleId).toContain('Rp 50.000 • BCA');
+      expect(nonTransferSingleId).toContain('🏷️ Belanja');
       expect(nonTransferSingleId).toContain('Balas *Ya* atau *Catat*');
 
       const nonTransferSingleEn = enDict.emailPending.formatNotification({
@@ -1120,8 +1120,8 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         totalPendingCount: 1,
       });
       expect(nonTransferSingleEn).toContain('New Payment');
-      expect(nonTransferSingleEn).toContain('Account: Checking');
-      expect(nonTransferSingleEn).toContain('Category: Shopping');
+      expect(nonTransferSingleEn).toContain('$50.00 • Checking');
+      expect(nonTransferSingleEn).toContain('🏷️ Shopping');
       expect(nonTransferSingleEn).toContain('Reply *Yes* or *Record*');
 
       // Non-transfer multiple
@@ -1134,7 +1134,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         bankDisplayName: 'BCA Prioritas',
         totalPendingCount: 3,
       });
-      expect(nonTransferMultiId).toContain('(#2)');
+      expect(nonTransferMultiId).toContain('Ya 2');
       expect(nonTransferMultiId).toContain('Ada 2 transaksi lain yang juga menunggu konfirmasi');
 
       const nonTransferMultiEn = enDict.emailPending.formatNotification({
@@ -1146,7 +1146,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         bankDisplayName: 'Chase Bank',
         totalPendingCount: 3,
       });
-      expect(nonTransferMultiEn).toContain('(#2)');
+      expect(nonTransferMultiEn).toContain('Yes 2');
       expect(nonTransferMultiEn).toContain('There is 2 other transaction waiting for confirmation');
 
       // Transfer multiple
@@ -1158,8 +1158,8 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         formattedTime: '13 Sep 2026',
         totalPendingCount: 2,
       });
-      expect(transferMultiId).toContain('(#3)');
-      expect(transferMultiId).toContain('Akun ➔ Tujuan');
+      expect(transferMultiId).toContain('Ya 3');
+      expect(transferMultiId).toContain('💳 Akun');
 
       const transferMultiEn = enDict.emailPending.formatNotification({
         ticketId: 3,
@@ -1169,8 +1169,8 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         formattedTime: 'Sep 13, 2026',
         totalPendingCount: 2,
       });
-      expect(transferMultiEn).toContain('(#3)');
-      expect(transferMultiEn).toContain('Account ➔ Destination');
+      expect(transferMultiEn).toContain('Yes 3');
+      expect(transferMultiEn).toContain('💳 Account');
     });
 
     it('covers singleSuccess in id and en dictionary for transfer and expense', () => {
@@ -1185,7 +1185,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         destinationAccountNameHint: 'Jago',
         formattedTime: '13 Sep 2026',
       });
-      expect(transferId).toContain('Transfer Dicatat ke Wallet');
+      expect(transferId).toContain('Transfer berhasil dicatat!');
       expect(transferId).toContain('BCA ➔ Jago');
 
       const transferEn = enDict.confirmation.singleSuccess({
@@ -1196,7 +1196,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         destinationAccountNameHint: 'Savings',
         formattedTime: 'Sep 13, 2026',
       });
-      expect(transferEn).toContain('Transfer Recorded to Wallet');
+      expect(transferEn).toContain('Transfer successfully recorded!');
       expect(transferEn).toContain('Checking ➔ Savings');
 
       const expenseId = idDict.confirmation.singleSuccess({
@@ -1207,7 +1207,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         formattedTime: '13 Sep 2026',
         merchantOrNote: 'Gojek',
       });
-      expect(expenseId).toContain('Transaksi Dicatat ke Wallet');
+      expect(expenseId).toContain('berhasil dicatat!');
       expect(expenseId).toContain('Gojek');
 
       const expenseEn = enDict.confirmation.singleSuccess({
@@ -1218,7 +1218,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         formattedTime: 'Sep 13, 2026',
         merchantOrNote: 'Uber',
       });
-      expect(expenseEn).toContain('Transaction Recorded to Wallet');
+      expect(expenseEn).toContain('successfully recorded!');
       expect(expenseEn).toContain('Uber');
     });
   });
@@ -1259,7 +1259,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         Date.now()
       );
 
-      expect(mockGateway.lastMessage).toContain('Transaksi Dicatat ke Wallet');
+      expect(mockGateway.lastMessage).toContain('berhasil dicatat!');
 
       // Bulk success
       const item2 = pendingService.addPendingTransaction({
@@ -1314,7 +1314,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         pairingMode: 'new',
         accountId: 'acc-2',
       });
-      expect(mockGateway.lastMessage).toContain('Transfer Dicatat ke Wallet');
+      expect(mockGateway.lastMessage).toContain('Transfer berhasil dicatat!');
       expect(mockGateway.lastMessage).toContain('BCA Prioritas ➔ Jago Utama');
     });
 

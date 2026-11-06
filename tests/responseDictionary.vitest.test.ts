@@ -202,19 +202,19 @@ describe('response dictionaries and localized formatting', () => {
     setActiveLanguage('id');
     const idFormatted = formatPendingEmailTransactionNotification(pending, 1);
     expect(idFormatted).toContain('Pembayaran Baru');
-    expect(idFormatted).toContain('📝 _Pembayaran QRIS Starbucks_');
-    expect(formatPendingEmailTransactionNotification(pending, 2)).toContain('(#101)');
+    expect(idFormatted).toContain('📝 Pembayaran QRIS Starbucks');
+    expect(formatPendingEmailTransactionNotification(pending, 2)).toContain('Ya 101');
     expect(formatPendingEmailTransactionNotification(pending, 1)).toContain('Balas *Ya* atau *Catat*');
-    expect(formatPendingConfirmationSuccess(pending)).toContain('Transaksi Dicatat ke Wallet!');
+    expect(formatPendingConfirmationSuccess(pending)).toContain('berhasil dicatat!');
     expect(formatPendingCancellationMessage(pending)).toContain('Dibatalkan');
 
     setActiveLanguage('en');
     const enFormatted = formatPendingEmailTransactionNotification(pending, 1);
     expect(enFormatted).toContain('New Payment');
-    expect(enFormatted).toContain('📝 _Pembayaran QRIS Starbucks_');
-    expect(formatPendingEmailTransactionNotification(pending, 2)).toContain('(#101)');
+    expect(enFormatted).toContain('📝 Pembayaran QRIS Starbucks');
+    expect(formatPendingEmailTransactionNotification(pending, 2)).toContain('Yes 101');
     expect(formatPendingEmailTransactionNotification(pending, 1)).toContain('Reply *Yes* or *Record*');
-    expect(formatPendingConfirmationSuccess(pending)).toContain('Transaction Recorded to Wallet!');
+    expect(formatPendingConfirmationSuccess(pending)).toContain('successfully recorded!');
     expect(formatPendingCancellationMessage(pending)).toContain('Cancelled');
   });
 
@@ -351,7 +351,7 @@ describe('response dictionaries and localized formatting', () => {
       expect(detailedSingle).toContain('Kopi Kenangan');
       expect(detailedSingle).toContain('BCA Utama');
       expect(detailedSingle).toContain('Food');
-      expect(detailedSingle).toContain('(#41)');
+      expect(detailedSingle).toContain('41');
 
       const categoryFallback = dictionary.emailPending.formatNotification(baseEmailParams({
         typeLabel: 'Payment',
@@ -376,7 +376,7 @@ describe('response dictionaries and localized formatting', () => {
         counterParty: 'Merchant',
         totalPendingCount: 3,
       }));
-      expect(multiple).toContain('#77');
+      expect(multiple).toContain('77');
       expect(multiple).toContain('2');
     });
 
@@ -402,7 +402,7 @@ describe('response dictionaries and localized formatting', () => {
         destinationAccountNameHint: undefined,
         totalPendingCount: 2,
       }));
-      expect(fallbackTransfer).toContain('#41');
+      expect(fallbackTransfer).toContain('41');
       expect(fallbackTransfer.length).toBeGreaterThan(0);
     });
   describe('Record edit receipts and errors localization', () => {
@@ -430,15 +430,58 @@ describe('response dictionaries and localized formatting', () => {
       expect(formatted).toContain('#kopi #jajan');
       expect(formatted).toContain('Custom Field');
       if (lang === 'id') {
-        expect(formatted).toContain('✅ Transaksi berhasil diperbarui:');
+        expect(formatted).toContain('✅ *Kopi Kenangan* berhasil diperbarui!');
         expect(formatted).toContain('Catatan');
         expect(formatted).toContain('Tag / Label');
         expect(formatted).toContain('Status Transfer');
       } else {
-        expect(formatted).toContain('✅ Transaction updated successfully:');
+        expect(formatted).toContain('✅ *Kopi Kenangan* updated successfully!');
         expect(formatted).toContain('Note');
         expect(formatted).toContain('Tags / Labels');
         expect(formatted).toContain('Transfer Link');
+      }
+    });
+
+    it.each([
+      ['id', indonesianDictionary],
+      ['en', englishDictionary],
+    ] as const)('formats deleteSuccess receipt for expense and transfer in %s', (lang, dictionary) => {
+      const expenseDeleted = dictionary.records.deleteSuccess({
+        transactionTitle: 'Kopi Kenangan',
+        formattedAmount: 'Rp 25.000',
+        accountName: 'BCA Prioritas',
+        categoryName: 'Makanan & Minuman',
+        recordTimestampDisplay: '13 Sep 2026 13:00',
+        transactionTypeIcon: '💸',
+        labels: ['kopi', '#jajan'],
+      });
+
+      expect(expenseDeleted).toContain('Kopi Kenangan');
+      expect(expenseDeleted).toContain('Rp 25.000');
+      expect(expenseDeleted).toContain('BCA Prioritas');
+      expect(expenseDeleted).toContain('🔖 #kopi #jajan');
+      if (lang === 'id') {
+        expect(expenseDeleted).toContain('🗑️ *Kopi Kenangan* berhasil dihapus!');
+      } else {
+        expect(expenseDeleted).toContain('🗑️ *Kopi Kenangan* deleted successfully!');
+      }
+
+      const transferDeleted = dictionary.records.deleteSuccess({
+        transactionTitle: 'Transfer',
+        formattedAmount: 'Rp 100.000',
+        accountName: 'BCA',
+        destinationAccountName: 'Jago',
+        categoryName: 'Transfer',
+        recordTimestampDisplay: '13 Sep 2026 13:00',
+        transactionTypeIcon: '🔄',
+        isTransfer: true,
+      });
+
+      expect(transferDeleted).toContain('BCA ➔ Jago');
+      if (lang === 'id') {
+        expect(transferDeleted).toContain('🗑️ *Transfer berhasil dihapus!*');
+      } else {
+        expect(transferDeleted).toContain('🗑️ *Transfer deleted successfully!*');
       }
     });
 

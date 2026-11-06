@@ -727,12 +727,16 @@ describe('TransactionCorrelationService', () => {
 
     it('formats correlated Wallet record notification in English and Indonesian', () => {
       const notifId = formatCorrelatedWalletRecordNotification('rec-123', 'Blibli Store', -16700, 'IDR', 'id');
-      expect(notifId).toContain('Transaksi Sudah Tercatat');
-      expect(notifId).toContain('rec-123');
+      expect(notifId).toContain('Blibli Store');
+      expect(notifId).toContain('sudah tercatat di Wallet!');
+      expect(notifId).toContain('Rp 16.700');
+      expect(notifId).toContain('Tidak dibuat tiket duplikat.');
 
       const notifEn = formatCorrelatedWalletRecordNotification('rec-123', 'Blibli Store', -16700, 'IDR', 'en');
-      expect(notifEn).toContain('Transaction Already Recorded');
-      expect(notifEn).toContain('rec-123');
+      expect(notifEn).toContain('Blibli Store');
+      expect(notifEn).toContain('already recorded!');
+      expect(notifEn).toContain('16,700');
+      expect(notifEn).toContain('No duplicate ticket created.');
     });
   });
 

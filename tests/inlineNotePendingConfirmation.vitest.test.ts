@@ -306,8 +306,9 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
 
       // Verify success message displays updated note and tag badge
       expect(sentMessages).toHaveLength(1);
-      expect(sentMessages[0]).toContain('Headset Sony (Shopee Indonesia)');
-      expect(sentMessages[0]).toContain('📂 Elektronik');
+      expect(sentMessages[0]).toContain('Shopee Indonesia');
+      expect(sentMessages[0]).toContain('Headset Sony');
+      expect(sentMessages[0]).toContain('🏷️ Elektronik');
       expect(sentMessages[0]).toContain('🔖 #Elektronik');
 
       // Verify ticket is resolved
@@ -415,7 +416,7 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
       expect(dispatchedRecords[0].categoryId).toBe('cat-nafsu');
       // Original rich item note is preserved because the input was recognized as category
       expect(dispatchedRecords[0].note).toBe("GrabFood dari d'BestO - RSUD Koja: 1x Paket Sadas");
-      expect(sentMessages[0]).toContain('📂 Makan Nafsu');
+      expect(sentMessages[0]).toContain('🏷️ Makan Nafsu');
     });
 
     it('supports hyphenated/underscored multi-word category in hashtag (e.g. #makan-nafsu)', async () => {
@@ -647,7 +648,8 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
 
       expect(handled).toBe(true);
       expect(dispatchedRecords[0].note).toBe('Headset Sony');
-      expect(sentMessages[0]).toContain('Headset Sony (Shopee Indonesia)');
+      expect(sentMessages[0]).toContain('Shopee Indonesia');
+      expect(sentMessages[0]).toContain('Headset Sony');
     });
 
     it('end-to-end: resolves explicit cat: trigger to category and attaches separate tags to Wallet MCP without category duplication', async () => {
@@ -736,7 +738,7 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
       expect(dispatchedRecords[0].categoryId).toBe('cat-nafsu');
       // Labels contain only the explicit tags
       expect(dispatchedRecords[0].labels).toEqual(['kantor', 'reimburse']);
-      expect(sentMessages[0]).toContain('📂 Makan Nafsu');
+      expect(sentMessages[0]).toContain('🏷️ Makan Nafsu');
       expect(sentMessages[0]).toContain('🔖 #kantor #reimburse');
     });
 
@@ -825,7 +827,7 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
       expect(dispatchedRecords[0].categoryId).toBe('cat-digital');
       // Labels MUST be undefined, ensuring no unwanted tags (like #produk) are created
       expect(dispatchedRecords[0].labels).toBeUndefined();
-      expect(sentMessages[0]).toContain('📂 Pengeluaran Digital');
+      expect(sentMessages[0]).toContain('🏷️ Pengeluaran Digital');
       expect(sentMessages[0]).not.toContain('🔖');
     });
 

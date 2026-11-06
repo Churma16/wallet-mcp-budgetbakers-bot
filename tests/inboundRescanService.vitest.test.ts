@@ -366,7 +366,7 @@ describe('InboundRescanService and Rescan Infrastructure', () => {
       // Verify notification broadcasted
       expect(mockMessagingGateway.broadcastNotification).toHaveBeenCalledTimes(1);
       expect(mockMessagingGateway.broadcastNotification).toHaveBeenCalledWith(
-        expect.stringContaining('Detail Transaksi Diperbarui')
+        expect.stringContaining('berhasil diperbarui!')
       );
 
       // Verify summary count
@@ -549,7 +549,7 @@ describe('InboundRescanService and Rescan Infrastructure', () => {
       // Ticket 10 was PROCESSING so skipped. Ticket 11 was already specific so no patchRecords call, but correlation notification broadcasted and ticket rejected.
       expect(mockWalletMcpClient.patchRecords).not.toHaveBeenCalled();
       expect(mockMessagingGateway.broadcastNotification).toHaveBeenCalledWith(
-        expect.stringContaining('Transaksi Sudah Tercatat')
+        expect.stringContaining('sudah tercatat di Wallet!')
       );
       expect(mockPendingManager.rejectPendingTransaction).toHaveBeenCalledWith(11);
       expect(result.reconciledPendingCount).toBe(1);

@@ -1,10 +1,11 @@
 import type { ClearableRecordField, RecordEditSuccessParams } from './types.js';
+import { buildActionReceiptCard } from '../wallet/formatters/transactionCardBuilder.js';
 
 /**
  * Localization configuration for record edit success receipt cards.
  */
 export interface EditReceiptLocaleConfig {
-  readonly header: string;
+  readonly header: string | ((title: string, isTransfer?: boolean) => string);
   readonly accountMoved: (from: string, to: string) => string;
   readonly clearedFieldsHeader: string;
   readonly fieldNames: Record<ClearableRecordField, string>;
@@ -17,20 +18,13 @@ export function formatEditSuccessReceipt(
   params: RecordEditSuccessParams,
   config: EditReceiptLocaleConfig
 ): string {
-  const lines = [
-    config.header,
-    '',
-    params.transactionTitle,
-    `${params.transactionTypeIcon} ${params.formattedAmount}  •  ${params.accountName}`,
-    `🏷️ ${params.categoryName}  •  ${params.recordTimestampDisplay}`,
-  ];
+  const headerText = typeof config.header === 'function'
+    ? config.header(params.transactionTitle, params.isTransfer)
+    : `${config.header}\n\n${params.transactionTitle}`;
 
-  if (params.labels && params.labels.length > 0) {
-    lines.push(`🔖 ${params.labels.map(label => `#${label.replace(/^#/, '')}`).join(' ')}`);
-  }
-
+  const extraLines: string[] = [];
   if (params.movedFromAccountName) {
-    lines.push(config.accountMoved(params.movedFromAccountName, params.accountName));
+    extraLines.push(config.accountMoved(params.movedFromAccountName, params.accountName));
   }
 
   const clearedLabels = [
@@ -39,8 +33,19 @@ export function formatEditSuccessReceipt(
   ];
 
   if (clearedLabels.length > 0) {
-    lines.push(`${config.clearedFieldsHeader} ${Array.from(new Set(clearedLabels)).join(', ')}`);
+    extraLines.push(`${config.clearedFieldsHeader} ${Array.from(new Set(clearedLabels)).join(', ')}`);
   }
 
-  return lines.join('\n');
+  return buildActionReceiptCard({
+    actionHeader: headerText,
+    formattedAmount: params.formattedAmount,
+    accountName: params.accountName,
+    categoryName: params.categoryName,
+    recordTimestampDisplay: params.recordTimestampDisplay,
+    transactionTypeIcon: params.transactionTypeIcon,
+    isTransfer: params.isTransfer,
+    destinationAccountName: params.destinationAccountName,
+    labels: params.labels,
+    extraLines,
+  });
 }

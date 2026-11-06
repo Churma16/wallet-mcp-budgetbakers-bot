@@ -13,6 +13,10 @@ import {
   getApplicationTimezone,
   getDefaultCurrency,
 } from '../../config/applicationConfig.js';
+import {
+  buildActionReceiptCard,
+  buildActionPromptCard,
+} from './transactionCardBuilder.js';
 
 export { getApplicationTimezone };
 
@@ -298,6 +302,36 @@ function formatMultipleRecordTransferItem(
 }
 
 /**
+ * Resolves the primary transaction title, prioritizing itemized note details,
+ * combining merchant and note when appropriate, and falling back to counterparty or default.
+ */
+export function resolveTransactionDisplayTitle(params: {
+  note?: string;
+  merchant?: string;
+  counterParty?: string;
+  defaultTitle?: string;
+}): string {
+  const note = params.note?.trim();
+  const merchant = (params.merchant || params.counterParty)?.trim();
+  const defaultTitle = params.defaultTitle || 'Transaksi';
+
+  if (note && merchant) {
+    if (note.toLowerCase() === merchant.toLowerCase()) {
+      return note;
+    }
+    if (note.toLowerCase().includes(merchant.toLowerCase())) {
+      return note;
+    }
+    if (merchant.toLowerCase().includes(note.toLowerCase())) {
+      return merchant;
+    }
+    return `${merchant} - ${note}`;
+  }
+
+  return note || merchant || defaultTitle;
+}
+
+/**
  * Formats a single transaction record using Context-First psychological hierarchy
  */
 function formatSingleRecordSuccess(
@@ -313,7 +347,11 @@ function formatSingleRecordSuccess(
   const resolvedCurrency = accountCurrency || getDefaultCurrency();
   const formattedAmount = formatCurrencyAmount(recordItem.amount, resolvedCurrency, languageCode);
   const defaultTitle = isExpense ? dictionary.labels.expense : dictionary.labels.income;
-  const transactionTitle = recordItem.note || recordItem.counterParty || defaultTitle;
+  const transactionTitle = resolveTransactionDisplayTitle({
+    note: recordItem.note,
+    counterParty: recordItem.counterParty,
+    defaultTitle,
+  });
   const recordTimestampDisplay = formatTransactionDate(recordItem.recordDate, languageCode);
 
   return dictionary.records.singleSuccess({
@@ -367,7 +405,11 @@ function formatMultipleRecordsSuccess(
     const transactionTypeIcon = isExpense ? '💸' : '💰';
     const categoryName = availableCategories.find(category => category.id === recordItem.categoryId)?.name || dictionary.labels.defaultCategory;
     const defaultDescription = isExpense ? dictionary.labels.expense : dictionary.labels.income;
-    const transactionDescription = recordItem.note || recordItem.counterParty || defaultDescription;
+    const transactionDescription = resolveTransactionDisplayTitle({
+      counterParty: recordItem.counterParty,
+      note: recordItem.note,
+      defaultTitle: defaultDescription,
+    });
 
     return dictionary.records.multipleRecordItem({
       itemIndex: recordIndex,
@@ -898,47 +940,40 @@ export function formatEnrichedPendingEmailTransactionNotification(
   const itemCurrency = pendingItem.currency || getDefaultCurrency();
   const formattedAmount = formatCurrencyAmount(pendingItem.amount, itemCurrency, languageCode);
   const sourceIcons = resolveEvidenceSourceIcons(pendingItem.sourceType, pendingItem.evidenceSources);
+  const formattedTime = formatTransactionDate(pendingItem.recordDate, languageCode);
 
   const headline = isTransfer
     ? (isEnglish ? '🔄 *New Transfer*' : '🔄 *Transfer Baru*')
     : (isEnglish ? `${sourceIcons} *New Payment*` : `${sourceIcons} *Pembayaran Baru*`);
 
-  const merchantOrTitle = isTransfer
-    ? `${pendingItem.accountNameHint || (isEnglish ? 'Account' : 'Akun')} ➔ ${pendingItem.destinationAccountNameHint || (isEnglish ? 'Destination' : 'Tujuan')}`
-    : (pendingItem.counterParty || pendingItem.matchedCategoryName || pendingItem.bankDisplayName);
-
-  const lines = [
-    headline,
-    `*${formattedAmount}* • ${merchantOrTitle} (#${pendingItem.ticketId})`,
-  ];
-
-  if (pendingItem.accountNameHint && !isTransfer) {
-    lines.push(isEnglish ? `Account: ${pendingItem.accountNameHint}` : `Akun: ${pendingItem.accountNameHint}`);
-  }
-  if (pendingItem.matchedCategoryName && !isTransfer) {
-    lines.push(isEnglish ? `Category: ${pendingItem.matchedCategoryName}` : `Kategori: ${pendingItem.matchedCategoryName}`);
-  }
-  if (pendingItem.note && pendingItem.note !== pendingItem.counterParty) {
-    lines.push(isEnglish ? `Items/Note: ${pendingItem.note}` : `Rincian: ${pendingItem.note}`);
-  }
-  if (pendingItem.isBankSyncedAccount) {
-    lines.push(isEnglish ? '💡 _This account is linked to Wallet bank sync._' : '💡 _Rekening ini terhubung dengan bank sync Wallet._');
-  }
-
-  lines.push('');
-  lines.push(
-    dictionary.emailPending.formatConfirmationPrompt({
-      ticketId: pendingItem.ticketId,
-      totalPendingCount,
-    })
-  );
-
   const updateCue = isEnglish
     ? `_Updated via 📩 ${enrichedSourceDisplayName}_`
     : `_Diperbarui via 📩 ${enrichedSourceDisplayName}_`;
-  lines.push(updateCue);
 
-  return lines.join('\n');
+  const promptBody = dictionary.emailPending.formatConfirmationPrompt({
+    ticketId: pendingItem.ticketId,
+    totalPendingCount,
+  });
+
+  return buildActionPromptCard({
+    headline,
+    formattedAmount,
+    accountNameHint: pendingItem.accountNameHint,
+    defaultAccountLabel: isEnglish ? 'Account' : 'Akun',
+    merchant: pendingItem.counterParty || pendingItem.bankDisplayName,
+    categoryName: pendingItem.matchedCategoryName,
+    defaultCategoryLabel: isEnglish ? 'General' : 'Umum',
+    formattedTime,
+    note: pendingItem.note,
+    isTransfer,
+    destinationAccountNameHint: pendingItem.destinationAccountNameHint,
+    isBankSyncedAccount: pendingItem.isBankSyncedAccount,
+    bankSyncedNotice: isEnglish
+      ? '💡 _This account is linked to Wallet bank sync._'
+      : '💡 _Rekening ini terhubung dengan bank sync Wallet._',
+    promptBody,
+    footerCue: updateCue,
+  });
 }
 
 /**
@@ -964,14 +999,45 @@ export function formatCorrelatedWalletRecordNotification(
   merchant: string,
   amount: number,
   currency: string = 'IDR',
-  languageCode?: SupportedLanguage
+  languageCode?: SupportedLanguage,
+  accountName?: string,
+  categoryName?: string,
+  recordDate?: string | number | Date,
+  note?: string
 ): string {
+  const dictionary = getDictionary(languageCode);
   const formattedAmount = formatCurrencyAmount(amount, currency, languageCode);
   const isEnglish = (languageCode || getActiveLanguage()) === 'en';
-  if (isEnglish) {
-    return `ℹ️ *Transaction Already Recorded*\nIncoming notification for *${merchant || 'Purchase'}* (${formattedAmount}) matches existing Wallet record (\`${recordId}\`). No duplicate ticket created.`;
-  }
-  return `ℹ️ *Transaksi Sudah Tercatat*\nNotifikasi untuk *${merchant || 'Transaksi'}* (${formattedAmount}) sudah tercatat di Wallet (ID: \`${recordId}\`). Tidak dibuat tiket duplikat.`;
+  const isExpense = amount < 0;
+  const transactionTypeIcon = isExpense ? '💸' : '💰';
+  const timestamp = recordDate
+    ? formatTransactionDate(recordDate, languageCode)
+    : formatTransactionDate(new Date(), languageCode);
+  const resolvedAccount = accountName || dictionary.labels.defaultAccount;
+  const resolvedCategory = categoryName || dictionary.labels.defaultCategory;
+  const defaultTitle = isEnglish ? 'Transaction' : 'Transaksi';
+  const title = resolveTransactionDisplayTitle({
+    note,
+    merchant,
+    defaultTitle,
+  });
+
+  const actionHeader = isEnglish
+    ? `ℹ️ *${title}* already recorded!`
+    : `ℹ️ *${title}* sudah tercatat di Wallet!`;
+  const extraLines = [
+    isEnglish ? '_No duplicate ticket created._' : '_Tidak dibuat tiket duplikat._',
+  ];
+
+  return buildActionReceiptCard({
+    actionHeader,
+    formattedAmount,
+    accountName: resolvedAccount,
+    categoryName: resolvedCategory,
+    recordTimestampDisplay: timestamp,
+    transactionTypeIcon,
+    extraLines,
+  });
 }
 
 /**
@@ -987,39 +1053,52 @@ export function formatRetroactivelyEnrichedWalletRecordNotification(params: {
   accountName?: string;
   note?: string;
   languageCode?: SupportedLanguage;
+  recordDate?: string | number | Date;
+  labels?: string[];
 }): string {
-  const { recordId, merchant, amount, currency = 'IDR', categoryName, accountName, note, languageCode } = params;
+  const {
+    recordId: _recordId,
+    merchant,
+    amount,
+    currency = 'IDR',
+    categoryName,
+    accountName,
+    note,
+    languageCode,
+    recordDate,
+    labels,
+  } = params;
+  const dictionary = getDictionary(languageCode);
   const formattedAmount = formatCurrencyAmount(amount, currency, languageCode);
   const isEnglish = (languageCode || getActiveLanguage()) === 'en';
+  const isExpense = amount < 0;
+  const transactionTypeIcon = isExpense ? '💸' : '💰';
+  const timestamp = recordDate
+    ? formatTransactionDate(recordDate, languageCode)
+    : formatTransactionDate(new Date(), languageCode);
+  const resolvedCategory = categoryName || dictionary.labels.defaultCategory;
+  const resolvedAccount = accountName || dictionary.labels.defaultAccount;
 
-  const details: string[] = [];
-  if (accountName) {
-    details.push(`💳 ${accountName}`);
-  }
-  if (categoryName) {
-    details.push(`📂 ${categoryName}`);
-  }
-  const detailsLine = details.length > 0 ? details.join(' • ') : '';
+  const defaultTitle = isEnglish ? 'Transaction' : 'Transaksi';
+  const title = resolveTransactionDisplayTitle({
+    note,
+    merchant,
+    defaultTitle,
+  });
 
-  if (isEnglish) {
-    const lines = [
-      `✨ *Transaction Details Updated!*`,
-      `💸 *${merchant || 'Purchase'}* — ${formattedAmount}`,
-    ];
-    if (detailsLine) lines.push(detailsLine);
-    if (note && note !== merchant) lines.push(`📝 _${note}_`);
-    lines.push(`(ID: \`${recordId}\`)`);
-    return lines.join('\n');
-  }
+  const actionHeader = isEnglish
+    ? `✨ *${title}* successfully updated!`
+    : `✨ *${title}* berhasil diperbarui!`;
 
-  const lines = [
-    `✨ *Detail Transaksi Diperbarui!*`,
-    `💸 *${merchant || 'Transaksi'}* — ${formattedAmount}`,
-  ];
-  if (detailsLine) lines.push(detailsLine);
-  if (note && note !== merchant) lines.push(`📝 _${note}_`);
-  lines.push(`(ID: \`${recordId}\`)`);
-  return lines.join('\n');
+  return buildActionReceiptCard({
+    actionHeader,
+    formattedAmount,
+    accountName: resolvedAccount,
+    categoryName: resolvedCategory,
+    recordTimestampDisplay: timestamp,
+    transactionTypeIcon,
+    labels,
+  });
 }
 
 
@@ -1049,13 +1128,15 @@ export function formatPendingConfirmationSuccess(
 
   const isExpense = item.amount < 0 || item.transactionType === 'EXPENSE';
   const icon = isExpense ? '💸' : '💰';
-  const defaultNote = isExpense ? dictionary.labels.expense : dictionary.labels.income;
-  let merchantOrNote = item.counterParty || item.note || defaultNote;
-  if (item.note && item.note !== item.counterParty && !item.note.toLowerCase().startsWith('payment to')) {
-    merchantOrNote = item.counterParty
-      ? `${item.note} (${item.counterParty})`
-      : item.note;
-  }
+  const isEnglish = (languageCode || getActiveLanguage()) === 'en';
+  const defaultTitle = isExpense
+    ? dictionary.labels.expense
+    : dictionary.labels.income;
+  const title = resolveTransactionDisplayTitle({
+    note: item.note,
+    counterParty: item.counterParty,
+    defaultTitle: isEnglish ? 'Transaction' : defaultTitle,
+  });
 
   return dictionary.confirmation.singleSuccess({
     ticketId: item.ticketId,
@@ -1066,7 +1147,8 @@ export function formatPendingConfirmationSuccess(
     matchedCategoryName: item.matchedCategoryName,
     labels: item.labels,
     icon,
-    merchantOrNote,
+    merchantOrNote: title,
+    note: item.note,
   });
 }
 
@@ -1082,9 +1164,16 @@ export function formatBulkPendingConfirmationSuccess(
 
   const bulkItemParams = items.map(item => {
     const itemCurrency = item.currency || getDefaultCurrency();
+    const defaultTitle = item.transactionType === 'TRANSFER'
+      ? dictionary.labels.transfer
+      : (item.amount < 0 ? dictionary.labels.expense : dictionary.labels.income);
     return {
       ticketId: item.ticketId,
-      title: item.counterParty || item.note || item.bankDisplayName,
+      title: resolveTransactionDisplayTitle({
+        counterParty: item.counterParty || item.bankDisplayName,
+        note: item.note,
+        defaultTitle,
+      }),
       formattedAmount: formatCurrencyAmount(item.amount, itemCurrency, languageCode),
       accountNameHint: item.accountNameHint || dictionary.labels.defaultAccount,
     };
@@ -1109,7 +1198,14 @@ export function formatPendingCancellationMessage(
   }
   const itemCurrency = item.currency || getDefaultCurrency();
   const formattedAmount = formatCurrencyAmount(item.amount, itemCurrency, languageCode);
-  const title = item.counterParty || item.note || item.bankDisplayName;
+  const defaultTitle = item.transactionType === 'TRANSFER'
+    ? dictionary.labels.transfer
+    : (item.amount < 0 ? dictionary.labels.expense : dictionary.labels.income);
+  const title = resolveTransactionDisplayTitle({
+    counterParty: item.counterParty || item.bankDisplayName,
+    note: item.note,
+    defaultTitle,
+  });
   return dictionary.confirmation.cancellation({
     isBulk: false,
     ticketId: item.ticketId,

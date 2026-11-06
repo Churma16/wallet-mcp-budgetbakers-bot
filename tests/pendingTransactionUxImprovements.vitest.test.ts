@@ -17,7 +17,7 @@ function createMockEvent(text: string): IncomingUserMessageEvent {
 
 describe('Pending Transaction UX & Concurrency Improvements', () => {
   describe('Single Notification Badging and Prompts', () => {
-    it('always includes ticketId badge (#1) and prompt hints in Indonesian', () => {
+    it('always includes ticketId badge and prompt hints in Indonesian', () => {
       const output = indonesianDictionary.emailPending.formatNotification({
         ticketId: 1,
         bankDisplayName: 'Bank Mandiri',
@@ -29,12 +29,12 @@ describe('Pending Transaction UX & Concurrency Improvements', () => {
         totalPendingCount: 1,
       });
 
-      expect(output).toContain('BLIBLI.COM KUDUS - ID (#1)');
+      expect(output).toContain('BLIBLI.COM KUDUS - ID');
       expect(output).toContain('Balas *Ya* atau *Catat* (atau *Ya 1*)');
       expect(output).toContain('Balas *Batal* atau *Abaikan* (atau *Batal 1*)');
     });
 
-    it('always includes ticketId badge (#1) and prompt hints in English', () => {
+    it('always includes ticketId badge and prompt hints in English', () => {
       const output = englishDictionary.emailPending.formatNotification({
         ticketId: 1,
         bankDisplayName: 'Chase Bank',
@@ -46,7 +46,7 @@ describe('Pending Transaction UX & Concurrency Improvements', () => {
         totalPendingCount: 1,
       });
 
-      expect(output).toContain('Amazon (#1)');
+      expect(output).toContain('Amazon');
       expect(output).toContain('Reply *Yes* or *Record* (or *Yes 1*)');
       expect(output).toContain('Reply *Cancel* or *Ignore* (or *Cancel 1*)');
     });
@@ -116,7 +116,7 @@ describe('Pending Transaction UX & Concurrency Improvements', () => {
         Date.now()
       );
       expect(handledFirst).toBe(true);
-      expect(sentMessages[0]).toContain('(#1)');
+      expect(sentMessages[0]).toContain('berhasil dicatat!');
       expect(sentMessages[0]).toContain('BLIBLI.COM KUDUS - ID');
 
       // User sends "Ya 2" (numbered confirmation) -> Claims Ticket 2
@@ -126,7 +126,7 @@ describe('Pending Transaction UX & Concurrency Improvements', () => {
         Date.now()
       );
       expect(handledSecond).toBe(true);
-      expect(sentMessages[1]).toContain('(#2)');
+      expect(sentMessages[1]).toContain('berhasil dicatat!');
       expect(sentMessages[1]).toContain('BAROKAH JENG SRI');
 
       // All tickets resolved

@@ -17,6 +17,7 @@ import type { CategoryContextService } from '../../brain/category/categoryContex
 import {
   formatCurrencyAmount,
   formatTransactionDate,
+  resolveTransactionDisplayTitle,
 } from '../../wallet/formatters/humanResponseFormatter.js';
 import { getDefaultCurrency } from '../../config/applicationConfig.js';
 import { normalizeTransactionText } from '../../lib/textCasing.js';
@@ -311,9 +312,10 @@ export class ModifyRecordHandler {
       });
 
       // Build structured receipt response
+      const isTransfer = clearFields.includes('transfer') ? false : mapping.isTransfer === true;
       const finalAmount = resolvedAmount !== undefined ? resolvedAmount : (mapping.amount ?? 0);
       const isExpense = finalAmount < 0;
-      const transactionTypeIcon = isExpense ? '💸' : '💰';
+      const transactionTypeIcon = isTransfer ? '🔄' : isExpense ? '💸' : '💰';
 
       const finalAccountId = resolvedTargetAccountId || mapping.accountId;
       const targetAccount = cachedAccounts.find(account => account.id === finalAccountId);
@@ -322,7 +324,7 @@ export class ModifyRecordHandler {
         mapping.currency ||
         targetAccount?.currency ||
         getDefaultCurrency();
-      const formattedAmount = formatCurrencyAmount(finalAmount, resolvedCurrency, 'id');
+      const formattedAmount = formatCurrencyAmount(finalAmount, resolvedCurrency, dictionary.languageCode);
       const resolvedAccountName =
         resolvedTargetAccountName ||
         targetAccount?.name ||
@@ -330,7 +332,7 @@ export class ModifyRecordHandler {
         'Wallet';
 
       const cachedCategories = this.walletCacheService.getCategories();
-      const defaultCategoryName = dictionary.labels.defaultCategory || 'Umum';
+      const defaultCategoryName = isTransfer ? dictionary.labels.transfer : (dictionary.labels.defaultCategory || 'Umum');
       let finalCategoryName: string;
       if (clearFields.includes('categoryId') || clearFields.includes('transfer')) {
         finalCategoryName = defaultCategoryName;
@@ -344,7 +346,7 @@ export class ModifyRecordHandler {
 
       const recordTimestampDisplay = formatTransactionDate(
         mapping.recordDate || mapping.createdAt,
-        'id'
+        dictionary.languageCode
       );
 
       const finalNote = clearFields.includes('note')
@@ -357,7 +359,14 @@ export class ModifyRecordHandler {
         : formattedCounterParty !== undefined
           ? formattedCounterParty
           : mapping.counterParty;
-      const displayTitle = finalNote || finalCounterParty || (isExpense ? 'Pengeluaran' : 'Pemasukan');
+      const defaultTitle = isTransfer
+        ? dictionary.labels.transfer
+        : (isExpense ? dictionary.labels.expense : dictionary.labels.income);
+      const displayTitle = resolveTransactionDisplayTitle({
+        counterParty: finalCounterParty,
+        note: finalNote,
+        defaultTitle,
+      });
 
       let finalLabels: string[] | undefined;
       if (clearFields.includes('labelIds')) {
@@ -376,6 +385,7 @@ export class ModifyRecordHandler {
         labels: finalLabels,
         movedFromAccountName,
         clearedFields: clearFields.length > 0 ? clearFields : undefined,
+        isTransfer,
       });
 
       const sendReceipt = await this.messagingGateway.sendMessage(
