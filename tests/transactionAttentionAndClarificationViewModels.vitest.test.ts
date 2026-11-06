@@ -244,8 +244,8 @@ describe('transaction attention summaries, clarification view models, and fallba
       bankDisplayName: 'BCA',
       totalPendingCount: 1,
     });
-    expect(categoryFallback).toContain('Rp 30.000* • Belanja');
-    expect(categoryFallback).toContain('Kategori: Belanja');
+    expect(categoryFallback).toContain('🏪 BCA');
+    expect(categoryFallback).toContain('🏷️ Belanja');
 
     const destinationFallback = indonesianDictionary.emailPending.formatNotification({
       ticketId: 22,
@@ -256,7 +256,7 @@ describe('transaction attention summaries, clarification view models, and fallba
       accountNameHint: 'BCA',
       totalPendingCount: 1,
     });
-    expect(destinationFallback).toContain('BCA ➔ Tujuan');
+    expect(destinationFallback).toContain('💳 BCA');
 
     const sourceFallback = englishDictionary.emailPending.formatNotification({
       ticketId: 23,

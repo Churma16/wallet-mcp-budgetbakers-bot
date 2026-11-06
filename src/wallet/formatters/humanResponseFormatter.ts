@@ -932,28 +932,52 @@ export function formatEnrichedPendingEmailTransactionNotification(
   const itemCurrency = pendingItem.currency || getDefaultCurrency();
   const formattedAmount = formatCurrencyAmount(pendingItem.amount, itemCurrency, languageCode);
   const sourceIcons = resolveEvidenceSourceIcons(pendingItem.sourceType, pendingItem.evidenceSources);
+  const formattedTime = formatTransactionDate(pendingItem.recordDate, languageCode);
 
   const headline = isTransfer
     ? (isEnglish ? '🔄 *New Transfer*' : '🔄 *Transfer Baru*')
     : (isEnglish ? `${sourceIcons} *New Payment*` : `${sourceIcons} *Pembayaran Baru*`);
 
-  const merchantOrTitle = isTransfer
-    ? `${pendingItem.accountNameHint || (isEnglish ? 'Account' : 'Akun')} ➔ ${pendingItem.destinationAccountNameHint || (isEnglish ? 'Destination' : 'Tujuan')}`
-    : (pendingItem.counterParty || pendingItem.matchedCategoryName || pendingItem.bankDisplayName);
+  const updateCue = isEnglish
+    ? `_Updated via 📩 ${enrichedSourceDisplayName}_`
+    : `_Diperbarui via 📩 ${enrichedSourceDisplayName}_`;
 
+  if (isTransfer) {
+    const route = pendingItem.destinationAccountNameHint
+      ? `${pendingItem.accountNameHint || (isEnglish ? 'Account' : 'Akun')} ➔ ${pendingItem.destinationAccountNameHint}`
+      : (pendingItem.accountNameHint || (isEnglish ? 'Account' : 'Akun'));
+
+    return [
+      headline,
+      '',
+      `🔁 ${formattedAmount}`,
+      `💳 ${route}`,
+      `⏰ ${formattedTime}`,
+      '',
+      dictionary.emailPending.formatConfirmationPrompt({
+        ticketId: pendingItem.ticketId,
+        totalPendingCount,
+      }),
+      updateCue,
+    ].join('\n');
+  }
+
+  const merchant = pendingItem.counterParty || pendingItem.bankDisplayName;
+  const category = pendingItem.matchedCategoryName || (isEnglish ? 'General' : 'Umum');
   const lines = [
     headline,
-    `*${formattedAmount}* • ${merchantOrTitle} (#${pendingItem.ticketId})`,
+    '',
+    `${formattedAmount} • ${pendingItem.accountNameHint || (isEnglish ? 'Account' : 'Akun')}`,
   ];
 
-  if (pendingItem.accountNameHint && !isTransfer) {
-    lines.push(isEnglish ? `Account: ${pendingItem.accountNameHint}` : `Akun: ${pendingItem.accountNameHint}`);
+  if (merchant) {
+    lines.push(`🏪 ${merchant}`);
   }
-  if (pendingItem.matchedCategoryName && !isTransfer) {
-    lines.push(isEnglish ? `Category: ${pendingItem.matchedCategoryName}` : `Kategori: ${pendingItem.matchedCategoryName}`);
-  }
-  if (pendingItem.note && pendingItem.note !== pendingItem.counterParty) {
-    lines.push(isEnglish ? `Items/Note: ${pendingItem.note}` : `Rincian: ${pendingItem.note}`);
+
+  lines.push(`🏷️ ${category} • ${formattedTime}`);
+
+  if (pendingItem.note && pendingItem.note !== merchant) {
+    lines.push(`📝 ${pendingItem.note}`);
   }
   if (pendingItem.isBankSyncedAccount) {
     lines.push(isEnglish ? '💡 _This account is linked to Wallet bank sync._' : '💡 _Rekening ini terhubung dengan bank sync Wallet._');
@@ -966,10 +990,6 @@ export function formatEnrichedPendingEmailTransactionNotification(
       totalPendingCount,
     })
   );
-
-  const updateCue = isEnglish
-    ? `_Updated via 📩 ${enrichedSourceDisplayName}_`
-    : `_Diperbarui via 📩 ${enrichedSourceDisplayName}_`;
   lines.push(updateCue);
 
   return lines.join('\n');

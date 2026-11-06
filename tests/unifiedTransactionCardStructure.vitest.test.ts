@@ -4,6 +4,8 @@ import {
   formatPendingConfirmationSuccess,
   formatRetroactivelyEnrichedWalletRecordNotification,
   formatCorrelatedWalletRecordNotification,
+  formatPendingEmailTransactionNotification,
+  formatEnrichedPendingEmailTransactionNotification,
 } from '../src/wallet/formatters/humanResponseFormatter.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
 import type { PendingTransactionItem } from '../src/services/pendingTransactionService.js';
@@ -314,5 +316,67 @@ describe('Unified Final Transaction Card Structure Parity', () => {
     const dupFallbackEn = formatCorrelatedWalletRecordNotification('rec-dup-3', '', -30000, 'IDR', 'en');
     expect(dupFallbackEn).toContain('ℹ️ *Transaction* already recorded!');
     expect(dupFallbackEn).toContain('💸 Rp 30,000  •  Account');
+  });
+
+  it('formats incoming pending transaction prompts with dynamic arrival order and structured layout', () => {
+    // Fused: Push first, then Email
+    const fusedPushFirst: PendingTransactionItem = {
+      ticketId: 3,
+      sourceType: 'PUSH_NOTIFICATION',
+      evidenceSources: ['PUSH_NOTIFICATION', 'EMAIL'],
+      amount: -14100,
+      currency: 'IDR',
+      counterParty: 'Bliblimart Sarana Jaya - Offline Store',
+      note: 'Nasi Uduk + Telur, Bakwan Sayur',
+      accountNameHint: 'Jago Expense',
+      matchedCategoryName: 'Makan Nafsu',
+      transactionType: 'EXPENSE',
+      recordDate: fixedDate.toISOString(),
+      createdAt: fixedDate,
+      expiresAt: new Date(fixedDate.getTime() + 86400000),
+    };
+
+    const pushFirstCard = formatPendingEmailTransactionNotification(fusedPushFirst, 1, 'id');
+    expect(pushFirstCard).toContain('📲📩 *Pembayaran Baru*');
+    expect(pushFirstCard).toContain('Rp 14.100 • Jago Expense');
+    expect(pushFirstCard).toContain('🏪 Bliblimart Sarana Jaya - Offline Store');
+    expect(pushFirstCard).toContain('🏷️ Makan Nafsu • 4 Nov 2026, 09:34 WIB');
+    expect(pushFirstCard).toContain('📝 Nasi Uduk + Telur, Bakwan Sayur');
+    expect(pushFirstCard).toContain('Balas *Ya* atau *Catat* (atau *Ya 3*)');
+
+    // Fused: Email first, then Push
+    const fusedEmailFirst: PendingTransactionItem = {
+      ...fusedPushFirst,
+      sourceType: 'EMAIL',
+      evidenceSources: ['EMAIL', 'PUSH_NOTIFICATION'],
+    };
+
+    const emailFirstCard = formatPendingEmailTransactionNotification(fusedEmailFirst, 1, 'id');
+    expect(emailFirstCard).toContain('📩📲 *Pembayaran Baru*');
+
+    // In-place enriched notification update
+    const enrichedCard = formatEnrichedPendingEmailTransactionNotification(fusedPushFirst, 1, 'Blibli', 'id');
+    expect(enrichedCard).toContain('📲📩 *Pembayaran Baru*');
+    expect(enrichedCard).toContain('🏪 Bliblimart Sarana Jaya - Offline Store');
+    expect(enrichedCard).toContain('_Diperbarui via 📩 Blibli_');
+
+    // Transfer pending prompt
+    const transferPending: PendingTransactionItem = {
+      ticketId: 4,
+      sourceType: 'EMAIL',
+      amount: -500000,
+      currency: 'IDR',
+      accountNameHint: 'BCA Prioritas',
+      destinationAccountNameHint: 'Jago Expense',
+      transactionType: 'TRANSFER',
+      recordDate: fixedDate.toISOString(),
+      createdAt: fixedDate,
+      expiresAt: new Date(fixedDate.getTime() + 86400000),
+    };
+
+    const transferCard = formatPendingEmailTransactionNotification(transferPending, 1, 'id');
+    expect(transferCard).toContain('🔄 *Transfer Baru*');
+    expect(transferCard).toContain('🔁 Rp 500.000');
+    expect(transferCard).toContain('💳 BCA Prioritas ➔ Jago Expense');
   });
 });

@@ -247,23 +247,41 @@ export const indonesianDictionary: ResponseDictionary = {
       const isTransfer = params.typeLabel.includes('Transfer');
       const icon = params.sourceIcon || '📩';
       const headline = isTransfer ? '🔄 *Transfer Baru*' : `${icon} *Pembayaran Baru*`;
-      const merchantOrTitle = isTransfer
-        ? `${params.accountNameHint || 'Akun'} ➔ ${params.destinationAccountNameHint || 'Tujuan'}`
-        : (params.counterParty || params.matchedCategoryName || params.bankDisplayName);
 
+      if (isTransfer) {
+        const route = params.destinationAccountNameHint
+          ? `${params.accountNameHint || 'Akun'} ➔ ${params.destinationAccountNameHint}`
+          : (params.accountNameHint || 'Akun');
+        return [
+          headline,
+          '',
+          `🔁 ${params.formattedAmount}`,
+          `💳 ${route}`,
+          `⏰ ${params.formattedTime}`,
+          '',
+          formatPendingConfirmationPromptId({
+            ticketId: params.ticketId,
+            totalPendingCount: params.totalPendingCount,
+          }),
+        ].join('\n');
+      }
+
+      const merchant = params.counterParty || params.bankDisplayName;
+      const category = params.matchedCategoryName || 'Umum';
       const lines = [
         headline,
-        `*${params.formattedAmount}* • ${merchantOrTitle} (#${params.ticketId})`,
+        '',
+        `${params.formattedAmount} • ${params.accountNameHint || 'Akun'}`,
       ];
 
-      if (params.accountNameHint && !isTransfer) {
-        lines.push(`Akun: ${params.accountNameHint}`);
+      if (merchant) {
+        lines.push(`🏪 ${merchant}`);
       }
-      if (params.matchedCategoryName && !isTransfer) {
-        lines.push(`Kategori: ${params.matchedCategoryName}`);
-      }
-      if (params.note && params.note !== params.counterParty) {
-        lines.push(`📝 _${params.note}_`);
+
+      lines.push(`🏷️ ${category} • ${params.formattedTime}`);
+
+      if (params.note && params.note !== merchant) {
+        lines.push(`📝 ${params.note}`);
       }
       if (params.isBankSyncedAccount) {
         lines.push('💡 _Rekening ini terhubung dengan bank sync Wallet._');

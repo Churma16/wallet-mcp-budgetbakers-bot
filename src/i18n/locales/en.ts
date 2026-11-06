@@ -249,23 +249,41 @@ export const englishDictionary: ResponseDictionary = {
       const isTransfer = params.typeLabel.includes('Transfer');
       const icon = params.sourceIcon || '📩';
       const headline = isTransfer ? '🔄 *New Transfer*' : `${icon} *New Payment*`;
-      const merchantOrTitle = isTransfer
-        ? `${params.accountNameHint || 'Account'} ➔ ${params.destinationAccountNameHint || 'Destination'}`
-        : (params.counterParty || params.matchedCategoryName || params.bankDisplayName);
 
+      if (isTransfer) {
+        const route = params.destinationAccountNameHint
+          ? `${params.accountNameHint || 'Account'} ➔ ${params.destinationAccountNameHint}`
+          : (params.accountNameHint || 'Account');
+        return [
+          headline,
+          '',
+          `🔁 ${params.formattedAmount}`,
+          `💳 ${route}`,
+          `⏰ ${params.formattedTime}`,
+          '',
+          formatPendingConfirmationPromptEn({
+            ticketId: params.ticketId,
+            totalPendingCount: params.totalPendingCount,
+          }),
+        ].join('\n');
+      }
+
+      const merchant = params.counterParty || params.bankDisplayName;
+      const category = params.matchedCategoryName || 'General';
       const lines = [
         headline,
-        `*${params.formattedAmount}* • ${merchantOrTitle} (#${params.ticketId})`,
+        '',
+        `${params.formattedAmount} • ${params.accountNameHint || 'Account'}`,
       ];
 
-      if (params.accountNameHint && !isTransfer) {
-        lines.push(`Account: ${params.accountNameHint}`);
+      if (merchant) {
+        lines.push(`🏪 ${merchant}`);
       }
-      if (params.matchedCategoryName && !isTransfer) {
-        lines.push(`Category: ${params.matchedCategoryName}`);
-      }
-      if (params.note && params.note !== params.counterParty) {
-        lines.push(`📝 _${params.note}_`);
+
+      lines.push(`🏷️ ${category} • ${params.formattedTime}`);
+
+      if (params.note && params.note !== merchant) {
+        lines.push(`📝 ${params.note}`);
       }
       if (params.isBankSyncedAccount) {
         lines.push('💡 _This account is linked to Wallet bank sync._');

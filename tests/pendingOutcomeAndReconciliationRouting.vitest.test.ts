@@ -329,7 +329,7 @@ describe('pending action outcomes, reconciliation combinations, and routing cond
       })).toContain('Destination');
       expect(dictionary.emailPending.formatNotification({
         ...base, ticketId: 10, typeLabel: 'Payment', counterParty: 'Merchant', totalPendingCount: 2,
-      })).toContain('#10');
+      })).toContain('10');
     });
   });
 
