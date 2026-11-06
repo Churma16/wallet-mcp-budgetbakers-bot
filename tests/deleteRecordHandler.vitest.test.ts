@@ -7,6 +7,7 @@ import { TransactionMessageStore } from '../src/wallet/records/transactionMessag
 import { MessageDispatcher } from '../src/core/dispatcher.js';
 import { createTestAppContext } from './fixtures/testContext.js';
 import { applicationLogger } from '../src/lib/logger.js';
+import { getDictionary } from '../src/i18n/index.js';
 import type { IncomingUserMessageEvent, MessagingGatewayService } from '../src/gateway/index.js';
 import type { WalletCacheService, WalletMcpClientService } from '../src/wallet/index.js';
 
@@ -565,6 +566,104 @@ describe('MessageDispatcher delete routing integration', () => {
     });
 
     expect(mockModifyRecordHandler.handleModifyRecordReply).toHaveBeenCalled();
+  });
+
+  it('handles explicit /delete_confirm and /delete_cancel via MessageDispatcher', async () => {
+    const mockMcpClient = {
+      deleteRecords: vi.fn().mockResolvedValue({
+        summary: { total: 1, succeeded: 1 },
+        results: [{ id: 'rec-dispatch-1', success: true }],
+      }),
+    };
+
+    const mockGateway = {
+      sendMessage: vi.fn().mockResolvedValue({ messageId: 'reply-del' } as any),
+      sendTypingPresence: vi.fn().mockResolvedValue(undefined),
+      clearTypingPresence: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const messageStore = new TransactionMessageStore();
+    messageStore.recordMessageMapping('receipt-msg-cancel-cmd', {
+      recordId: 'rec-cancel-1',
+      accountId: 'acc-1',
+      amount: -15000,
+      channel: 'telegram',
+    });
+    messageStore.recordMessageMapping('receipt-msg-confirm-cmd', {
+      recordId: 'rec-dispatch-1',
+      accountId: 'acc-1',
+      amount: -30000,
+      channel: 'telegram',
+    });
+
+    const context = createTestAppContext({
+      gateway: mockGateway,
+      wallet: {
+        client: mockMcpClient,
+        cache: {
+          getAccounts: () => [{ id: 'acc-1', name: 'BCA', currency: 'IDR' }],
+          getCategories: () => [{ id: 'cat-1', name: 'Makan' }],
+        },
+        transactionMessages: messageStore,
+      },
+    });
+
+    const dispatcher = new MessageDispatcher(context);
+
+    // 1. Cancel via command
+    await dispatcher.handleIncomingUserMessage({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: '/delete_cancel receipt-msg-cancel-cmd',
+    });
+    expect(mockMcpClient.deleteRecords).not.toHaveBeenCalled();
+    expect(mockGateway.sendMessage).toHaveBeenCalledWith(
+      'telegram',
+      'chat-1',
+      expect.stringContaining('dibatalkan')
+    );
+
+    // 2. Confirm via command
+    await dispatcher.handleIncomingUserMessage({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: '/delete_confirm receipt-msg-confirm-cmd',
+    });
+    expect(mockMcpClient.deleteRecords).toHaveBeenCalledWith(['rec-dispatch-1']);
+    expect(messageStore.hasMapping('receipt-msg-confirm-cmd')).toBe(false);
+  });
+
+  it('renders English locale delete confirm prompt correctly', () => {
+    const enDict = getDictionary('en');
+    const prompt = enDict.records.deleteConfirmPrompt({
+      transactionTitle: 'Coffee at Starbucks',
+      formattedAmount: '$5.50',
+      accountName: 'Chase Checking',
+      categoryName: 'Food & Drinks',
+      recordTimestampDisplay: '11/06/2026, 21:00',
+      transactionTypeIcon: '💸',
+      isTransfer: false,
+    });
+    expect(prompt).toContain('Delete transaction Coffee at Starbucks?');
+    expect(prompt).toContain('Chase Checking');
+    expect(prompt).toContain('Confirm delete this transaction?');
+
+    const transferPrompt = enDict.records.deleteConfirmPrompt({
+      transactionTitle: 'Transfer',
+      formattedAmount: '$500.00',
+      accountName: 'Checking',
+      destinationAccountName: 'Savings',
+      categoryName: 'Transfer',
+      recordTimestampDisplay: '11/06/2026, 21:00',
+      transactionTypeIcon: '🔄',
+      isTransfer: true,
+    });
+    expect(transferPrompt).toContain('Delete this Transfer?');
+    expect(transferPrompt).toContain('Checking ➔ Savings');
   });
 
 });

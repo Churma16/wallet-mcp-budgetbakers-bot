@@ -4,7 +4,7 @@ import type {
   SupportedMessengerChannel,
 } from '../../gateway/index.js';
 import { createTelegramDeleteConfirmInlineKeyboard } from '../../gateway/index.js';
-import type { WalletCacheService, WalletMcpClientService } from '../../wallet/index.js';
+import type { WalletCacheService, WalletMcpClientService, StoredRecordMessageMapping } from '../../wallet/index.js';
 import { TransactionMessageStore } from '../../wallet/index.js';
 import {
   formatCurrencyAmount,
@@ -150,46 +150,16 @@ export class DeleteRecordHandler {
     }
 
     // Format confirmation prompt card
-    const finalAmount = mapping.amount ?? 0;
-    const isTransfer = mapping.isTransfer === true;
-    const isExpense = finalAmount < 0;
-    const transactionTypeIcon = isTransfer ? '🔄' : isExpense ? '💸' : '💰';
-
-    const cachedAccounts = this.walletCacheService.getAccounts();
-    const targetAccount = cachedAccounts.find(account => account.id === mapping.accountId);
-    const resolvedCurrency = mapping.currency || targetAccount?.currency || getDefaultCurrency();
-    const formattedAmount = formatCurrencyAmount(finalAmount, resolvedCurrency, dictionary.languageCode);
-    const resolvedAccountName = targetAccount?.name || mapping.accountName || 'Wallet';
-
-    const cachedCategories = this.walletCacheService.getCategories();
-    const defaultCategoryName = isTransfer ? dictionary.labels.transfer : (dictionary.labels.defaultCategory || 'Umum');
-    const finalCategoryName =
-      mapping.categoryName ||
-      cachedCategories.find(category => category.id === mapping.categoryId)?.name ||
-      defaultCategoryName;
-
-    const recordTimestampDisplay = formatTransactionDate(
-      mapping.recordDate || mapping.createdAt,
-      dictionary.languageCode
-    );
-
-    const defaultTitle = isTransfer
-      ? dictionary.labels.transfer
-      : (isExpense ? dictionary.labels.expense : dictionary.labels.income);
-    const displayTitle = resolveTransactionDisplayTitle({
-      counterParty: mapping.counterParty,
-      note: mapping.note,
-      defaultTitle,
-    });
+    const displayContext = this.resolveRecordDisplayContext(mapping, dictionary);
 
     const promptText = dictionary.records.deleteConfirmPrompt({
-      transactionTitle: displayTitle,
-      formattedAmount,
-      accountName: resolvedAccountName,
-      categoryName: finalCategoryName,
-      recordTimestampDisplay,
-      transactionTypeIcon,
-      isTransfer,
+      transactionTitle: displayContext.displayTitle,
+      formattedAmount: displayContext.formattedAmount,
+      accountName: displayContext.resolvedAccountName,
+      categoryName: displayContext.finalCategoryName,
+      recordTimestampDisplay: displayContext.recordTimestampDisplay,
+      transactionTypeIcon: displayContext.transactionTypeIcon,
+      isTransfer: displayContext.isTransfer,
       destinationAccountName: mapping.destinationAccountName,
       labels: mapping.labels,
     });
@@ -297,46 +267,16 @@ export class DeleteRecordHandler {
       this.transactionMessageStore.deleteMessageMapping(targetMessageId);
 
       // Format response receipt
-      const finalAmount = mapping.amount ?? 0;
-      const isTransfer = mapping.isTransfer === true;
-      const isExpense = finalAmount < 0;
-      const transactionTypeIcon = isTransfer ? '🔄' : isExpense ? '💸' : '💰';
-
-      const cachedAccounts = this.walletCacheService.getAccounts();
-      const targetAccount = cachedAccounts.find(account => account.id === mapping.accountId);
-      const resolvedCurrency = mapping.currency || targetAccount?.currency || getDefaultCurrency();
-      const formattedAmount = formatCurrencyAmount(finalAmount, resolvedCurrency, dictionary.languageCode);
-      const resolvedAccountName = targetAccount?.name || mapping.accountName || 'Wallet';
-
-      const cachedCategories = this.walletCacheService.getCategories();
-      const defaultCategoryName = isTransfer ? dictionary.labels.transfer : (dictionary.labels.defaultCategory || 'Umum');
-      const finalCategoryName =
-        mapping.categoryName ||
-        cachedCategories.find(category => category.id === mapping.categoryId)?.name ||
-        defaultCategoryName;
-
-      const recordTimestampDisplay = formatTransactionDate(
-        mapping.recordDate || mapping.createdAt,
-        dictionary.languageCode
-      );
-
-      const defaultTitle = isTransfer
-        ? dictionary.labels.transfer
-        : (isExpense ? dictionary.labels.expense : dictionary.labels.income);
-      const displayTitle = resolveTransactionDisplayTitle({
-        counterParty: mapping.counterParty,
-        note: mapping.note,
-        defaultTitle,
-      });
+      const displayContext = this.resolveRecordDisplayContext(mapping, dictionary);
 
       const responseText = dictionary.records.deleteSuccess({
-        transactionTitle: displayTitle,
-        formattedAmount,
-        accountName: resolvedAccountName,
-        categoryName: finalCategoryName,
-        recordTimestampDisplay,
-        transactionTypeIcon,
-        isTransfer,
+        transactionTitle: displayContext.displayTitle,
+        formattedAmount: displayContext.formattedAmount,
+        accountName: displayContext.resolvedAccountName,
+        categoryName: displayContext.finalCategoryName,
+        recordTimestampDisplay: displayContext.recordTimestampDisplay,
+        transactionTypeIcon: displayContext.transactionTypeIcon,
+        isTransfer: displayContext.isTransfer,
         destinationAccountName: mapping.destinationAccountName,
         labels: mapping.labels,
       });
@@ -359,5 +299,52 @@ export class DeleteRecordHandler {
       );
       return true;
     }
+  }
+
+  private resolveRecordDisplayContext(
+    mapping: StoredRecordMessageMapping,
+    dictionary: ReturnType<typeof getDictionary>
+  ) {
+    const finalAmount = mapping.amount ?? 0;
+    const isTransfer = mapping.isTransfer === true;
+    const isExpense = finalAmount < 0;
+    const transactionTypeIcon = isTransfer ? '🔄' : isExpense ? '💸' : '💰';
+
+    const cachedAccounts = this.walletCacheService.getAccounts();
+    const targetAccount = cachedAccounts.find(account => account.id === mapping.accountId);
+    const resolvedCurrency = mapping.currency || targetAccount?.currency || getDefaultCurrency();
+    const formattedAmount = formatCurrencyAmount(finalAmount, resolvedCurrency, dictionary.languageCode);
+    const resolvedAccountName = targetAccount?.name || mapping.accountName || 'Wallet';
+
+    const cachedCategories = this.walletCacheService.getCategories();
+    const defaultCategoryName = isTransfer ? dictionary.labels.transfer : (dictionary.labels.defaultCategory || 'Umum');
+    const finalCategoryName =
+      mapping.categoryName ||
+      cachedCategories.find(category => category.id === mapping.categoryId)?.name ||
+      defaultCategoryName;
+
+    const recordTimestampDisplay = formatTransactionDate(
+      mapping.recordDate || mapping.createdAt,
+      dictionary.languageCode
+    );
+
+    const defaultTitle = isTransfer
+      ? dictionary.labels.transfer
+      : (isExpense ? dictionary.labels.expense : dictionary.labels.income);
+    const displayTitle = resolveTransactionDisplayTitle({
+      counterParty: mapping.counterParty,
+      note: mapping.note,
+      defaultTitle,
+    });
+
+    return {
+      displayTitle,
+      formattedAmount,
+      resolvedAccountName,
+      finalCategoryName,
+      recordTimestampDisplay,
+      transactionTypeIcon,
+      isTransfer,
+    };
   }
 }

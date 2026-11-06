@@ -212,6 +212,90 @@ describe('Telegram Menu and Interactive Guide Gateway Integration', () => {
         textPayload: '/rescan 180m',
       });
     });
+
+    it('handles delete:confirm callback query, edits message, and dispatches /delete_confirm message', async () => {
+      const mockUserMessageReceived = vi.fn().mockResolvedValue(undefined);
+      const adapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, mockUserMessageReceived);
+      const handlers: Record<string, (ctx: any) => Promise<void>> = {};
+
+      const mockBot: any = {
+        use: vi.fn(),
+        on: vi.fn((event: string, handler: any) => {
+          handlers[event] = handler;
+        }),
+        catch: vi.fn(),
+      };
+
+      adapter.setupBotHandlers(mockBot);
+      expect(handlers['callback_query:data']).toBeDefined();
+
+      const mockEditMessageText = vi.fn().mockResolvedValue({});
+      const mockAnswerCallbackQuery = vi.fn().mockResolvedValue({});
+
+      const mockContext = {
+        callbackQuery: {
+          data: 'delete:confirm:msg-999',
+        },
+        chat: { id: 123456789 },
+        from: { id: 123456789 },
+        editMessageText: mockEditMessageText,
+        answerCallbackQuery: mockAnswerCallbackQuery,
+      };
+
+      await handlers['callback_query:data'](mockContext);
+
+      expect(mockAnswerCallbackQuery).toHaveBeenCalledTimes(1);
+      expect(mockEditMessageText).toHaveBeenCalledWith(
+        expect.stringContaining('Menghapus transaksi'),
+        expect.objectContaining({ parse_mode: 'HTML' })
+      );
+      expect(mockUserMessageReceived).toHaveBeenCalledWith({
+        channel: 'telegram',
+        messageType: 'text',
+        chatIdentifier: '123456789',
+        senderIdentifier: '123456789',
+        textPayload: '/delete_confirm msg-999',
+      });
+    });
+
+    it('handles delete:cancel callback query, edits message with cancelled notice, and answers query', async () => {
+      const mockUserMessageReceived = vi.fn().mockResolvedValue(undefined);
+      const adapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, mockUserMessageReceived);
+      const handlers: Record<string, (ctx: any) => Promise<void>> = {};
+
+      const mockBot: any = {
+        use: vi.fn(),
+        on: vi.fn((event: string, handler: any) => {
+          handlers[event] = handler;
+        }),
+        catch: vi.fn(),
+      };
+
+      adapter.setupBotHandlers(mockBot);
+      expect(handlers['callback_query:data']).toBeDefined();
+
+      const mockEditMessageText = vi.fn().mockResolvedValue({});
+      const mockAnswerCallbackQuery = vi.fn().mockResolvedValue({});
+
+      const mockContext = {
+        callbackQuery: {
+          data: 'delete:cancel:msg-999',
+        },
+        chat: { id: 123456789 },
+        from: { id: 123456789 },
+        editMessageText: mockEditMessageText,
+        answerCallbackQuery: mockAnswerCallbackQuery,
+      };
+
+      await handlers['callback_query:data'](mockContext);
+
+      expect(mockAnswerCallbackQuery).toHaveBeenCalledTimes(1);
+      expect(mockEditMessageText).toHaveBeenCalledWith(
+        expect.stringContaining('dibatalkan'),
+        expect.objectContaining({ parse_mode: 'HTML' })
+      );
+      expect(mockUserMessageReceived).not.toHaveBeenCalled();
+    });
   });
 
   describe('Security Guardrails on Callback Queries', () => {
