@@ -38,6 +38,12 @@ export interface MessagingAdapter {
   clearTypingPresence(targetChatIdentifier: string): Promise<void>;
   sendBroadcastNotification(messageText: string): Promise<SentMessageReceipt | void>;
   editBroadcastNotification?(messageId: string, messageText: string): Promise<boolean>;
+  editTextMessage?(
+    targetChatIdentifier: string,
+    messageId: string,
+    messageText: string,
+    options?: SendTextMessageOptions
+  ): Promise<boolean>;
   getConnectionState?(): AdapterConnectionState;
 }
 

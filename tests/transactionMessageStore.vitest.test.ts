@@ -132,4 +132,22 @@ describe('TransactionMessageStore', () => {
     const lingeringTmp = files.filter(f => f.includes('.tmp.'));
     expect(lingeringTmp).toHaveLength(0);
   });
+
+  it('deletes message mappings by recordId', () => {
+    const store = new TransactionMessageStore(storageFile);
+    store.recordMessageMapping('msg-1', { recordId: 'rec-target', accountId: 'acc-1' });
+    store.recordMessageMapping('msg-2', { recordId: 'rec-target', accountId: 'acc-1' });
+    store.recordMessageMapping('msg-3', { recordId: 'rec-other', accountId: 'acc-2' });
+
+    expect(store.size()).toBe(3);
+    const deletedCount = store.deleteMessageMappingsByRecordId('rec-target');
+    expect(deletedCount).toBe(2);
+    expect(store.size()).toBe(1);
+    expect(store.hasMapping('msg-1')).toBe(false);
+    expect(store.hasMapping('msg-2')).toBe(false);
+    expect(store.hasMapping('msg-3')).toBe(true);
+
+    expect(store.deleteMessageMappingsByRecordId('')).toBe(0);
+    expect(store.deleteMessageMappingsByRecordId('non-existent')).toBe(0);
+  });
 });

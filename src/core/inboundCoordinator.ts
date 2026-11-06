@@ -351,8 +351,12 @@ export async function coordinateInboundTransactionCandidate(
         applicationLogger.error(
           `[Retroactive Enrichment Error] Failed to patch record ${matchedRecord.id}: ${
             enrichError instanceof Error ? enrichError.message : String(enrichError)
-          }. Falling back to correlation notice.`
+          }. Purging stale candidate and falling back to correlation notice.`
         );
+        deps.enrichmentPoolService?.removeCandidate(matchedRecord.id);
+        if (deps.transactionMessageStore) {
+          deps.transactionMessageStore.deleteMessageMappingsByRecordId?.(matchedRecord.id);
+        }
       }
     }
 

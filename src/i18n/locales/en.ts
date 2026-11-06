@@ -264,6 +264,9 @@ export const englishDictionary: ResponseDictionary = {
       if (params.matchedCategoryName && !isTransfer) {
         lines.push(`Category: ${params.matchedCategoryName}`);
       }
+      if (params.note && params.note !== params.counterParty) {
+        lines.push(`📝 _${params.note}_`);
+      }
       if (params.isBankSyncedAccount) {
         lines.push('💡 _This account is linked to Wallet bank sync._');
       }

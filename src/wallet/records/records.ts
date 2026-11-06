@@ -20,6 +20,7 @@ import { WalletMcpRequestError } from '../mcp/errors.js';
 import {
   validateCreateRecordsResponse,
   validateDeleteRecordsResponse,
+  validatePatchRecordsResponse,
 } from './recordValidation.js';
 import {
   resolveAndEnsureLabels,
@@ -190,10 +191,7 @@ export async function patchRecords(
     );
   }
 
-  return (patchResult as WalletPatchRecordsResponse) || {
-    summary: { total: sanitizedPatchList.length, succeeded: sanitizedPatchList.length },
-    results: sanitizedPatchList.map((p, idx) => ({ id: p.id, inputIndex: idx, success: true })),
-  };
+  return validatePatchRecordsResponse(patchResult, sanitizedPatchList.length);
 }
 
 

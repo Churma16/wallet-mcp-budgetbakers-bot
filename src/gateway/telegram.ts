@@ -21,6 +21,7 @@ import {
 import {
   createTelegramGuideInlineKeyboard,
   createTelegramMainReplyKeyboard,
+  createTelegramRescanInlineKeyboard,
   getTelegramBotCommands,
   getTelegramGuideTopicContent,
 } from './telegramMenu.js';
@@ -500,11 +501,13 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     return await this.sendTextMessage(this.normalizedAllowedUserId, messageText);
   }
 
-  public async editBroadcastNotification(
+  public async editTextMessage(
+    targetChatIdentifier: string,
     messageId: string,
-    messageText: string
+    messageText: string,
+    options?: SendTextMessageOptions
   ): Promise<boolean> {
-    if (!this.botInstance || !this.normalizedAllowedUserId) {
+    if (!this.botInstance) {
       return false;
     }
 
@@ -514,14 +517,27 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     }
 
     const formattedHtmlText = formatTelegramHtml(messageText);
+    const replyMarkup = options?.replyMarkup as any;
 
     try {
-      await this.botInstance.api.editMessageText(
-        this.normalizedAllowedUserId,
-        numericMessageId,
-        formattedHtmlText,
-        { parse_mode: 'HTML' }
-      );
+      if (replyMarkup) {
+        await this.botInstance.api.editMessageText(
+          targetChatIdentifier,
+          numericMessageId,
+          formattedHtmlText,
+          {
+            parse_mode: 'HTML',
+            reply_markup: replyMarkup,
+          }
+        );
+      } else {
+        await this.botInstance.api.editMessageText(
+          targetChatIdentifier,
+          numericMessageId,
+          formattedHtmlText,
+          { parse_mode: 'HTML' }
+        );
+      }
       return true;
     } catch (htmlEditError: unknown) {
       const errorMessage = htmlEditError instanceof Error ? htmlEditError.message : String(htmlEditError);
@@ -534,11 +550,20 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       );
 
       try {
-        await this.botInstance.api.editMessageText(
-          this.normalizedAllowedUserId,
-          numericMessageId,
-          messageText
-        );
+        if (replyMarkup) {
+          await this.botInstance.api.editMessageText(
+            targetChatIdentifier,
+            numericMessageId,
+            messageText,
+            { reply_markup: replyMarkup }
+          );
+        } else {
+          await this.botInstance.api.editMessageText(
+            targetChatIdentifier,
+            numericMessageId,
+            messageText
+          );
+        }
         return true;
       } catch (fallbackEditError: unknown) {
         applicationLogger.warn(
@@ -547,6 +572,16 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
         return false;
       }
     }
+  }
+
+  public async editBroadcastNotification(
+    messageId: string,
+    messageText: string
+  ): Promise<boolean> {
+    if (!this.normalizedAllowedUserId) {
+      return false;
+    }
+    return this.editTextMessage(this.normalizedAllowedUserId, messageId, messageText);
   }
 
   public setupBotHandlers(bot: Bot): void {
@@ -594,6 +629,27 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
         await ctx.answerCallbackQuery();
       } else if (callbackData.startsWith('settings:')) {
         await this.handleSettingsCallbackQuery(ctx, callbackData);
+      } else if (callbackData.startsWith('rescan:')) {
+        await ctx.answerCallbackQuery();
+        const minutes = callbackData.replace('rescan:', '');
+        const chatId = String(ctx.chat?.id);
+        const senderIdentifier = ctx.from?.id ? String(ctx.from.id) : chatId;
+
+        try {
+          const currentLanguage = getActiveLanguage();
+          const initiatedText = currentLanguage === 'en' ? '<i>Rescan initiated...</i>' : '<i>Rescan dimulai...</i>';
+          await ctx.editMessageText(initiatedText, { parse_mode: 'HTML' });
+        } catch {
+          // ignore edit errors
+        }
+
+        await this.onUserMessageReceived({
+          channel: 'telegram',
+          messageType: 'text',
+          chatIdentifier: chatId,
+          senderIdentifier,
+          textPayload: `/rescan ${minutes}m`,
+        });
       } else {
         await ctx.answerCallbackQuery();
       }

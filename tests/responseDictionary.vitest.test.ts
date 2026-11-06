@@ -200,14 +200,18 @@ describe('response dictionaries and localized formatting', () => {
     };
 
     setActiveLanguage('id');
-    expect(formatPendingEmailTransactionNotification(pending, 1)).toContain('Pembayaran Baru');
+    const idFormatted = formatPendingEmailTransactionNotification(pending, 1);
+    expect(idFormatted).toContain('Pembayaran Baru');
+    expect(idFormatted).toContain('📝 _Pembayaran QRIS Starbucks_');
     expect(formatPendingEmailTransactionNotification(pending, 2)).toContain('(#101)');
     expect(formatPendingEmailTransactionNotification(pending, 1)).toContain('Balas *Ya* atau *Catat*');
     expect(formatPendingConfirmationSuccess(pending)).toContain('Transaksi Dicatat ke Wallet!');
     expect(formatPendingCancellationMessage(pending)).toContain('Dibatalkan');
 
     setActiveLanguage('en');
-    expect(formatPendingEmailTransactionNotification(pending, 1)).toContain('New Payment');
+    const enFormatted = formatPendingEmailTransactionNotification(pending, 1);
+    expect(enFormatted).toContain('New Payment');
+    expect(enFormatted).toContain('📝 _Pembayaran QRIS Starbucks_');
     expect(formatPendingEmailTransactionNotification(pending, 2)).toContain('(#101)');
     expect(formatPendingEmailTransactionNotification(pending, 1)).toContain('Reply *Yes* or *Record*');
     expect(formatPendingConfirmationSuccess(pending)).toContain('Transaction Recorded to Wallet!');

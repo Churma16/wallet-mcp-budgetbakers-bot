@@ -355,6 +355,34 @@ export class MessagingGatewayService {
 
     return anyEdited;
   }
+
+  /**
+   * Attempts to edit an existing sent text message on a specific channel.
+   * Returns true if the message was successfully edited.
+   */
+  public async editMessage(
+    channel: SupportedMessengerChannel,
+    targetChatIdentifier: string,
+    messageId: string,
+    messageText: string,
+    options?: SendTextMessageOptions
+  ): Promise<boolean> {
+    const adapter = this.adapterMap.get(channel);
+    if (!adapter || typeof adapter.editTextMessage !== 'function') {
+      return false;
+    }
+
+    try {
+      return await adapter.editTextMessage(targetChatIdentifier, messageId, messageText, options);
+    } catch (editError: unknown) {
+      applicationLogger.warn(
+        `[WARN] Failed to edit message on [${channel.toUpperCase()}] (#${messageId}): ${
+          editError instanceof Error ? editError.message : String(editError)
+        }`
+      );
+      return false;
+    }
+  }
 }
 
 export { MessagingGatewayService as GatewayCoordinator };

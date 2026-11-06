@@ -873,6 +873,7 @@ export function formatPendingEmailTransactionNotification(
     counterParty: pendingItem.counterParty,
     matchedCategoryName: pendingItem.matchedCategoryName,
     accountNameHint: pendingItem.accountNameHint,
+    note: pendingItem.note,
     referenceNumber: pendingItem.referenceNumber,
     isBankSyncedAccount: pendingItem.isBankSyncedAccount,
     totalPendingCount,

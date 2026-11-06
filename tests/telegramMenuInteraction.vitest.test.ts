@@ -167,6 +167,51 @@ describe('Telegram Menu and Interactive Guide Gateway Integration', () => {
       expect(mockEditMessageText).not.toHaveBeenCalled();
       expect(mockAnswerCallbackQuery).toHaveBeenCalledTimes(1);
     });
+
+    it('handles rescan duration callback query, edits message, and dispatches synthetic message', async () => {
+      const mockUserMessageReceived = vi.fn().mockResolvedValue(undefined);
+      const adapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, mockUserMessageReceived);
+      const handlers: Record<string, (ctx: any) => Promise<void>> = {};
+
+      const mockBot: any = {
+        use: vi.fn(),
+        on: vi.fn((event: string, handler: any) => {
+          handlers[event] = handler;
+        }),
+        catch: vi.fn(),
+      };
+
+      adapter.setupBotHandlers(mockBot);
+      expect(handlers['callback_query:data']).toBeDefined();
+
+      const mockEditMessageText = vi.fn().mockResolvedValue({});
+      const mockAnswerCallbackQuery = vi.fn().mockResolvedValue({});
+
+      const mockContext = {
+        callbackQuery: {
+          data: 'rescan:180',
+        },
+        chat: { id: 123456789 },
+        from: { id: 123456789 },
+        editMessageText: mockEditMessageText,
+        answerCallbackQuery: mockAnswerCallbackQuery,
+      };
+
+      await handlers['callback_query:data'](mockContext);
+
+      expect(mockAnswerCallbackQuery).toHaveBeenCalledTimes(1);
+      expect(mockEditMessageText).toHaveBeenCalledWith(
+        expect.stringContaining('Rescan'),
+        expect.objectContaining({ parse_mode: 'HTML' })
+      );
+      expect(mockUserMessageReceived).toHaveBeenCalledWith({
+        channel: 'telegram',
+        messageType: 'text',
+        chatIdentifier: '123456789',
+        senderIdentifier: '123456789',
+        textPayload: '/rescan 180m',
+      });
+    });
   });
 
   describe('Security Guardrails on Callback Queries', () => {

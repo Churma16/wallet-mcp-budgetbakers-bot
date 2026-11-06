@@ -143,6 +143,42 @@ describe('In-Place Notification Enrichment and Channel Source Icons', () => {
       const edited = await gateway.editBroadcastNotification({ console: '1042' }, 'Updated text');
       expect(edited).toBe(false);
     });
+
+    it('dispatches editMessage to target adapter with options', async () => {
+      const gateway = new MessagingGatewayService();
+      const mockTelegramAdapter = {
+        channelName: 'telegram' as const,
+        startConnection: vi.fn(),
+        sendTextMessage: vi.fn(),
+        sendTypingPresence: vi.fn(),
+        clearTypingPresence: vi.fn(),
+        sendBroadcastNotification: vi.fn(),
+        editTextMessage: vi.fn().mockResolvedValue(true),
+        getConnectionState: () => 'connected' as const,
+      };
+
+      gateway.registerAdapter(mockTelegramAdapter);
+      const edited = await gateway.editMessage('telegram', 'chat-1', 'msg-1', 'New Text', { replyMarkup: {} });
+      expect(edited).toBe(true);
+      expect(mockTelegramAdapter.editTextMessage).toHaveBeenCalledWith('chat-1', 'msg-1', 'New Text', { replyMarkup: {} });
+    });
+
+    it('returns false when adapter is missing or has no editTextMessage or throws', async () => {
+      const gateway = new MessagingGatewayService();
+      expect(await gateway.editMessage('telegram', 'chat-1', 'msg-1', 'Text')).toBe(false);
+
+      const throwingAdapter = {
+        channelName: 'telegram' as const,
+        startConnection: vi.fn(),
+        sendTextMessage: vi.fn(),
+        sendTypingPresence: vi.fn(),
+        clearTypingPresence: vi.fn(),
+        sendBroadcastNotification: vi.fn(),
+        editTextMessage: vi.fn().mockRejectedValue(new Error('Network error')),
+      };
+      gateway.registerAdapter(throwingAdapter);
+      expect(await gateway.editMessage('telegram', 'chat-1', 'msg-1', 'Text')).toBe(false);
+    });
   });
 
   describe('InboundCoordinator in-place edit on transaction fusion', () => {
