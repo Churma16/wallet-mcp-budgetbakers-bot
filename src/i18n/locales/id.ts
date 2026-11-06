@@ -1,5 +1,9 @@
 import { formatEditSuccessReceipt, type EditReceiptLocaleConfig } from '../editReceiptFormatter.js';
 import {
+  buildActionReceiptCard,
+  buildActionPromptCard,
+} from '../../wallet/formatters/transactionCardBuilder.js';
+import {
   ResponseDictionary,
   RecordMessageParams,
   RecordEditSuccessParams,
@@ -67,16 +71,15 @@ export const indonesianDictionary: ResponseDictionary = {
 
   records: {
     singleSuccess(params: RecordMessageParams): string {
-      const labelLine = params.labels && params.labels.length > 0
-        ? `\n🔖 ${params.labels.map(label => `#${label}`).join(' ')}`
-        : '';
-
-      return [
-        `✅ *${params.transactionTitle}* berhasil dicatat!`,
-        '',
-        `${params.transactionTypeIcon} ${params.formattedAmount}  •  ${params.accountName}`,
-        `🏷️ ${params.categoryName}  •  ${params.recordTimestampDisplay}${labelLine}`,
-      ].join('\n');
+      return buildActionReceiptCard({
+        actionHeader: `✅ *${params.transactionTitle}* berhasil dicatat!`,
+        formattedAmount: params.formattedAmount,
+        accountName: params.accountName,
+        categoryName: params.categoryName,
+        recordTimestampDisplay: params.recordTimestampDisplay,
+        transactionTypeIcon: params.transactionTypeIcon,
+        labels: params.labels,
+      });
     },
 
     multipleSuccessHeader(totalRecordsCount: number, currentTimestamp: string): string {
@@ -99,29 +102,21 @@ export const indonesianDictionary: ResponseDictionary = {
     },
 
     deleteSuccess(params: RecordDeleteSuccessParams): string {
-      if (params.isTransfer) {
-        const route = params.destinationAccountName
-          ? `${params.accountName} ➔ ${params.destinationAccountName}`
-          : params.accountName;
-        return [
-          `🗑️ *Transfer berhasil dihapus!*`,
-          '',
-          `🔁 ${params.formattedAmount}`,
-          `💳 ${route}`,
-          `⏰ ${params.recordTimestampDisplay}`,
-        ].join('\n');
-      }
+      const actionHeader = params.isTransfer
+        ? '🗑️ *Transfer berhasil dihapus!*'
+        : `🗑️ *${params.transactionTitle}* berhasil dihapus!`;
 
-      const labelLine = params.labels && params.labels.length > 0
-        ? `\n🔖 ${params.labels.map(label => `#${label.replace(/^#/, '')}`).join(' ')}`
-        : '';
-
-      return [
-        `🗑️ *${params.transactionTitle}* berhasil dihapus!`,
-        '',
-        `${params.transactionTypeIcon} ${params.formattedAmount}  •  ${params.accountName}`,
-        `🏷️ ${params.categoryName}  •  ${params.recordTimestampDisplay}${labelLine}`,
-      ].join('\n');
+      return buildActionReceiptCard({
+        actionHeader,
+        formattedAmount: params.formattedAmount,
+        accountName: params.accountName,
+        categoryName: params.categoryName,
+        recordTimestampDisplay: params.recordTimestampDisplay,
+        transactionTypeIcon: params.transactionTypeIcon,
+        isTransfer: params.isTransfer,
+        destinationAccountName: params.destinationAccountName,
+        labels: params.labels,
+      });
     },
   },
 
@@ -275,55 +270,27 @@ export const indonesianDictionary: ResponseDictionary = {
       const isTransfer = params.typeLabel.includes('Transfer');
       const icon = params.sourceIcon || '📩';
       const headline = isTransfer ? '🔄 *Transfer Baru*' : `${icon} *Pembayaran Baru*`;
+      const promptBody = formatPendingConfirmationPromptId({
+        ticketId: params.ticketId,
+        totalPendingCount: params.totalPendingCount,
+      });
 
-      if (isTransfer) {
-        const route = params.destinationAccountNameHint
-          ? `${params.accountNameHint || 'Akun'} ➔ ${params.destinationAccountNameHint}`
-          : (params.accountNameHint || 'Akun');
-        return [
-          headline,
-          '',
-          `🔁 ${params.formattedAmount}`,
-          `💳 ${route}`,
-          `⏰ ${params.formattedTime}`,
-          '',
-          formatPendingConfirmationPromptId({
-            ticketId: params.ticketId,
-            totalPendingCount: params.totalPendingCount,
-          }),
-        ].join('\n');
-      }
-
-      const merchant = params.counterParty || params.bankDisplayName;
-      const category = params.matchedCategoryName || 'Umum';
-      const lines = [
+      return buildActionPromptCard({
         headline,
-        '',
-        `${params.formattedAmount} • ${params.accountNameHint || 'Akun'}`,
-      ];
-
-      if (merchant) {
-        lines.push(`🏪 ${merchant}`);
-      }
-
-      lines.push(`🏷️ ${category} • ${params.formattedTime}`);
-
-      if (params.note && params.note !== merchant) {
-        lines.push(`📝 ${params.note}`);
-      }
-      if (params.isBankSyncedAccount) {
-        lines.push('💡 _Rekening ini terhubung dengan bank sync Wallet._');
-      }
-
-      lines.push('');
-      lines.push(
-        formatPendingConfirmationPromptId({
-          ticketId: params.ticketId,
-          totalPendingCount: params.totalPendingCount,
-        })
-      );
-
-      return lines.join('\n');
+        formattedAmount: params.formattedAmount,
+        accountNameHint: params.accountNameHint,
+        defaultAccountLabel: 'Akun',
+        merchant: params.counterParty || params.bankDisplayName,
+        categoryName: params.matchedCategoryName,
+        defaultCategoryLabel: 'Umum',
+        formattedTime: params.formattedTime,
+        note: params.note,
+        isTransfer,
+        destinationAccountNameHint: params.destinationAccountNameHint,
+        isBankSyncedAccount: params.isBankSyncedAccount,
+        bankSyncedNotice: '💡 _Rekening ini terhubung dengan bank sync Wallet._',
+        promptBody,
+      });
     },
   },
 
@@ -378,30 +345,21 @@ export const indonesianDictionary: ResponseDictionary = {
 
   confirmation: {
     singleSuccess(params: PendingConfirmationSuccessParams): string {
-      if (params.isTransfer) {
-        const route = params.destinationAccountNameHint
-          ? `${params.accountNameHint || 'Akun'} ➔ ${params.destinationAccountNameHint}`
-          : (params.accountNameHint || 'Akun');
-        return [
-          `✅ *Transfer berhasil dicatat!*`,
-          '',
-          `🔁 ${params.formattedAmount}`,
-          `💳 ${route}`,
-          `⏰ ${params.formattedTime}`,
-        ].join('\n');
-      }
+      const actionHeader = params.isTransfer
+        ? '✅ *Transfer berhasil dicatat!*'
+        : `✅ *${params.merchantOrNote || 'Transaksi'}* berhasil dicatat!`;
 
-      const labelLine = params.labels && params.labels.length > 0
-        ? `\n🔖 ${params.labels.map(label => `#${label}`).join(' ')}`
-        : '';
-
-      const title = params.merchantOrNote || 'Transaksi';
-      return [
-        `✅ *${title}* berhasil dicatat!`,
-        '',
-        `${params.icon || '💸'} ${params.formattedAmount}  •  ${params.accountNameHint || 'Akun'}`,
-        `🏷️ ${params.matchedCategoryName || 'Umum'}  •  ${params.formattedTime}${labelLine}`,
-      ].join('\n');
+      return buildActionReceiptCard({
+        actionHeader,
+        formattedAmount: params.formattedAmount,
+        accountName: params.accountNameHint || 'Akun',
+        categoryName: params.matchedCategoryName || 'Umum',
+        recordTimestampDisplay: params.formattedTime,
+        transactionTypeIcon: params.icon || '💸',
+        isTransfer: params.isTransfer,
+        destinationAccountName: params.destinationAccountNameHint,
+        labels: params.labels,
+      });
     },
 
     bulkSuccess(items: PendingBulkItemParams[], currentTimestamp: string): string {

@@ -13,6 +13,10 @@ import {
   getApplicationTimezone,
   getDefaultCurrency,
 } from '../../config/applicationConfig.js';
+import {
+  buildActionReceiptCard,
+  buildActionPromptCard,
+} from './transactionCardBuilder.js';
 
 export { getApplicationTimezone };
 
@@ -946,57 +950,30 @@ export function formatEnrichedPendingEmailTransactionNotification(
     ? `_Updated via 📩 ${enrichedSourceDisplayName}_`
     : `_Diperbarui via 📩 ${enrichedSourceDisplayName}_`;
 
-  if (isTransfer) {
-    const route = pendingItem.destinationAccountNameHint
-      ? `${pendingItem.accountNameHint || (isEnglish ? 'Account' : 'Akun')} ➔ ${pendingItem.destinationAccountNameHint}`
-      : (pendingItem.accountNameHint || (isEnglish ? 'Account' : 'Akun'));
+  const promptBody = dictionary.emailPending.formatConfirmationPrompt({
+    ticketId: pendingItem.ticketId,
+    totalPendingCount,
+  });
 
-    return [
-      headline,
-      '',
-      `🔁 ${formattedAmount}`,
-      `💳 ${route}`,
-      `⏰ ${formattedTime}`,
-      '',
-      dictionary.emailPending.formatConfirmationPrompt({
-        ticketId: pendingItem.ticketId,
-        totalPendingCount,
-      }),
-      updateCue,
-    ].join('\n');
-  }
-
-  const merchant = pendingItem.counterParty || pendingItem.bankDisplayName;
-  const category = pendingItem.matchedCategoryName || (isEnglish ? 'General' : 'Umum');
-  const lines = [
+  return buildActionPromptCard({
     headline,
-    '',
-    `${formattedAmount} • ${pendingItem.accountNameHint || (isEnglish ? 'Account' : 'Akun')}`,
-  ];
-
-  if (merchant) {
-    lines.push(`🏪 ${merchant}`);
-  }
-
-  lines.push(`🏷️ ${category} • ${formattedTime}`);
-
-  if (pendingItem.note && pendingItem.note !== merchant) {
-    lines.push(`📝 ${pendingItem.note}`);
-  }
-  if (pendingItem.isBankSyncedAccount) {
-    lines.push(isEnglish ? '💡 _This account is linked to Wallet bank sync._' : '💡 _Rekening ini terhubung dengan bank sync Wallet._');
-  }
-
-  lines.push('');
-  lines.push(
-    dictionary.emailPending.formatConfirmationPrompt({
-      ticketId: pendingItem.ticketId,
-      totalPendingCount,
-    })
-  );
-  lines.push(updateCue);
-
-  return lines.join('\n');
+    formattedAmount,
+    accountNameHint: pendingItem.accountNameHint,
+    defaultAccountLabel: isEnglish ? 'Account' : 'Akun',
+    merchant: pendingItem.counterParty || pendingItem.bankDisplayName,
+    categoryName: pendingItem.matchedCategoryName,
+    defaultCategoryLabel: isEnglish ? 'General' : 'Umum',
+    formattedTime,
+    note: pendingItem.note,
+    isTransfer,
+    destinationAccountNameHint: pendingItem.destinationAccountNameHint,
+    isBankSyncedAccount: pendingItem.isBankSyncedAccount,
+    bankSyncedNotice: isEnglish
+      ? '💡 _This account is linked to Wallet bank sync._'
+      : '💡 _Rekening ini terhubung dengan bank sync Wallet._',
+    promptBody,
+    footerCue: updateCue,
+  });
 }
 
 /**
@@ -1045,23 +1022,22 @@ export function formatCorrelatedWalletRecordNotification(
     defaultTitle,
   });
 
-  if (isEnglish) {
-    return [
-      `ℹ️ *${title}* already recorded!`,
-      '',
-      `${transactionTypeIcon} ${formattedAmount}  •  ${resolvedAccount}`,
-      `🏷️ ${resolvedCategory}  •  ${timestamp}`,
-      `_No duplicate ticket created._`,
-    ].join('\n');
-  }
+  const actionHeader = isEnglish
+    ? `ℹ️ *${title}* already recorded!`
+    : `ℹ️ *${title}* sudah tercatat di Wallet!`;
+  const extraLines = [
+    isEnglish ? '_No duplicate ticket created._' : '_Tidak dibuat tiket duplikat._',
+  ];
 
-  return [
-    `ℹ️ *${title}* sudah tercatat di Wallet!`,
-    '',
-    `${transactionTypeIcon} ${formattedAmount}  •  ${resolvedAccount}`,
-    `🏷️ ${resolvedCategory}  •  ${timestamp}`,
-    `_Tidak dibuat tiket duplikat._`,
-  ].join('\n');
+  return buildActionReceiptCard({
+    actionHeader,
+    formattedAmount,
+    accountName: resolvedAccount,
+    categoryName: resolvedCategory,
+    recordTimestampDisplay: timestamp,
+    transactionTypeIcon,
+    extraLines,
+  });
 }
 
 /**
@@ -1109,25 +1085,20 @@ export function formatRetroactivelyEnrichedWalletRecordNotification(params: {
     merchant,
     defaultTitle,
   });
-  const labelLine = labels && labels.length > 0
-    ? `\n🔖 ${labels.map(l => `#${l}`).join(' ')}`
-    : '';
 
-  if (isEnglish) {
-    return [
-      `✨ *${title}* successfully updated!`,
-      '',
-      `${transactionTypeIcon} ${formattedAmount}  •  ${resolvedAccount}`,
-      `🏷️ ${resolvedCategory}  •  ${timestamp}${labelLine}`,
-    ].join('\n');
-  }
+  const actionHeader = isEnglish
+    ? `✨ *${title}* successfully updated!`
+    : `✨ *${title}* berhasil diperbarui!`;
 
-  return [
-    `✨ *${title}* berhasil diperbarui!`,
-    '',
-    `${transactionTypeIcon} ${formattedAmount}  •  ${resolvedAccount}`,
-    `🏷️ ${resolvedCategory}  •  ${timestamp}${labelLine}`,
-  ].join('\n');
+  return buildActionReceiptCard({
+    actionHeader,
+    formattedAmount,
+    accountName: resolvedAccount,
+    categoryName: resolvedCategory,
+    recordTimestampDisplay: timestamp,
+    transactionTypeIcon,
+    labels,
+  });
 }
 
 

@@ -1,4 +1,5 @@
 import type { ClearableRecordField, RecordEditSuccessParams } from './types.js';
+import { buildActionReceiptCard } from '../wallet/formatters/transactionCardBuilder.js';
 
 /**
  * Localization configuration for record edit success receipt cards.
@@ -21,52 +22,9 @@ export function formatEditSuccessReceipt(
     ? config.header(params.transactionTitle, params.isTransfer)
     : `${config.header}\n\n${params.transactionTitle}`;
 
-  if (params.isTransfer) {
-    const route = params.destinationAccountName
-      ? `${params.accountName} ➔ ${params.destinationAccountName}`
-      : params.accountName;
-
-    const lines = [
-      headerText,
-      '',
-      `🔁 ${params.formattedAmount}`,
-      `💳 ${route}`,
-      `⏰ ${params.recordTimestampDisplay}`,
-    ];
-
-    if (params.labels && params.labels.length > 0) {
-      lines.push(`🔖 ${params.labels.map(label => `#${label.replace(/^#/, '')}`).join(' ')}`);
-    }
-
-    if (params.movedFromAccountName) {
-      lines.push(config.accountMoved(params.movedFromAccountName, params.accountName));
-    }
-
-    const clearedLabels = [
-      ...(params.clearedFieldLabels || []),
-      ...((params.clearedFields || []).map(field => config.fieldNames[field] || field)),
-    ];
-
-    if (clearedLabels.length > 0) {
-      lines.push(`${config.clearedFieldsHeader} ${Array.from(new Set(clearedLabels)).join(', ')}`);
-    }
-
-    return lines.join('\n');
-  }
-
-  const lines = [
-    headerText,
-    '',
-    `${params.transactionTypeIcon} ${params.formattedAmount}  •  ${params.accountName}`,
-    `🏷️ ${params.categoryName}  •  ${params.recordTimestampDisplay}`,
-  ];
-
-  if (params.labels && params.labels.length > 0) {
-    lines.push(`🔖 ${params.labels.map(label => `#${label.replace(/^#/, '')}`).join(' ')}`);
-  }
-
+  const extraLines: string[] = [];
   if (params.movedFromAccountName) {
-    lines.push(config.accountMoved(params.movedFromAccountName, params.accountName));
+    extraLines.push(config.accountMoved(params.movedFromAccountName, params.accountName));
   }
 
   const clearedLabels = [
@@ -75,8 +33,19 @@ export function formatEditSuccessReceipt(
   ];
 
   if (clearedLabels.length > 0) {
-    lines.push(`${config.clearedFieldsHeader} ${Array.from(new Set(clearedLabels)).join(', ')}`);
+    extraLines.push(`${config.clearedFieldsHeader} ${Array.from(new Set(clearedLabels)).join(', ')}`);
   }
 
-  return lines.join('\n');
+  return buildActionReceiptCard({
+    actionHeader: headerText,
+    formattedAmount: params.formattedAmount,
+    accountName: params.accountName,
+    categoryName: params.categoryName,
+    recordTimestampDisplay: params.recordTimestampDisplay,
+    transactionTypeIcon: params.transactionTypeIcon,
+    isTransfer: params.isTransfer,
+    destinationAccountName: params.destinationAccountName,
+    labels: params.labels,
+    extraLines,
+  });
 }
