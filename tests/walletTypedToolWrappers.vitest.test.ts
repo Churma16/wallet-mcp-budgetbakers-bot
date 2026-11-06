@@ -311,7 +311,7 @@ describe('callDeleteDocuments', () => {
       expect(mockCallMcpTool).toHaveBeenCalledWith(
         WALLET_MCP_TOOL_NAMES.DELETE_DOCUMENTS,
         {
-          type: 'records',
+          documentType: 'records',
           ids: ['rec-123'],
         }
       );
@@ -367,7 +367,7 @@ describe('callDeleteDocuments', () => {
       await client.callDeleteDocuments({ type: 'records', ids: ['rec-del'] });
       expect(spyCallMcpTool).toHaveBeenCalledWith(
         WALLET_MCP_TOOL_NAMES.DELETE_DOCUMENTS,
-        { type: 'records', ids: ['rec-del'] }
+        { documentType: 'records', ids: ['rec-del'] }
       );
 
     });

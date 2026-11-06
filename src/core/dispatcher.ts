@@ -326,6 +326,41 @@ export class MessageDispatcher {
     await this.context.gateway.sendTypingPresence(event.channel, event.chatIdentifier);
 
     try {
+      // 0a. Explicit transaction delete confirmation or cancellation commands (e.g. from inline button callback)
+      if (
+        event.messageType === 'text' &&
+        event.textPayload &&
+        this.deleteRecordHandler.isDeleteConfirmationCommand(event.textPayload)
+      ) {
+        const handled = await this.deleteRecordHandler.handleDeleteConfirmationCommand(event);
+        if (handled) {
+          return;
+        }
+      }
+
+      if (
+        event.messageType === 'text' &&
+        event.textPayload &&
+        this.deleteRecordHandler.isDeleteCancellationCommand(event.textPayload)
+      ) {
+        const handled = await this.deleteRecordHandler.handleDeleteCancellationCommand(event);
+        if (handled) {
+          return;
+        }
+      }
+
+      // 0b. Conversational reply to an active deletion confirmation prompt (e.g. "ya", "batal")
+      if (
+        event.messageType === 'text' &&
+        event.textPayload &&
+        this.deleteRecordHandler.hasActiveConfirmation(event.chatIdentifier)
+      ) {
+        const handledConversational = await this.deleteRecordHandler.handleConversationalReply(event);
+        if (handledConversational) {
+          return;
+        }
+      }
+
       // 0. Reply-to-message transaction deletion (e.g. "hapus", "delete") or edit command (e.g. "c: Makan t: #jajan n: Kopi" or "e c:...")
       if (
         event.messageType === 'text' &&

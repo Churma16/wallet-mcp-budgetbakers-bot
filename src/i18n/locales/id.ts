@@ -8,6 +8,7 @@ import {
   RecordMessageParams,
   RecordEditSuccessParams,
   RecordDeleteSuccessParams,
+  RecordDeleteConfirmPromptParams,
   MultipleRecordsItemParams,
   PendingEmailNotificationParams,
   PendingConfirmationPromptParams,
@@ -118,6 +119,31 @@ export const indonesianDictionary: ResponseDictionary = {
         labels: params.labels,
       });
     },
+
+    deleteConfirmPrompt(params: RecordDeleteConfirmPromptParams): string {
+      const actionHeader = params.isTransfer
+        ? '⚠️ *Hapus Transfer ini?*'
+        : `⚠️ *Hapus transaksi ${params.transactionTitle}?*`;
+
+      return buildActionReceiptCard({
+        actionHeader,
+        formattedAmount: params.formattedAmount,
+        accountName: params.accountName,
+        categoryName: params.categoryName,
+        recordTimestampDisplay: params.recordTimestampDisplay,
+        transactionTypeIcon: params.transactionTypeIcon,
+        isTransfer: params.isTransfer,
+        destinationAccountName: params.destinationAccountName,
+        labels: params.labels,
+        extraLines: [
+          '',
+          'Konfirmasi hapus transaksi? Tindakan ini tidak dapat dibatalkan.',
+        ],
+      });
+    },
+    deleteConfirmButton: '🗑️ Hapus',
+    deleteCancelButton: '❌ Batal',
+    deleteCancelledText: '❌ _Penghapusan transaksi dibatalkan._',
   },
 
   balance: {

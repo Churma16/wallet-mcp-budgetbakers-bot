@@ -242,7 +242,7 @@ export async function deleteRecords(
   let deleteResult: unknown;
   try {
     deleteResult = await callDeleteDocuments(client, {
-      type: 'records',
+      documentType: 'records',
       ids: sanitizedList,
     });
   } catch (error) {
@@ -255,7 +255,7 @@ export async function deleteRecords(
       );
       try {
         const retryResult = await callDeleteDocuments(client, {
-          type: 'records',
+          documentType: 'records',
           ids: [...sanitizedList, partnerId],
         });
         return validateDeleteRecordsResponse(retryResult, sanitizedList.length + 1);
@@ -299,7 +299,7 @@ export async function deleteRecords(
     );
     try {
       const retryResult = await callDeleteDocuments(client, {
-        type: 'records',
+        documentType: 'records',
         ids: [...sanitizedList, partnerId],
       });
       return validateDeleteRecordsResponse(retryResult, sanitizedList.length + 1);

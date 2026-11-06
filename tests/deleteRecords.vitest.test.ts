@@ -31,7 +31,7 @@ describe('delete_documents tool wrappers and validation', () => {
       });
 
       expect(mockCaller.callMcpTool).toHaveBeenCalledWith('delete_documents', {
-        type: 'records',
+        documentType: 'records',
         ids: ['rec-123'],
       });
       expect(result).toEqual({
@@ -135,7 +135,7 @@ describe('deleteRecords service logic', () => {
     const result = await deleteRecords(mockClient, 'rec-100');
 
     expect(mockClient.callMcpTool).toHaveBeenCalledWith('delete_documents', {
-      type: 'records',
+      documentType: 'records',
       ids: ['rec-100'],
     });
     expect(result.summary?.succeeded).toBe(1);
@@ -153,7 +153,7 @@ describe('deleteRecords service logic', () => {
     const result = await deleteRecords(mockClient, ['rec-1', 'rec-2', 'rec-1', '  rec-2  ']);
 
     expect(mockClient.callMcpTool).toHaveBeenCalledWith('delete_documents', {
-      type: 'records',
+      documentType: 'records',
       ids: ['rec-1', 'rec-2'],
     });
     expect(result.summary?.succeeded).toBe(2);
@@ -183,11 +183,11 @@ describe('deleteRecords service logic', () => {
 
     expect(mockClient.callMcpTool).toHaveBeenCalledTimes(2);
     expect(mockClient.callMcpTool).toHaveBeenNthCalledWith(1, 'delete_documents', {
-      type: 'records',
+      documentType: 'records',
       ids: [leg1],
     });
     expect(mockClient.callMcpTool).toHaveBeenNthCalledWith(2, 'delete_documents', {
-      type: 'records',
+      documentType: 'records',
       ids: [leg1, leg2],
     });
     expect(result.summary?.succeeded).toBe(2);
@@ -216,7 +216,7 @@ describe('deleteRecords service logic', () => {
 
     expect(mockClient.callMcpTool).toHaveBeenCalledTimes(2);
     expect(mockClient.callMcpTool).toHaveBeenNthCalledWith(2, 'delete_documents', {
-      type: 'records',
+      documentType: 'records',
       ids: [leg1, leg2],
     });
     expect(result.summary?.succeeded).toBe(2);
@@ -251,7 +251,7 @@ describe('deleteRecords service logic', () => {
 
     expect(mockClient.callMcpTool).toHaveBeenCalledTimes(2);
     expect(mockClient.callMcpTool).toHaveBeenNthCalledWith(2, 'delete_documents', {
-      type: 'records',
+      documentType: 'records',
       ids: [leg1, leg2],
     });
     expect(result.summary?.succeeded).toBe(2);
@@ -281,7 +281,7 @@ describe('deleteRecords service logic', () => {
     });
     expect(deleteDocsResult).toBeDefined();
     expect(spy).toHaveBeenCalledWith('delete_documents', {
-      type: 'records',
+      documentType: 'records',
       ids: ['rec-1'],
     });
 
