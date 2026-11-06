@@ -346,7 +346,34 @@ export async function coordinateInboundTransactionCandidate(
         }
 
         if (!wasEdited) {
-          await messagingGateway.broadcastNotification(enrichedNotif);
+          const receipts = await messagingGateway.broadcastNotification(enrichedNotif);
+          if (deps.transactionMessageStore && receipts && matchedRecord?.id) {
+            for (const [channel, receipt] of Object.entries(receipts)) {
+              const messageId =
+                typeof receipt === 'object' && receipt !== null && 'messageId' in receipt
+                  ? String((receipt as { messageId: string }).messageId)
+                  : typeof receipt === 'string'
+                    ? receipt
+                    : undefined;
+
+              if (messageId) {
+                deps.transactionMessageStore.recordMessageMapping(messageId, {
+                  recordId: matchedRecord.id,
+                  accountId: matchedRecord.accountId,
+                  accountName: matchedRecord.accountName || poolCandidate?.accountName,
+                  currency: incomingEvidence.currency,
+                  recordDate: matchedRecord.recordDate || incomingEvidence.occurredAt,
+                  note: patchPayload.note || matchedRecord.note || poolCandidate?.note,
+                  categoryId: patchPayload.categoryId || matchedRecord.categoryId,
+                  categoryName: incomingCategoryName,
+                  amount: incomingEvidence.amount,
+                  counterParty:
+                    patchPayload.counterParty || matchedRecord.counterParty || incomingEvidence.merchant,
+                  channel,
+                });
+              }
+            }
+          }
         }
         return;
       } catch (enrichError) {

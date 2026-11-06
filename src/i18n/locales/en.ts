@@ -681,5 +681,9 @@ export const englishDictionary: ResponseDictionary = {
     recordEditFailed(reason: string): string {
       return `❌ Failed to update transaction: ${reason}`;
     },
+    recordDeleteNotFound: '⚠️ Transaction not found or the replied message has expired.',
+    recordDeleteFailed(reason: string): string {
+      return `❌ Failed to delete transaction: ${reason}`;
+    },
   },
 };

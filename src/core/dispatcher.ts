@@ -235,7 +235,8 @@ export class MessageDispatcher {
         context.wallet.client,
         context.wallet.cache,
         context.gateway,
-        context.wallet.transactionMessages
+        context.wallet.transactionMessages,
+        context.pending
       );
 
     this.modifyRecordHandler =

@@ -343,4 +343,78 @@ describe('InboundCoordinator Retroactive Record Enrichment', () => {
     const notifArg = mockMessaging.broadcastNotification.mock.calls[0][0];
     expect(notifArg).toContain('sudah tercatat di Wallet!');
   });
+
+  it('records newly broadcast notification message IDs in transactionMessageStore when !wasEdited', async () => {
+    const recordId = 'rec-broadcast-mapping-test';
+
+    enrichmentPool.addCandidate({
+      recordId,
+      accountId: 'acc-jago',
+      amount: -35000,
+      currency: 'IDR',
+      recordDate: '2026-11-05T13:00:00.000Z',
+      counterParty: 'Merchant',
+      note: 'Debit payment',
+    });
+
+    const mockMcpClient = {
+      fetchRecords: vi.fn().mockResolvedValue({ records: [] }),
+      patchRecords: vi.fn().mockResolvedValue({ summary: { total: 1, succeeded: 1 } }),
+    };
+
+    const mockMessaging = {
+      broadcastNotification: vi.fn().mockResolvedValue({ telegram: 'msg-retro-new-123' }),
+      editBroadcastNotification: vi.fn().mockResolvedValue(false),
+    };
+
+    const mockStore = {
+      recordMessageMapping: vi.fn(),
+      updateMessageMappingsByRecordId: vi.fn(),
+    };
+
+    await coordinateInboundTransactionCandidate(
+      {
+        parsedData: {
+          isTransaction: true,
+          transactionType: 'EXPENSE',
+          amount: -35000,
+          counterParty: 'Chatime',
+          accountNameHint: 'Jago Expense',
+          matchedAccountId: 'acc-jago',
+          matchedCategoryId: 'cat-food',
+          matchedCategoryName: 'Makanan & Minuman',
+          note: 'Chatime Hazelnut Chocolate',
+          recordDate: '2026-11-05T13:00:00.000Z',
+          explanation: 'Chatime receipt',
+        },
+        gateResult: { isCandidate: true },
+        sourceType: 'EMAIL',
+        evidenceSourceType: 'EMAIL_PAYMENT',
+        sourceId: 'email-chatime-1',
+        sourceDate: new Date('2026-11-05T13:10:00.000Z'),
+        sourceDisplayName: 'Chatime',
+        fallbackNote: 'Receipt',
+      },
+      {
+        walletCacheService: mockWalletCache as any,
+        pendingTransactionManager: pendingManager,
+        messagingGateway: mockMessaging as any,
+        defaultCurrency: 'IDR',
+        correlationService,
+        walletMcpClient: mockMcpClient as any,
+        enrichmentPoolService: enrichmentPool,
+        transactionMessageStore: mockStore as any,
+      }
+    );
+
+    expect(mockMessaging.broadcastNotification).toHaveBeenCalled();
+    expect(mockStore.recordMessageMapping).toHaveBeenCalledWith(
+      'msg-retro-new-123',
+      expect.objectContaining({
+        recordId,
+        counterParty: 'Chatime',
+        channel: 'telegram',
+      })
+    );
+  });
 });

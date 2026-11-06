@@ -680,5 +680,9 @@ export const indonesianDictionary: ResponseDictionary = {
     recordEditFailed(reason: string): string {
       return `❌ Gagal memperbarui transaksi: ${reason}`;
     },
+    recordDeleteNotFound: '⚠️ Transaksi tidak ditemukan atau pesan yang dibalas sudah kedaluwarsa.',
+    recordDeleteFailed(reason: string): string {
+      return `❌ Gagal menghapus transaksi: ${reason}`;
+    },
   },
 };

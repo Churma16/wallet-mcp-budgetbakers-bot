@@ -6,6 +6,7 @@ import {
 import { TransactionMessageStore } from '../src/wallet/records/transactionMessageStore.js';
 import { MessageDispatcher } from '../src/core/dispatcher.js';
 import { createTestAppContext } from './fixtures/testContext.js';
+import { applicationLogger } from '../src/lib/logger.js';
 import type { IncomingUserMessageEvent, MessagingGatewayService } from '../src/gateway/index.js';
 import type { WalletCacheService, WalletMcpClientService } from '../src/wallet/index.js';
 
@@ -122,7 +123,7 @@ describe('DeleteRecordHandler', () => {
     expect(mockMcpClient.deleteRecords).not.toHaveBeenCalled();
   });
 
-  it('sends warning and returns true if replied message has no mapping or expired', async () => {
+  it('sends warning and returns true if replied message has no mapping or expired for explicit hapus', async () => {
     const event: IncomingUserMessageEvent = {
       channel: 'telegram',
       senderIdentifier: 'user-1',
@@ -139,6 +140,70 @@ describe('DeleteRecordHandler', () => {
       'telegram',
       'chat-1',
       expect.stringContaining('Transaksi tidak ditemukan atau pesan yang dibalas sudah kedaluwarsa')
+    );
+  });
+
+  it('returns false for generic cancellation "batal" when no record mapping exists to allow downstream handlers', async () => {
+    const event: IncomingUserMessageEvent = {
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: 'batal',
+      replyToMessageId: 'msg-unknown',
+    };
+
+    const handled = await handler.handleDeleteRecordReply(event, Date.now());
+    expect(handled).toBe(false);
+    expect(mockMcpClient.deleteRecords).not.toHaveBeenCalled();
+    expect(mockGateway.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('cancels pending transaction if replied message matches an active pending ticket', async () => {
+    const mockPendingService = {
+      getAllPendingTransactions: vi.fn().mockReturnValue([
+        {
+          ticketId: 42,
+          counterParty: 'Gojez Store',
+          amount: 27000,
+          currency: 'IDR',
+          transactionType: 'EXPENSE',
+          notificationMessageIds: { telegram: 'msg-pending-ticket-42' },
+        },
+      ]),
+      rejectPendingTransaction: vi.fn().mockReturnValue({
+        ticketId: 42,
+        counterParty: 'Gojez Store',
+        amount: 27000,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+      }),
+    } as any;
+
+    const handlerWithPending = new DeleteRecordHandler(
+      mockMcpClient as WalletMcpClientService,
+      mockCacheService as WalletCacheService,
+      mockGateway as MessagingGatewayService,
+      messageStore,
+      mockPendingService
+    );
+
+    const event: IncomingUserMessageEvent = {
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: 'batal',
+      replyToMessageId: 'msg-pending-ticket-42',
+    };
+
+    const handled = await handlerWithPending.handleDeleteRecordReply(event, Date.now());
+    expect(handled).toBe(true);
+    expect(mockPendingService.rejectPendingTransaction).toHaveBeenCalledWith(42);
+    expect(mockGateway.sendMessage).toHaveBeenCalledWith(
+      'telegram',
+      'chat-1',
+      expect.stringContaining('#42')
     );
   });
 
@@ -231,6 +296,7 @@ describe('DeleteRecordHandler', () => {
   });
 
   it('handles deletion errors gracefully and retains mapping in store for retry', async () => {
+    const errorSpy = vi.spyOn(applicationLogger, 'error').mockImplementation(() => {});
     messageStore.recordMessageMapping('msg-error', {
       recordId: 'rec-error',
       accountId: 'acc-bca',
@@ -259,8 +325,12 @@ describe('DeleteRecordHandler', () => {
       'chat-1',
       expect.stringContaining('Gagal menghapus transaksi: BudgetBakers API rate limited')
     );
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to delete record 'rec-error': BudgetBakers API rate limited")
+    );
     // Mapping is preserved so user can retry later
     expect(messageStore.hasMapping('msg-error')).toBe(true);
+    errorSpy.mockRestore();
   });
 });
 
