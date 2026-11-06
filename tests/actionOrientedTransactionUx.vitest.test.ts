@@ -1185,7 +1185,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         destinationAccountNameHint: 'Jago',
         formattedTime: '13 Sep 2026',
       });
-      expect(transferId).toContain('Transfer Dicatat ke Wallet');
+      expect(transferId).toContain('Transfer berhasil dicatat!');
       expect(transferId).toContain('BCA ➔ Jago');
 
       const transferEn = enDict.confirmation.singleSuccess({
@@ -1196,7 +1196,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         destinationAccountNameHint: 'Savings',
         formattedTime: 'Sep 13, 2026',
       });
-      expect(transferEn).toContain('Transfer Recorded to Wallet');
+      expect(transferEn).toContain('Transfer successfully recorded!');
       expect(transferEn).toContain('Checking ➔ Savings');
 
       const expenseId = idDict.confirmation.singleSuccess({
@@ -1207,7 +1207,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         formattedTime: '13 Sep 2026',
         merchantOrNote: 'Gojek',
       });
-      expect(expenseId).toContain('Transaksi Dicatat ke Wallet');
+      expect(expenseId).toContain('berhasil dicatat!');
       expect(expenseId).toContain('Gojek');
 
       const expenseEn = enDict.confirmation.singleSuccess({
@@ -1218,7 +1218,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         formattedTime: 'Sep 13, 2026',
         merchantOrNote: 'Uber',
       });
-      expect(expenseEn).toContain('Transaction Recorded to Wallet');
+      expect(expenseEn).toContain('successfully recorded!');
       expect(expenseEn).toContain('Uber');
     });
   });
@@ -1259,7 +1259,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         Date.now()
       );
 
-      expect(mockGateway.lastMessage).toContain('Transaksi Dicatat ke Wallet');
+      expect(mockGateway.lastMessage).toContain('berhasil dicatat!');
 
       // Bulk success
       const item2 = pendingService.addPendingTransaction({
@@ -1314,7 +1314,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         pairingMode: 'new',
         accountId: 'acc-2',
       });
-      expect(mockGateway.lastMessage).toContain('Transfer Dicatat ke Wallet');
+      expect(mockGateway.lastMessage).toContain('Transfer berhasil dicatat!');
       expect(mockGateway.lastMessage).toContain('BCA Prioritas ➔ Jago Utama');
     });
 

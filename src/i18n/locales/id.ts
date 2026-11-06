@@ -333,35 +333,32 @@ export const indonesianDictionary: ResponseDictionary = {
   confirmation: {
     singleSuccess(params: PendingConfirmationSuccessParams): string {
       if (params.isTransfer) {
+        const route = params.destinationAccountNameHint
+          ? `${params.accountNameHint || 'Akun'} ➔ ${params.destinationAccountNameHint}`
+          : (params.accountNameHint || 'Akun');
         return [
-          `✅ *Transfer Dicatat ke Wallet!* (#${params.ticketId})`,
-          `🔄 ${params.formattedAmount}`,
-          `💳 Dari: ${params.accountNameHint}${params.destinationAccountNameHint ? ` ➔ ${params.destinationAccountNameHint}` : ''}`,
-          `_(${params.formattedTime})_`,
+          `✅ *Transfer berhasil dicatat!* (#${params.ticketId})`,
+          '',
+          `🔁 ${params.formattedAmount}`,
+          `💳 ${route}`,
+          `⏰ ${params.formattedTime}`,
         ].join('\n');
       }
 
-      const lines = [
-        `✅ *Transaksi Dicatat ke Wallet!* (#${params.ticketId})`,
-        `${params.icon || '💸'} ${params.merchantOrNote || 'Transaksi'} — ${params.formattedAmount}`,
-      ];
+      const labelLine = params.labels && params.labels.length > 0
+        ? `\n🔖 ${params.labels.map(label => `#${label}`).join(' ')}`
+        : '';
+      const noteLine = params.note && params.note !== params.merchantOrNote
+        ? `\n📝 _${params.note}_`
+        : '';
 
-      const metaParts: string[] = [];
-      if (params.accountNameHint) {
-        metaParts.push(`💳 ${params.accountNameHint}`);
-      }
-      if (params.matchedCategoryName) {
-        metaParts.push(`📂 ${params.matchedCategoryName}`);
-      }
-      if (params.labels && params.labels.length > 0) {
-        metaParts.push(`🔖 ${params.labels.map(label => `#${label}`).join(' ')}`);
-      }
-      if (metaParts.length > 0) {
-        lines.push(metaParts.join(' • '));
-      }
-
-      lines.push(`_(${params.formattedTime})_`);
-      return lines.join('\n');
+      const title = params.merchantOrNote || 'Transaksi';
+      return [
+        `✅ *${title}* berhasil dicatat! (#${params.ticketId})`,
+        '',
+        `${params.icon || '💸'} ${params.formattedAmount}  •  ${params.accountNameHint || 'Akun'}`,
+        `🏷️ ${params.matchedCategoryName || 'Umum'}  •  ${params.formattedTime}${labelLine}${noteLine}`,
+      ].join('\n');
     },
 
     bulkSuccess(items: PendingBulkItemParams[], currentTimestamp: string): string {

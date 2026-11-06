@@ -328,6 +328,8 @@ export async function coordinateInboundTransactionCandidate(
           categoryName: incomingCategoryName || currentCategoryName,
           accountName: matchedRecord.accountName || poolCandidate?.accountName || resolvedAccountName,
           note: patchPayload.note || matchedRecord.note || poolCandidate?.note,
+          recordDate: matchedRecord.recordDate || incomingEvidence.occurredAt,
+          labels: patchPayload.labels || poolCandidate?.labels,
         });
 
         let wasEdited = false;
@@ -371,7 +373,11 @@ export async function coordinateInboundTransactionCandidate(
       matchedRecord.id,
       incomingEvidence.merchant || matchedRecord.counterParty || 'Transaksi',
       incomingEvidence.amount,
-      incomingEvidence.currency
+      incomingEvidence.currency,
+      undefined,
+      matchedRecord.accountName || poolCandidate?.accountName || resolvedAccountName,
+      incomingCategoryName || currentCategoryName,
+      matchedRecord.recordDate || incomingEvidence.occurredAt
     );
     await messagingGateway.broadcastNotification(notif);
     return;

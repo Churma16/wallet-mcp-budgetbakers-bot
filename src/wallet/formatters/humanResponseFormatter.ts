@@ -964,14 +964,40 @@ export function formatCorrelatedWalletRecordNotification(
   merchant: string,
   amount: number,
   currency: string = 'IDR',
-  languageCode?: SupportedLanguage
+  languageCode?: SupportedLanguage,
+  accountName?: string,
+  categoryName?: string,
+  recordDate?: string | number | Date
 ): string {
+  const dictionary = getDictionary(languageCode);
   const formattedAmount = formatCurrencyAmount(amount, currency, languageCode);
   const isEnglish = (languageCode || getActiveLanguage()) === 'en';
+  const isExpense = amount < 0;
+  const transactionTypeIcon = isExpense ? '💸' : '💰';
+  const timestamp = recordDate
+    ? formatTransactionDate(recordDate, languageCode)
+    : formatTransactionDate(new Date(), languageCode);
+  const resolvedAccount = accountName || dictionary.labels.defaultAccount;
+  const resolvedCategory = categoryName || dictionary.labels.defaultCategory;
+  const title = merchant || (isEnglish ? 'Transaction' : 'Transaksi');
+
   if (isEnglish) {
-    return `ℹ️ *Transaction Already Recorded*\nIncoming notification for *${merchant || 'Purchase'}* (${formattedAmount}) matches existing Wallet record (\`${recordId}\`). No duplicate ticket created.`;
+    return [
+      `ℹ️ *${title}* already recorded!`,
+      '',
+      `${transactionTypeIcon} ${formattedAmount}  •  ${resolvedAccount}`,
+      `🏷️ ${resolvedCategory}  •  ${timestamp}`,
+      `_No duplicate ticket created._`,
+    ].join('\n');
   }
-  return `ℹ️ *Transaksi Sudah Tercatat*\nNotifikasi untuk *${merchant || 'Transaksi'}* (${formattedAmount}) sudah tercatat di Wallet (ID: \`${recordId}\`). Tidak dibuat tiket duplikat.`;
+
+  return [
+    `ℹ️ *${title}* sudah tercatat di Wallet!`,
+    '',
+    `${transactionTypeIcon} ${formattedAmount}  •  ${resolvedAccount}`,
+    `🏷️ ${resolvedCategory}  •  ${timestamp}`,
+    `_Tidak dibuat tiket duplikat._`,
+  ].join('\n');
 }
 
 /**
@@ -987,39 +1013,55 @@ export function formatRetroactivelyEnrichedWalletRecordNotification(params: {
   accountName?: string;
   note?: string;
   languageCode?: SupportedLanguage;
+  recordDate?: string | number | Date;
+  labels?: string[];
 }): string {
-  const { recordId, merchant, amount, currency = 'IDR', categoryName, accountName, note, languageCode } = params;
+  const {
+    recordId: _recordId,
+    merchant,
+    amount,
+    currency = 'IDR',
+    categoryName,
+    accountName,
+    note,
+    languageCode,
+    recordDate,
+    labels,
+  } = params;
+  const dictionary = getDictionary(languageCode);
   const formattedAmount = formatCurrencyAmount(amount, currency, languageCode);
   const isEnglish = (languageCode || getActiveLanguage()) === 'en';
+  const isExpense = amount < 0;
+  const transactionTypeIcon = isExpense ? '💸' : '💰';
+  const timestamp = recordDate
+    ? formatTransactionDate(recordDate, languageCode)
+    : formatTransactionDate(new Date(), languageCode);
+  const resolvedCategory = categoryName || dictionary.labels.defaultCategory;
+  const resolvedAccount = accountName || dictionary.labels.defaultAccount;
 
-  const details: string[] = [];
-  if (accountName) {
-    details.push(`💳 ${accountName}`);
-  }
-  if (categoryName) {
-    details.push(`📂 ${categoryName}`);
-  }
-  const detailsLine = details.length > 0 ? details.join(' • ') : '';
+  const title = merchant || note || (isEnglish ? 'Transaction' : 'Transaksi');
+  const labelLine = labels && labels.length > 0
+    ? `\n🔖 ${labels.map(l => `#${l}`).join(' ')}`
+    : '';
+  const noteLine = note && note !== merchant
+    ? `\n📝 _${note}_`
+    : '';
 
   if (isEnglish) {
-    const lines = [
-      `✨ *Transaction Details Updated!*`,
-      `💸 *${merchant || 'Purchase'}* — ${formattedAmount}`,
-    ];
-    if (detailsLine) lines.push(detailsLine);
-    if (note && note !== merchant) lines.push(`📝 _${note}_`);
-    lines.push(`(ID: \`${recordId}\`)`);
-    return lines.join('\n');
+    return [
+      `✨ *${title}* successfully updated!`,
+      '',
+      `${transactionTypeIcon} ${formattedAmount}  •  ${resolvedAccount}`,
+      `🏷️ ${resolvedCategory}  •  ${timestamp}${labelLine}${noteLine}`,
+    ].join('\n');
   }
 
-  const lines = [
-    `✨ *Detail Transaksi Diperbarui!*`,
-    `💸 *${merchant || 'Transaksi'}* — ${formattedAmount}`,
-  ];
-  if (detailsLine) lines.push(detailsLine);
-  if (note && note !== merchant) lines.push(`📝 _${note}_`);
-  lines.push(`(ID: \`${recordId}\`)`);
-  return lines.join('\n');
+  return [
+    `✨ *${title}* berhasil diperbarui!`,
+    '',
+    `${transactionTypeIcon} ${formattedAmount}  •  ${resolvedAccount}`,
+    `🏷️ ${resolvedCategory}  •  ${timestamp}${labelLine}${noteLine}`,
+  ].join('\n');
 }
 
 
@@ -1050,12 +1092,7 @@ export function formatPendingConfirmationSuccess(
   const isExpense = item.amount < 0 || item.transactionType === 'EXPENSE';
   const icon = isExpense ? '💸' : '💰';
   const defaultNote = isExpense ? dictionary.labels.expense : dictionary.labels.income;
-  let merchantOrNote = item.counterParty || item.note || defaultNote;
-  if (item.note && item.note !== item.counterParty && !item.note.toLowerCase().startsWith('payment to')) {
-    merchantOrNote = item.counterParty
-      ? `${item.note} (${item.counterParty})`
-      : item.note;
-  }
+  const merchantOrNote = item.counterParty || item.note || defaultNote;
 
   return dictionary.confirmation.singleSuccess({
     ticketId: item.ticketId,
@@ -1067,6 +1104,7 @@ export function formatPendingConfirmationSuccess(
     labels: item.labels,
     icon,
     merchantOrNote,
+    note: item.note,
   });
 }
 

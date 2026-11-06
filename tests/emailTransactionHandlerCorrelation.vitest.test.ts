@@ -318,7 +318,7 @@ describe('EmailTransactionHandler Multi-Source Correlation Integration', () => {
 
     // Broadcast notified user that transaction is already recorded
     expect(messaging.broadcastNotification).toHaveBeenCalledWith(
-      expect.stringContaining('Transaksi Sudah Tercatat')
+      expect.stringContaining('sudah tercatat di Wallet!')
     );
     expect(emailListener.recordProcessedTransaction).toHaveBeenCalledWith(undefined, 'MANDIRI-REF-100');
   });

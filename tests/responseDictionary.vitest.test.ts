@@ -205,7 +205,7 @@ describe('response dictionaries and localized formatting', () => {
     expect(idFormatted).toContain('📝 _Pembayaran QRIS Starbucks_');
     expect(formatPendingEmailTransactionNotification(pending, 2)).toContain('(#101)');
     expect(formatPendingEmailTransactionNotification(pending, 1)).toContain('Balas *Ya* atau *Catat*');
-    expect(formatPendingConfirmationSuccess(pending)).toContain('Transaksi Dicatat ke Wallet!');
+    expect(formatPendingConfirmationSuccess(pending)).toContain('berhasil dicatat! (#101)');
     expect(formatPendingCancellationMessage(pending)).toContain('Dibatalkan');
 
     setActiveLanguage('en');
@@ -214,7 +214,7 @@ describe('response dictionaries and localized formatting', () => {
     expect(enFormatted).toContain('📝 _Pembayaran QRIS Starbucks_');
     expect(formatPendingEmailTransactionNotification(pending, 2)).toContain('(#101)');
     expect(formatPendingEmailTransactionNotification(pending, 1)).toContain('Reply *Yes* or *Record*');
-    expect(formatPendingConfirmationSuccess(pending)).toContain('Transaction Recorded to Wallet!');
+    expect(formatPendingConfirmationSuccess(pending)).toContain('successfully recorded! (#101)');
     expect(formatPendingCancellationMessage(pending)).toContain('Cancelled');
   });
 

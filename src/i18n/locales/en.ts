@@ -335,35 +335,32 @@ export const englishDictionary: ResponseDictionary = {
   confirmation: {
     singleSuccess(params: PendingConfirmationSuccessParams): string {
       if (params.isTransfer) {
+        const route = params.destinationAccountNameHint
+          ? `${params.accountNameHint || 'Account'} ➔ ${params.destinationAccountNameHint}`
+          : (params.accountNameHint || 'Account');
         return [
-          `✅ *Transfer Recorded to Wallet!* (#${params.ticketId})`,
-          `🔄 ${params.formattedAmount}`,
-          `💳 From: ${params.accountNameHint}${params.destinationAccountNameHint ? ` ➔ ${params.destinationAccountNameHint}` : ''}`,
-          `_(${params.formattedTime})_`,
+          `✅ *Transfer successfully recorded!* (#${params.ticketId})`,
+          '',
+          `🔁 ${params.formattedAmount}`,
+          `💳 ${route}`,
+          `⏰ ${params.formattedTime}`,
         ].join('\n');
       }
 
-      const lines = [
-        `✅ *Transaction Recorded to Wallet!* (#${params.ticketId})`,
-        `${params.icon || '💸'} ${params.merchantOrNote || 'Transaction'} — ${params.formattedAmount}`,
-      ];
+      const labelLine = params.labels && params.labels.length > 0
+        ? `\n🔖 ${params.labels.map(label => `#${label}`).join(' ')}`
+        : '';
+      const noteLine = params.note && params.note !== params.merchantOrNote
+        ? `\n📝 _${params.note}_`
+        : '';
 
-      const metaParts: string[] = [];
-      if (params.accountNameHint) {
-        metaParts.push(`💳 ${params.accountNameHint}`);
-      }
-      if (params.matchedCategoryName) {
-        metaParts.push(`📂 ${params.matchedCategoryName}`);
-      }
-      if (params.labels && params.labels.length > 0) {
-        metaParts.push(`🔖 ${params.labels.map(label => `#${label}`).join(' ')}`);
-      }
-      if (metaParts.length > 0) {
-        lines.push(metaParts.join(' • '));
-      }
-
-      lines.push(`_(${params.formattedTime})_`);
-      return lines.join('\n');
+      const title = params.merchantOrNote || 'Transaction';
+      return [
+        `✅ *${title}* successfully recorded! (#${params.ticketId})`,
+        '',
+        `${params.icon || '💸'} ${params.formattedAmount}  •  ${params.accountNameHint || 'Account'}`,
+        `🏷️ ${params.matchedCategoryName || 'General'}  •  ${params.formattedTime}${labelLine}${noteLine}`,
+      ].join('\n');
     },
 
     bulkSuccess(items: PendingBulkItemParams[], currentTimestamp: string): string {

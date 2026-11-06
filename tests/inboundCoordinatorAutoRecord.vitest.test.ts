@@ -180,7 +180,7 @@ describe('Inbound Auto-Record Enriched Transactions Integration', () => {
     // Notification bubble should have been edited in-place with success message
     expect(messaging.editBroadcastNotification).toHaveBeenCalledTimes(1);
     const editedNotificationText = messaging.editBroadcastNotification.mock.calls[0][1];
-    expect(editedNotificationText).toContain('✅ *Transaksi Dicatat ke Wallet!* (#1)');
+    expect(editedNotificationText).toContain('berhasil dicatat! (#1)');
 
     // TransactionMessageStore should have mapped msg-bubble-1 to rec-wallet-999
     expect(mockMessageStore.recordMessageMapping).toHaveBeenCalledWith('msg-bubble-1', expect.objectContaining({

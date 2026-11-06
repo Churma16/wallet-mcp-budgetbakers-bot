@@ -348,12 +348,11 @@ describe('EnrichmentPoolService and Eligibility', () => {
         languageCode: 'en',
       });
 
-      expect(formattedEn).toContain('Transaction Details Updated!');
+      expect(formattedEn).toContain('successfully updated!');
       expect(formattedEn).toContain('Uber');
       expect(formattedEn).toContain('Chase Sapphire');
       expect(formattedEn).toContain('Rideshare');
       expect(formattedEn).toContain('Ride to airport');
-      expect(formattedEn).toContain('rec-en-1');
     });
   });
 

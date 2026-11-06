@@ -71,6 +71,7 @@ export interface PendingConfirmationSuccessParams {
   merchantOrNote?: string;
   matchedCategoryName?: string;
   labels?: string[];
+  note?: string;
 }
 
 export interface PendingBulkItemParams {

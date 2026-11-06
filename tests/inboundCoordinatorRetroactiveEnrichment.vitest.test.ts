@@ -144,12 +144,11 @@ describe('InboundCoordinator Retroactive Record Enrichment', () => {
     // Verify notification broadcasted with updated details
     expect(mockMessaging.broadcastNotification).toHaveBeenCalledTimes(1);
     const notificationCallArg = mockMessaging.broadcastNotification.mock.calls[0][0];
-    expect(notificationCallArg).toContain('Detail Transaksi Diperbarui!');
+    expect(notificationCallArg).toContain('berhasil diperbarui!');
     expect(notificationCallArg).toContain('Grab');
     expect(notificationCallArg).toContain('Rp 65.800');
     expect(notificationCallArg).toContain('Ojol');
     expect(notificationCallArg).toContain('GrabCar: Kantor ke BSD');
-    expect(notificationCallArg).toContain(recordId);
   });
 
   it('attempts in-place message edit if original notificationMessageIds is tracked', async () => {
@@ -212,7 +211,7 @@ describe('InboundCoordinator Retroactive Record Enrichment', () => {
 
     expect(mockMessaging.editBroadcastNotification).toHaveBeenCalledWith(
       { telegram: 'msg-original-42' },
-      expect.stringContaining('Detail Transaksi Diperbarui!')
+      expect.stringContaining('berhasil diperbarui!')
     );
     expect(mockMessaging.broadcastNotification).not.toHaveBeenCalled();
   });
@@ -280,8 +279,7 @@ describe('InboundCoordinator Retroactive Record Enrichment', () => {
     // Sends normal duplicate advisory
     expect(mockMessaging.broadcastNotification).toHaveBeenCalledTimes(1);
     const notifArg = mockMessaging.broadcastNotification.mock.calls[0][0];
-    expect(notifArg).toContain('Transaksi Sudah Tercatat');
-    expect(notifArg).toContain('rec-specific-99');
+    expect(notifArg).toContain('sudah tercatat di Wallet!');
   });
 
   it('handles patchRecords error gracefully and falls back to duplicate advisory', async () => {
@@ -343,7 +341,6 @@ describe('InboundCoordinator Retroactive Record Enrichment', () => {
     // Fallback broadcast was sent despite patch error
     expect(mockMessaging.broadcastNotification).toHaveBeenCalledTimes(1);
     const notifArg = mockMessaging.broadcastNotification.mock.calls[0][0];
-    expect(notifArg).toContain('Transaksi Sudah Tercatat');
-    expect(notifArg).toContain('rec-err-fallback');
+    expect(notifArg).toContain('sudah tercatat di Wallet!');
   });
 });

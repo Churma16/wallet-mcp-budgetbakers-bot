@@ -398,6 +398,8 @@ export class InboundRescanService {
                 item.accountNameHint ||
                 'Wallet',
               note: patchPayload.note || matchedRecord.note || poolCandidate?.note,
+              recordDate: matchedRecord.recordDate || evidence.occurredAt,
+              labels: patchPayload.labels || poolCandidate?.labels,
             });
 
             await this.deps.messagingGateway.broadcastNotification(enrichedNotif);
@@ -421,7 +423,11 @@ export class InboundRescanService {
             matchedRecord.id,
             evidence.merchant || matchedRecord.counterParty || 'Transaksi',
             evidence.amount,
-            evidence.currency
+            evidence.currency,
+            undefined,
+            matchedRecord.accountName || poolCandidate?.accountName || item.accountNameHint,
+            incomingCategoryName || currentCategoryName,
+            matchedRecord.recordDate || evidence.occurredAt
           );
           await this.deps.messagingGateway.broadcastNotification(notif);
           this.deps.pendingTransactionManager.rejectPendingTransaction(item.ticketId);
