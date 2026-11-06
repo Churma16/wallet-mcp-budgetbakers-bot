@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import readline, { Key } from 'readline';
 import { createInterface } from 'readline/promises';
+import { fileURLToPath } from 'url';
 import {
   collectSetupConfiguration,
   SetupChoice,
@@ -11,8 +12,13 @@ import {
   mergeEnvFileContent,
   parseEnvFileContent,
 } from './envFileEditor.js';
+import {
+  formatSetupHelp,
+  parseSetupCliArgs,
+  SetupCliOptions,
+} from './cliOptions.js';
 
-class NodeTerminalPrompter implements SetupPrompter {
+export class NodeTerminalPrompter implements SetupPrompter {
   public info(message: string): void {
     console.log(message);
   }
@@ -176,26 +182,49 @@ class NodeTerminalPrompter implements SetupPrompter {
   }
 }
 
-async function runSetup(): Promise<void> {
-  const workingDirectory = process.cwd();
-  const envPath = path.join(workingDirectory, '.env');
+export async function runSetup(
+  initialOptions?: Partial<SetupCliOptions>,
+  customPrompter?: SetupPrompter,
+  customWorkingDirectory?: string
+): Promise<void> {
+  const workingDirectory = customWorkingDirectory || process.cwd();
+  const cliOptions: SetupCliOptions = {
+    ...parseSetupCliArgs(process.argv.slice(2), workingDirectory),
+    ...initialOptions,
+  };
+
+  if (cliOptions.showHelp) {
+    console.log(formatSetupHelp());
+    return;
+  }
+
+  const envPath = cliOptions.targetPath;
   const envExamplePath = path.join(workingDirectory, '.env.example');
   const hasExistingEnv = fs.existsSync(envPath);
   const existingContent = hasExistingEnv ? fs.readFileSync(envPath, 'utf8') : '';
   const existingValues = hasExistingEnv ? parseEnvFileContent(existingContent) : {};
-  const prompter = new NodeTerminalPrompter();
+  const prompter = customPrompter || new NodeTerminalPrompter();
 
   console.log('====================================================');
   console.log('[INFO] Wallet MCP Bookkeeper interactive setup');
+  if (cliOptions.isDev) {
+    console.log(`[MODE] Development target: ${cliOptions.envFile}`);
+  }
+  if (cliOptions.isDryRun) {
+    console.log('[MODE] Dry-run enabled: No files will be written to disk');
+  }
+  if (cliOptions.isDebug) {
+    console.log('[MODE] Debug mode active');
+  }
   console.log('====================================================');
 
   if (hasExistingEnv) {
     const shouldContinue = await prompter.confirm(
-      'Existing .env found. Update it while preserving values you do not replace?',
+      `Existing ${cliOptions.envFile} found. Update it while preserving values you do not replace?`,
       true
     );
     if (!shouldContinue) {
-      console.log('[INFO] Setup cancelled. Existing .env was not changed.');
+      console.log(`[INFO] Setup cancelled. Existing ${cliOptions.envFile} was not changed.`);
       return;
     }
   }
@@ -208,16 +237,36 @@ async function runSetup(): Promise<void> {
     console.log(`  ${summaryLine}`);
   }
 
-  const shouldWrite = await prompter.confirm('Write this configuration to .env?', true);
+  const baseContent = hasExistingEnv
+    ? existingContent
+    : (fs.existsSync(envExamplePath) ? fs.readFileSync(envExamplePath, 'utf8') : '');
+  const mergedContent = mergeEnvFileContent(baseContent, setupResult.updates);
+
+  if (cliOptions.isDryRun) {
+    console.log('');
+    console.log(`[DRY-RUN] Simulation mode active. Skipping write to ${cliOptions.envFile}.`);
+    if (cliOptions.isDebug) {
+      console.log('----------------------------------------------------');
+      console.log('[DEBUG] Merged configuration preview:');
+      console.log(mergedContent);
+      console.log('----------------------------------------------------');
+    }
+    console.log('[SUCCESS] Dry-run completed successfully.');
+    return;
+  }
+
+  const shouldWrite = await prompter.confirm(`Write this configuration to ${cliOptions.envFile}?`, true);
   if (!shouldWrite) {
     console.log('[INFO] Setup cancelled. No configuration file was written.');
     return;
   }
 
-  const baseContent = hasExistingEnv
-    ? existingContent
-    : (fs.existsSync(envExamplePath) ? fs.readFileSync(envExamplePath, 'utf8') : '');
-  const mergedContent = mergeEnvFileContent(baseContent, setupResult.updates);
+  if (cliOptions.isDebug) {
+    console.log('----------------------------------------------------');
+    console.log('[DEBUG] Merged configuration preview:');
+    console.log(mergedContent);
+    console.log('----------------------------------------------------');
+  }
 
   fs.writeFileSync(envPath, mergedContent, { encoding: 'utf8', mode: 0o600 });
   try {
@@ -226,12 +275,24 @@ async function runSetup(): Promise<void> {
     // chmod is best-effort on platforms that do not implement POSIX file modes.
   }
 
-  console.log('[SUCCESS] Configuration saved to .env');
-  console.log('[INFO] Next: run npm run doctor, then npm start.');
+  console.log(`[SUCCESS] Configuration saved to ${cliOptions.envFile}`);
+  const doctorCommand = cliOptions.isDev ? 'npm run doctor -- --dev' : 'npm run doctor';
+  console.log(`[INFO] Next: run ${doctorCommand}, then npm start.`);
 }
 
-runSetup().catch(error => {
-  const message = error instanceof Error ? error.message : 'Unknown setup failure.';
-  console.error(`[ERROR] ${message}`);
-  process.exitCode = 1;
-});
+const invokedScriptPath = process.argv[1] ? path.resolve(process.argv[1]) : null;
+const currentFilePath = fileURLToPath(import.meta.url);
+const isDirectlyExecuted = Boolean(
+  invokedScriptPath &&
+  (invokedScriptPath === currentFilePath ||
+   invokedScriptPath.endsWith('/setup.ts') ||
+   invokedScriptPath.endsWith('/setup.js'))
+);
+
+if (isDirectlyExecuted) {
+  runSetup().catch(error => {
+    const message = error instanceof Error ? error.message : 'Unknown setup failure.';
+    console.error(`[ERROR] ${message}`);
+    process.exitCode = 1;
+  });
+}
