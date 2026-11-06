@@ -161,4 +161,128 @@ describe('Unified Final Transaction Card Structure Parity', () => {
     expect(dupCard).toContain('🏷️ Makanan & Minuman  •  Nov 4, 2026, 09:34 WIB');
     expect(dupCard).toContain('_No duplicate ticket created._');
   });
+
+  it('covers transfer confirmation formatting in Indonesian and English', () => {
+    const transferWithDest: PendingTransactionItem = {
+      ticketId: 10,
+      sourceType: 'EMAIL',
+      amount: -250000,
+      currency: 'IDR',
+      accountNameHint: 'BCA Prioritas',
+      destinationAccountNameHint: 'Jago Utama',
+      transactionType: 'TRANSFER',
+      recordDate: fixedDate.toISOString(),
+      createdAt: fixedDate,
+      expiresAt: new Date(fixedDate.getTime() + 86400000),
+    };
+
+    const idCard = formatPendingConfirmationSuccess(transferWithDest, 'id');
+    expect(idCard).toContain('✅ *Transfer berhasil dicatat!* (#10)');
+    expect(idCard).toContain('🔁 Rp 250.000');
+    expect(idCard).toContain('💳 BCA Prioritas ➔ Jago Utama');
+    expect(idCard).toContain('⏰ 4 Nov 2026, 09:34 WIB');
+
+    const enCard = formatPendingConfirmationSuccess(transferWithDest, 'en');
+    expect(enCard).toContain('✅ *Transfer successfully recorded!* (#10)');
+    expect(enCard).toContain('🔁 Rp 250,000');
+    expect(enCard).toContain('💳 BCA Prioritas ➔ Jago Utama');
+    expect(enCard).toContain('⏰ Nov 4, 2026, 09:34 WIB');
+
+    const transferWithoutDest: PendingTransactionItem = {
+      ...transferWithDest,
+      ticketId: 11,
+      destinationAccountNameHint: undefined,
+    };
+    const idSingleRoute = formatPendingConfirmationSuccess(transferWithoutDest, 'id');
+    expect(idSingleRoute).toContain('💳 BCA Prioritas');
+    expect(idSingleRoute).not.toContain('➔');
+
+    const enSingleRoute = formatPendingConfirmationSuccess(transferWithoutDest, 'en');
+    expect(enSingleRoute).toContain('💳 BCA Prioritas');
+    expect(enSingleRoute).not.toContain('➔');
+  });
+
+  it('covers income transactions, tags/labels, and fallback defaults across all final cards', () => {
+    // Income and labels in pending confirmation
+    const incomeItem: PendingTransactionItem = {
+      ticketId: 20,
+      sourceType: 'EMAIL',
+      amount: 1500000,
+      currency: 'IDR',
+      counterParty: 'Gaji Bonus',
+      accountNameHint: 'BCA Prioritas',
+      matchedCategoryName: 'Gaji',
+      labels: ['bonus', 'tahunan'],
+      transactionType: 'INCOME',
+      recordDate: fixedDate.toISOString(),
+      createdAt: fixedDate,
+      expiresAt: new Date(fixedDate.getTime() + 86400000),
+    };
+
+    const confirmId = formatPendingConfirmationSuccess(incomeItem, 'id');
+    expect(confirmId).toContain('💰 Rp 1.500.000  •  BCA Prioritas');
+    expect(confirmId).toContain('🏷️ Gaji  •  4 Nov 2026, 09:34 WIB');
+    expect(confirmId).toContain('🔖 #bonus #tahunan');
+
+    // Income, labels, and fallback in retroactive update
+    const updateWithLabels = formatRetroactivelyEnrichedWalletRecordNotification({
+      recordId: 'rec-inc-1',
+      merchant: 'Bonus Kinerja',
+      amount: 2000000,
+      currency: 'IDR',
+      accountName: 'BCA Prioritas',
+      categoryName: 'Pendapatan',
+      labels: ['kantor'],
+      recordDate: fixedDate,
+      languageCode: 'id',
+    });
+    expect(updateWithLabels).toContain('✨ *Bonus Kinerja* berhasil diperbarui!');
+    expect(updateWithLabels).toContain('💰 Rp 2.000.000  •  BCA Prioritas');
+    expect(updateWithLabels).toContain('🏷️ Pendapatan  •  4 Nov 2026, 09:34 WIB');
+    expect(updateWithLabels).toContain('🔖 #kantor');
+
+    // Default fallbacks when merchant/category/account are missing
+    const fallbackUpdateId = formatRetroactivelyEnrichedWalletRecordNotification({
+      recordId: 'rec-fallback-1',
+      merchant: '',
+      amount: -50000,
+      languageCode: 'id',
+    });
+    expect(fallbackUpdateId).toContain('✨ *Transaksi* berhasil diperbarui!');
+    expect(fallbackUpdateId).toContain('💸 Rp 50.000  •  Akun');
+    expect(fallbackUpdateId).toContain('🏷️ Umum');
+
+    const fallbackUpdateEn = formatRetroactivelyEnrichedWalletRecordNotification({
+      recordId: 'rec-fallback-2',
+      merchant: '',
+      amount: -50000,
+      languageCode: 'en',
+    });
+    expect(fallbackUpdateEn).toContain('✨ *Transaction* successfully updated!');
+    expect(fallbackUpdateEn).toContain('💸 Rp 50,000  •  Account');
+    expect(fallbackUpdateEn).toContain('🏷️ General');
+
+    // Income and fallback in correlation notice
+    const dupIncomeId = formatCorrelatedWalletRecordNotification(
+      'rec-inc-dup',
+      'Cashback Gopay',
+      25000,
+      'IDR',
+      'id',
+      'Gopay',
+      'Hadiah',
+      fixedDate
+    );
+    expect(dupIncomeId).toContain('ℹ️ *Cashback Gopay* sudah tercatat di Wallet!');
+    expect(dupIncomeId).toContain('💰 Rp 25.000  •  Gopay');
+    expect(dupIncomeId).toContain('🏷️ Hadiah  •  4 Nov 2026, 09:34 WIB');
+
+    const dupFallbackId = formatCorrelatedWalletRecordNotification('rec-dup-2', '', -30000, 'IDR', 'id');
+    expect(dupFallbackId).toContain('ℹ️ *Transaksi* sudah tercatat di Wallet!');
+    expect(dupFallbackId).toContain('💸 Rp 30.000  •  Akun');
+
+    const dupFallbackEn = formatCorrelatedWalletRecordNotification('rec-dup-3', '', -30000, 'IDR', 'en');
+    expect(dupFallbackEn).toContain('ℹ️ *Transaction* already recorded!');
+    expect(dupFallbackEn).toContain('💸 Rp 30,000  •  Account');
+  });
 });
