@@ -26,6 +26,8 @@ import {
   installConsoleInterceptors,
   purgeExpiredLogFiles,
 } from './lib/index.js';
+import { getDictionary } from './i18n/index.js';
+import { formatTransactionDate } from './wallet/formatters/humanResponseFormatter.js';
 
 /**
  * Root application orchestrator managing lifecycle startup, adapter registration,
@@ -36,8 +38,14 @@ export class Application {
   public readonly dispatcher: MessageDispatcher;
   private isRunning: boolean = false;
 
-  constructor(customConfig?: ApplicationEnvironmentConfiguration) {
-    this.context = createAppContext(customConfig);
+  constructor(customConfigOrContext?: ApplicationEnvironmentConfiguration | AppContext) {
+    if (customConfigOrContext && 'gateway' in customConfigOrContext) {
+      this.context = customConfigOrContext as AppContext;
+    } else {
+      this.context = createAppContext(
+        customConfigOrContext as ApplicationEnvironmentConfiguration | undefined
+      );
+    }
     this.dispatcher = new MessageDispatcher(this.context);
   }
 
@@ -211,6 +219,45 @@ export class Application {
     }
 
     this.isRunning = true;
+
+    // 6. Send startup notification if enabled
+    if (this.context.config.notifyOnStartup) {
+      await this.dispatchStartupNotification().catch(startupNoticeError => {
+        applicationLogger.warn(
+          `Failed to dispatch startup notification: ${startupNoticeError instanceof Error ? startupNoticeError.message : String(startupNoticeError)}`
+        );
+      });
+    }
+  }
+
+  /**
+   * Dispatches a concise boot-up notification to connected messenger channels.
+   */
+  public async dispatchStartupNotification(): Promise<void> {
+    const dictionary = getDictionary(this.context.config.appLanguage);
+    const timeDisplay = formatTransactionDate(new Date(), dictionary.languageCode);
+    const isEnglish = dictionary.languageCode === 'en';
+
+    const telegramConnected = this.context.gateway.isChannelConnected('telegram');
+    const webhookActive = Boolean(this.context.config.notificationWebhookEnabled && this.context.webhook);
+
+    const telegramStatus = telegramConnected && webhookActive
+      ? (isEnglish ? 'Active' : 'Aktif')
+      : telegramConnected
+        ? (isEnglish ? 'Connected' : 'Terhubung')
+        : (isEnglish ? 'Inactive' : 'Nonaktif');
+
+    const gmailStatus = this.context.config.emailSyncEnabled && this.context.email.listener
+      ? (isEnglish ? 'Connected' : 'Terhubung')
+      : (isEnglish ? 'Disabled' : 'Nonaktif');
+
+    const startupMessage = dictionary.system.startupNotification({
+      telegramStatus,
+      gmailStatus,
+      timeDisplay,
+    });
+
+    await this.context.gateway.broadcastNotification(startupMessage);
   }
 
   /**

@@ -102,6 +102,7 @@ export interface ApplicationEnvironmentConfiguration {
   notificationWebhookPort: number;
   notificationWebhookHost: string;
   notificationWebhookSecret: string;
+  notifyOnStartup: boolean;
 }
 
 
@@ -369,6 +370,10 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
   const notificationWebhookHost = (process.env.NOTIFICATION_WEBHOOK_HOST || '0.0.0.0').trim();
   const notificationWebhookSecret = (process.env.NOTIFICATION_WEBHOOK_SECRET || '').trim();
 
+  const notifyOnStartup = process.env.NODE_ENV === 'test'
+    ? process.env.NOTIFY_ON_STARTUP === 'true'
+    : process.env.NOTIFY_ON_STARTUP !== 'false';
+
   return {
     aiProvider,
     aiProviders,
@@ -418,6 +423,7 @@ export function loadEnvironmentConfiguration(): ApplicationEnvironmentConfigurat
     notificationWebhookPort,
     notificationWebhookHost,
     notificationWebhookSecret,
+    notifyOnStartup,
   };
 }
 

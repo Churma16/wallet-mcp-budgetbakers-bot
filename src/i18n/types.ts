@@ -3,6 +3,12 @@ import type { TransactionSortOrder, UnresolvedFilterIssue, ClearableRecordField 
 export type SupportedLanguage = 'id' | 'en';
 export type { TransactionSortOrder, UnresolvedFilterIssue, ClearableRecordField };
 
+export interface SystemStartupNotificationParams {
+  telegramStatus: string;
+  gmailStatus: string;
+  timeDisplay: string;
+}
+
 export interface RecordMessageParams {
   transactionTitle: string;
   formattedAmount: string;
@@ -324,6 +330,10 @@ export interface ResponseDictionary {
 
   help: {
     welcomeGuidance: string;
+  };
+
+  system: {
+    startupNotification(params: SystemStartupNotificationParams): string;
   };
 
   telegramMenu: TelegramMenuDictionary;

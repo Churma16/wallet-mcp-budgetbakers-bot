@@ -422,6 +422,22 @@ export const englishDictionary: ResponseDictionary = {
     ].join('\n'),
   },
 
+  system: {
+    startupNotification(params: {
+      telegramStatus: string;
+      gmailStatus: string;
+      timeDisplay: string;
+    }): string {
+      return [
+        '🤖 *Wallet Bot is ready to use*',
+        '',
+        `• Telegram & Webhook: ${params.telegramStatus}`,
+        `• Gmail Sync: ${params.gmailStatus}`,
+        `⏱️ ${params.timeDisplay}`,
+      ].join('\n');
+    },
+  },
+
   telegramMenu: {
     buttonBalance: '\u{1F4B0} Check Balance',
     buttonBudget: '\u{1F4CA} Check Budget',
