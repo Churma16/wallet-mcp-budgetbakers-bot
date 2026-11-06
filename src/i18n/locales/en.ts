@@ -339,7 +339,7 @@ export const englishDictionary: ResponseDictionary = {
           ? `${params.accountNameHint || 'Account'} ➔ ${params.destinationAccountNameHint}`
           : (params.accountNameHint || 'Account');
         return [
-          `✅ *Transfer successfully recorded!* (#${params.ticketId})`,
+          `✅ *Transfer successfully recorded!*`,
           '',
           `🔁 ${params.formattedAmount}`,
           `💳 ${route}`,
@@ -350,16 +350,13 @@ export const englishDictionary: ResponseDictionary = {
       const labelLine = params.labels && params.labels.length > 0
         ? `\n🔖 ${params.labels.map(label => `#${label}`).join(' ')}`
         : '';
-      const noteLine = params.note && params.note !== params.merchantOrNote
-        ? `\n📝 _${params.note}_`
-        : '';
 
       const title = params.merchantOrNote || 'Transaction';
       return [
-        `✅ *${title}* successfully recorded! (#${params.ticketId})`,
+        `✅ *${title}* successfully recorded!`,
         '',
         `${params.icon || '💸'} ${params.formattedAmount}  •  ${params.accountNameHint || 'Account'}`,
-        `🏷️ ${params.matchedCategoryName || 'General'}  •  ${params.formattedTime}${labelLine}${noteLine}`,
+        `🏷️ ${params.matchedCategoryName || 'General'}  •  ${params.formattedTime}${labelLine}`,
       ].join('\n');
     },
 

@@ -377,7 +377,8 @@ export async function coordinateInboundTransactionCandidate(
       undefined,
       matchedRecord.accountName || poolCandidate?.accountName || resolvedAccountName,
       incomingCategoryName || currentCategoryName,
-      matchedRecord.recordDate || incomingEvidence.occurredAt
+      matchedRecord.recordDate || incomingEvidence.occurredAt,
+      incomingEvidence.note || matchedRecord.note || poolCandidate?.note
     );
     await messagingGateway.broadcastNotification(notif);
     return;

@@ -427,7 +427,8 @@ export class InboundRescanService {
             undefined,
             matchedRecord.accountName || poolCandidate?.accountName || item.accountNameHint,
             incomingCategoryName || currentCategoryName,
-            matchedRecord.recordDate || evidence.occurredAt
+            matchedRecord.recordDate || evidence.occurredAt,
+            item.note || evidence.note || matchedRecord.note || poolCandidate?.note
           );
           await this.deps.messagingGateway.broadcastNotification(notif);
           this.deps.pendingTransactionManager.rejectPendingTransaction(item.ticketId);

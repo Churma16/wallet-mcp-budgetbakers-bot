@@ -64,11 +64,40 @@ describe('Unified Final Transaction Card Structure Parity', () => {
 
     const card = formatPendingConfirmationSuccess(pendingItem, 'id');
 
-    expect(card).toContain('✅ *Grab* berhasil dicatat! (#1)');
+    expect(card).toContain('✅ *Grab booking A-AXTLANJGXX2TAV* berhasil dicatat!');
     expect(card).toContain('💸 Rp 65.800  •  Jago Expense');
     expect(card).toContain('🏷️ Ojol  •  4 Nov 2026, 09:34 WIB');
-    expect(card).toContain('📝 _Grab booking A-AXTLANJGXX2TAV_');
+    expect(card).not.toContain('📝'); // Note is promoted directly to title, no separate note line
     expect(card).not.toContain('321f074f'); // No raw UUID
+  });
+
+  it('matches user requirement: combines merchant and item note as title without separate note line', () => {
+    const blibliItem: PendingTransactionItem = {
+      ticketId: 5,
+      sourceType: 'EMAIL',
+      amount: -14100,
+      currency: 'IDR',
+      counterParty: 'Bliblimart Sarana Jaya - Offline Store',
+      note: 'Nasi Uduk + Telur, Bakwan Sayur',
+      matchedAccountId: 'acc-jago',
+      accountNameHint: 'Jago Expense',
+      matchedCategoryId: 'cat-groceries',
+      matchedCategoryName: 'Groceries',
+      transactionType: 'EXPENSE',
+      recordDate: fixedDate.toISOString(),
+      createdAt: fixedDate,
+      expiresAt: new Date(fixedDate.getTime() + 86400000),
+    };
+
+    const card = formatPendingConfirmationSuccess(blibliItem, 'id');
+
+    expect(card).toBe([
+      '✅ *Bliblimart Sarana Jaya - Offline Store - Nasi Uduk + Telur, Bakwan Sayur* berhasil dicatat!',
+      '',
+      '💸 Rp 14.100  •  Jago Expense',
+      '🏷️ Groceries  •  4 Nov 2026, 09:34 WIB',
+    ].join('\n'));
+    expect(card).not.toContain('📝');
   });
 
   it('matches manual recording structure in retroactive enrichment update card', () => {
@@ -84,10 +113,10 @@ describe('Unified Final Transaction Card Structure Parity', () => {
       languageCode: 'id',
     });
 
-    expect(card).toContain('✨ *Grab* berhasil diperbarui!');
+    expect(card).toContain('✨ *Grab booking A-AXTLANJGXX2TAV* berhasil diperbarui!');
     expect(card).toContain('💸 Rp 65.800  •  Jago Expense');
     expect(card).toContain('🏷️ Ojol  •  4 Nov 2026, 09:34 WIB');
-    expect(card).toContain('📝 _Grab booking A-AXTLANJGXX2TAV_');
+    expect(card).not.toContain('📝'); // Note is in the title, no separate line
     expect(card).not.toContain('321f074f-62e6-4319-a34e-f02d82723731'); // No raw UUID leak
   });
 
@@ -127,10 +156,10 @@ describe('Unified Final Transaction Card Structure Parity', () => {
     };
 
     const confirmCard = formatPendingConfirmationSuccess(pendingItem, 'en');
-    expect(confirmCard).toContain('✅ *Gojek* successfully recorded! (#2)');
+    expect(confirmCard).toContain('✅ *Gojek - GoFood: Ayam Geprek* successfully recorded!');
     expect(confirmCard).toContain('💸 Rp 125,000  •  BCA Prioritas');
     expect(confirmCard).toContain('🏷️ Makanan & Minuman  •  Nov 4, 2026, 09:34 WIB');
-    expect(confirmCard).toContain('📝 _GoFood: Ayam Geprek_');
+    expect(confirmCard).not.toContain('📝');
 
     const updateCard = formatRetroactivelyEnrichedWalletRecordNotification({
       recordId: 'rec-uuid-1',
@@ -142,9 +171,10 @@ describe('Unified Final Transaction Card Structure Parity', () => {
       recordDate: fixedDate,
       languageCode: 'en',
     });
-    expect(updateCard).toContain('✨ *Gojek* successfully updated!');
+    expect(updateCard).toContain('✨ *Gojek - GoFood: Ayam Geprek* successfully updated!');
     expect(updateCard).toContain('💸 Rp 125,000  •  BCA Prioritas');
     expect(updateCard).toContain('🏷️ Makanan & Minuman  •  Nov 4, 2026, 09:34 WIB');
+    expect(updateCard).not.toContain('📝');
 
     const dupCard = formatCorrelatedWalletRecordNotification(
       'rec-uuid-1',
@@ -177,13 +207,13 @@ describe('Unified Final Transaction Card Structure Parity', () => {
     };
 
     const idCard = formatPendingConfirmationSuccess(transferWithDest, 'id');
-    expect(idCard).toContain('✅ *Transfer berhasil dicatat!* (#10)');
+    expect(idCard).toContain('✅ *Transfer berhasil dicatat!*');
     expect(idCard).toContain('🔁 Rp 250.000');
     expect(idCard).toContain('💳 BCA Prioritas ➔ Jago Utama');
     expect(idCard).toContain('⏰ 4 Nov 2026, 09:34 WIB');
 
     const enCard = formatPendingConfirmationSuccess(transferWithDest, 'en');
-    expect(enCard).toContain('✅ *Transfer successfully recorded!* (#10)');
+    expect(enCard).toContain('✅ *Transfer successfully recorded!*');
     expect(enCard).toContain('🔁 Rp 250,000');
     expect(enCard).toContain('💳 BCA Prioritas ➔ Jago Utama');
     expect(enCard).toContain('⏰ Nov 4, 2026, 09:34 WIB');

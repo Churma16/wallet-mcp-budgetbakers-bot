@@ -337,7 +337,7 @@ export const indonesianDictionary: ResponseDictionary = {
           ? `${params.accountNameHint || 'Akun'} ➔ ${params.destinationAccountNameHint}`
           : (params.accountNameHint || 'Akun');
         return [
-          `✅ *Transfer berhasil dicatat!* (#${params.ticketId})`,
+          `✅ *Transfer berhasil dicatat!*`,
           '',
           `🔁 ${params.formattedAmount}`,
           `💳 ${route}`,
@@ -348,16 +348,13 @@ export const indonesianDictionary: ResponseDictionary = {
       const labelLine = params.labels && params.labels.length > 0
         ? `\n🔖 ${params.labels.map(label => `#${label}`).join(' ')}`
         : '';
-      const noteLine = params.note && params.note !== params.merchantOrNote
-        ? `\n📝 _${params.note}_`
-        : '';
 
       const title = params.merchantOrNote || 'Transaksi';
       return [
-        `✅ *${title}* berhasil dicatat! (#${params.ticketId})`,
+        `✅ *${title}* berhasil dicatat!`,
         '',
         `${params.icon || '💸'} ${params.formattedAmount}  •  ${params.accountNameHint || 'Akun'}`,
-        `🏷️ ${params.matchedCategoryName || 'Umum'}  •  ${params.formattedTime}${labelLine}${noteLine}`,
+        `🏷️ ${params.matchedCategoryName || 'Umum'}  •  ${params.formattedTime}${labelLine}`,
       ].join('\n');
     },
 
