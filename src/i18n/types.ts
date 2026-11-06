@@ -356,5 +356,7 @@ export interface ResponseDictionary {
     recordEditCategoryAutoNotFound(hint?: string): string;
     recordEditNotFound: string;
     recordEditFailed(reason: string): string;
+    recordDeleteNotFound: string;
+    recordDeleteFailed(reason: string): string;
   };
 }
