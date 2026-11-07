@@ -12,6 +12,7 @@ import {
   CategoryClassificationProposal,
   UnifiedClarificationCandidate,
   AiProcessingExecutionOptions,
+  ModelFallbackProgressCallback,
 } from '../types.js';
 import {
   isAiResponseParseError,
@@ -102,7 +103,8 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
   private executeChatCompletion(
     messages: Array<Record<string, unknown>>,
     requestContextDescription?: string,
-    enforceJsonResponseFormat: boolean = true
+    enforceJsonResponseFormat: boolean = true,
+    onFallbackAttempt?: ModelFallbackProgressCallback
   ) {
     return executeChatCompletionWithFallback(
       this.httpClient,
@@ -111,7 +113,8 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
       this.getEffectiveTimeoutMs(),
       messages,
       requestContextDescription,
-      enforceJsonResponseFormat
+      enforceJsonResponseFormat,
+      onFallbackAttempt
     );
   }
 
@@ -120,7 +123,7 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     availableAccountList: WalletAccountItem[],
     availableCategoryList: WalletCategoryItem[],
     referenceInstant: Date = new Date(),
-    _options?: AiProcessingExecutionOptions
+    options?: AiProcessingExecutionOptions
   ): Promise<ExtractedFinancialIntent> {
     return executeTextWorkflow(
       {
@@ -136,7 +139,12 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
           { role: 'system', content: prepared.systemInstruction },
           { role: 'user', content: prepared.promptText },
         ];
-        return this.executeChatCompletion(messages, prepared.requestContextDescription, true);
+        return this.executeChatCompletion(
+          messages,
+          prepared.requestContextDescription,
+          true,
+          options?.onFallback
+        );
       }
     );
   }

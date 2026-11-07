@@ -1,6 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import { CategoryContextService } from '../category/categoryContext.js';
-import { TokenUsageStatistics } from '../types.js';
+import { ModelFallbackProgressCallback, TokenUsageStatistics } from '../types.js';
 import { applicationLogger, formatConciseErrorMessage } from '../../lib/logger.js';
 import { isRecoverableModelExecutionError } from './providerWorkflow.js';
 
@@ -70,7 +70,8 @@ export async function executeChatCompletionWithFallback(
   requestTimeoutMilliseconds: number,
   messages: Array<Record<string, unknown>>,
   requestContextDescription?: string,
-  enforceJsonResponseFormat: boolean = true
+  enforceJsonResponseFormat: boolean = true,
+  onFallbackAttempt?: ModelFallbackProgressCallback
 ): Promise<GenerationExecutionResult> {
   let lastEncounteredError: unknown = null;
 
@@ -134,7 +135,8 @@ export async function executeChatCompletionWithFallback(
             requestTimeoutMilliseconds,
             messages,
             requestContextDescription,
-            false
+            false,
+            onFallbackAttempt
           );
         }
         throw postError;
@@ -184,6 +186,22 @@ export async function executeChatCompletionWithFallback(
         applicationLogger.warn(
           `Model '${currentCandidateModel}' failed (${conciseErrorSummary}). Retrying with fallback model '${nextCandidateModel}'...`
         );
+
+        if (onFallbackAttempt) {
+          try {
+            await onFallbackAttempt({
+              currentModel: currentCandidateModel,
+              nextModel: nextCandidateModel,
+              attemptIndex: modelIndex + 1,
+              totalCandidates: candidateModelList.length,
+              reason: conciseErrorSummary,
+            });
+          } catch (callbackError: unknown) {
+            applicationLogger.warn(
+              `[OpenAI Fallback] onFallbackAttempt callback failed: ${callbackError}`
+            );
+          }
+        }
         continue;
       }
 
