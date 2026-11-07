@@ -156,7 +156,7 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     availableAccountList: WalletAccountItem[],
     availableCategoryList: WalletCategoryItem[],
     referenceInstant: Date = new Date(),
-    _options?: AiProcessingExecutionOptions
+    options?: AiProcessingExecutionOptions
   ): Promise<ExtractedFinancialIntent> {
     try {
       return await executeReceiptWorkflow(
@@ -185,7 +185,12 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
               ],
             },
           ];
-          return this.executeChatCompletion(messages, prepared.requestContextDescription, true);
+          return this.executeChatCompletion(
+            messages,
+            prepared.requestContextDescription,
+            true,
+            options?.onFallback
+          );
         }
       );
     } catch (visionError: any) {
