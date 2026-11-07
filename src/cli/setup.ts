@@ -19,6 +19,22 @@ import {
 } from './cliOptions.js';
 
 export class NodeTerminalPrompter implements SetupPrompter {
+  private rl?: ReturnType<typeof createInterface>;
+
+  private getReadline(): ReturnType<typeof createInterface> {
+    if (!this.rl) {
+      this.rl = createInterface({ input: process.stdin, output: process.stdout });
+    }
+    return this.rl;
+  }
+
+  public close(): void {
+    if (this.rl) {
+      this.rl.close();
+      this.rl = undefined;
+    }
+  }
+
   public info(message: string): void {
     console.log(message);
   }
@@ -27,27 +43,20 @@ export class NodeTerminalPrompter implements SetupPrompter {
     const promptSuffix = defaultValue !== undefined && defaultValue.length > 0
       ? ` [${defaultValue}]`
       : '';
-    const terminal = createInterface({ input: process.stdin, output: process.stdout });
-    try {
-      const answer = await terminal.question(`${message}${promptSuffix}: `);
-      const trimmedAnswer = answer.trim();
-      return trimmedAnswer || defaultValue || '';
-    } finally {
-      terminal.close();
-    }
+    const answer = await this.getReadline().question(`${message}${promptSuffix}: `);
+    const trimmedAnswer = answer.trim();
+    return trimmedAnswer || defaultValue || '';
   }
 
   public async secret(message: string, existingConfigured: boolean): Promise<string> {
     const keepHint = existingConfigured ? ' [configured, press Enter to keep]' : '';
 
     if (!process.stdin.isTTY || typeof process.stdin.setRawMode !== 'function') {
-      const terminal = createInterface({ input: process.stdin, output: process.stdout });
-      try {
-        return (await terminal.question(`${message}${keepHint}: `)).trim();
-      } finally {
-        terminal.close();
-      }
+      const answer = await this.getReadline().question(`${message}${keepHint}: `);
+      return answer.trim();
     }
+
+    this.close();
 
     return await new Promise<string>((resolve, reject) => {
       let enteredValue = '';
@@ -206,9 +215,12 @@ export async function runSetup(
   const prompter = customPrompter || new NodeTerminalPrompter();
 
   console.log('====================================================');
-  console.log('[INFO] Wallet MCP Bookkeeper interactive setup');
+  console.log('Wallet MCP Bookkeeper Interactive Setup');
   if (cliOptions.isDev) {
     console.log(`[MODE] Development target: ${cliOptions.envFile}`);
+  }
+  if (cliOptions.isAdvanced) {
+    console.log('[MODE] Advanced configuration tuning enabled');
   }
   if (cliOptions.isDryRun) {
     console.log('[MODE] Dry-run enabled: No files will be written to disk');
@@ -218,66 +230,75 @@ export async function runSetup(
   }
   console.log('====================================================');
 
-  if (hasExistingEnv) {
-    const shouldContinue = await prompter.confirm(
-      `Existing ${cliOptions.envFile} found. Update it while preserving values you do not replace?`,
-      true
-    );
-    if (!shouldContinue) {
-      console.log(`[INFO] Setup cancelled. Existing ${cliOptions.envFile} was not changed.`);
+  try {
+    if (hasExistingEnv) {
+      const shouldContinue = await prompter.confirm(
+        `Existing ${cliOptions.envFile} found. Update it while preserving values you do not replace?`,
+        true
+      );
+      if (!shouldContinue) {
+        console.log(`Setup cancelled. Existing ${cliOptions.envFile} was not changed.`);
+        return;
+      }
+    }
+
+    const setupResult = await collectSetupConfiguration(prompter, existingValues, {
+      isAdvanced: cliOptions.isAdvanced,
+      isDev: cliOptions.isDev,
+    });
+
+    console.log('');
+    console.log('=== Configuration Summary ===');
+    for (const summaryLine of setupResult.summaryLines) {
+      console.log(`  ${summaryLine}`);
+    }
+
+    const baseContent = hasExistingEnv
+      ? existingContent
+      : (fs.existsSync(envExamplePath) ? fs.readFileSync(envExamplePath, 'utf8') : '');
+    const mergedContent = mergeEnvFileContent(baseContent, setupResult.updates);
+
+    if (cliOptions.isDryRun) {
+      console.log('');
+      console.log(`[DRY-RUN] Simulation mode active. Skipping write to ${cliOptions.envFile}.`);
+      if (cliOptions.isDebug) {
+        console.log('----------------------------------------------------');
+        console.log('[DEBUG] Merged configuration preview:');
+        console.log(mergedContent);
+        console.log('----------------------------------------------------');
+      }
+      console.log('[SUCCESS] Dry-run completed successfully.');
       return;
     }
-  }
 
-  const setupResult = await collectSetupConfiguration(prompter, existingValues);
+    const shouldWrite = await prompter.confirm(`Write this configuration to ${cliOptions.envFile}?`, true);
+    if (!shouldWrite) {
+      console.log('Setup cancelled. No configuration file was written.');
+      return;
+    }
 
-  console.log('');
-  console.log('[INFO] Configuration summary');
-  for (const summaryLine of setupResult.summaryLines) {
-    console.log(`  ${summaryLine}`);
-  }
-
-  const baseContent = hasExistingEnv
-    ? existingContent
-    : (fs.existsSync(envExamplePath) ? fs.readFileSync(envExamplePath, 'utf8') : '');
-  const mergedContent = mergeEnvFileContent(baseContent, setupResult.updates);
-
-  if (cliOptions.isDryRun) {
-    console.log('');
-    console.log(`[DRY-RUN] Simulation mode active. Skipping write to ${cliOptions.envFile}.`);
     if (cliOptions.isDebug) {
       console.log('----------------------------------------------------');
       console.log('[DEBUG] Merged configuration preview:');
       console.log(mergedContent);
       console.log('----------------------------------------------------');
     }
-    console.log('[SUCCESS] Dry-run completed successfully.');
-    return;
-  }
 
-  const shouldWrite = await prompter.confirm(`Write this configuration to ${cliOptions.envFile}?`, true);
-  if (!shouldWrite) {
-    console.log('[INFO] Setup cancelled. No configuration file was written.');
-    return;
-  }
+    fs.writeFileSync(envPath, mergedContent, { encoding: 'utf8', mode: 0o600 });
+    try {
+      fs.chmodSync(envPath, 0o600);
+    } catch {
+      // chmod is best-effort on platforms that do not implement POSIX file modes.
+    }
 
-  if (cliOptions.isDebug) {
-    console.log('----------------------------------------------------');
-    console.log('[DEBUG] Merged configuration preview:');
-    console.log(mergedContent);
-    console.log('----------------------------------------------------');
+    console.log(`[SUCCESS] Configuration saved to ${cliOptions.envFile}`);
+    const doctorCommand = cliOptions.isDev ? 'npm run doctor -- --dev' : 'npm run doctor';
+    console.log(`Next step: run ${doctorCommand}, then npm start.`);
+  } finally {
+    if (prompter instanceof NodeTerminalPrompter) {
+      prompter.close();
+    }
   }
-
-  fs.writeFileSync(envPath, mergedContent, { encoding: 'utf8', mode: 0o600 });
-  try {
-    fs.chmodSync(envPath, 0o600);
-  } catch {
-    // chmod is best-effort on platforms that do not implement POSIX file modes.
-  }
-
-  console.log(`[SUCCESS] Configuration saved to ${cliOptions.envFile}`);
-  const doctorCommand = cliOptions.isDev ? 'npm run doctor -- --dev' : 'npm run doctor';
-  console.log(`[INFO] Next: run ${doctorCommand}, then npm start.`);
 }
 
 const invokedScriptPath = process.argv[1] ? path.resolve(process.argv[1]) : null;

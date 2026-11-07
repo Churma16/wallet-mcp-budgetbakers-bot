@@ -28,6 +28,11 @@ export interface SetupWizardResult {
   readonly summaryLines: string[];
 }
 
+export interface CollectSetupOptions {
+  readonly isAdvanced?: boolean;
+  readonly isDev?: boolean;
+}
+
 const REPOSITORY_DOC_BASE =
   'https://github.com/Churma16/wallet-mcp-budgetbakers-bot/blob/main/docs/setup-credentials.md';
 
@@ -258,7 +263,7 @@ function showCredentialHelp(
   guideAnchor: string
 ): void {
   prompter.info('');
-  prompter.info(`[INFO] ${title}`);
+  prompter.info(`=== ${title} ===`);
   prompter.info(hint);
   prompter.info(`Get it here: ${acquisitionUrl}`);
   prompter.info(`Full guide: ${REPOSITORY_DOC_BASE}#${guideAnchor}`);
@@ -495,7 +500,7 @@ async function configureAiProviders(
         );
         const { model, wasAutoCorrected } = sanitizeModelInput(rawModelInput, defaultModel);
         if (wasAutoCorrected) {
-          prompter.info(`[INFO] Selected default Gemini model: ${defaultModel}`);
+          prompter.info(`Selected default Gemini model: ${defaultModel}`);
         }
         updates.GEMINI_MODEL = model;
       } else {
@@ -533,23 +538,33 @@ async function configureAiProviders(
 
 export async function collectSetupConfiguration(
   prompter: SetupPrompter,
-  existingValues: EnvironmentValueMap
+  existingValues: EnvironmentValueMap,
+  options: CollectSetupOptions = {}
 ): Promise<SetupWizardResult> {
   const updates: EnvironmentValueMap = {};
 
   showCredentialHelp(
     prompter,
-    'Wallet MCP access token',
-    'Create a Personal Access Token in BudgetBakers Wallet. Required scopes are documented in the guide.',
+    'Wallet MCP Access Token',
+    'Create a Personal Access Token in BudgetBakers Wallet web settings. Required scopes are documented in the guide.',
     'https://web.budgetbakers.com/settings/mcp-server',
     'wallet-mcp'
   );
 
-  updates.WALLET_MCP_BASE_URL = await promptRequiredText(
-    prompter,
-    'Wallet MCP base URL',
-    existingValues.WALLET_MCP_BASE_URL || 'https://mcp.wallet.budgetbakers.com'
+  const isCustomBaseUrl = Boolean(
+    existingValues.WALLET_MCP_BASE_URL &&
+    existingValues.WALLET_MCP_BASE_URL !== 'https://mcp.wallet.budgetbakers.com'
   );
+
+  if (options.isAdvanced || options.isDev || isCustomBaseUrl) {
+    updates.WALLET_MCP_BASE_URL = await promptRequiredText(
+      prompter,
+      'Wallet MCP base URL',
+      existingValues.WALLET_MCP_BASE_URL || 'https://mcp.wallet.budgetbakers.com'
+    );
+  } else {
+    updates.WALLET_MCP_BASE_URL = existingValues.WALLET_MCP_BASE_URL || 'https://mcp.wallet.budgetbakers.com';
+  }
 
   const walletToken = await promptCredential(
     prompter,
@@ -586,7 +601,7 @@ export async function collectSetupConfiguration(
 
   if (selectedChannels.includes('whatsapp')) {
     prompter.info('');
-    prompter.info('[INFO] WhatsApp setup');
+    prompter.info('=== WhatsApp Setup ===');
     prompter.info('Use the authorized phone number in international E.164 format.');
     prompter.info(`Full guide: ${REPOSITORY_DOC_BASE}#whatsapp`);
     whatsappPhoneNumberCandidate = await promptRequiredText(
@@ -601,7 +616,7 @@ export async function collectSetupConfiguration(
   if (selectedChannels.includes('telegram')) {
     showCredentialHelp(
       prompter,
-      'Telegram bot token',
+      'Telegram Bot Token',
       'Create a Telegram bot with @BotFather, then copy the generated bot token.',
       'https://t.me/BotFather',
       'telegram'
@@ -618,7 +633,7 @@ export async function collectSetupConfiguration(
     }
 
     prompter.info('');
-    prompter.info('[INFO] Security: Telegram account authorization');
+    prompter.info('=== Security: Telegram Account Authorization ===');
     prompter.info('To ensure your financial data stays private, only your account will be permitted.');
     prompter.info('Find your numeric ID by sending /start to @userinfobot or @raw_data_bot on Telegram.');
     updates.TELEGRAM_ALLOWED_USER_ID = await promptTelegramAllowedUserId(
@@ -675,28 +690,6 @@ export async function collectSetupConfiguration(
       'gmail-imap'
     );
 
-    const defaultHost = existingValues.EMAIL_IMAP_HOST || 'imap.gmail.com';
-    let candidateHost = defaultHost;
-    while (true) {
-      candidateHost = await promptRequiredText(prompter, 'IMAP host', defaultHost);
-      if (validateHostname(candidateHost)) {
-        break;
-      }
-      prompter.info('[WARN] Enter a valid hostname or IP address (for example imap.gmail.com).');
-    }
-    updates.EMAIL_IMAP_HOST = candidateHost;
-
-    const defaultPort = existingValues.EMAIL_IMAP_PORT || '993';
-    let candidatePort = defaultPort;
-    while (true) {
-      candidatePort = await promptRequiredText(prompter, 'IMAP port', defaultPort);
-      if (validatePortNumber(candidatePort) !== null) {
-        break;
-      }
-      prompter.info('[WARN] Port must be a valid number between 1 and 65535.');
-    }
-    updates.EMAIL_IMAP_PORT = candidatePort;
-
     let candidateEmail = existingValues.EMAIL_IMAP_USER || '';
     while (true) {
       candidateEmail = await promptRequiredText(
@@ -711,6 +704,56 @@ export async function collectSetupConfiguration(
     }
     updates.EMAIL_IMAP_USER = candidateEmail;
 
+    const lowerEmail = candidateEmail.toLowerCase();
+    const isGmail = lowerEmail.endsWith('@gmail.com') || lowerEmail.endsWith('@googlemail.com');
+    const hasCustomHost = Boolean(
+      existingValues.EMAIL_IMAP_HOST &&
+      existingValues.EMAIL_IMAP_HOST !== 'imap.gmail.com'
+    );
+    const hasCustomPort = Boolean(
+      existingValues.EMAIL_IMAP_PORT &&
+      existingValues.EMAIL_IMAP_PORT !== '993'
+    );
+    const hasCustomLookback = Boolean(
+      existingValues.EMAIL_LOOKBACK_MINUTES &&
+      existingValues.EMAIL_LOOKBACK_MINUTES !== '10'
+    );
+
+    const shouldPromptAdvancedImap = Boolean(
+      options.isAdvanced ||
+      options.isDev ||
+      !isGmail ||
+      hasCustomHost ||
+      hasCustomPort
+    );
+
+    if (shouldPromptAdvancedImap) {
+      const defaultHost = existingValues.EMAIL_IMAP_HOST || 'imap.gmail.com';
+      let candidateHost = defaultHost;
+      while (true) {
+        candidateHost = await promptRequiredText(prompter, 'IMAP host', defaultHost);
+        if (validateHostname(candidateHost)) {
+          break;
+        }
+        prompter.info('[WARN] Enter a valid hostname or IP address (for example imap.gmail.com).');
+      }
+      updates.EMAIL_IMAP_HOST = candidateHost;
+
+      const defaultPort = existingValues.EMAIL_IMAP_PORT || '993';
+      let candidatePort = defaultPort;
+      while (true) {
+        candidatePort = await promptRequiredText(prompter, 'IMAP port', defaultPort);
+        if (validatePortNumber(candidatePort) !== null) {
+          break;
+        }
+        prompter.info('[WARN] Port must be a valid number between 1 and 65535.');
+      }
+      updates.EMAIL_IMAP_PORT = candidatePort;
+    } else {
+      updates.EMAIL_IMAP_HOST = existingValues.EMAIL_IMAP_HOST || 'imap.gmail.com';
+      updates.EMAIL_IMAP_PORT = existingValues.EMAIL_IMAP_PORT || '993';
+    }
+
     const emailPassword = await promptCredential(
       prompter,
       `Enter EMAIL_IMAP_PASSWORD${hasConfiguredCredential(existingValues.EMAIL_IMAP_PASSWORD) ? ' (press Enter to keep current)' : ''}`,
@@ -721,21 +764,31 @@ export async function collectSetupConfiguration(
       updates.EMAIL_IMAP_PASSWORD = emailPassword;
     }
 
-    const defaultLookback = existingValues.EMAIL_LOOKBACK_MINUTES || '10';
-    let candidateLookback = defaultLookback;
-    while (true) {
-      candidateLookback = await promptRequiredText(
-        prompter,
-        'Initial email lookback in minutes',
-        defaultLookback
-      );
-      const parsedMinutes = Number.parseInt(candidateLookback.trim(), 10);
-      if (!Number.isNaN(parsedMinutes) && parsedMinutes >= 1 && parsedMinutes <= 10080) {
-        break;
+    const shouldPromptLookback = Boolean(
+      options.isAdvanced ||
+      options.isDev ||
+      hasCustomLookback
+    );
+
+    if (shouldPromptLookback) {
+      const defaultLookback = existingValues.EMAIL_LOOKBACK_MINUTES || '10';
+      let candidateLookback = defaultLookback;
+      while (true) {
+        candidateLookback = await promptRequiredText(
+          prompter,
+          'Initial email lookback in minutes',
+          defaultLookback
+        );
+        const parsedMinutes = Number.parseInt(candidateLookback.trim(), 10);
+        if (!Number.isNaN(parsedMinutes) && parsedMinutes >= 1 && parsedMinutes <= 10080) {
+          break;
+        }
+        prompter.info('[WARN] Lookback must be a positive number of minutes (1 to 10080).');
       }
-      prompter.info('[WARN] Lookback must be a positive number of minutes (1 to 10080).');
+      updates.EMAIL_LOOKBACK_MINUTES = candidateLookback;
+    } else {
+      updates.EMAIL_LOOKBACK_MINUTES = existingValues.EMAIL_LOOKBACK_MINUTES || '10';
     }
-    updates.EMAIL_LOOKBACK_MINUTES = candidateLookback;
   }
 
   const effectivePhoneNumber = updates.ALLOWED_PHONE_NUMBER || existingValues.ALLOWED_PHONE_NUMBER || '';

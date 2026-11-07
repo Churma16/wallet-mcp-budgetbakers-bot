@@ -6,6 +6,7 @@ export interface SetupCliOptions {
   readonly isDev: boolean;
   readonly isDryRun: boolean;
   readonly isDebug: boolean;
+  readonly isAdvanced: boolean;
   readonly showHelp: boolean;
 }
 
@@ -20,6 +21,7 @@ interface CommonParsedArgs {
   readonly isDev: boolean;
   readonly isDryRun: boolean;
   readonly isDebug: boolean;
+  readonly isAdvanced: boolean;
   readonly showHelp: boolean;
   readonly customEnvFile?: string;
 }
@@ -28,6 +30,7 @@ function parseCliTokens(args: readonly string[]): CommonParsedArgs {
   let isDev = false;
   let isDryRun = false;
   let isDebug = false;
+  let isAdvanced = false;
   let showHelp = false;
   let customEnvFile: string | undefined;
 
@@ -49,6 +52,13 @@ function parseCliTokens(args: readonly string[]): CommonParsedArgs {
       lowerArg === 'dryrun'
     ) {
       isDryRun = true;
+    } else if (
+      lowerArg === '--advanced' ||
+      lowerArg === '-advanced' ||
+      lowerArg === '-a' ||
+      lowerArg === 'advanced'
+    ) {
+      isAdvanced = true;
     } else if (lowerArg === '--debug' || lowerArg === '-debug' || lowerArg === 'debug') {
       isDebug = true;
     } else if (lowerArg === '--env' || lowerArg === '-e') {
@@ -68,6 +78,7 @@ function parseCliTokens(args: readonly string[]): CommonParsedArgs {
     isDev,
     isDryRun,
     isDebug,
+    isAdvanced,
     showHelp,
     customEnvFile,
   };
@@ -94,6 +105,7 @@ export function parseSetupCliArgs(
     isDev: parsed.isDev,
     isDryRun,
     isDebug: parsed.isDebug,
+    isAdvanced: parsed.isAdvanced,
     showHelp: parsed.showHelp,
   };
 }
@@ -123,6 +135,7 @@ export function formatSetupHelp(): string {
     'Options:',
     '  --dev, -dev, dev        Target .env.dev instead of .env (safe development test)',
     '  --dry-run, -dry-run     Simulate setup without writing any files to disk',
+    '  --advanced, -a          Show advanced tuning prompts (MCP URL, custom IMAP host/port/lookback)',
     '  --debug, -debug, debug  Run in debug mode (enables dry-run and prints preview)',
     '  --env, -e <filename>    Specify a custom environment file target',
     '  --help, -h, help        Display this help message',
@@ -131,6 +144,7 @@ export function formatSetupHelp(): string {
     '  npm run setup',
     '  npm run setup:dev               (or npm run setup -- --dev)',
     '  npm run setup:dry-run           (or npm run setup -- --dry-run)',
+    '  npm run setup -- --advanced     (or npm run setup -- -a)',
     '  npm run setup -- --env .env.staging',
   ].join('\n');
 }

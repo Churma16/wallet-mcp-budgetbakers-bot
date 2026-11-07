@@ -30,6 +30,7 @@ interface FakePrompterOptions {
 
 class FakeSetupPrompter implements SetupPrompter {
   public readonly infoMessages: string[] = [];
+  public readonly askedQuestions: string[] = [];
   private readonly questionAnswers: Record<string, string[]>;
 
   constructor(private readonly options: FakePrompterOptions = {}) {
@@ -43,6 +44,7 @@ class FakeSetupPrompter implements SetupPrompter {
   }
 
   public async question(message: string, defaultValue?: string): Promise<string> {
+    this.askedQuestions.push(message);
     for (const [messageFragment, answers] of Object.entries(this.questionAnswers)) {
       if (message.includes(messageFragment) && answers.length > 0) {
         return answers.shift() || '';
@@ -55,8 +57,23 @@ class FakeSetupPrompter implements SetupPrompter {
     if (message.includes('Authorized Telegram user ID')) {
       return defaultValue || '123456789';
     }
+    if (message.includes('timezone')) {
+      return defaultValue || 'Asia/Jakarta';
+    }
+    if (message.includes('currency')) {
+      return defaultValue || 'USD';
+    }
     if (message.includes('IMAP email address')) {
       return defaultValue || 'user@example.com';
+    }
+    if (message.includes('IMAP host')) {
+      return defaultValue || 'imap.gmail.com';
+    }
+    if (message.includes('IMAP port')) {
+      return defaultValue || '993';
+    }
+    if (message.includes('lookback')) {
+      return defaultValue || '10';
     }
     return defaultValue || 'value';
   }
@@ -466,7 +483,7 @@ describe('setup wizard', () => {
         },
       });
 
-      const result = await collectSetupConfiguration(prompter, {});
+      const result = await collectSetupConfiguration(prompter, {}, { isAdvanced: true });
 
       expect(result.updates.GEMINI_MODEL).toBe('gemini-3.5-flash-lite');
       expect(result.updates.EMAIL_IMAP_HOST).toBe('imap.gmail.com');
@@ -486,6 +503,69 @@ describe('setup wizard', () => {
       expect(
         prompter.infoMessages.some(msg => msg.includes("Enter a valid hostname or IP address"))
       ).toBe(true);
+    });
+
+    it('skips redundant prompts (base URL, IMAP host, port, lookback) in standard mode with Gmail', async () => {
+      const prompter = new FakeSetupPrompter({
+        aiProviders: ['gemini'],
+        channels: ['console'],
+        emailEnabled: true,
+        secrets: {
+          WALLET_MCP_ACCESS_TOKEN: 'token-std-123',
+          GEMINI_API_KEY: 'gemini-std-123',
+          EMAIL_IMAP_PASSWORD: 'password-std-123',
+        },
+        questionAnswers: {
+          'IMAP email address': ['myaccount@gmail.com'],
+        },
+      });
+
+      const result = await collectSetupConfiguration(prompter, {}, { isAdvanced: false });
+
+      expect(result.updates.WALLET_MCP_BASE_URL).toBe('https://mcp.wallet.budgetbakers.com');
+      expect(result.updates.EMAIL_IMAP_USER).toBe('myaccount@gmail.com');
+      expect(result.updates.EMAIL_IMAP_HOST).toBe('imap.gmail.com');
+      expect(result.updates.EMAIL_IMAP_PORT).toBe('993');
+      expect(result.updates.EMAIL_LOOKBACK_MINUTES).toBe('10');
+
+      // Verify redundant questions were NOT prompted
+      expect(prompter.askedQuestions.some(q => q.includes('Wallet MCP base URL'))).toBe(false);
+      expect(prompter.askedQuestions.some(q => q.includes('IMAP host'))).toBe(false);
+      expect(prompter.askedQuestions.some(q => q.includes('IMAP port'))).toBe(false);
+      expect(prompter.askedQuestions.some(q => q.includes('Initial email lookback'))).toBe(false);
+    });
+
+    it('prompts advanced options (base URL, IMAP host, port, lookback) when isAdvanced is true', async () => {
+      const prompter = new FakeSetupPrompter({
+        aiProviders: ['gemini'],
+        channels: ['console'],
+        emailEnabled: true,
+        secrets: {
+          WALLET_MCP_ACCESS_TOKEN: 'token-adv-123',
+          GEMINI_API_KEY: 'gemini-adv-123',
+          EMAIL_IMAP_PASSWORD: 'password-adv-123',
+        },
+        questionAnswers: {
+          'Wallet MCP base URL': ['https://custom-mcp.wallet.org'],
+          'IMAP email address': ['myaccount@gmail.com'],
+          'IMAP host': ['custom.imap.org'],
+          'IMAP port': ['9933'],
+          'Initial email lookback in minutes': ['30'],
+        },
+      });
+
+      const result = await collectSetupConfiguration(prompter, {}, { isAdvanced: true });
+
+      expect(result.updates.WALLET_MCP_BASE_URL).toBe('https://custom-mcp.wallet.org');
+      expect(result.updates.EMAIL_IMAP_HOST).toBe('custom.imap.org');
+      expect(result.updates.EMAIL_IMAP_PORT).toBe('9933');
+      expect(result.updates.EMAIL_LOOKBACK_MINUTES).toBe('30');
+
+      // Verify all advanced questions were asked
+      expect(prompter.askedQuestions.some(q => q.includes('Wallet MCP base URL'))).toBe(true);
+      expect(prompter.askedQuestions.some(q => q.includes('IMAP host'))).toBe(true);
+      expect(prompter.askedQuestions.some(q => q.includes('IMAP port'))).toBe(true);
+      expect(prompter.askedQuestions.some(q => q.includes('Initial email lookback'))).toBe(true);
     });
   });
 });
