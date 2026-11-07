@@ -634,6 +634,10 @@ export const indonesianDictionary: ResponseDictionary = {
     debugOptionOff: 'Nonaktif (OFF)',
   },
 
+  aiFallbackStatus: {
+    initial: '⏳ Sebentar ya, sedang memproses transaksi Anda...',
+    cycling: '⏳ Sedang mencoba kembali dengan jalur cadangan...',
+  },
 
   errors: {
     aiBusy(timestampString: string): string {

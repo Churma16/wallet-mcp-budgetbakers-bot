@@ -144,6 +144,20 @@ export interface UnifiedClarificationDraft {
   invalidSelectionCount: number;
 }
 
+export interface ModelFallbackEvent {
+  currentModel: string;
+  nextModel: string;
+  attemptIndex: number;
+  totalCandidates: number;
+  reason?: string;
+}
+
+export type ModelFallbackProgressCallback = (event: ModelFallbackEvent) => Promise<void> | void;
+
+export interface AiProcessingExecutionOptions {
+  onFallback?: ModelFallbackProgressCallback;
+}
+
 export interface FinancialAiProvider {
   readonly providerName: string;
 
@@ -151,7 +165,8 @@ export interface FinancialAiProvider {
     userMessageText: string,
     availableAccountList: WalletAccountItem[],
     availableCategoryList: WalletCategoryItem[],
-    referenceInstant?: Date
+    referenceInstant?: Date,
+    options?: AiProcessingExecutionOptions
   ): Promise<ExtractedFinancialIntent>;
 
   processImageMessage(
@@ -160,7 +175,8 @@ export interface FinancialAiProvider {
     optionalCaption: string,
     availableAccountList: WalletAccountItem[],
     availableCategoryList: WalletCategoryItem[],
-    referenceInstant?: Date
+    referenceInstant?: Date,
+    options?: AiProcessingExecutionOptions
   ): Promise<ExtractedFinancialIntent>;
 
   processEmailTransactionMessage(

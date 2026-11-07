@@ -10,6 +10,8 @@ import {
   AccountClarificationProposal,
   CategoryClassificationProposal,
   UnifiedClarificationCandidate,
+  AiProcessingExecutionOptions,
+  ModelFallbackProgressCallback,
 } from '../types.js';
 import { CategoryContextService } from '../category/categoryContext.js';
 import {
@@ -102,6 +104,7 @@ export class GeminiAiProvider implements FinancialAiProvider {
     contents: any;
     systemInstruction: string;
     requestContextDescription?: string;
+    onFallbackAttempt?: ModelFallbackProgressCallback;
   }) {
     return executeGeminiGenerationWithFallback({
       googleGenAiClient: this.googleGenAiClient,
@@ -110,6 +113,7 @@ export class GeminiAiProvider implements FinancialAiProvider {
       contents: options.contents,
       systemInstruction: options.systemInstruction,
       requestContextDescription: options.requestContextDescription || 'Gemini financial processing',
+      onFallbackAttempt: options.onFallbackAttempt,
     });
   }
 
@@ -117,7 +121,8 @@ export class GeminiAiProvider implements FinancialAiProvider {
     userMessageText: string,
     availableAccountList: WalletAccountItem[],
     availableCategoryList: WalletCategoryItem[],
-    referenceInstant: Date = new Date()
+    referenceInstant: Date = new Date(),
+    options?: AiProcessingExecutionOptions
   ): Promise<ExtractedFinancialIntent> {
     return executeTextWorkflow(
       {
@@ -138,6 +143,7 @@ export class GeminiAiProvider implements FinancialAiProvider {
           ],
           systemInstruction: prepared.systemInstruction,
           requestContextDescription: prepared.requestContextDescription,
+          onFallbackAttempt: options?.onFallback,
         })
     );
   }
@@ -148,7 +154,8 @@ export class GeminiAiProvider implements FinancialAiProvider {
     optionalCaption: string,
     availableAccountList: WalletAccountItem[],
     availableCategoryList: WalletCategoryItem[],
-    referenceInstant: Date = new Date()
+    referenceInstant: Date = new Date(),
+    options?: AiProcessingExecutionOptions
   ): Promise<ExtractedFinancialIntent> {
     return executeReceiptWorkflow(
       {
@@ -179,6 +186,7 @@ export class GeminiAiProvider implements FinancialAiProvider {
           ],
           systemInstruction: prepared.systemInstruction,
           requestContextDescription: prepared.requestContextDescription,
+          onFallbackAttempt: options?.onFallback,
         })
     );
   }

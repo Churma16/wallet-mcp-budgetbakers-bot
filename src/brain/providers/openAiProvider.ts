@@ -11,6 +11,7 @@ import {
   AccountClarificationProposal,
   CategoryClassificationProposal,
   UnifiedClarificationCandidate,
+  AiProcessingExecutionOptions,
 } from '../types.js';
 import {
   isAiResponseParseError,
@@ -114,7 +115,8 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     userMessageText: string,
     availableAccountList: WalletAccountItem[],
     availableCategoryList: WalletCategoryItem[],
-    referenceInstant: Date = new Date()
+    referenceInstant: Date = new Date(),
+    _options?: AiProcessingExecutionOptions
   ): Promise<ExtractedFinancialIntent> {
     return executeTextWorkflow(
       {
@@ -141,7 +143,8 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     optionalCaption: string,
     availableAccountList: WalletAccountItem[],
     availableCategoryList: WalletCategoryItem[],
-    referenceInstant: Date = new Date()
+    referenceInstant: Date = new Date(),
+    _options?: AiProcessingExecutionOptions
   ): Promise<ExtractedFinancialIntent> {
     try {
       return await executeReceiptWorkflow(

@@ -264,4 +264,8 @@ export class ConsoleMessagingAdapter implements MessagingAdapter {
   public async sendBroadcastNotification(messageText: string): Promise<void> {
     await this.sendTextMessage(this.chatIdentifier, messageText);
   }
+
+  public async deleteTextMessage(_targetChatIdentifier: string, _messageId: string): Promise<boolean> {
+    return true;
+  }
 }
