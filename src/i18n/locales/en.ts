@@ -636,6 +636,16 @@ export const englishDictionary: ResponseDictionary = {
     debugOptionOff: 'Disabled (OFF)',
   },
 
+  aiFallbackStatus: {
+    initial(modelName?: string): string {
+      return modelName
+        ? `⏳ Processing your transaction with model \`${modelName}\`, just a moment...`
+        : '⏳ Processing your transaction, just a moment...';
+    },
+    cycling(modelName: string): string {
+      return `⏳ Still processing, trying with model \`${modelName}\`...`;
+    },
+  },
 
   errors: {
     aiBusy(timestampString: string): string {

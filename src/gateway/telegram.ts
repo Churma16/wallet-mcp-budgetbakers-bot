@@ -584,6 +584,37 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     return this.editTextMessage(this.normalizedAllowedUserId, messageId, messageText);
   }
 
+  public async deleteTextMessage(
+    targetChatIdentifier: string,
+    messageId: string
+  ): Promise<boolean> {
+    if (!this.botInstance) {
+      return false;
+    }
+
+    const numericMessageId = Number(messageId);
+    if (!Number.isFinite(numericMessageId)) {
+      return false;
+    }
+
+    try {
+      await this.botInstance.api.deleteMessage(targetChatIdentifier, numericMessageId);
+      applicationLogger.fileDetail('telegram', 'Deleted Telegram Message', {
+        targetChatIdentifier,
+        messageId: numericMessageId,
+      });
+      return true;
+    } catch (deleteError: unknown) {
+      const errorMessage = deleteError instanceof Error ? deleteError.message : String(deleteError);
+      applicationLogger.fileDetail('warn', 'Failed to delete Telegram message', {
+        targetChatIdentifier,
+        messageId: numericMessageId,
+        error: errorMessage,
+      });
+      return false;
+    }
+  }
+
   public setupBotHandlers(bot: Bot): void {
     // 1. Security Whitelist Middleware
     bot.use(async (ctx, next) => {

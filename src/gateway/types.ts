@@ -44,6 +44,10 @@ export interface MessagingAdapter {
     messageText: string,
     options?: SendTextMessageOptions
   ): Promise<boolean>;
+  deleteTextMessage?(
+    targetChatIdentifier: string,
+    messageId: string
+  ): Promise<boolean>;
   getConnectionState?(): AdapterConnectionState;
 }
 
