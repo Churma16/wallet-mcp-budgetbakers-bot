@@ -78,11 +78,21 @@ The quickest way to configure the bot is the interactive setup:
 npm run setup
 ```
 
-*(Tip: Run `npm run setup:dry-run` to test the setup without saving any files to disk).*
+The wizard asks only for what it needs: your Wallet API token, AI choice, messaging account, and preferences. Standard defaults like the Wallet MCP URL and standard Gmail IMAP settings are configured automatically.
+
+Need custom ports, lookback tuning, or a custom MCP URL? Pass `--advanced` (or `-a`):
+```bash
+npm run setup -- --advanced
+```
+
+Want to test it first without writing files? Use dry-run:
+```bash
+npm run setup:dry-run
+```
 
 The setup prompts you for:
 - BudgetBakers Wallet API token
-- AI provider (Gemini, OpenAI, Groq, OpenRouter, or local Ollama)
+- AI provider (Gemini, OpenRouter, Groq, OpenAI, or local Ollama). You can select multiple providers in priority order (e.g. `1,2` for Gemini with OpenRouter fallback) so the bot keeps working if your primary model hits a rate limit.
 - Messaging channel (Telegram or WhatsApp) and your user ID so only you can talk to the bot
 - Language, currency (e.g. `USD`, `EUR`, `IDR`), and timezone (detected automatically from your system clock, or enter a city like `London` or `Jakarta`)
 - Optional email receipt monitoring for bank transactions
@@ -114,10 +124,17 @@ cp .env.example .env
 
 ### 3. Verify Connectivity
 
-Before starting, run the diagnostic doctor command to verify token scopes, AI credentials, and filesystem permissions:
+Before starting the bot, test your connections:
 
 ```bash
 npm run doctor
+```
+
+It checks BudgetBakers Wallet access, tests each configured AI provider and model, and validates messaging credentials.
+
+Running the bot inside Docker on a server or VPS? Run the doctor directly inside the container:
+```bash
+docker exec -it wallet-mcp npm run doctor
 ```
 
 ### 4. Start the Bot
