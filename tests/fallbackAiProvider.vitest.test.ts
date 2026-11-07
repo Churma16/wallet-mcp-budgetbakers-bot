@@ -183,6 +183,35 @@ describe('FallbackAiProvider and AI resilience', () => {
       expect(imageResult.records?.[0].note).toContain('Image processed by openrouter');
     });
 
+    it('invokes options.onFallback callback during provider failover', async () => {
+      const primary = new MockFinancialAiProvider('gemini', 429, 'Rate limit');
+      const secondary = new MockFinancialAiProvider('openrouter');
+      const fallbackProvider = new FallbackAiProvider([primary, secondary]);
+
+      const fallbackEvents: any[] = [];
+      const result = await fallbackProvider.processTextMessage(
+        'Beli pulsa 50rb',
+        mockAccounts,
+        mockCategories,
+        new Date(),
+        {
+          onFallback: async (event) => {
+            fallbackEvents.push(event);
+          },
+        }
+      );
+
+      expect(result.records?.[0].note).toContain('Processed by openrouter');
+      expect(fallbackEvents).toHaveLength(1);
+      expect(fallbackEvents[0]).toEqual({
+        currentModel: 'gemini',
+        nextModel: 'openrouter',
+        attemptIndex: 1,
+        totalCandidates: 2,
+        reason: expect.any(String),
+      });
+    });
+
     it('propagates the last failure when all providers fail', async () => {
       const failed1 = new MockFinancialAiProvider('gemini', 429, 'Rate limit 1');
       const failed2 = new MockFinancialAiProvider('openrouter', 503, 'Outage 2');

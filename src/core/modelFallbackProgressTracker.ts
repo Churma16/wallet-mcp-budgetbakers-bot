@@ -36,6 +36,7 @@ export class ModelFallbackProgressTracker {
   private statusMessageId: string | null = null;
   private isCleanedUp = false;
   private isSending = false;
+  private sendPromise: Promise<void> | null = null;
 
   constructor(options: ModelFallbackProgressTrackerOptions) {
     this.gateway = options.gateway;
@@ -123,29 +124,34 @@ export class ModelFallbackProgressTracker {
     }
 
     this.isSending = true;
-    try {
-      const receipt = await this.gateway.sendMessage(
-        this.channel,
-        this.chatIdentifier,
-        this.initialMessage
-      );
+    this.sendPromise = (async () => {
+      try {
+        const receipt = await this.gateway.sendMessage(
+          this.channel,
+          this.chatIdentifier,
+          this.initialMessage
+        );
 
-      if (this.isCleanedUp) {
-        // Race condition: cleanup was executed while sendMessage was in flight
-        if (receipt?.messageId) {
-          await this.safelyDeleteMessage(receipt.messageId);
+        if (this.isCleanedUp) {
+          // Race condition: cleanup was executed while sendMessage was in flight
+          if (receipt?.messageId) {
+            await this.safelyDeleteMessage(receipt.messageId);
+          }
+        } else if (receipt?.messageId) {
+          this.statusMessageId = receipt.messageId;
         }
-      } else if (receipt?.messageId) {
-        this.statusMessageId = receipt.messageId;
+      } catch (sendError: unknown) {
+        applicationLogger.fileDetail('warn', 'Failed to send initial fallback status message', {
+          chatIdentifier: this.chatIdentifier,
+          error: sendError instanceof Error ? sendError.message : String(sendError),
+        });
+      } finally {
+        this.isSending = false;
+        this.sendPromise = null;
       }
-    } catch (sendError: unknown) {
-      applicationLogger.fileDetail('warn', 'Failed to send initial fallback status message', {
-        chatIdentifier: this.chatIdentifier,
-        error: sendError instanceof Error ? sendError.message : String(sendError),
-      });
-    } finally {
-      this.isSending = false;
-    }
+    })();
+
+    await this.sendPromise;
   }
 
   /**
@@ -158,6 +164,10 @@ export class ModelFallbackProgressTracker {
     if (this.graceTimer) {
       clearTimeout(this.graceTimer);
       this.graceTimer = null;
+    }
+
+    if (this.sendPromise) {
+      await this.sendPromise;
     }
 
     if (!this.statusMessageId) {
