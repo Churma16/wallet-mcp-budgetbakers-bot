@@ -28,7 +28,7 @@ export async function runDoctor(
   }
 
   console.log('====================================================');
-  console.log('[INFO] Wallet MCP Bookkeeper doctor');
+  console.log('Wallet MCP System Diagnostics');
   if (cliOptions.isDev || cliOptions.envFile !== '.env') {
     console.log(`[TARGET] Environment file: ${cliOptions.envFile}`);
   }
@@ -39,7 +39,7 @@ export async function runDoctor(
   if (isExplicitTarget && !fs.existsSync(resolvedEnvPath)) {
     console.error(`[ERROR] Configuration: Environment file '${cliOptions.envFile}' not found.`);
     if (cliOptions.isDev) {
-      console.error(`[INFO] Run 'npm run setup:dev' to generate '${cliOptions.envFile}'.`);
+      console.error(`Run 'npm run setup:dev' to generate '${cliOptions.envFile}'.`);
     }
     process.exitCode = 1;
     return;
@@ -67,16 +67,19 @@ export async function runDoctor(
   console.log('----------------------------------------------------');
   if (errorCount > 0) {
     console.log(`[ERROR] Doctor found ${errorCount} error(s) and ${warningCount} warning(s).`);
+    console.log("Run 'npm run setup' to update your configuration, or check the documentation.");
     process.exitCode = 1;
     return;
   }
 
   if (warningCount > 0) {
     console.log(`[WARN] Doctor completed with ${warningCount} warning(s).`);
+    console.log("Configuration is usable, but review the warnings above for optimal operation.");
     return;
   }
 
   console.log('[SUCCESS] All configured checks passed.');
+  console.log('All systems ready. Start the bot with: npm start');
 }
 
 const invokedScriptPath = process.argv[1] ? path.resolve(process.argv[1]) : null;

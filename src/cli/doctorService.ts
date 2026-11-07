@@ -455,19 +455,27 @@ export async function runDoctorDiagnostics(
     }
   }
 
-  for (const provider of config.aiProviders) {
+  for (let index = 0; index < config.aiProviders.length; index++) {
+    const provider = config.aiProviders[index];
+    const isPrimary = index === 0;
+    const connection = resolveProviderConnectionConfiguration(provider, config);
+    const roleLabel = isPrimary ? 'Primary' : `Fallback #${index}`;
     try {
       await dependencies.probeAiProvider(provider, config);
+      const fallbackDetails =
+        provider === 'gemini' && config.geminiFallbackModels.length > 0
+          ? `, fallbacks: ${config.geminiFallbackModels.join(', ')}`
+          : '';
       results.push({
         status: 'SUCCESS',
         check: `AI/${provider}`,
-        message: 'Provider connection and model request succeeded.',
+        message: `Provider connection and model request succeeded (${roleLabel}: ${connection.model}${fallbackDetails}).`,
       });
     } catch {
       results.push({
         status: 'ERROR',
         check: `AI/${provider}`,
-        message: 'Provider probe failed. Check the credential, model, base URL, quota, and network access.',
+        message: `Provider probe failed (${roleLabel}: ${connection.model}). Check the credential, model, base URL, quota, and network access.`,
       });
     }
   }

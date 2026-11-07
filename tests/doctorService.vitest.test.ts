@@ -84,7 +84,31 @@ describe('doctor diagnostics', () => {
     expect(results).toContainEqual({
       status: 'SUCCESS',
       check: 'AI/gemini',
-      message: 'Provider connection and model request succeeded.',
+      message: 'Provider connection and model request succeeded (Primary: gemini-3.5-flash-lite).',
+    });
+  });
+
+  it('probes multiple configured AI providers in fallback sequence and reports models and roles accurately', async () => {
+    const config = {
+      ...createConfiguration(),
+      aiProviders: ['gemini', 'openrouter'] as ('gemini' | 'openrouter')[],
+      geminiModel: 'gemini-3.5-flash-lite',
+      geminiFallbackModels: ['gemini-3.6-flash', 'gemini-3.8-flash'],
+      aiModel: 'meta-llama/llama-3.3-70b-instruct',
+    };
+
+    const dependencies = createDependencies();
+    const results = await runDoctorDiagnostics(config, dependencies);
+
+    expect(results).toContainEqual({
+      status: 'SUCCESS',
+      check: 'AI/gemini',
+      message: 'Provider connection and model request succeeded (Primary: gemini-3.5-flash-lite, fallbacks: gemini-3.6-flash, gemini-3.8-flash).',
+    });
+    expect(results).toContainEqual({
+      status: 'SUCCESS',
+      check: 'AI/openrouter',
+      message: 'Provider connection and model request succeeded (Fallback #1: openrouter/free).',
     });
   });
 
