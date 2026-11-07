@@ -792,14 +792,24 @@ export async function collectSetupConfiguration(
   }
 
   const effectivePhoneNumber = updates.ALLOWED_PHONE_NUMBER || existingValues.ALLOWED_PHONE_NUMBER || '';
-  const primaryAiModel =
-    updates.GEMINI_MODEL ||
-    updates.AI_MODEL ||
-    PROVIDER_DEFAULT_MODEL[selectedProviders[0]] ||
-    'default';
+  const aiProviderSummaries = selectedProviders.map((provider, index) => {
+    let model = 'default';
+    if (provider === 'gemini') {
+      model = updates.GEMINI_MODEL || existingValues.GEMINI_MODEL || PROVIDER_DEFAULT_MODEL.gemini;
+    } else {
+      const isPrimary = index === 0;
+      model =
+        (isPrimary ? (updates.AI_MODEL || existingValues.AI_MODEL) : undefined) ||
+        existingValues[`${provider.toUpperCase()}_MODEL`] ||
+        PROVIDER_DEFAULT_MODEL[provider] ||
+        'default';
+    }
+    return `${provider} (${model})`;
+  });
+
   const summaryLines = [
     `Wallet MCP: ${walletToken || hasConfiguredCredential(existingValues.WALLET_MCP_ACCESS_TOKEN) ? 'configured' : 'missing'}`,
-    `AI providers: ${selectedProviders.join(' -> ')} (model: ${primaryAiModel})`,
+    `AI providers: ${aiProviderSummaries.join(' -> ')}`,
     `Messaging channels: ${selectedChannels.join(', ')}`,
     ...(selectedChannels.includes('whatsapp') && effectivePhoneNumber
       ? [`WhatsApp authorized number: ${maskIdentifier(effectivePhoneNumber)}`]
