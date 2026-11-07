@@ -84,6 +84,14 @@ export class FallbackAiProvider implements FinancialAiProvider {
     return this.orderedProviderList;
   }
 
+  public getPrimaryModel(): string {
+    const firstProvider = this.orderedProviderList[0];
+    if (firstProvider && typeof firstProvider.getPrimaryModel === 'function') {
+      return firstProvider.getPrimaryModel();
+    }
+    return firstProvider?.providerName || this.providerName;
+  }
+
   public async processTextMessage(
     userMessageText: string,
     availableAccountList: WalletAccountItem[],

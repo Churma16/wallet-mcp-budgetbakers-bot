@@ -86,6 +86,10 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     return this.candidateModelList;
   }
 
+  public getPrimaryModel(): string {
+    return this.getEffectiveCandidateModels()[0] || this.providerName;
+  }
+
   private getEffectiveTimeoutMs(): number {
     const runtimeManager = RuntimeSettingsManager.getInstance();
     const storedOverrides = runtimeManager.getStoredOverrides();

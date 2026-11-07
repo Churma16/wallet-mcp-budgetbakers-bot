@@ -679,10 +679,16 @@ export class MessageDispatcher {
 
       let extractedIntent: ExtractedFinancialIntent;
 
+      const primaryModel =
+        typeof this.context.brain?.provider?.getPrimaryModel === 'function'
+          ? this.context.brain.provider.getPrimaryModel()
+          : undefined;
+
       const fallbackTracker = new ModelFallbackProgressTracker({
         gateway: this.context.gateway,
         channel: event.channel,
         chatIdentifier: event.chatIdentifier,
+        primaryModel,
       });
 
       fallbackTracker.start();

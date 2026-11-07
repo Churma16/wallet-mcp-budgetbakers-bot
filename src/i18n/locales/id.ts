@@ -635,8 +635,14 @@ export const indonesianDictionary: ResponseDictionary = {
   },
 
   aiFallbackStatus: {
-    initial: '⏳ Sebentar ya, sedang memproses transaksi Anda...',
-    cycling: '⏳ Sedang mencoba kembali dengan jalur cadangan...',
+    initial(modelName?: string): string {
+      return modelName
+        ? `⏳ Sebentar ya, sedang memproses transaksi dengan model \`${modelName}\`...`
+        : '⏳ Sebentar ya, sedang memproses transaksi Anda...';
+    },
+    cycling(modelName: string): string {
+      return `⏳ Sedang mencoba kembali dengan model \`${modelName}\`...`;
+    },
   },
 
   errors: {

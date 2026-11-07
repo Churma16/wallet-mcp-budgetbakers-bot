@@ -353,8 +353,8 @@ export interface ResponseDictionary {
   };
 
   aiFallbackStatus: {
-    initial: string;
-    cycling: string;
+    initial(modelName?: string): string;
+    cycling(modelName: string): string;
   };
 
   telegramMenu: TelegramMenuDictionary;

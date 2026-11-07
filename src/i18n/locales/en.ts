@@ -637,8 +637,14 @@ export const englishDictionary: ResponseDictionary = {
   },
 
   aiFallbackStatus: {
-    initial: '⏳ Processing your transaction, just a moment...',
-    cycling: '⏳ Still processing, trying a backup route...',
+    initial(modelName?: string): string {
+      return modelName
+        ? `⏳ Processing your transaction with model \`${modelName}\`, just a moment...`
+        : '⏳ Processing your transaction, just a moment...';
+    },
+    cycling(modelName: string): string {
+      return `⏳ Still processing, trying with model \`${modelName}\`...`;
+    },
   },
 
   errors: {

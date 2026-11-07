@@ -91,6 +91,10 @@ export class GeminiAiProvider implements FinancialAiProvider {
     return this.candidateModelList;
   }
 
+  public getPrimaryModel(): string {
+    return this.getEffectiveCandidateModels()[0] || 'gemini';
+  }
+
   private getEffectiveTimeoutMs(): number {
     const runtimeManager = RuntimeSettingsManager.getInstance();
     const storedOverrides = runtimeManager.getStoredOverrides();

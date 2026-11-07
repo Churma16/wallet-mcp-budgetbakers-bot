@@ -8,9 +8,10 @@ export interface ModelFallbackProgressTrackerOptions {
   gateway: MessagingGatewayService;
   channel: SupportedMessengerChannel;
   chatIdentifier: string;
+  primaryModel?: string;
   gracePeriodMs?: number;
-  initialMessage?: string;
-  cyclingMessage?: string;
+  initialMessage?: string | ((modelName?: string) => string);
+  cyclingMessage?: string | ((modelName: string) => string);
 }
 
 /**
@@ -20,7 +21,8 @@ export interface ModelFallbackProgressTrackerOptions {
  * 1. Fast Path (< gracePeriodMs): Remains quiet with typing presence only.
  *    If processing finishes quickly without error or fallback, zero status bubbles are sent.
  * 2. Fallback / Slow Path: If grace period elapses or model fallback occurs,
- *    sends a polite, plain-language status bubble and edits it in-place during subsequent model retries.
+ *    sends a polite, plain-language status bubble and edits it in-place during subsequent model retries,
+ *    explicitly displaying the model being attempted for complete user transparency.
  * 3. Finalization: Automatically deletes the temporary progress bubble upon cleanup so chat history
  *    remains completely clean for the final transaction card.
  */
@@ -28,9 +30,10 @@ export class ModelFallbackProgressTracker {
   private readonly gateway: MessagingGatewayService;
   private readonly channel: SupportedMessengerChannel;
   private readonly chatIdentifier: string;
+  private readonly primaryModel?: string;
   private readonly gracePeriodMs: number;
-  private readonly initialMessage: string;
-  private readonly cyclingMessage: string;
+  private readonly initialMessageResolver: (modelName?: string) => string;
+  private readonly cyclingMessageResolver: (modelName: string) => string;
 
   private graceTimer: NodeJS.Timeout | null = null;
   private statusMessageId: string | null = null;
@@ -42,9 +45,24 @@ export class ModelFallbackProgressTracker {
     this.gateway = options.gateway;
     this.channel = options.channel;
     this.chatIdentifier = options.chatIdentifier;
+    this.primaryModel = options.primaryModel;
     this.gracePeriodMs = options.gracePeriodMs ?? 2500;
-    this.initialMessage = options.initialMessage ?? getDictionary().aiFallbackStatus.initial;
-    this.cyclingMessage = options.cyclingMessage ?? getDictionary().aiFallbackStatus.cycling;
+
+    if (typeof options.initialMessage === 'function') {
+      this.initialMessageResolver = options.initialMessage;
+    } else if (typeof options.initialMessage === 'string') {
+      this.initialMessageResolver = () => options.initialMessage as string;
+    } else {
+      this.initialMessageResolver = (m) => getDictionary().aiFallbackStatus.initial(m);
+    }
+
+    if (typeof options.cyclingMessage === 'function') {
+      this.cyclingMessageResolver = options.cyclingMessage;
+    } else if (typeof options.cyclingMessage === 'string') {
+      this.cyclingMessageResolver = () => options.cyclingMessage as string;
+    } else {
+      this.cyclingMessageResolver = (m) => getDictionary().aiFallbackStatus.cycling(m);
+    }
   }
 
   /**
@@ -57,7 +75,8 @@ export class ModelFallbackProgressTracker {
     }
 
     this.graceTimer = setTimeout(async () => {
-      await this.sendInitialStatusMessage();
+      const messageText = this.initialMessageResolver(this.primaryModel);
+      await this.sendInitialStatusMessage(messageText);
     }, this.gracePeriodMs);
   }
 
@@ -86,17 +105,19 @@ export class ModelFallbackProgressTracker {
       reason: event.reason,
     });
 
+    const activeModelMessage = this.cyclingMessageResolver(event.nextModel);
+
     if (!this.statusMessageId && !this.isSending) {
-      // First status presentation: send initial plain-language status bubble
-      await this.sendInitialStatusMessage();
+      // First status presentation: send initial plain-language status bubble with candidate model name
+      await this.sendInitialStatusMessage(activeModelMessage);
     } else if (this.statusMessageId) {
-      // Subsequent fallback attempt: update the existing message in-place
+      // Subsequent fallback attempt: update the existing message in-place with new candidate model
       try {
         await this.gateway.editMessage(
           this.channel,
           this.chatIdentifier,
           this.statusMessageId,
-          this.cyclingMessage
+          activeModelMessage
         );
       } catch (editError: unknown) {
         applicationLogger.fileDetail('warn', 'Failed to update fallback status message in-place', {
@@ -118,7 +139,7 @@ export class ModelFallbackProgressTracker {
   /**
    * Dispatches the initial status message to the chat channel.
    */
-  private async sendInitialStatusMessage(): Promise<void> {
+  private async sendInitialStatusMessage(messageText: string): Promise<void> {
     if (this.isCleanedUp || this.statusMessageId || this.isSending) {
       return;
     }
@@ -129,7 +150,7 @@ export class ModelFallbackProgressTracker {
         const receipt = await this.gateway.sendMessage(
           this.channel,
           this.chatIdentifier,
-          this.initialMessage
+          messageText
         );
 
         if (this.isCleanedUp) {

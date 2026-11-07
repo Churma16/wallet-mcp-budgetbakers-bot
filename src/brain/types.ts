@@ -203,6 +203,8 @@ export interface FinancialAiProvider {
     text: string,
     availableCategoryList: WalletCategoryItem[]
   ): Promise<CategoryClassificationProposal>;
+
+  getPrimaryModel?(): string;
 }
 
 export interface CategoryClassificationProposal {

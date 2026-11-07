@@ -53,13 +53,13 @@ describe('ModelFallbackProgressTracker', () => {
     expect(mockGateway.editMessage).not.toHaveBeenCalled();
   });
 
-  it('dispatches initial plain-language status bubble when grace period expires', async () => {
+  it('dispatches initial plain-language status bubble showing primary model when grace period expires', async () => {
     const tracker = new ModelFallbackProgressTracker({
       gateway: mockGateway as unknown as MessagingGatewayService,
       channel,
       chatIdentifier,
+      primaryModel: 'gemini-3.5-flash-lite',
       gracePeriodMs: 2000,
-      initialMessage: 'Sedang memproses...',
     });
 
     tracker.start();
@@ -68,7 +68,11 @@ describe('ModelFallbackProgressTracker', () => {
     await vi.advanceTimersByTimeAsync(2001);
 
     expect(mockGateway.sendMessage).toHaveBeenCalledTimes(1);
-    expect(mockGateway.sendMessage).toHaveBeenCalledWith(channel, chatIdentifier, 'Sedang memproses...');
+    expect(mockGateway.sendMessage).toHaveBeenCalledWith(
+      channel,
+      chatIdentifier,
+      expect.stringContaining('gemini-3.5-flash-lite')
+    );
     expect(tracker.getStatusMessageId()).toBe('status-msg-1');
 
     // On cleanup, the status bubble should be cleanly deleted
@@ -77,13 +81,12 @@ describe('ModelFallbackProgressTracker', () => {
     expect(mockGateway.deleteMessage).toHaveBeenCalledWith(channel, chatIdentifier, 'status-msg-1');
   });
 
-  it('triggers immediate status message when model fallback occurs before grace period', async () => {
+  it('dispatches fallback status message with next candidate model when fallback occurs before grace period', async () => {
     const tracker = new ModelFallbackProgressTracker({
       gateway: mockGateway as unknown as MessagingGatewayService,
       channel,
       chatIdentifier,
       gracePeriodMs: 3000,
-      initialMessage: 'Initial status',
     });
 
     tracker.start();
@@ -102,7 +105,11 @@ describe('ModelFallbackProgressTracker', () => {
     await tracker.handleFallback(fallbackEvent);
 
     expect(mockGateway.sendMessage).toHaveBeenCalledTimes(1);
-    expect(mockGateway.sendMessage).toHaveBeenCalledWith(channel, chatIdentifier, 'Initial status');
+    expect(mockGateway.sendMessage).toHaveBeenCalledWith(
+      channel,
+      chatIdentifier,
+      expect.stringContaining('gemini-3.6-flash')
+    );
     expect(mockGateway.sendTypingPresence).toHaveBeenCalledWith(channel, chatIdentifier);
 
     // Further timer advance does NOT trigger a second message
@@ -114,16 +121,14 @@ describe('ModelFallbackProgressTracker', () => {
     expect(mockGateway.deleteMessage).toHaveBeenCalledWith(channel, chatIdentifier, 'status-msg-1');
   });
 
-  it('edits status bubble in-place on subsequent fallback retries', async () => {
+  it('edits status bubble in-place showing next candidate model on subsequent fallback retries', async () => {
     const tracker = new ModelFallbackProgressTracker({
       gateway: mockGateway as unknown as MessagingGatewayService,
       channel,
       chatIdentifier,
-      initialMessage: 'Initial status',
-      cyclingMessage: 'Backup route status',
     });
 
-    // 1st fallback: sends initial bubble
+    // 1st fallback: sends initial bubble with model-b
     await tracker.handleFallback({
       currentModel: 'model-a',
       nextModel: 'model-b',
@@ -132,9 +137,14 @@ describe('ModelFallbackProgressTracker', () => {
     });
 
     expect(mockGateway.sendMessage).toHaveBeenCalledTimes(1);
+    expect(mockGateway.sendMessage).toHaveBeenCalledWith(
+      channel,
+      chatIdentifier,
+      expect.stringContaining('model-b')
+    );
     expect(mockGateway.editMessage).not.toHaveBeenCalled();
 
-    // 2nd fallback: edits in-place to backup message
+    // 2nd fallback: edits in-place to model-c
     await tracker.handleFallback({
       currentModel: 'model-b',
       nextModel: 'model-c',
@@ -148,11 +158,42 @@ describe('ModelFallbackProgressTracker', () => {
       channel,
       chatIdentifier,
       'status-msg-1',
-      'Backup route status'
+      expect.stringContaining('model-c')
     );
 
     await tracker.cleanup();
     expect(mockGateway.deleteMessage).toHaveBeenCalledWith(channel, chatIdentifier, 'status-msg-1');
+  });
+
+  it('supports custom string and function message formatters', async () => {
+    const customTracker = new ModelFallbackProgressTracker({
+      gateway: mockGateway as unknown as MessagingGatewayService,
+      channel,
+      chatIdentifier,
+      primaryModel: 'custom-primary',
+      initialMessage: (m) => `Initial: ${m}`,
+      cyclingMessage: (m) => `Cycling: ${m}`,
+      gracePeriodMs: 1000,
+    });
+
+    customTracker.start();
+    await vi.advanceTimersByTimeAsync(1001);
+
+    expect(mockGateway.sendMessage).toHaveBeenCalledWith(channel, chatIdentifier, 'Initial: custom-primary');
+
+    await customTracker.handleFallback({
+      currentModel: 'custom-primary',
+      nextModel: 'custom-next',
+      attemptIndex: 1,
+      totalCandidates: 2,
+    });
+
+    expect(mockGateway.editMessage).toHaveBeenCalledWith(
+      channel,
+      chatIdentifier,
+      'status-msg-1',
+      'Cycling: custom-next'
+    );
   });
 
   it('handles race condition where cleanup is called while sendMessage is in flight', async () => {
