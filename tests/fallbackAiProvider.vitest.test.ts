@@ -212,6 +212,54 @@ describe('FallbackAiProvider and AI resilience', () => {
       });
     });
 
+    it('invokes options.onFallback during image processing failover', async () => {
+      const primary = new MockFinancialAiProvider('gemini', 429, 'Rate limit image');
+      const secondary = new MockFinancialAiProvider('openrouter');
+      const fallbackProvider = new FallbackAiProvider([primary, secondary]);
+
+      const fallbackEvents: any[] = [];
+      const result = await fallbackProvider.processImageMessage(
+        Buffer.from('dummy'),
+        'image/jpeg',
+        'caption',
+        mockAccounts,
+        mockCategories,
+        new Date(),
+        {
+          onFallback: async (event) => {
+            fallbackEvents.push(event);
+          },
+        }
+      );
+
+      expect(result.records?.[0].note).toContain('Image processed by openrouter');
+      expect(fallbackEvents).toHaveLength(1);
+      expect(fallbackEvents[0].currentModel).toBe('gemini');
+      expect(fallbackEvents[0].nextModel).toBe('openrouter');
+    });
+
+    it('invokes options.onFallback on unrecoverable error when next provider is available', async () => {
+      const primary = new MockFinancialAiProvider('gemini', 500, 'Internal Server Error');
+      const secondary = new MockFinancialAiProvider('openrouter');
+      const fallbackProvider = new FallbackAiProvider([primary, secondary]);
+
+      const fallbackEvents: any[] = [];
+      const result = await fallbackProvider.processTextMessage(
+        'beli kopi 25k',
+        mockAccounts,
+        mockCategories,
+        new Date(),
+        {
+          onFallback: async (event) => {
+            fallbackEvents.push(event);
+          },
+        }
+      );
+
+      expect(result.records?.[0].note).toContain('Processed by openrouter');
+      expect(fallbackEvents).toHaveLength(1);
+    });
+
     it('propagates the last failure when all providers fail', async () => {
       const failed1 = new MockFinancialAiProvider('gemini', 429, 'Rate limit 1');
       const failed2 = new MockFinancialAiProvider('openrouter', 503, 'Outage 2');

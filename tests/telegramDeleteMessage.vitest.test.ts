@@ -81,4 +81,34 @@ describe('deleteTextMessage functionality', () => {
     const deleted = await coordinator.deleteMessage('whatsapp', '123456789', '444');
     expect(deleted).toBe(false);
   });
+
+  it('returns false from telegram adapter when botInstance is not initialized', async () => {
+    const adapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, dummyCallback);
+    // botInstance remains null
+    const success = await adapter.deleteTextMessage('123456789', '98765');
+    expect(success).toBe(false);
+  });
+
+  it('handles deleteMessage adapter exception gracefully in coordinator', async () => {
+    const coordinator = new MessagingGatewayService();
+    const mockAdapter = {
+      channelName: 'telegram' as const,
+      startConnection: vi.fn(),
+      sendTextMessage: vi.fn(),
+      sendTypingPresence: vi.fn(),
+      clearTypingPresence: vi.fn(),
+      sendBroadcastNotification: vi.fn(),
+      deleteTextMessage: vi.fn().mockRejectedValue(new Error('Network error')),
+    };
+    coordinator.registerAdapter(mockAdapter);
+    const deleted = await coordinator.deleteMessage('telegram', '123456789', '444');
+    expect(deleted).toBe(false);
+  });
+
+  it('implements deleteTextMessage on console adapter returning true', async () => {
+    const { ConsoleMessagingAdapter } = await import('../src/gateway/console.js');
+    const consoleAdapter = new ConsoleMessagingAdapter(async () => {});
+    const deleted = await consoleAdapter.deleteTextMessage('console-chat', 'msg-1');
+    expect(deleted).toBe(true);
+  });
 });
