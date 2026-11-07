@@ -72,20 +72,20 @@ npm install
 
 ### 2. Configure Credentials
 
-The recommended way to configure the bot is the interactive setup wizard:
+The quickest way to configure the bot is the interactive setup:
 
 ```bash
 npm run setup
 ```
 
-*(Tip: You can also run `npm run setup:dry-run` to preview the configuration without writing any files to disk).*
+*(Tip: Run `npm run setup:dry-run` to test the setup without saving any files to disk).*
 
-The wizard guides you step-by-step through:
-- Connecting your BudgetBakers Wallet Personal Access Token.
-- Choosing your primary AI provider (Google Gemini, OpenAI, Groq, OpenRouter, or local Ollama).
-- Configuring your messaging channel (Telegram or WhatsApp) with strict access authorization.
-- Regional preferences (English or Indonesian, default currency like `USD` or `EUR`, and auto-detected host timezone with support for major global city aliases).
-- Optional bank/e-wallet email receipt monitoring with automated port, host, and email validation.
+The setup prompts you for:
+- BudgetBakers Wallet API token
+- AI provider (Gemini, OpenAI, Groq, OpenRouter, or local Ollama)
+- Messaging channel (Telegram or WhatsApp) and your user ID so only you can talk to the bot
+- Language, currency (e.g. `USD`, `EUR`, `IDR`), and timezone (detected automatically from your system clock, or enter a city like `London` or `Jakarta`)
+- Optional email receipt monitoring for bank transactions
 
 Alternatively, copy `.env.example` to `.env` and fill in the values manually:
 
@@ -104,10 +104,10 @@ cp .env.example .env
 | `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather (if using Telegram) | `123456789:ABC...` |
 | `TELEGRAM_ALLOWED_USER_ID` | Numeric Telegram user ID (if using Telegram) | `123456789` |
 
-> [!IMPORTANT]
-> The setup wizard defaults to international standards (`APP_LANGUAGE=en`, `DEFAULT_CURRENCY=USD`, and auto-detects your system timezone with global city aliases like `London`, `New York`, `Tokyo`, or `Jakarta`).
-> If you live in Indonesia or prefer Indonesian regional settings, you can select `Bahasa Indonesia`, set `DEFAULT_CURRENCY=IDR`, and use `WIB` (`Asia/Jakarta`) directly in the wizard.
-> For full variable documentation, see [.env.example](.env.example) and the [Setup and Diagnostics Guide](docs/setup-and-diagnostics.md).
+> [!NOTE]
+> The setup wizard defaults to English, USD, and your device's local timezone.
+> If you are in Indonesia, you can choose Bahasa Indonesia, IDR, and WIB directly during setup.
+> See [.env.example](.env.example) and the [Setup and Diagnostics Guide](docs/setup-and-diagnostics.md) for all advanced options.
 
 > [!TIP]
 > Operational preferences like AI models, category resolution mode, language, currency, timezone, and sync rules can also be customized interactively on the fly via `/settings` on Telegram without restarting the bot.
