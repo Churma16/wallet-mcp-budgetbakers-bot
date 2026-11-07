@@ -5,8 +5,14 @@ import {
 } from '../src/config/environmentConfig.js';
 import {
   collectSetupConfiguration,
+  getSystemTimezone,
+  resolveTimezoneAlias,
+  sanitizeModelInput,
   SetupChoice,
   SetupPrompter,
+  validateEmailAddress,
+  validateHostname,
+  validatePortNumber,
 } from '../src/cli/setupWizard.js';
 import {
   mergeEnvFileContent,
@@ -320,7 +326,7 @@ describe('setup wizard', () => {
       },
       questionAnswers: {
         'Authorized Telegram user ID': ['@fathan', '@123456789'],
-        'Application timezone': ['Jakarta', 'Asia/Jakarta'],
+        'Application timezone': ['InvalidCityName', 'Asia/Jakarta'],
       },
     });
 
@@ -374,5 +380,112 @@ describe('setup wizard', () => {
     expect(result.updates.EMAIL_SYNC_ENABLED).toBe('true');
     expect(result.updates.EMAIL_IMAP_USER).toBe('user@example.com');
     expect(result.updates.EMAIL_IMAP_PASSWORD).toBe('email-app-password');
+  });
+
+  describe('input validators and sanitizers', () => {
+    it('validates port numbers strictly within 1-65535 and rejects non-numeric input', () => {
+      expect(validatePortNumber('993')).toBe(993);
+      expect(validatePortNumber('1')).toBe(1);
+      expect(validatePortNumber('65535')).toBe(65535);
+      expect(validatePortNumber('ishe')).toBeNull();
+      expect(validatePortNumber('0')).toBeNull();
+      expect(validatePortNumber('65536')).toBeNull();
+      expect(validatePortNumber('-1')).toBeNull();
+      expect(validatePortNumber('  ')).toBeNull();
+    });
+
+    it('validates email addresses using standard format', () => {
+      expect(validateEmailAddress('user@example.com')).toBe(true);
+      expect(validateEmailAddress('test.dev@domain.co.id')).toBe(true);
+      expect(validateEmailAddress('invalid-email')).toBe(false);
+      expect(validateEmailAddress('aiwj')).toBe(false);
+      expect(validateEmailAddress('@domain.com')).toBe(false);
+      expect(validateEmailAddress('')).toBe(false);
+    });
+
+    it('validates hostnames and IP addresses', () => {
+      expect(validateHostname('imap.gmail.com')).toBe(true);
+      expect(validateHostname('mail.custom-domain.org')).toBe(true);
+      expect(validateHostname('127.0.0.1')).toBe(true);
+      expect(validateHostname('localhost')).toBe(true);
+      expect(validateHostname('aiwj')).toBe(false);
+      expect(validateHostname('host with spaces')).toBe(false);
+      expect(validateHostname('')).toBe(false);
+    });
+
+    it('sanitizes model inputs correcting accidental "y" or "yes" confirmations', () => {
+      const defaultModel = 'gemini-3.5-flash-lite';
+      expect(sanitizeModelInput('y', defaultModel)).toEqual({
+        model: 'gemini-3.5-flash-lite',
+        wasAutoCorrected: true,
+      });
+      expect(sanitizeModelInput('yes', defaultModel)).toEqual({
+        model: 'gemini-3.5-flash-lite',
+        wasAutoCorrected: true,
+      });
+      expect(sanitizeModelInput('', defaultModel)).toEqual({
+        model: 'gemini-3.5-flash-lite',
+        wasAutoCorrected: false,
+      });
+      expect(sanitizeModelInput('gemini-2.0-flash', defaultModel)).toEqual({
+        model: 'gemini-2.0-flash',
+        wasAutoCorrected: false,
+      });
+    });
+
+    it('resolves global city aliases and regional timezone codes', () => {
+      expect(resolveTimezoneAlias('London')).toBe('Europe/London');
+      expect(resolveTimezoneAlias('new york')).toBe('America/New_York');
+      expect(resolveTimezoneAlias('nyc')).toBe('America/New_York');
+      expect(resolveTimezoneAlias('tokyo')).toBe('Asia/Tokyo');
+      expect(resolveTimezoneAlias('Berlin')).toBe('Europe/Berlin');
+      expect(resolveTimezoneAlias('wib')).toBe('Asia/Jakarta');
+      expect(resolveTimezoneAlias('WITA')).toBe('Asia/Makassar');
+      expect(resolveTimezoneAlias('UTC')).toBe('UTC');
+      expect(resolveTimezoneAlias('Asia/Jakarta')).toBe('Asia/Jakarta');
+      expect(resolveTimezoneAlias('InvalidNonExistentCity')).toBeNull();
+      expect(typeof getSystemTimezone()).toBe('string');
+    });
+
+    it('reprompts invalid email host, port, and user until valid in email monitoring setup', async () => {
+      const prompter = new FakeSetupPrompter({
+        aiProviders: ['gemini'],
+        channels: ['console'],
+        emailEnabled: true,
+        secrets: {
+          WALLET_MCP_ACCESS_TOKEN: 'token-123',
+          GEMINI_API_KEY: 'key-123',
+          EMAIL_IMAP_PASSWORD: 'password-123',
+        },
+        questionAnswers: {
+          'Gemini model': ['y'],
+          'IMAP host': ['aiwj', 'imap.gmail.com'],
+          'IMAP port': ['ishe', '993'],
+          'IMAP email address': ['invalid-email', 'user@gmail.com'],
+          'Initial email lookback in minutes': ['invalid', '15'],
+        },
+      });
+
+      const result = await collectSetupConfiguration(prompter, {});
+
+      expect(result.updates.GEMINI_MODEL).toBe('gemini-3.5-flash-lite');
+      expect(result.updates.EMAIL_IMAP_HOST).toBe('imap.gmail.com');
+      expect(result.updates.EMAIL_IMAP_PORT).toBe('993');
+      expect(result.updates.EMAIL_IMAP_USER).toBe('user@gmail.com');
+      expect(result.updates.EMAIL_LOOKBACK_MINUTES).toBe('15');
+
+      expect(
+        prompter.infoMessages.some(msg => msg.includes("Selected default Gemini model"))
+      ).toBe(true);
+      expect(
+        prompter.infoMessages.some(msg => msg.includes("Port must be a valid number between 1 and 65535"))
+      ).toBe(true);
+      expect(
+        prompter.infoMessages.some(msg => msg.includes("Enter a valid email address"))
+      ).toBe(true);
+      expect(
+        prompter.infoMessages.some(msg => msg.includes("Enter a valid hostname or IP address"))
+      ).toBe(true);
+    });
   });
 });
