@@ -10,13 +10,19 @@ Install dependencies, then run:
 npm run setup
 ```
 
-The wizard guides you through:
+You can also run a simulation dry-run without writing any files to disk:
 
-- Wallet MCP endpoint and access token.
-- One or more AI providers in priority order.
-- WhatsApp, Telegram, and/or console messaging.
-- Language, default currency, and IANA timezone.
-- Optional IMAP email synchronization.
+```bash
+npm run setup:dry-run
+```
+
+The setup wizard walks you through:
+
+- Wallet MCP endpoint and access token
+- AI provider selection and model configuration
+- WhatsApp or Telegram setup (with your authorized phone number or numeric user ID)
+- Language (English or Indonesian), default currency (`USD`, `EUR`, `IDR`), and your timezone (detected automatically from your system clock, or search by city name)
+- Optional IMAP email synchronization with validation for ports (`1-65535`), emails, and hostnames
 
 Credential prompts include a short acquisition hint and a plain-text link to the relevant section of [Credential Setup Guide](setup-credentials.md). Secret values are masked while entering them in an interactive terminal and are not shown in the final summary.
 

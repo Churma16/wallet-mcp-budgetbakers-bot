@@ -33,6 +33,18 @@ describe('cliOptions parser', () => {
     });
 
     it.each([
+      ['--advanced'],
+      ['-advanced'],
+      ['-a'],
+      ['advanced'],
+    ])('detects advanced flag %s', (flag) => {
+      const options = parseSetupCliArgs([flag], '/workspace');
+      expect(options.isAdvanced).toBe(true);
+      expect(options.envFile).toBe('.env');
+      expect(options.isDryRun).toBe(false);
+    });
+
+    it.each([
       ['--dry-run'],
       ['-dry-run'],
       ['--dryrun'],
@@ -155,6 +167,7 @@ describe('cliOptions parser', () => {
       expect(help).toContain('Usage: npm run setup');
       expect(help).toContain('--dev');
       expect(help).toContain('--dry-run');
+      expect(help).toContain('--advanced');
       expect(help).toContain('--debug');
       expect(help).toContain('--env');
     });

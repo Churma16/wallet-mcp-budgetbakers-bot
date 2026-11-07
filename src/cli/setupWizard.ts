@@ -28,8 +28,126 @@ export interface SetupWizardResult {
   readonly summaryLines: string[];
 }
 
+export interface CollectSetupOptions {
+  readonly isAdvanced?: boolean;
+  readonly isDev?: boolean;
+}
+
 const REPOSITORY_DOC_BASE =
   'https://github.com/Churma16/wallet-mcp-budgetbakers-bot/blob/main/docs/setup-credentials.md';
+
+export const GLOBAL_TIMEZONE_ALIASES: Record<string, string> = {
+  // Indonesia
+  WIB: 'Asia/Jakarta',
+  WITA: 'Asia/Makassar',
+  WIT: 'Asia/Jayapura',
+  JAKARTA: 'Asia/Jakarta',
+  BALI: 'Asia/Makassar',
+  MAKASSAR: 'Asia/Makassar',
+  JAYAPURA: 'Asia/Jayapura',
+  // Global Offsets & Zones
+  UTC: 'UTC',
+  GMT: 'Etc/GMT',
+  EST: 'America/New_York',
+  EDT: 'America/New_York',
+  CST: 'America/Chicago',
+  CDT: 'America/Chicago',
+  MST: 'America/Denver',
+  MDT: 'America/Denver',
+  PST: 'America/Los_Angeles',
+  PDT: 'America/Los_Angeles',
+  CET: 'Europe/Berlin',
+  CEST: 'Europe/Berlin',
+  JST: 'Asia/Tokyo',
+  AEST: 'Australia/Sydney',
+  AEDT: 'Australia/Sydney',
+  // Popular International Cities
+  LONDON: 'Europe/London',
+  PARIS: 'Europe/Paris',
+  BERLIN: 'Europe/Berlin',
+  AMSTERDAM: 'Europe/Amsterdam',
+  TOKYO: 'Asia/Tokyo',
+  SINGAPORE: 'Asia/Singapore',
+  SYDNEY: 'Australia/Sydney',
+  MELBOURNE: 'Australia/Melbourne',
+  TORONTO: 'America/Toronto',
+  VANCOUVER: 'America/Vancouver',
+  'NEW YORK': 'America/New_York',
+  NYC: 'America/New_York',
+  'LOS ANGELES': 'America/Los_Angeles',
+  LA: 'America/Los_Angeles',
+  CHICAGO: 'America/Chicago',
+  DUBAI: 'Asia/Dubai',
+  BANGKOK: 'Asia/Bangkok',
+};
+
+export function getSystemTimezone(): string {
+  try {
+    const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (detected && isValidIanaTimezone(detected)) {
+      return detected;
+    }
+  } catch {
+    // Intl timezone detection unavailable
+  }
+  return 'UTC';
+}
+
+export function resolveTimezoneAlias(input: string): string | null {
+  const trimmed = (input || '').trim();
+  if (!trimmed) {
+    return null;
+  }
+  const upper = trimmed.toUpperCase();
+  if (GLOBAL_TIMEZONE_ALIASES[upper]) {
+    return GLOBAL_TIMEZONE_ALIASES[upper];
+  }
+  if (isValidIanaTimezone(trimmed)) {
+    return trimmed;
+  }
+  return null;
+}
+
+export function validatePortNumber(portCandidate: string): number | null {
+  const trimmed = portCandidate.trim();
+  if (!/^\d+$/.test(trimmed)) {
+    return null;
+  }
+  const portNumber = Number.parseInt(trimmed, 10);
+  if (portNumber >= 1 && portNumber <= 65535) {
+    return portNumber;
+  }
+  return null;
+}
+
+export function validateEmailAddress(emailCandidate: string): boolean {
+  const trimmed = emailCandidate.trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+}
+
+export function validateHostname(hostCandidate: string): boolean {
+  const trimmed = hostCandidate.trim();
+  if (!trimmed || /\s/.test(trimmed)) {
+    return false;
+  }
+  return (
+    /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/.test(trimmed) ||
+    /^(?:\d{1,3}\.){3}\d{1,3}$/.test(trimmed) ||
+    trimmed === 'localhost'
+  );
+}
+
+export function sanitizeModelInput(
+  enteredValue: string,
+  defaultModel: string
+): { model: string; wasAutoCorrected: boolean } {
+  const trimmed = enteredValue.trim();
+  const lower = trimmed.toLowerCase();
+  if (!trimmed || lower === 'y' || lower === 'yes') {
+    return { model: defaultModel, wasAutoCorrected: lower === 'y' || lower === 'yes' };
+  }
+  return { model: trimmed, wasAutoCorrected: false };
+}
 
 const AI_PROVIDER_CHOICES: readonly SetupChoice[] = [
   { label: 'Gemini', value: 'gemini' },
@@ -145,10 +263,11 @@ function showCredentialHelp(
   guideAnchor: string
 ): void {
   prompter.info('');
-  prompter.info(`[INFO] ${title}`);
+  prompter.info(`=== ${title} ===`);
   prompter.info(hint);
   prompter.info(`Get it here: ${acquisitionUrl}`);
   prompter.info(`Full guide: ${REPOSITORY_DOC_BASE}#${guideAnchor}`);
+  prompter.info('');
 }
 
 async function promptRequiredText(
@@ -231,7 +350,7 @@ async function promptTelegramAllowedUserId(
   while (true) {
     const enteredValue = await promptRequiredText(
       prompter,
-      'Authorized Telegram user ID',
+      'Authorized Telegram user ID (numbers only)',
       defaultValue
     );
     const canonicalValue = enteredValue.trim().replace(/^@/, '');
@@ -240,7 +359,7 @@ async function promptTelegramAllowedUserId(
     }
 
     prompter.info(
-      '[WARN] Enter the immutable numeric Telegram user ID only (for example 123456789); usernames are not supported.'
+      '[WARN] Enter the numeric Telegram user ID only (for example 123456789); usernames are not supported.'
     );
     defaultValue = undefined;
   }
@@ -250,7 +369,12 @@ async function promptValidIanaTimezone(
   prompter: SetupPrompter,
   existingValue?: string
 ): Promise<string> {
-  let defaultValue: string | undefined = existingValue || 'Asia/Jakarta';
+  const defaultTz = existingValue || getSystemTimezone();
+  prompter.info('');
+  prompter.info(
+    '[TIP] Press Enter to keep your auto-detected timezone, or find yours at https://en.wikipedia.org/wiki/List_of_tz_database_time_zones'
+  );
+  let defaultValue: string | undefined = defaultTz;
 
   while (true) {
     const enteredValue = await promptRequiredText(
@@ -258,12 +382,13 @@ async function promptValidIanaTimezone(
       'Application timezone (IANA identifier)',
       defaultValue
     );
-    if (isValidIanaTimezone(enteredValue)) {
-      return enteredValue;
+    const resolved = resolveTimezoneAlias(enteredValue);
+    if (resolved) {
+      return resolved;
     }
 
     prompter.info(
-      '[WARN] Enter a valid IANA timezone identifier (for example Asia/Jakarta, America/New_York, or UTC).'
+      '[WARN] Enter a valid IANA timezone identifier or supported city (for example London, New York, Asia/Jakarta, or UTC).'
     );
     defaultValue = undefined;
   }
@@ -364,13 +489,20 @@ async function configureAiProviders(
 
     if (provider === primaryProvider) {
       if (provider === 'gemini') {
-        updates.GEMINI_MODEL = await promptRequiredText(
-          prompter,
-          'Gemini model',
+        const defaultModel =
           existingPrimaryProvider === provider
             ? existingValues.GEMINI_MODEL || PROVIDER_DEFAULT_MODEL.gemini
-            : PROVIDER_DEFAULT_MODEL.gemini
+            : PROVIDER_DEFAULT_MODEL.gemini;
+        const rawModelInput = await promptRequiredText(
+          prompter,
+          'Gemini model',
+          defaultModel
         );
+        const { model, wasAutoCorrected } = sanitizeModelInput(rawModelInput, defaultModel);
+        if (wasAutoCorrected) {
+          prompter.info(`Selected default Gemini model: ${defaultModel}`);
+        }
+        updates.GEMINI_MODEL = model;
       } else {
         const defaultBaseUrl =
           provider === 'custom'
@@ -406,23 +538,33 @@ async function configureAiProviders(
 
 export async function collectSetupConfiguration(
   prompter: SetupPrompter,
-  existingValues: EnvironmentValueMap
+  existingValues: EnvironmentValueMap,
+  options: CollectSetupOptions = {}
 ): Promise<SetupWizardResult> {
   const updates: EnvironmentValueMap = {};
 
   showCredentialHelp(
     prompter,
-    'Wallet MCP access token',
-    'Create a Personal Access Token in BudgetBakers Wallet. Required scopes are documented in the guide.',
+    'Wallet MCP Access Token',
+    'Create a Personal Access Token in BudgetBakers Wallet web settings. Required scopes are documented in the guide.',
     'https://web.budgetbakers.com/settings/mcp-server',
     'wallet-mcp'
   );
 
-  updates.WALLET_MCP_BASE_URL = await promptRequiredText(
-    prompter,
-    'Wallet MCP base URL',
-    existingValues.WALLET_MCP_BASE_URL || 'https://mcp.wallet.budgetbakers.com'
+  const isCustomBaseUrl = Boolean(
+    existingValues.WALLET_MCP_BASE_URL &&
+    existingValues.WALLET_MCP_BASE_URL !== 'https://mcp.wallet.budgetbakers.com'
   );
+
+  if (options.isAdvanced || options.isDev || isCustomBaseUrl) {
+    updates.WALLET_MCP_BASE_URL = await promptRequiredText(
+      prompter,
+      'Wallet MCP base URL',
+      existingValues.WALLET_MCP_BASE_URL || 'https://mcp.wallet.budgetbakers.com'
+    );
+  } else {
+    updates.WALLET_MCP_BASE_URL = existingValues.WALLET_MCP_BASE_URL || 'https://mcp.wallet.budgetbakers.com';
+  }
 
   const walletToken = await promptCredential(
     prompter,
@@ -459,7 +601,7 @@ export async function collectSetupConfiguration(
 
   if (selectedChannels.includes('whatsapp')) {
     prompter.info('');
-    prompter.info('[INFO] WhatsApp setup');
+    prompter.info('=== WhatsApp Setup ===');
     prompter.info('Use the authorized phone number in international E.164 format.');
     prompter.info(`Full guide: ${REPOSITORY_DOC_BASE}#whatsapp`);
     whatsappPhoneNumberCandidate = await promptRequiredText(
@@ -474,7 +616,7 @@ export async function collectSetupConfiguration(
   if (selectedChannels.includes('telegram')) {
     showCredentialHelp(
       prompter,
-      'Telegram bot token',
+      'Telegram Bot Token',
       'Create a Telegram bot with @BotFather, then copy the generated bot token.',
       'https://t.me/BotFather',
       'telegram'
@@ -490,7 +632,10 @@ export async function collectSetupConfiguration(
       updates.TELEGRAM_BOT_TOKEN = telegramToken;
     }
 
-    prompter.info('Find your immutable numeric Telegram user ID with @userinfobot or @raw_data_bot.');
+    prompter.info('');
+    prompter.info('=== Security: Telegram Account Authorization ===');
+    prompter.info('To ensure your financial data stays private, only your account will be permitted.');
+    prompter.info('Find your numeric ID by sending /start to @userinfobot or @raw_data_bot on Telegram.');
     updates.TELEGRAM_ALLOWED_USER_ID = await promptTelegramAllowedUserId(
       prompter,
       existingValues.TELEGRAM_ALLOWED_USER_ID
@@ -500,17 +645,17 @@ export async function collectSetupConfiguration(
   updates.APP_LANGUAGE = await prompter.choose(
     'Response language',
     [
-      { label: 'Bahasa Indonesia', value: 'id' },
       { label: 'English', value: 'en' },
+      { label: 'Bahasa Indonesia', value: 'id' },
     ],
-    existingValues.APP_LANGUAGE === 'en' ? 'en' : 'id'
+    existingValues.APP_LANGUAGE === 'id' ? 'id' : 'en'
   );
 
   updates.DEFAULT_CURRENCY = (
     await promptRequiredText(
       prompter,
       'Default currency',
-      existingValues.DEFAULT_CURRENCY || 'IDR'
+      existingValues.DEFAULT_CURRENCY || 'USD'
     )
   ).toUpperCase();
 
@@ -545,21 +690,69 @@ export async function collectSetupConfiguration(
       'gmail-imap'
     );
 
-    updates.EMAIL_IMAP_HOST = await promptRequiredText(
-      prompter,
-      'IMAP host',
-      existingValues.EMAIL_IMAP_HOST || 'imap.gmail.com'
+    let candidateEmail = existingValues.EMAIL_IMAP_USER || '';
+    while (true) {
+      candidateEmail = await promptRequiredText(
+        prompter,
+        'IMAP email address',
+        existingValues.EMAIL_IMAP_USER
+      );
+      if (validateEmailAddress(candidateEmail)) {
+        break;
+      }
+      prompter.info('[WARN] Enter a valid email address (for example user@gmail.com).');
+    }
+    updates.EMAIL_IMAP_USER = candidateEmail;
+
+    const lowerEmail = candidateEmail.toLowerCase();
+    const isGmail = lowerEmail.endsWith('@gmail.com') || lowerEmail.endsWith('@googlemail.com');
+    const hasCustomHost = Boolean(
+      existingValues.EMAIL_IMAP_HOST &&
+      existingValues.EMAIL_IMAP_HOST !== 'imap.gmail.com'
     );
-    updates.EMAIL_IMAP_PORT = await promptRequiredText(
-      prompter,
-      'IMAP port',
-      existingValues.EMAIL_IMAP_PORT || '993'
+    const hasCustomPort = Boolean(
+      existingValues.EMAIL_IMAP_PORT &&
+      existingValues.EMAIL_IMAP_PORT !== '993'
     );
-    updates.EMAIL_IMAP_USER = await promptRequiredText(
-      prompter,
-      'IMAP email address',
-      existingValues.EMAIL_IMAP_USER
+    const hasCustomLookback = Boolean(
+      existingValues.EMAIL_LOOKBACK_MINUTES &&
+      existingValues.EMAIL_LOOKBACK_MINUTES !== '10'
     );
+
+    const shouldPromptAdvancedImap = Boolean(
+      options.isAdvanced ||
+      options.isDev ||
+      !isGmail ||
+      hasCustomHost ||
+      hasCustomPort
+    );
+
+    if (shouldPromptAdvancedImap) {
+      const defaultHost = existingValues.EMAIL_IMAP_HOST || 'imap.gmail.com';
+      let candidateHost = defaultHost;
+      while (true) {
+        candidateHost = await promptRequiredText(prompter, 'IMAP host', defaultHost);
+        if (validateHostname(candidateHost)) {
+          break;
+        }
+        prompter.info('[WARN] Enter a valid hostname or IP address (for example imap.gmail.com).');
+      }
+      updates.EMAIL_IMAP_HOST = candidateHost;
+
+      const defaultPort = existingValues.EMAIL_IMAP_PORT || '993';
+      let candidatePort = defaultPort;
+      while (true) {
+        candidatePort = await promptRequiredText(prompter, 'IMAP port', defaultPort);
+        if (validatePortNumber(candidatePort) !== null) {
+          break;
+        }
+        prompter.info('[WARN] Port must be a valid number between 1 and 65535.');
+      }
+      updates.EMAIL_IMAP_PORT = candidatePort;
+    } else {
+      updates.EMAIL_IMAP_HOST = existingValues.EMAIL_IMAP_HOST || 'imap.gmail.com';
+      updates.EMAIL_IMAP_PORT = existingValues.EMAIL_IMAP_PORT || '993';
+    }
 
     const emailPassword = await promptCredential(
       prompter,
@@ -571,25 +764,53 @@ export async function collectSetupConfiguration(
       updates.EMAIL_IMAP_PASSWORD = emailPassword;
     }
 
-    updates.EMAIL_LOOKBACK_MINUTES = await promptRequiredText(
-      prompter,
-      'Initial email lookback in minutes',
-      existingValues.EMAIL_LOOKBACK_MINUTES || '10'
+    const shouldPromptLookback = Boolean(
+      options.isAdvanced ||
+      options.isDev ||
+      hasCustomLookback
     );
+
+    if (shouldPromptLookback) {
+      const defaultLookback = existingValues.EMAIL_LOOKBACK_MINUTES || '10';
+      let candidateLookback = defaultLookback;
+      while (true) {
+        candidateLookback = await promptRequiredText(
+          prompter,
+          'Initial email lookback in minutes',
+          defaultLookback
+        );
+        const parsedMinutes = Number.parseInt(candidateLookback.trim(), 10);
+        if (!Number.isNaN(parsedMinutes) && parsedMinutes >= 1 && parsedMinutes <= 10080) {
+          break;
+        }
+        prompter.info('[WARN] Lookback must be a positive number of minutes (1 to 10080).');
+      }
+      updates.EMAIL_LOOKBACK_MINUTES = candidateLookback;
+    } else {
+      updates.EMAIL_LOOKBACK_MINUTES = existingValues.EMAIL_LOOKBACK_MINUTES || '10';
+    }
   }
 
   const effectivePhoneNumber = updates.ALLOWED_PHONE_NUMBER || existingValues.ALLOWED_PHONE_NUMBER || '';
+  const primaryAiModel =
+    updates.GEMINI_MODEL ||
+    updates.AI_MODEL ||
+    PROVIDER_DEFAULT_MODEL[selectedProviders[0]] ||
+    'default';
   const summaryLines = [
     `Wallet MCP: ${walletToken || hasConfiguredCredential(existingValues.WALLET_MCP_ACCESS_TOKEN) ? 'configured' : 'missing'}`,
-    `AI providers: ${selectedProviders.join(' -> ')}`,
+    `AI providers: ${selectedProviders.join(' -> ')} (model: ${primaryAiModel})`,
     `Messaging channels: ${selectedChannels.join(', ')}`,
     ...(selectedChannels.includes('whatsapp') && effectivePhoneNumber
       ? [`WhatsApp authorized number: ${maskIdentifier(effectivePhoneNumber)}`]
       : []),
+    ...(selectedChannels.includes('telegram') && (updates.TELEGRAM_ALLOWED_USER_ID || existingValues.TELEGRAM_ALLOWED_USER_ID)
+      ? [`Telegram authorized user ID: ${updates.TELEGRAM_ALLOWED_USER_ID || existingValues.TELEGRAM_ALLOWED_USER_ID}`]
+      : []),
     `Language: ${updates.APP_LANGUAGE}`,
     `Currency: ${updates.DEFAULT_CURRENCY}`,
     `Timezone: ${updates.APP_TIMEZONE}`,
-    `Email sync: ${enableEmailSync ? 'enabled' : 'disabled'}`,
+    `Email sync: ${enableEmailSync ? `enabled (${updates.EMAIL_IMAP_USER || existingValues.EMAIL_IMAP_USER || 'configured'} via ${updates.EMAIL_IMAP_HOST || existingValues.EMAIL_IMAP_HOST || 'imap.gmail.com'}:${updates.EMAIL_IMAP_PORT || existingValues.EMAIL_IMAP_PORT || '993'})` : 'disabled'}`,
   ];
 
   return {
