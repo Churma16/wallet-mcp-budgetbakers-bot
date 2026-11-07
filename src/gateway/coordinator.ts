@@ -383,6 +383,32 @@ export class MessagingGatewayService {
       return false;
     }
   }
+
+  /**
+   * Attempts to delete an existing text message on a specific channel.
+   * Returns true if the message was successfully deleted.
+   */
+  public async deleteMessage(
+    channel: SupportedMessengerChannel,
+    targetChatIdentifier: string,
+    messageId: string
+  ): Promise<boolean> {
+    const adapter = this.adapterMap.get(channel);
+    if (!adapter || typeof adapter.deleteTextMessage !== 'function') {
+      return false;
+    }
+
+    try {
+      return await adapter.deleteTextMessage(targetChatIdentifier, messageId);
+    } catch (deleteError: unknown) {
+      applicationLogger.warn(
+        `[WARN] Failed to delete message on [${channel.toUpperCase()}] (#${messageId}): ${
+          deleteError instanceof Error ? deleteError.message : String(deleteError)
+        }`
+      );
+      return false;
+    }
+  }
 }
 
 export { MessagingGatewayService as GatewayCoordinator };

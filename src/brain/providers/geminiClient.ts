@@ -1,11 +1,21 @@
 import { GoogleGenAI } from '@google/genai';
 import { applicationLogger, formatConciseErrorMessage } from '../../lib/logger.js';
-import { TokenUsageStatistics } from '../types.js';
+import { ModelFallbackProgressCallback, TokenUsageStatistics } from '../types.js';
 import { isRecoverableModelExecutionError } from './providerWorkflow.js';
 
 export interface GenerationExecutionResult {
   responseText: string;
   tokenUsage?: TokenUsageStatistics;
+}
+
+export interface GeminiFallbackExecutionOptions {
+  googleGenAiClient: GoogleGenAI;
+  candidateModelList: string[];
+  requestTimeoutMilliseconds: number;
+  contents: any;
+  systemInstruction: string;
+  requestContextDescription: string;
+  onFallbackAttempt?: ModelFallbackProgressCallback;
 }
 
 export function sanitizeContentsForLogging(contents: any): any {
@@ -31,14 +41,9 @@ export function sanitizeContentsForLogging(contents: any): any {
   });
 }
 
-export async function executeGeminiGenerationWithFallback(options: {
-  googleGenAiClient: GoogleGenAI;
-  candidateModelList: string[];
-  requestTimeoutMilliseconds: number;
-  contents: any;
-  systemInstruction: string;
-  requestContextDescription: string;
-}): Promise<GenerationExecutionResult> {
+export async function executeGeminiGenerationWithFallback(
+  options: GeminiFallbackExecutionOptions
+): Promise<GenerationExecutionResult> {
   const {
     googleGenAiClient,
     candidateModelList,
@@ -46,6 +51,7 @@ export async function executeGeminiGenerationWithFallback(options: {
     contents,
     systemInstruction,
     requestContextDescription,
+    onFallbackAttempt,
   } = options;
 
   let lastEncounteredError: unknown = null;
@@ -115,9 +121,26 @@ export async function executeGeminiGenerationWithFallback(options: {
       const hasNextCandidate = index < candidateModelList.length - 1;
 
       if (hasNextCandidate && isRecoverableModelExecutionError(error)) {
+        const nextModelName = candidateModelList[index + 1];
         applicationLogger.warn(
-          `[Gemini Fallback] Model '${activeModelName}' failed for ${requestContextDescription}: ${conciseMessage}. Trying next model...`
+          `[Gemini Fallback] Model '${activeModelName}' failed for ${requestContextDescription}: ${conciseMessage}. Trying next model '${nextModelName}'...`
         );
+
+        if (onFallbackAttempt) {
+          try {
+            await onFallbackAttempt({
+              currentModel: activeModelName,
+              nextModel: nextModelName,
+              attemptIndex: index + 1,
+              totalCandidates: candidateModelList.length,
+              reason: conciseMessage,
+            });
+          } catch (callbackError: unknown) {
+            applicationLogger.warn(
+              `[Gemini Fallback] onFallbackAttempt callback failed for ${requestContextDescription}: ${callbackError}`
+            );
+          }
+        }
         continue;
       }
 

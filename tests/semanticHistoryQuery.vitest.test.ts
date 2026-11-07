@@ -168,7 +168,8 @@ describe('single-call semantic transaction-history routing', () => {
       'riwayat beli obat bulan ini dari BCA terbaru',
       [],
       categories,
-      expect.any(Date)
+      expect.any(Date),
+      expect.objectContaining({ onFallback: expect.any(Function) })
     );
     expect(harness.registry.execute).toHaveBeenCalledWith(expect.objectContaining({
       action: 'TRANSACTION_HISTORY',

@@ -352,6 +352,11 @@ export interface ResponseDictionary {
     startupNotification(params: SystemStartupNotificationParams): string;
   };
 
+  aiFallbackStatus: {
+    initial(modelName?: string): string;
+    cycling(modelName: string): string;
+  };
+
   telegramMenu: TelegramMenuDictionary;
   telegramSettings: TelegramSettingsDictionary;
 

@@ -7,6 +7,7 @@ import {
   AccountClarificationProposal,
   CategoryClassificationProposal,
   UnifiedClarificationCandidate,
+  AiProcessingExecutionOptions,
 } from '../types.js';
 import { WalletAccountItem, WalletCategoryItem } from '../../wallet/index.js';
 import { GateEvaluationResult } from '../../email/index.js';
@@ -83,11 +84,20 @@ export class FallbackAiProvider implements FinancialAiProvider {
     return this.orderedProviderList;
   }
 
+  public getPrimaryModel(): string {
+    const firstProvider = this.orderedProviderList[0];
+    if (firstProvider && typeof firstProvider.getPrimaryModel === 'function') {
+      return firstProvider.getPrimaryModel();
+    }
+    return firstProvider?.providerName || this.providerName;
+  }
+
   public async processTextMessage(
     userMessageText: string,
     availableAccountList: WalletAccountItem[],
     availableCategoryList: WalletCategoryItem[],
-    referenceInstant?: Date
+    referenceInstant?: Date,
+    options?: AiProcessingExecutionOptions
   ): Promise<ExtractedFinancialIntent> {
     return this.executeWithFallback(
       'processTextMessage',
@@ -96,8 +106,10 @@ export class FallbackAiProvider implements FinancialAiProvider {
           userMessageText,
           availableAccountList,
           availableCategoryList,
-          referenceInstant
-        )
+          referenceInstant,
+          options
+        ),
+      options
     );
   }
 
@@ -107,7 +119,8 @@ export class FallbackAiProvider implements FinancialAiProvider {
     optionalCaption: string,
     availableAccountList: WalletAccountItem[],
     availableCategoryList: WalletCategoryItem[],
-    referenceInstant?: Date
+    referenceInstant?: Date,
+    options?: AiProcessingExecutionOptions
   ): Promise<ExtractedFinancialIntent> {
     return this.executeWithFallback(
       'processImageMessage',
@@ -118,8 +131,10 @@ export class FallbackAiProvider implements FinancialAiProvider {
           optionalCaption,
           availableAccountList,
           availableCategoryList,
-          referenceInstant
-        )
+          referenceInstant,
+          options
+        ),
+      options
     );
   }
 
@@ -200,7 +215,8 @@ export class FallbackAiProvider implements FinancialAiProvider {
 
   private async executeWithFallback<T>(
     operationName: string,
-    operationHandler: (provider: FinancialAiProvider) => Promise<T>
+    operationHandler: (provider: FinancialAiProvider) => Promise<T>,
+    options?: AiProcessingExecutionOptions
   ): Promise<T> {
     let lastEncounteredError: unknown = null;
 
@@ -229,6 +245,20 @@ export class FallbackAiProvider implements FinancialAiProvider {
           applicationLogger.warn(
             `Provider '${currentProvider.providerName}' failed during '${operationName}' (${conciseErrorMessage}). Failing over to '${nextProvider.providerName}'...`
           );
+
+          if (options?.onFallback) {
+            try {
+              await options.onFallback({
+                currentModel: currentProvider.providerName,
+                nextModel: nextProvider.providerName,
+                attemptIndex: providerIndex + 1,
+                totalCandidates: this.orderedProviderList.length,
+                reason: conciseErrorMessage,
+              });
+            } catch (callbackError: unknown) {
+              applicationLogger.warn(`Provider fallback callback failed: ${callbackError}`);
+            }
+          }
           continue;
         }
 
@@ -237,6 +267,20 @@ export class FallbackAiProvider implements FinancialAiProvider {
           applicationLogger.warn(
             `Provider '${currentProvider.providerName}' encountered error during '${operationName}' (${conciseErrorMessage}). Attempting failover to '${nextProvider.providerName}'...`
           );
+
+          if (options?.onFallback) {
+            try {
+              await options.onFallback({
+                currentModel: currentProvider.providerName,
+                nextModel: nextProvider.providerName,
+                attemptIndex: providerIndex + 1,
+                totalCandidates: this.orderedProviderList.length,
+                reason: conciseErrorMessage,
+              });
+            } catch (callbackError: unknown) {
+              applicationLogger.warn(`Provider fallback callback failed: ${callbackError}`);
+            }
+          }
           continue;
         }
 

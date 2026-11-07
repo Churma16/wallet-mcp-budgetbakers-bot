@@ -45,6 +45,7 @@ import {
 } from '../wallet/index.js';
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../lib/logger.js';
+import { ModelFallbackProgressTracker } from './modelFallbackProgressTracker.js';
 
 export {
   FinancialActionRegistry,
@@ -678,29 +679,49 @@ export class MessageDispatcher {
 
       let extractedIntent: ExtractedFinancialIntent;
 
-      if (event.messageType === 'image' && event.imageBuffer) {
-        applicationLogger.ai(
-          `Processing receipt photo with ${this.context.brain.provider.providerName.toUpperCase()} Vision...`
-        );
-        const rawExtractedIntent = await this.context.brain.provider.processImageMessage(
-          event.imageBuffer,
-          event.imageMimeType || 'image/jpeg',
-          event.textPayload || '',
-          cachedAccounts,
-          cachedCategories,
-          requestReferenceInstant
-        );
-        extractedIntent = validateReceiptFinancialIntentEnvelope(rawExtractedIntent);
-      } else {
-        applicationLogger.ai(
-          `Analyzing message intent with ${this.context.brain.provider.providerName.toUpperCase()}...`
-        );
-        extractedIntent = await this.context.brain.provider.processTextMessage(
-          event.textPayload || '',
-          cachedAccounts,
-          cachedCategories,
-          requestReferenceInstant
-        );
+      const primaryModel =
+        typeof this.context.brain?.provider?.getPrimaryModel === 'function'
+          ? this.context.brain.provider.getPrimaryModel()
+          : undefined;
+
+      const fallbackTracker = new ModelFallbackProgressTracker({
+        gateway: this.context.gateway,
+        channel: event.channel,
+        chatIdentifier: event.chatIdentifier,
+        primaryModel,
+      });
+
+      fallbackTracker.start();
+
+      try {
+        if (event.messageType === 'image' && event.imageBuffer) {
+          applicationLogger.ai(
+            `Processing receipt photo with ${this.context.brain.provider.providerName.toUpperCase()} Vision...`
+          );
+          const rawExtractedIntent = await this.context.brain.provider.processImageMessage(
+            event.imageBuffer,
+            event.imageMimeType || 'image/jpeg',
+            event.textPayload || '',
+            cachedAccounts,
+            cachedCategories,
+            requestReferenceInstant,
+            { onFallback: (evt) => fallbackTracker.handleFallback(evt) }
+          );
+          extractedIntent = validateReceiptFinancialIntentEnvelope(rawExtractedIntent);
+        } else {
+          applicationLogger.ai(
+            `Analyzing message intent with ${this.context.brain.provider.providerName.toUpperCase()}...`
+          );
+          extractedIntent = await this.context.brain.provider.processTextMessage(
+            event.textPayload || '',
+            cachedAccounts,
+            cachedCategories,
+            requestReferenceInstant,
+            { onFallback: (evt) => fallbackTracker.handleFallback(evt) }
+          );
+        }
+      } finally {
+        await fallbackTracker.cleanup();
       }
 
       applicationLogger.ai(`Decision: ${extractedIntent.action}`);
