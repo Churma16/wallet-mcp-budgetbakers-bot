@@ -78,7 +78,14 @@ The recommended way to configure the bot is the interactive setup wizard:
 npm run setup
 ```
 
-The wizard guides you through your Wallet MCP token, AI key, chosen messaging channel (WhatsApp or Telegram), and regional defaults.
+*(Tip: You can also run `npm run setup:dry-run` to preview the configuration without writing any files to disk).*
+
+The wizard guides you step-by-step through:
+- Connecting your BudgetBakers Wallet Personal Access Token.
+- Choosing your primary AI provider (Google Gemini, OpenAI, Groq, OpenRouter, or local Ollama).
+- Configuring your messaging channel (Telegram or WhatsApp) with strict access authorization.
+- Regional preferences (English or Indonesian, default currency like `USD` or `EUR`, and auto-detected host timezone with support for major global city aliases).
+- Optional bank/e-wallet email receipt monitoring with automated port, host, and email validation.
 
 Alternatively, copy `.env.example` to `.env` and fill in the values manually:
 
@@ -93,13 +100,13 @@ cp .env.example .env
 | `WALLET_MCP_ACCESS_TOKEN` | Personal Access Token from BudgetBakers | `pat_...` |
 | `AI_PROVIDER` | Active AI provider (`gemini`, `openrouter`, `groq`, `ollama`, or `openai`) | `gemini` |
 | `GEMINI_API_KEY` | Gemini API key (if using Gemini) | `AIzaSy...` |
-| `ALLOWED_PHONE_NUMBER` | Whitelisted WhatsApp phone number (E.164 without `+`) | `6281234567890` |
+| `ALLOWED_PHONE_NUMBER` | Whitelisted WhatsApp phone number (E.164 without `+`) | `14155552671` |
 | `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather (if using Telegram) | `123456789:ABC...` |
 | `TELEGRAM_ALLOWED_USER_ID` | Numeric Telegram user ID (if using Telegram) | `123456789` |
 
 > [!IMPORTANT]
-> The bot ships with Indonesian defaults (`APP_LANGUAGE=id`, `DEFAULT_CURRENCY=IDR`, `APP_TIMEZONE=Asia/Jakarta`).
-> If you live outside Indonesia, set `APP_LANGUAGE=en`, set your local `DEFAULT_CURRENCY` (e.g. `USD`, `EUR`, `SGD`), and select your [IANA timezone](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones) (e.g. `America/New_York`, `Europe/London`).
+> The setup wizard defaults to international standards (`APP_LANGUAGE=en`, `DEFAULT_CURRENCY=USD`, and auto-detects your system timezone with global city aliases like `London`, `New York`, `Tokyo`, or `Jakarta`).
+> If you live in Indonesia or prefer Indonesian regional settings, you can select `Bahasa Indonesia`, set `DEFAULT_CURRENCY=IDR`, and use `WIB` (`Asia/Jakarta`) directly in the wizard.
 > For full variable documentation, see [.env.example](.env.example) and the [Setup and Diagnostics Guide](docs/setup-and-diagnostics.md).
 
 > [!TIP]
