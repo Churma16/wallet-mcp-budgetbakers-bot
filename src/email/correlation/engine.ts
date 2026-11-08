@@ -144,21 +144,15 @@ export class TransactionCorrelationEngine {
         return { passed: false, reason: 'Transaction direction mismatch (transfer vs non-transfer)' };
       }
     } else if (!isEvidTransfer) {
-      const candIsIncome =
-        ('recordType' in candidate && candidate.recordType === WALLET_MCP_RECORD_TYPES.INCOME) ||
-        ('transactionType' in candidate && candidate.transactionType === INTERNAL_TRANSACTION_TYPES.INCOME) ||
-        candidate.amount > 0;
       const candIsExpense =
         ('recordType' in candidate && candidate.recordType === WALLET_MCP_RECORD_TYPES.EXPENSE) ||
         ('transactionType' in candidate && candidate.transactionType === INTERNAL_TRANSACTION_TYPES.EXPENSE) ||
         candidate.amount < 0;
 
-      const evidIsIncome =
-        evidence.transactionType === INTERNAL_TRANSACTION_TYPES.INCOME || evidence.amount > 0;
       const evidIsExpense =
         evidence.transactionType === INTERNAL_TRANSACTION_TYPES.EXPENSE || evidence.amount < 0;
 
-      if ((candIsIncome && evidIsExpense) || (candIsExpense && evidIsIncome)) {
+      if (candIsExpense !== evidIsExpense) {
         return { passed: false, reason: 'Transaction sign mismatch (income vs expense)' };
       }
     }
@@ -580,6 +574,10 @@ export class TransactionCorrelationEngine {
     }
 
     const candidateTitle = ('note' in top.candidateItem ? top.candidateItem.note : '') || (top.candidateItem as any).counterParty || 'transaksi sebelumnya';
+    const targetLabel =
+      top.target.type === 'PENDING_TRANSACTION'
+        ? `tiket #${top.target.pendingItem.ticketId} ("${candidateTitle}")`
+        : `"${candidateTitle}"`;
     return {
       confidence: 'MEDIUM',
       matchTarget: top.target,
@@ -588,7 +586,7 @@ export class TransactionCorrelationEngine {
         ...top.scores.reasons,
       ],
       suggestedAction: 'CLARIFY',
-      clarificationPrompt: `Transaksi ${evidence.currency} ${Math.abs(evidence.amount)} terdeteksi serupa dengan "${candidateTitle}". Apakah ini transaksi yang sama?`,
+      clarificationPrompt: `Transaksi ${evidence.currency} ${Math.abs(evidence.amount)} terdeteksi serupa dengan ${targetLabel}. Apakah ini transaksi yang sama?`,
       scores: top.scores,
     };
   }

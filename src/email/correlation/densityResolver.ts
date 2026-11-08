@@ -167,7 +167,7 @@ export class InformationDensityResolver {
     const isCandGeneric = isGenericCategory(candCatName) || !candidate.categoryId;
     const isEvidGeneric = isGenericCategory(evidCatName) || !evidence.categoryId;
 
-    if (isCandGeneric && !isEvidGeneric && evidence.categoryId) {
+    if (isCandGeneric && evidence.categoryId && evidCatName) {
       return { categoryId: evidence.categoryId, categoryName: evidCatName };
     }
     if (!isCandGeneric && isEvidGeneric && candidate.categoryId) {
