@@ -150,6 +150,16 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
   private readonly startupRetryBaseDelayMs: number;
   private readonly startupRetryMaxDelayMs: number;
   private readonly maxMediaDownloadBytes: number;
+  private readonly mediaGroupDebounceMap = new Map<
+    string,
+    {
+      chatId: string;
+      senderIdentifier: string;
+      captionText: string;
+      buffers: Buffer[];
+      timer: NodeJS.Timeout;
+    }
+  >();
 
   constructor(
     private readonly botToken: string,
@@ -823,6 +833,65 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
           return;
         }
 
+        const mediaGroupId = ctx.message.media_group_id;
+        if (mediaGroupId) {
+          const existingGroup = this.mediaGroupDebounceMap.get(mediaGroupId);
+          if (existingGroup) {
+            clearTimeout(existingGroup.timer);
+            if (!existingGroup.captionText && captionText) {
+              existingGroup.captionText = captionText;
+            }
+            existingGroup.buffers.push(imageBuffer);
+            existingGroup.timer = setTimeout(async () => {
+              this.mediaGroupDebounceMap.delete(mediaGroupId);
+              try {
+                await this.onUserMessageReceived({
+                  channel: 'telegram',
+                  chatIdentifier: existingGroup.chatId,
+                  senderIdentifier: existingGroup.senderIdentifier,
+                  messageType: 'image',
+                  textPayload: existingGroup.captionText,
+                  imageBuffer: existingGroup.buffers[0],
+                  imageBuffers: existingGroup.buffers,
+                  imageMimeType: 'image/jpeg',
+                });
+              } catch (dispatchError: unknown) {
+                applicationLogger.error(
+                  `[Telegram] Failed dispatching media group: ${dispatchError instanceof Error ? dispatchError.message : String(dispatchError)}`
+                );
+              }
+            }, 800);
+          } else {
+            const entry = {
+              chatId,
+              senderIdentifier,
+              captionText,
+              buffers: [imageBuffer],
+              timer: setTimeout(async () => {
+                this.mediaGroupDebounceMap.delete(mediaGroupId);
+                try {
+                  await this.onUserMessageReceived({
+                    channel: 'telegram',
+                    chatIdentifier: entry.chatId,
+                    senderIdentifier: entry.senderIdentifier,
+                    messageType: 'image',
+                    textPayload: entry.captionText,
+                    imageBuffer: entry.buffers[0],
+                    imageBuffers: entry.buffers,
+                    imageMimeType: 'image/jpeg',
+                  });
+                } catch (dispatchError: unknown) {
+                  applicationLogger.error(
+                    `[Telegram] Failed dispatching media group: ${dispatchError instanceof Error ? dispatchError.message : String(dispatchError)}`
+                  );
+                }
+              }, 800),
+            };
+            this.mediaGroupDebounceMap.set(mediaGroupId, entry);
+          }
+          return;
+        }
+
         await this.onUserMessageReceived({
           channel: 'telegram',
           chatIdentifier: chatId,
@@ -830,6 +899,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
           messageType: 'image',
           textPayload: captionText,
           imageBuffer,
+          imageBuffers: [imageBuffer],
           imageMimeType: 'image/jpeg',
         });
       } catch (downloadError: unknown) {
@@ -965,6 +1035,11 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
   }
 
   public async stopConnection(): Promise<void> {
+    for (const item of this.mediaGroupDebounceMap.values()) {
+      clearTimeout(item.timer);
+    }
+    this.mediaGroupDebounceMap.clear();
+
     if (this.botInstance && this.isRunning) {
       try {
         await this.botInstance.stop();

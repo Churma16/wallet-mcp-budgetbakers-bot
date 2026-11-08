@@ -8,3 +8,4 @@ export * from './fastPathHandler.js';
 export * from './inboundHandlers.js';
 export * from './modifyRecordHandler.js';
 export * from './deleteRecordHandler.js';
+export * from './reconciliationHandler.js';

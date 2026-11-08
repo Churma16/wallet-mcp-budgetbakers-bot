@@ -10,7 +10,7 @@ import { applicationLogger } from '../lib/logger.js';
 
 export interface PendingTransactionItem {
   ticketId: number;
-  sourceType: 'EMAIL' | 'WHATSAPP' | 'PUSH_NOTIFICATION';
+  sourceType: 'EMAIL' | 'WHATSAPP' | 'PUSH_NOTIFICATION' | 'RECONCILIATION';
   bankDisplayName: string;
   accountNameHint: string;
   counterParty: string;

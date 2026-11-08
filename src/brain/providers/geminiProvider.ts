@@ -32,6 +32,12 @@ import {
 } from './jsonExtraction.js';
 import { executeGeminiGenerationWithFallback } from './geminiClient.js';
 import { RuntimeSettingsManager } from '../../config/index.js';
+import {
+  buildStatementSystemInstruction,
+  buildStatementPrompt,
+} from '../prompts/promptStatementTemplate.js';
+import { parseStatementExtractionResponse } from '../parsers/statementParser.js';
+import type { BankMutationItem } from '../../core/reconciliation/types.js';
 
 /**
  * AI Provider implementation for Google Gemini SDK.
@@ -193,6 +199,41 @@ export class GeminiAiProvider implements FinancialAiProvider {
           onFallbackAttempt: options?.onFallback,
         })
     );
+  }
+
+  public async processStatementImages(
+    imageBuffers: Buffer[],
+    mimeType: string,
+    optionalCaption: string
+  ): Promise<BankMutationItem[]> {
+    const systemInstruction = buildStatementSystemInstruction();
+    const promptText = buildStatementPrompt(optionalCaption);
+
+    const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [
+      { text: promptText },
+    ];
+
+    for (const buffer of imageBuffers) {
+      parts.push({
+        inlineData: {
+          data: buffer.toString('base64'),
+          mimeType: mimeType || 'image/jpeg',
+        },
+      });
+    }
+
+    const result = await this.executeGeneration({
+      contents: [
+        {
+          role: 'user',
+          parts,
+        },
+      ],
+      systemInstruction,
+      requestContextDescription: `Statement extraction (${imageBuffers.length} images, caption: "${optionalCaption}")`,
+    });
+
+    return parseStatementExtractionResponse(result.responseText);
   }
 
   public async processEmailTransactionMessage(
