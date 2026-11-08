@@ -415,7 +415,20 @@ export class MessageDispatcher {
         event.textPayload &&
         hasPendingTransactions(this.context.pending)
       ) {
-        const genericPendingIntent = detectPendingConfirmationAction(event.textPayload);
+        let genericPendingIntent = detectPendingConfirmationAction(event.textPayload);
+        if (event.replyToMessageId) {
+          const pendingManager = this.context.pending as PendingTransactionService;
+          if (typeof pendingManager.getAllPendingTransactions === 'function') {
+            const matchedPendingItem = pendingManager.getAllPendingTransactions().find(
+              item =>
+                item.notificationMessageIds &&
+                Object.values(item.notificationMessageIds).includes(event.replyToMessageId!)
+            );
+            if (matchedPendingItem && genericPendingIntent && genericPendingIntent.targetScope === 'LATEST') {
+              genericPendingIntent.targetScope = matchedPendingItem.ticketId;
+            }
+          }
+        }
         if (
           genericPendingIntent &&
           (genericPendingIntent.targetScope === 'LATEST' || genericPendingIntent.targetScope === 'ALL')
@@ -656,7 +669,29 @@ export class MessageDispatcher {
         event.textPayload &&
         hasPendingTransactions(this.context.pending)
       ) {
-        const confirmationIntent = detectPendingConfirmationAction(event.textPayload);
+        let confirmationIntent = detectPendingConfirmationAction(event.textPayload);
+
+        // Resolve swipe-reply to a specific pending transaction message
+        if (event.replyToMessageId) {
+          const pendingManager = this.context.pending as PendingTransactionService;
+          if (typeof pendingManager.getAllPendingTransactions === 'function') {
+            const matchedPendingItem = pendingManager.getAllPendingTransactions().find(
+              item =>
+                item.notificationMessageIds &&
+                Object.values(item.notificationMessageIds).includes(event.replyToMessageId!)
+            );
+            if (matchedPendingItem) {
+              if (!confirmationIntent) {
+                confirmationIntent = detectPendingConfirmationAction(
+                  `Ya ${matchedPendingItem.ticketId} ${event.textPayload}`
+                );
+              } else if (confirmationIntent.targetScope === 'LATEST') {
+                confirmationIntent.targetScope = matchedPendingItem.ticketId;
+              }
+            }
+          }
+        }
+
         if (confirmationIntent) {
           const handled = await this.pendingActionHandler.handlePendingAction(
             event,

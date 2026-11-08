@@ -17,6 +17,7 @@ import {
   buildMatchedCard,
   buildWrongAccountCard,
   buildMissingCard,
+  buildSingleMissingItemBubble,
   buildPaginationInlineKeyboard,
   handleReconciliationPagination,
 } from '../src/core/reconciliation/reconciliationCardFormatter.js';
@@ -271,10 +272,14 @@ describe('Reconciliation Card Formatter & Command Parser', () => {
   it('detects reconciliation commands and extracts account hints', () => {
     expect(isReconciliationCommand('/reconciliation jago')).toBe(true);
     expect(isReconciliationCommand('/reconciliation')).toBe(true);
+    expect(isReconciliationCommand('/reconciliation@wallet_mcp_churma_bot mandiri')).toBe(true);
+    expect(isReconciliationCommand('/reconciliation@wallet_mcp_churma_bot')).toBe(true);
     expect(isReconciliationCommand('reconciliation jago')).toBe(false);
 
     expect(extractReconciliationAccountHint('/reconciliation jago')).toBe('jago');
     expect(extractReconciliationAccountHint('/reconciliation Blu BCA Digital')).toBe('Blu BCA Digital');
+    expect(extractReconciliationAccountHint('/reconciliation@wallet_mcp_churma_bot mandiri')).toBe('mandiri');
+    expect(extractReconciliationAccountHint('/reconciliation@wallet_mcp_churma_bot')).toBe('');
     expect(extractReconciliationAccountHint('/reconciliation')).toBe('');
   });
 
@@ -315,7 +320,7 @@ describe('Reconciliation Card Formatter & Command Parser', () => {
     expect(card).toContain('Salah Wallet / Akun (Total 1)');
     expect(card).toContain('Terlewat / Belum Tercatat (Total 1)');
     expect(card).toContain('[Tiket #101]');
-    expect(card).toContain('Balas *Ya 101*');
+    expect(card).toContain('Balas *Ya #101*');
   });
 
   it('builds overview card with status breakdown and celebration on 100% matched', () => {
@@ -434,8 +439,20 @@ describe('Reconciliation Card Formatter & Command Parser', () => {
     expect(card).toContain('*[Tiket #1] Rp50.000* • _4 Nov_');
     expect(card).toContain('2. *Roti O*');
     expect(card).toContain('*[Tiket #2] Rp35.000* • _4 Nov_');
-    expect(card).toContain('Balas *Ya 1,2* untuk konfirmasi catat ke Wallet, atau *Batal*.');
+    expect(card).toContain('Balas *Ya semua* untuk catat sekaligus, atau *Ya #1*, atau *Batal*.');
     expect(buildMissingCard([], new Map())).toBe('');
+  });
+
+  it('formats single missing item bubble for direct swipe-reply interaction', () => {
+    const bubble = buildSingleMissingItemBubble(
+      { mutation: { id: 'm1', date: '2026-11-04', amount: 50000, direction: 'DEBIT' as const, counterParty: 'Kopi Kenangan', note: 'Order #123' } },
+      1
+    );
+    expect(bubble).toContain('🔴 *Belum Tercatat [Tiket #1]*');
+    expect(bubble).toContain('*Kopi Kenangan*');
+    expect(bubble).toContain('Rp50.000 • _4 Nov_');
+    expect(bubble).toContain('_Order #123_');
+    expect(bubble).toContain('swipe reply');
   });
 
   it('builds pagination inline keyboard properly with boundary guards', () => {
@@ -735,9 +752,9 @@ describe('ReconciliationHandler Workflow Integration', () => {
     expect(sentMessages[1].text).toContain('🟢 *Sudah Sesuai (Total 1)*');
     expect(sentMessages[1].text).toContain('Grab');
 
-    expect(sentMessages[2].text).toContain('🔴 *Terlewat / Belum Tercatat (Total 1)*');
-    expect(sentMessages[2].text).toContain('[Tiket #1]');
+    expect(sentMessages[2].text).toContain('🔴 *Belum Tercatat [Tiket #1]*');
     expect(sentMessages[2].text).toContain('Gojek via Jago');
+    expect(sentMessages[2].text).toContain('Rp58.500');
   });
 
   it('reports warning when brainProvider does not support processStatementImages', async () => {

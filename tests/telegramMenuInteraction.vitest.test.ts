@@ -354,6 +354,22 @@ describe('Telegram Menu and Interactive Guide Gateway Integration', () => {
         expect.stringContaining('Sudah Sesuai'),
         expect.objectContaining({ parse_mode: 'HTML' })
       );
+
+      // 3. recon:expired / invalid session displays alert toast
+      await handlers['callback_query:data']({
+        callbackQuery: { data: 'recon:non-existent-session:m:2' },
+        chat: { id: 123456789 },
+        from: { id: 123456789 },
+        editMessageText: mockEditMessageText,
+        answerCallbackQuery: mockAnswerCallbackQuery,
+      });
+
+      expect(mockAnswerCallbackQuery).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining('telah berakhir'),
+          show_alert: true,
+        })
+      );
     });
   });
 

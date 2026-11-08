@@ -197,11 +197,35 @@ export function buildMissingCard(
   }
 
   if (ticketIds.length > 0) {
-    const ticketRangeStr = ticketIds.length === 1 ? `${ticketIds[0]}` : ticketIds.join(',');
-    lines.push(`💡 _Balas *Ya ${ticketRangeStr}* untuk konfirmasi catat ke Wallet, atau *Batal*._`);
+    const hintStr = ticketIds.length === 1
+      ? `💡 _Balas *Ya #${ticketIds[0]}* untuk konfirmasi catat ke Wallet, atau *Batal*._`
+      : `💡 _Balas *Ya semua* untuk catat sekaligus, atau *Ya #${ticketIds[0]}*, atau *Batal*._`;
+    lines.push(hintStr);
   }
 
   return lines.join('\n').trim();
+}
+
+/**
+ * Builds an individual transaction card bubble for a single missing unrecorded mutation.
+ * Enables 1-bubble-per-transaction rendering so users can swipe-reply directly to confirm, edit, or reject.
+ */
+export function buildSingleMissingItemBubble(
+  missingItem: MissingMutationItem,
+  ticketId: number
+): string {
+  const formattedAmount = formatAmountIDR(missingItem.mutation.amount);
+  const dateStr = formatDateShort(missingItem.mutation.date);
+  const noteLine = missingItem.mutation.note ? `\n_${missingItem.mutation.note}_` : '';
+
+  return [
+    `🔴 *Belum Tercatat [Tiket #${ticketId}]*`,
+    '',
+    `*${missingItem.mutation.counterParty}*`,
+    `${formattedAmount} • _${dateStr}_${noteLine}`,
+    '',
+    `💡 _Balas *Ya* untuk catat ke Wallet, atau swipe reply untuk edit/batal._`,
+  ].join('\n');
 }
 
 /**

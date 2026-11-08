@@ -9,6 +9,7 @@ import { applyReconciliationRules } from '../reconciliation/rules/jagoGopayRules
 import { compareMutationsWithWalletRecords } from '../reconciliation/comparisonEngine.js';
 import {
   formatReconciliationCards,
+  buildSingleMissingItemBubble,
   type FormattedTicketReference,
 } from '../reconciliation/reconciliationCardFormatter.js';
 import { reconciliationSessionStore } from '../reconciliation/reconciliationSessionStore.js';
@@ -31,21 +32,21 @@ export interface ReconciliationHandlerDependencies {
 
 /**
  * Extracts target account name hint following /reconciliation command.
+ * Supports optional @botname suffix (e.g. /reconciliation@wallet_mcp_churma_bot mandiri).
  */
 export function extractReconciliationAccountHint(textPayload: string): string {
   const trimmed = textPayload.trim();
-  if (/^\/reconciliation\b/i.test(trimmed)) {
-    return trimmed.slice('/reconciliation'.length).trim();
-  }
-  return '';
+  const match = trimmed.match(/^\/reconciliation(?:@\w+)?(?:\s+(.*))?$/i);
+  return match && match[1] ? match[1].trim() : '';
 }
 
 /**
  * Checks whether an incoming message text qualifies as a reconciliation command.
+ * Supports optional @botname suffix.
  */
 export function isReconciliationCommand(textPayload?: string): boolean {
   if (!textPayload) return false;
-  return /^\/reconciliation\b/i.test(textPayload.trim());
+  return /^\/reconciliation(?:@\w+)?(?:\s|$)/i.test(textPayload.trim());
 }
 
 /**
@@ -95,12 +96,12 @@ export class ReconciliationHandler {
     }
 
     const cleanHint = accountHint.toLowerCase();
-    const targetAccount = cachedAccounts.find(
-      a =>
-        a.name.toLowerCase() === cleanHint ||
-        a.name.toLowerCase().includes(cleanHint) ||
-        cleanHint.includes(a.name.toLowerCase())
-    );
+    // Prioritize: 1. Exact match, 2. Starts with, 3. Substring includes, 4. Reverse includes
+    const targetAccount =
+      cachedAccounts.find(a => a.name.toLowerCase() === cleanHint) ||
+      cachedAccounts.find(a => a.name.toLowerCase().startsWith(cleanHint)) ||
+      cachedAccounts.find(a => a.name.toLowerCase().includes(cleanHint)) ||
+      cachedAccounts.find(a => cleanHint.includes(a.name.toLowerCase()));
 
     if (!targetAccount) {
       const accountNames = cachedAccounts.map(a => a.name).join(', ');
@@ -269,11 +270,37 @@ export class ReconciliationHandler {
       });
     }
 
-    // Send Bubble 4: Missing (if any)
-    if (cards.missing) {
-      await this.deps.gateway.sendMessage(event.channel, event.chatIdentifier, cards.missing.text, {
-        replyMarkup: cards.missing.replyMarkup,
-      });
+    // Send Missing Transactions: 1 dedicated bubble per transaction for direct swipe-reply interaction
+    if (comparisonResult.missing.length > 0) {
+      for (const missingItem of comparisonResult.missing) {
+        const ticketRef = ticketReferences.find(t => t.mutationId === missingItem.mutation.id);
+        const ticketId = ticketRef ? ticketRef.ticketId : 1;
+        const itemBubbleText = buildSingleMissingItemBubble(missingItem, ticketId);
+
+        const receipt = await this.deps.gateway.sendMessage(
+          event.channel,
+          event.chatIdentifier,
+          itemBubbleText
+        );
+
+        if (
+          receipt &&
+          receipt.messageId &&
+          typeof this.deps.pendingTransactionManager.updateNotificationMessageIds === 'function'
+        ) {
+          this.deps.pendingTransactionManager.updateNotificationMessageIds(ticketId, {
+            [event.channel]: receipt.messageId,
+          });
+        }
+      }
+
+      if (comparisonResult.missing.length > 1) {
+        await this.deps.gateway.sendMessage(
+          event.channel,
+          event.chatIdentifier,
+          `💡 _Terdapat ${comparisonResult.missing.length} transaksi terlewat. Balas *Ya semua* untuk catat sekaligus, atau swipe reply per bubble di atas._`
+        );
+      }
     }
 
     return true;

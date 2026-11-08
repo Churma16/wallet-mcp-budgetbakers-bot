@@ -103,8 +103,8 @@ export function parseStatementExtractionResponse(rawText: string): BankMutationI
     const counterParty = String(raw.counterParty || 'Transaksi').trim();
     const note = raw.note ? String(raw.note).trim() : undefined;
 
-    // Cross-screenshot deduplication fingerprint
-    const fingerprint = `${date}|${numAmount}|${direction}|${counterParty.toLowerCase()}`;
+    // Cross-screenshot deduplication fingerprint (including note/ref to preserve legitimate same-day twin transactions)
+    const fingerprint = `${date}|${numAmount}|${direction}|${counterParty.toLowerCase()}|${note ? note.toLowerCase() : ''}`;
     if (seenFingerprints.has(fingerprint)) {
       continue;
     }

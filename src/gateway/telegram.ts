@@ -725,13 +725,14 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
           // ignore edit errors
         }
       } else if (callbackData.startsWith('recon:')) {
-        await ctx.answerCallbackQuery();
         if (callbackData === 'recon:noop') {
+          await ctx.answerCallbackQuery();
           return;
         }
 
         const paginationResult = handleReconciliationPagination(callbackData);
         if (paginationResult) {
+          await ctx.answerCallbackQuery();
           try {
             await ctx.editMessageText(formatTelegramHtml(paginationResult.text), {
               parse_mode: 'HTML',
@@ -740,6 +741,11 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
           } catch {
             // ignore unchanged edits or network drops
           }
+        } else {
+          await ctx.answerCallbackQuery({
+            text: 'Sesi rekonsiliasi telah berakhir. Silakan jalankan ulang /reconciliation.',
+            show_alert: true,
+          });
         }
       } else {
         await ctx.answerCallbackQuery();
