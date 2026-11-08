@@ -379,6 +379,23 @@ describe('Reconciliation Card Formatter & Command Parser', () => {
     expect(buildMatchedCard([])).toBe('');
   });
 
+  it('splits 19 matched items into 5 pages with 4 items per page', () => {
+    const pairs = Array.from({ length: 19 }, (_, i) => ({
+      mutation: { id: `m-${i + 1}`, date: '2026-11-06', amount: 10000, direction: 'DEBIT' as const, counterParty: `Item ${i + 1}` },
+      walletRecord: { id: `r-${i + 1}`, accountId: 'acc-1', amount: -10000, currency: 'IDR', recordDate: '2026-11-06', recordType: 'expense' as const },
+    }));
+
+    const page1 = buildMatchedCard(pairs, 1);
+    expect(page1).toContain('🟢 *Sudah Sesuai (Hal 1/5 - Total 19)*');
+    expect(page1).toContain('1. *Item 1*');
+    expect(page1).toContain('4. *Item 4*');
+    expect(page1).not.toContain('5. *Item 5*');
+
+    const keyboard = buildPaginationInlineKeyboard('sess1', 'm', 1, 5);
+    expect(keyboard?.inline_keyboard[0][0].text).toBe('1/5');
+    expect(keyboard?.inline_keyboard[0][1].text).toBe('Next ➡️');
+  });
+
   it('formats wrong account card with 2-line detail and actual account note', () => {
     const wrong = [
       {

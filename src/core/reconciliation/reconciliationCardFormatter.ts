@@ -11,7 +11,7 @@ import {
 
 export { FormattedTicketReference };
 
-export const PAGE_SIZE_MATCHED = 5;
+export const PAGE_SIZE_MATCHED = 4;
 export const PAGE_SIZE_WRONG_ACCOUNT = 5;
 export const PAGE_SIZE_MISSING = 10;
 
