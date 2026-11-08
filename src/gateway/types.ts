@@ -9,6 +9,7 @@ export interface IncomingUserMessageEvent {
   messageType: 'text' | 'image';
   textPayload?: string;
   imageBuffer?: Buffer;
+  imageBuffers?: Buffer[];
   imageMimeType?: string;
   replyToMessageId?: string;
   replyToMessageText?: string;

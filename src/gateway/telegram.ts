@@ -35,10 +35,14 @@ import {
   formatTelegramHtml,
   convertWhatsAppMarkupToTelegramHtml,
 } from './formatters/telegramFormatter.js';
+import { handleReconciliationPagination } from '../core/reconciliation/reconciliationCardFormatter.js';
+import { reconciliationSessionStore } from '../core/reconciliation/reconciliationSessionStore.js';
 import { getActiveLanguage, getDictionary } from '../i18n/index.js';
 
 export type { TelegramSafeguardConfiguration };
 export { escapeHtmlEntities, formatTelegramHtml, convertWhatsAppMarkupToTelegramHtml };
+
+export const MEDIA_GROUP_DEBOUNCE_MS = 2000;
 
 type SettingPropertyUpdater = (value: string, manager: RuntimeSettingsManager) => Promise<void>;
 
@@ -150,6 +154,16 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
   private readonly startupRetryBaseDelayMs: number;
   private readonly startupRetryMaxDelayMs: number;
   private readonly maxMediaDownloadBytes: number;
+  private readonly mediaGroupDebounceMap = new Map<
+    string,
+    {
+      chatId: string;
+      senderIdentifier: string;
+      captionText: string;
+      buffers: Buffer[];
+      timer: NodeJS.Timeout;
+    }
+  >();
 
   constructor(
     private readonly botToken: string,
@@ -711,6 +725,55 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
         } catch {
           // ignore edit errors
         }
+      } else if (callbackData.startsWith('recon:')) {
+        if (callbackData === 'recon:noop') {
+          await ctx.answerCallbackQuery();
+          return;
+        }
+
+        if (callbackData.endsWith(':spawn_missing')) {
+          const parts = callbackData.split(':');
+          const sessionId = parts[1];
+          const session = reconciliationSessionStore.getSession(sessionId);
+          if (!session) {
+            await ctx.answerCallbackQuery({
+              text: 'Sesi rekonsiliasi telah berakhir. Silakan jalankan ulang /reconciliation.',
+              show_alert: true,
+            });
+            return;
+          }
+
+          const chatId = String(ctx.chat?.id);
+          const senderIdentifier = ctx.from?.id ? String(ctx.from.id) : chatId;
+
+          await ctx.answerCallbackQuery({ text: 'Menampilkan transaksi terlewat...' });
+          await this.onUserMessageReceived({
+            channel: 'telegram',
+            messageType: 'text',
+            chatIdentifier: chatId,
+            senderIdentifier,
+            textPayload: `/recon_spawn ${sessionId}`,
+          });
+          return;
+        }
+
+        const paginationResult = handleReconciliationPagination(callbackData);
+        if (paginationResult) {
+          await ctx.answerCallbackQuery();
+          try {
+            await ctx.editMessageText(formatTelegramHtml(paginationResult.text), {
+              parse_mode: 'HTML',
+              reply_markup: paginationResult.replyMarkup as any,
+            });
+          } catch {
+            // ignore unchanged edits or network drops
+          }
+        } else {
+          await ctx.answerCallbackQuery({
+            text: 'Sesi rekonsiliasi telah berakhir. Silakan jalankan ulang /reconciliation.',
+            show_alert: true,
+          });
+        }
       } else {
         await ctx.answerCallbackQuery();
       }
@@ -823,15 +886,60 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
           return;
         }
 
-        await this.onUserMessageReceived({
-          channel: 'telegram',
-          chatIdentifier: chatId,
-          senderIdentifier,
-          messageType: 'image',
-          textPayload: captionText,
-          imageBuffer,
-          imageMimeType: 'image/jpeg',
-        });
+        const mediaGroupId = ctx.message.media_group_id;
+        if (!mediaGroupId) {
+          await this.onUserMessageReceived({
+            channel: 'telegram',
+            chatIdentifier: chatId,
+            senderIdentifier,
+            messageType: 'image',
+            textPayload: captionText,
+            imageBuffer,
+            imageBuffers: [imageBuffer],
+            imageMimeType: 'image/jpeg',
+          });
+          return;
+        }
+
+        let groupEntry = this.mediaGroupDebounceMap.get(mediaGroupId);
+        if (groupEntry) {
+          clearTimeout(groupEntry.timer);
+          if (!groupEntry.captionText && captionText) {
+            groupEntry.captionText = captionText;
+          }
+          groupEntry.buffers.push(imageBuffer);
+        } else {
+          groupEntry = {
+            chatId,
+            senderIdentifier,
+            captionText,
+            buffers: [imageBuffer],
+            timer: setTimeout(() => {}, 0),
+          };
+          this.mediaGroupDebounceMap.set(mediaGroupId, groupEntry);
+        }
+
+        const activeGroup = groupEntry;
+        activeGroup.timer = setTimeout(async () => {
+          this.mediaGroupDebounceMap.delete(mediaGroupId);
+          try {
+            await this.onUserMessageReceived({
+              channel: 'telegram',
+              chatIdentifier: activeGroup.chatId,
+              senderIdentifier: activeGroup.senderIdentifier,
+              messageType: 'image',
+              textPayload: activeGroup.captionText,
+              imageBuffer: activeGroup.buffers[0],
+              imageBuffers: activeGroup.buffers,
+              imageMimeType: 'image/jpeg',
+            });
+          } catch (dispatchError: unknown) {
+            applicationLogger.error(
+              `[Telegram] Failed dispatching media group: ${dispatchError instanceof Error ? dispatchError.message : String(dispatchError)}`
+            );
+          }
+        }, MEDIA_GROUP_DEBOUNCE_MS);
+        return;
       } catch (downloadError: unknown) {
         if (isMediaPayloadSizeLimitExceeded(downloadError)) {
           await this.rejectOversizedPhoto(
@@ -965,6 +1073,11 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
   }
 
   public async stopConnection(): Promise<void> {
+    for (const item of this.mediaGroupDebounceMap.values()) {
+      clearTimeout(item.timer);
+    }
+    this.mediaGroupDebounceMap.clear();
+
     if (this.botInstance && this.isRunning) {
       try {
         await this.botInstance.stop();

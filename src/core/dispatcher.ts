@@ -27,6 +27,10 @@ import { CategoryClarificationHandler } from './handlers/categoryClarificationHa
 import { DeleteRecordHandler } from './handlers/deleteRecordHandler.js';
 import { ModifyRecordHandler } from './handlers/modifyRecordHandler.js';
 import {
+  ReconciliationHandler,
+  isReconciliationCommand,
+} from './handlers/reconciliationHandler.js';
+import {
   FinancialActionRegistry,
   createDefaultFinancialActionRegistry,
   DefaultFinancialActionRegistryDependencies,
@@ -126,6 +130,7 @@ export interface DispatcherOverrides {
   modifyRecordHandler?: ModifyRecordHandler;
   notificationHandler?: NotificationTransactionHandler;
   inboundRescanService?: InboundRescanService;
+  reconciliationHandler?: ReconciliationHandler;
 }
 
 /**
@@ -141,6 +146,7 @@ export class MessageDispatcher {
   public readonly financialActionRegistry: FinancialActionRegistry;
   public readonly deleteRecordHandler: DeleteRecordHandler;
   public readonly modifyRecordHandler: ModifyRecordHandler;
+  public readonly reconciliationHandler: ReconciliationHandler;
   public readonly semanticToolBoundary: SemanticToolBoundary;
   public readonly semanticToolAuthorizationResolver: SemanticToolAuthorizationResolver;
   public readonly notificationHandler: NotificationTransactionHandler;
@@ -302,6 +308,16 @@ export class MessageDispatcher {
         enrichmentPoolService: context.wallet?.enrichmentPool,
         defaultCurrency: context.config?.defaultCurrency || 'IDR',
       });
+
+    this.reconciliationHandler =
+      overrides?.reconciliationHandler ||
+      new ReconciliationHandler({
+        gateway: context.gateway,
+        walletClient: context.wallet.client,
+        walletCache: context.wallet.cache,
+        pendingTransactionManager: context.pending,
+        brainProvider: context.brain.provider,
+      });
   }
 
   /**
@@ -327,6 +343,27 @@ export class MessageDispatcher {
     await this.context.gateway.sendTypingPresence(event.channel, event.chatIdentifier);
 
     try {
+      // 0. Explicit /reconciliation statement audit command
+      if (isReconciliationCommand(event.textPayload)) {
+        const handledRecon = await this.reconciliationHandler.handleReconciliationRequest(event);
+        if (handledRecon) {
+          return;
+        }
+      }
+
+      // 0a. Explicit /recon_spawn command triggered from inline button callback
+      if (
+        event.messageType === 'text' &&
+        event.textPayload &&
+        event.textPayload.startsWith('/recon_spawn ')
+      ) {
+        const sessionId = event.textPayload.slice('/recon_spawn '.length).trim();
+        const handledSpawn = await this.reconciliationHandler.handleSpawnMissingRequest(event, sessionId);
+        if (handledSpawn) {
+          return;
+        }
+      }
+
       // 0a. Explicit transaction delete confirmation or cancellation commands (e.g. from inline button callback)
       if (
         event.messageType === 'text' &&
@@ -391,7 +428,20 @@ export class MessageDispatcher {
         event.textPayload &&
         hasPendingTransactions(this.context.pending)
       ) {
-        const genericPendingIntent = detectPendingConfirmationAction(event.textPayload);
+        let genericPendingIntent = detectPendingConfirmationAction(event.textPayload);
+        if (event.replyToMessageId) {
+          const pendingManager = this.context.pending as PendingTransactionService;
+          if (typeof pendingManager.getAllPendingTransactions === 'function') {
+            const matchedPendingItem = pendingManager.getAllPendingTransactions().find(
+              item =>
+                item.notificationMessageIds &&
+                Object.values(item.notificationMessageIds).includes(event.replyToMessageId!)
+            );
+            if (matchedPendingItem && genericPendingIntent && genericPendingIntent.targetScope === 'LATEST') {
+              genericPendingIntent.targetScope = matchedPendingItem.ticketId;
+            }
+          }
+        }
         if (
           genericPendingIntent &&
           (genericPendingIntent.targetScope === 'LATEST' || genericPendingIntent.targetScope === 'ALL')
@@ -632,7 +682,29 @@ export class MessageDispatcher {
         event.textPayload &&
         hasPendingTransactions(this.context.pending)
       ) {
-        const confirmationIntent = detectPendingConfirmationAction(event.textPayload);
+        let confirmationIntent = detectPendingConfirmationAction(event.textPayload);
+
+        // Resolve swipe-reply to a specific pending transaction message
+        if (event.replyToMessageId) {
+          const pendingManager = this.context.pending as PendingTransactionService;
+          if (typeof pendingManager.getAllPendingTransactions === 'function') {
+            const matchedPendingItem = pendingManager.getAllPendingTransactions().find(
+              item =>
+                item.notificationMessageIds &&
+                Object.values(item.notificationMessageIds).includes(event.replyToMessageId!)
+            );
+            if (matchedPendingItem) {
+              if (!confirmationIntent) {
+                confirmationIntent = detectPendingConfirmationAction(
+                  `Ya ${matchedPendingItem.ticketId} ${event.textPayload}`
+                );
+              } else if (confirmationIntent.targetScope === 'LATEST') {
+                confirmationIntent.targetScope = matchedPendingItem.ticketId;
+              }
+            }
+          }
+        }
+
         if (confirmationIntent) {
           const handled = await this.pendingActionHandler.handlePendingAction(
             event,

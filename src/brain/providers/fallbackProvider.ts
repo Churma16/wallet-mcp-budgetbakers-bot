@@ -13,6 +13,7 @@ import { WalletAccountItem, WalletCategoryItem } from '../../wallet/index.js';
 import { GateEvaluationResult } from '../../email/index.js';
 import { applicationLogger, formatConciseErrorMessage } from '../../lib/logger.js';
 import { isAiResponseParseError } from './jsonExtraction.js';
+import type { BankMutationItem } from '../../core/reconciliation/types.js';
 
 /**
  * Checks whether an error is a recoverable provider-level failure eligible for failover
@@ -135,6 +136,22 @@ export class FallbackAiProvider implements FinancialAiProvider {
           options
         ),
       options
+    );
+  }
+
+  public async processStatementImages(
+    imageBuffers: Buffer[],
+    mimeType: string,
+    optionalCaption: string
+  ): Promise<BankMutationItem[]> {
+    return this.executeWithFallback(
+      'processStatementImages',
+      async (currentProvider: FinancialAiProvider) => {
+        if (typeof currentProvider.processStatementImages === 'function') {
+          return currentProvider.processStatementImages(imageBuffers, mimeType, optionalCaption);
+        }
+        return [];
+      }
     );
   }
 

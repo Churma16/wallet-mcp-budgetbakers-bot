@@ -204,6 +204,12 @@ export interface FinancialAiProvider {
     availableCategoryList: WalletCategoryItem[]
   ): Promise<CategoryClassificationProposal>;
 
+  processStatementImages?(
+    imageBuffers: Buffer[],
+    mimeType: string,
+    optionalCaption: string
+  ): Promise<import('../core/reconciliation/types.js').BankMutationItem[]>;
+
   getPrimaryModel?(): string;
 }
 

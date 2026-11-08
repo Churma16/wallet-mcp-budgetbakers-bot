@@ -296,6 +296,81 @@ describe('Telegram Menu and Interactive Guide Gateway Integration', () => {
       );
       expect(mockUserMessageReceived).not.toHaveBeenCalled();
     });
+
+    it('handles reconciliation pagination callback queries and updates message text', async () => {
+      const mockUserMessageReceived = vi.fn().mockResolvedValue(undefined);
+      const adapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, mockUserMessageReceived);
+      const handlers: Record<string, (ctx: any) => Promise<void>> = {};
+      const mockBot: any = {
+        use: vi.fn(),
+        on: vi.fn((event: string, handler: any) => {
+          handlers[event] = handler;
+        }),
+        catch: vi.fn(),
+      };
+
+      adapter.setupBotHandlers(mockBot);
+      expect(handlers['callback_query:data']).toBeDefined();
+
+      const mockEditMessageText = vi.fn().mockResolvedValue({});
+      const mockAnswerCallbackQuery = vi.fn().mockResolvedValue({});
+
+      // 1. recon:noop
+      await handlers['callback_query:data']({
+        callbackQuery: { data: 'recon:noop' },
+        chat: { id: 123456789 },
+        from: { id: 123456789 },
+        editMessageText: mockEditMessageText,
+        answerCallbackQuery: mockAnswerCallbackQuery,
+      });
+      expect(mockAnswerCallbackQuery).toHaveBeenCalledTimes(1);
+      expect(mockEditMessageText).not.toHaveBeenCalled();
+
+      // 2. recon:valid
+      const { reconciliationSessionStore } = await import('../src/core/reconciliation/reconciliationSessionStore.js');
+      const sessId = reconciliationSessionStore.createSession('123456789', 'Jago', {
+        targetAccountId: 'acc-1',
+        targetAccountName: 'Jago',
+        dateRange: { startDate: '2026-11-01', endDate: '2026-11-02' },
+        totalMutations: 6,
+        matched: Array.from({ length: 6 }, (_, i) => ({
+          mutation: { id: `m-${i}`, date: '2026-11-01', amount: 10000, direction: 'DEBIT' as const, counterParty: `Item ${i}` },
+          walletRecord: { id: `r-${i}`, accountId: 'acc-1', amount: -10000, currency: 'IDR', recordDate: '2026-11-01', recordType: 'expense' as const },
+        })),
+        wrongAccount: [],
+        missing: [],
+        extraInWallet: [],
+      });
+
+      await handlers['callback_query:data']({
+        callbackQuery: { data: `recon:${sessId}:m:2` },
+        chat: { id: 123456789 },
+        from: { id: 123456789 },
+        editMessageText: mockEditMessageText,
+        answerCallbackQuery: mockAnswerCallbackQuery,
+      });
+
+      expect(mockEditMessageText).toHaveBeenCalledWith(
+        expect.stringContaining('Sudah Sesuai'),
+        expect.objectContaining({ parse_mode: 'HTML' })
+      );
+
+      // 3. recon:expired / invalid session displays alert toast
+      await handlers['callback_query:data']({
+        callbackQuery: { data: 'recon:non-existent-session:m:2' },
+        chat: { id: 123456789 },
+        from: { id: 123456789 },
+        editMessageText: mockEditMessageText,
+        answerCallbackQuery: mockAnswerCallbackQuery,
+      });
+
+      expect(mockAnswerCallbackQuery).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining('telah berakhir'),
+          show_alert: true,
+        })
+      );
+    });
   });
 
   describe('Security Guardrails on Callback Queries', () => {
