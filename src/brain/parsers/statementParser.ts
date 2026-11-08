@@ -22,20 +22,28 @@ export function parseStatementExtractionResponse(rawText: string): BankMutationI
 
   // Strip markdown code fences if present
   if (cleanText.startsWith('```')) {
-    cleanText = cleanText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    const firstNewline = cleanText.indexOf('\n');
+    if (firstNewline !== -1) {
+      cleanText = cleanText.slice(firstNewline + 1);
+    }
+    if (cleanText.endsWith('```')) {
+      cleanText = cleanText.slice(0, -3);
+    }
+    cleanText = cleanText.trim();
   }
 
   let parsed: RawStatementExtractionResponse;
   try {
     parsed = JSON.parse(cleanText) as RawStatementExtractionResponse;
   } catch {
-    // Attempt fallback json block search
-    const match = cleanText.match(/\{[\s\S]*\}/);
-    if (!match) {
+    // Attempt fallback json block search without regex backtracking
+    const firstBrace = cleanText.indexOf('{');
+    const lastBrace = cleanText.lastIndexOf('}');
+    if (firstBrace === -1 || lastBrace <= firstBrace) {
       return [];
     }
     try {
-      parsed = JSON.parse(match[0]) as RawStatementExtractionResponse;
+      parsed = JSON.parse(cleanText.slice(firstBrace, lastBrace + 1)) as RawStatementExtractionResponse;
     } catch {
       return [];
     }
@@ -62,7 +70,7 @@ export function parseStatementExtractionResponse(rawText: string): BankMutationI
         numAmount = Math.abs(parsedFinancial.amount);
       } else {
         const cleanedAmount = raw.amount.replace(/[^0-9.-]/g, '');
-        const parsedFloat = parseFloat(cleanedAmount);
+        const parsedFloat = Number.parseFloat(cleanedAmount);
         if (Number.isFinite(parsedFloat)) {
           numAmount = Math.abs(parsedFloat);
         }

@@ -32,8 +32,11 @@ export interface ReconciliationHandlerDependencies {
  * Extracts target account name hint following /reconciliation command.
  */
 export function extractReconciliationAccountHint(textPayload: string): string {
-  const match = textPayload.trim().match(/^\/reconciliation\b\s*(.*)$/i);
-  return match && match[1] ? match[1].trim() : '';
+  const trimmed = textPayload.trim();
+  if (/^\/reconciliation\b/i.test(trimmed)) {
+    return trimmed.slice('/reconciliation'.length).trim();
+  }
+  return '';
 }
 
 /**
@@ -142,7 +145,7 @@ export class ReconciliationHandler {
     const enrichedMutations = applyReconciliationRules(targetAccount.name, rawMutations);
 
     // 5. Query Wallet MCP Records for the expanded date window (minDate - 2 days s/d maxDate + 2 days)
-    const sortedDates = [...enrichedMutations.map(m => m.date)].sort();
+    const sortedDates = [...enrichedMutations.map(m => m.date)].sort((a, b) => a.localeCompare(b));
     const minMutationDate = sortedDates[0];
     const maxMutationDate = sortedDates[sortedDates.length - 1];
 

@@ -308,3 +308,196 @@ describe('Reconciliation Card Formatter & Command Parser', () => {
     expect(card).toContain('Balas <b>Ya 101</b>');
   });
 });
+
+describe('ReconciliationHandler Workflow Integration', () => {
+  function createMockDependencies() {
+    const sentMessages: Array<{ channel: string; chatIdentifier: string; text: string }> = [];
+    const addedTickets: any[] = [];
+
+    const mockGateway = {
+      sendMessage: async (channel: string, chatIdentifier: string, text: string) => {
+        sentMessages.push({ channel, chatIdentifier, text });
+      },
+      sendTypingPresence: async () => {},
+    };
+
+    const mockWalletCache = {
+      getAccounts: () => [
+        { id: 'acc-jago', name: 'Bank Jago', currency: 'IDR' },
+        { id: 'acc-bca', name: 'BCA Utama', currency: 'IDR' },
+      ],
+      getCategories: () => [
+        { id: 'cat-transport', name: 'Transportasi' },
+        { id: 'cat-food', name: 'Makanan & Minuman' },
+      ],
+    };
+
+    const mockWalletClient = {
+      fetchRecords: async (_opts?: any) => ({
+        records: [
+          {
+            id: 'rec-1',
+            accountId: 'acc-jago',
+            amount: -54500,
+            currency: 'IDR',
+            recordDate: '2026-11-06T10:00:00Z',
+            recordType: 'expense' as const,
+          },
+        ],
+      }),
+    };
+
+    let nextTicketId = 1;
+    const mockPendingManager = {
+      addPendingTransaction: (data: any) => {
+        const ticketId = nextTicketId++;
+        const item = { ...data, ticketId };
+        addedTickets.push(item);
+        return item;
+      },
+    };
+
+    const mockBrainProvider = {
+      processStatementImages: async () => [
+        {
+          id: 'mut-1',
+          date: '2026-11-06',
+          amount: 54500,
+          direction: 'DEBIT' as const,
+          counterParty: 'Grab',
+        },
+        {
+          id: 'mut-2',
+          date: '2026-11-06',
+          amount: 58500,
+          direction: 'DEBIT' as const,
+          counterParty: 'GoPay',
+        },
+      ],
+    };
+
+    return {
+      sentMessages,
+      addedTickets,
+      deps: {
+        gateway: mockGateway as any,
+        walletCache: mockWalletCache as any,
+        walletClient: mockWalletClient as any,
+        pendingTransactionManager: mockPendingManager as any,
+        brainProvider: mockBrainProvider as any,
+      },
+    };
+  }
+
+  it('returns false when incoming message is not a reconciliation command', async () => {
+    const { deps } = createMockDependencies();
+    const handler = new (await import('../src/core/handlers/reconciliationHandler.js')).ReconciliationHandler(deps);
+
+    const handled = await handler.handleReconciliationRequest({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: 'Kopi kenangan 28rb',
+    });
+
+    expect(handled).toBe(false);
+  });
+
+  it('prompts user when account hint is missing in command', async () => {
+    const { deps, sentMessages } = createMockDependencies();
+    const handler = new (await import('../src/core/handlers/reconciliationHandler.js')).ReconciliationHandler(deps);
+
+    const handled = await handler.handleReconciliationRequest({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'image',
+      textPayload: '/reconciliation',
+      imageBuffer: Buffer.from('fake-image'),
+    });
+
+    expect(handled).toBe(true);
+    expect(sentMessages[0].text).toContain('Sertakan nama wallet/akun');
+  });
+
+  it('reports error when specified account is not found in cache', async () => {
+    const { deps, sentMessages } = createMockDependencies();
+    const handler = new (await import('../src/core/handlers/reconciliationHandler.js')).ReconciliationHandler(deps);
+
+    const handled = await handler.handleReconciliationRequest({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'image',
+      textPayload: '/reconciliation mandiri',
+      imageBuffer: Buffer.from('fake-image'),
+    });
+
+    expect(handled).toBe(true);
+    expect(sentMessages[0].text).toContain('mandiri');
+    expect(sentMessages[0].text).toContain('tidak ditemukan');
+  });
+
+  it('reports warning when no image buffers are attached', async () => {
+    const { deps, sentMessages } = createMockDependencies();
+    const handler = new (await import('../src/core/handlers/reconciliationHandler.js')).ReconciliationHandler(deps);
+
+    const handled = await handler.handleReconciliationRequest({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: '/reconciliation jago',
+    });
+
+    expect(handled).toBe(true);
+    expect(sentMessages[0].text).toContain('Mohon lampirkan foto/screenshot');
+  });
+
+  it('reports warning when vision extraction produces 0 mutations', async () => {
+    const { deps, sentMessages } = createMockDependencies();
+    deps.brainProvider.processStatementImages = async () => [];
+    const handler = new (await import('../src/core/handlers/reconciliationHandler.js')).ReconciliationHandler(deps);
+
+    const handled = await handler.handleReconciliationRequest({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'image',
+      textPayload: '/reconciliation jago',
+      imageBuffer: Buffer.from('fake-image'),
+    });
+
+    expect(handled).toBe(true);
+    expect(sentMessages[0].text).toContain('Tidak dapat membaca baris transaksi');
+  });
+
+  it('successfully extracts mutations, applies Jago-GoPay rule, adds missing tickets, and sends card', async () => {
+    const { deps, sentMessages, addedTickets } = createMockDependencies();
+    const handler = new (await import('../src/core/handlers/reconciliationHandler.js')).ReconciliationHandler(deps);
+
+    const handled = await handler.handleReconciliationRequest({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'image',
+      textPayload: '/reconciliation jago',
+      imageBuffers: [Buffer.from('img-1'), Buffer.from('img-2')],
+    });
+
+    expect(handled).toBe(true);
+    // Grab Rp54.500 matches existing rec-1.
+    // GoPay Rp58.500 is transformed by jagoGopayRule to "Gojek via Jago" (Transportasi) and enqueued as missing!
+    expect(addedTickets.length).toBe(1);
+    expect(addedTickets[0].counterParty).toBe('Gojek via Jago');
+    expect(addedTickets[0].amount).toBe(-58500);
+    expect(addedTickets[0].matchedCategoryId).toBe('cat-transport');
+
+    // Sent message card must mention Bank Jago and ticket #1
+    expect(sentMessages[0].text).toContain('Hasil Rekonsiliasi: Bank Jago');
+    expect(sentMessages[0].text).toContain('Sudah Sesuai (1)');
+    expect(sentMessages[0].text).toContain('Terlewat / Belum Tercatat (1)');
+    expect(sentMessages[0].text).toContain('[Tiket #1]');
+  });
+});

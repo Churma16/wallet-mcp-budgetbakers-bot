@@ -17,8 +17,8 @@ function formatDateShort(isoDate: string): string {
   const parts = isoDate.slice(0, 10).split('-');
   if (parts.length === 3) {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-    const monthIndex = parseInt(parts[1], 10) - 1;
-    const day = parseInt(parts[2], 10);
+    const monthIndex = Number.parseInt(parts[1], 10) - 1;
+    const day = Number.parseInt(parts[2], 10);
     return `${day} ${months[monthIndex] || parts[1]}`;
   }
   return isoDate;
