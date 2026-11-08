@@ -14,6 +14,28 @@ interface RawStatementExtractionResponse {
 }
 
 /**
+ * Parses and extracts a positive absolute numeric amount using guard clauses.
+ */
+export function extractPositiveAmount(rawAmount: unknown): number {
+  if (typeof rawAmount === 'number') {
+    return Number.isFinite(rawAmount) ? Math.abs(rawAmount) : 0;
+  }
+
+  if (typeof rawAmount !== 'string') {
+    return 0;
+  }
+
+  const parsedFinancial = parseFinancialAmount(rawAmount, 'IDR');
+  if (parsedFinancial && Number.isFinite(parsedFinancial.amount)) {
+    return Math.abs(parsedFinancial.amount);
+  }
+
+  const cleanedAmount = rawAmount.replace(/[^0-9.-]/g, '');
+  const parsedFloat = Number.parseFloat(cleanedAmount);
+  return Number.isFinite(parsedFloat) ? Math.abs(parsedFloat) : 0;
+}
+
+/**
  * Parses and sanitizes raw LLM output from statement vision extraction into strongly-typed BankMutationItem[].
  * Also performs automatic deduplication for overlapping rows across multi-screenshot albums.
  */
@@ -60,23 +82,8 @@ export function parseStatementExtractionResponse(rawText: string): BankMutationI
     const raw = parsed.mutations[index];
     if (!raw) continue;
 
-    // Parse numeric amount
-    let numAmount = 0;
-    if (typeof raw.amount === 'number' && Number.isFinite(raw.amount)) {
-      numAmount = Math.abs(raw.amount);
-    } else if (typeof raw.amount === 'string') {
-      const parsedFinancial = parseFinancialAmount(raw.amount, 'IDR');
-      if (parsedFinancial && Number.isFinite(parsedFinancial.amount)) {
-        numAmount = Math.abs(parsedFinancial.amount);
-      } else {
-        const cleanedAmount = raw.amount.replace(/[^0-9.-]/g, '');
-        const parsedFloat = Number.parseFloat(cleanedAmount);
-        if (Number.isFinite(parsedFloat)) {
-          numAmount = Math.abs(parsedFloat);
-        }
-      }
-    }
-
+    // Parse numeric amount using guard clauses
+    const numAmount = extractPositiveAmount(raw.amount);
     if (numAmount <= 0) {
       continue;
     }

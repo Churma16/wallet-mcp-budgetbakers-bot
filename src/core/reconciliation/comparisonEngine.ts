@@ -23,6 +23,38 @@ function doesDirectionMatch(mutationDirection: 'DEBIT' | 'CREDIT', recordType: s
   return recordType === 'income';
 }
 
+/**
+ * Finds the closest matching Wallet record using guard clauses and distance priority.
+ */
+export function findBestMatchingRecord(
+  mutation: BankMutationItem,
+  records: readonly WalletRecordItem[],
+  usedRecordIds: Set<string>,
+  maxDayDistance: number
+): WalletRecordItem | undefined {
+  let bestRecord: WalletRecordItem | undefined;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (const rec of records) {
+    if (usedRecordIds.has(rec.id)) continue;
+    if (Math.abs(rec.amount) !== mutation.amount) continue;
+    if (!doesDirectionMatch(mutation.direction, rec.recordType)) continue;
+
+    const diff = getCalendarDayDifference(rec.recordDate, mutation.date);
+    if (diff > maxDayDistance) continue;
+
+    if (diff < bestDistance) {
+      bestDistance = diff;
+      bestRecord = rec;
+      if (diff === 0) {
+        break; // Exact same day match found, early exit
+      }
+    }
+  }
+
+  return bestRecord;
+}
+
 export interface ComparisonEngineOptions {
   readonly maxCalendarDayDistance?: number; // default: 1
 }
@@ -55,52 +87,36 @@ export function compareMutationsWithWalletRecords(
 
   for (const mutation of sortedMutations) {
     // 1. Look for match in target account records
-    const targetCandidates = targetRecords
-      .filter(rec => {
-        if (usedTargetRecordIds.has(rec.id)) return false;
-        if (Math.abs(rec.amount) !== mutation.amount) return false;
-        if (!doesDirectionMatch(mutation.direction, rec.recordType)) return false;
-        const diff = getCalendarDayDifference(rec.recordDate, mutation.date);
-        return diff <= maxDayDistance;
-      })
-      .map(rec => ({
-        record: rec,
-        dayDistance: getCalendarDayDifference(rec.recordDate, mutation.date),
-      }))
-      .sort((a, b) => a.dayDistance - b.dayDistance);
+    const targetMatch = findBestMatchingRecord(
+      mutation,
+      targetRecords,
+      usedTargetRecordIds,
+      maxDayDistance
+    );
 
-    if (targetCandidates.length > 0) {
-      const best = targetCandidates[0].record;
-      usedTargetRecordIds.add(best.id);
+    if (targetMatch) {
+      usedTargetRecordIds.add(targetMatch.id);
       matched.push({
         mutation,
-        walletRecord: best,
+        walletRecord: targetMatch,
       });
       continue;
     }
 
     // 2. Look for cross-wallet mismatch (same amount & date range in other accounts)
-    const otherCandidates = otherRecords
-      .filter(rec => {
-        if (usedOtherRecordIds.has(rec.id)) return false;
-        if (Math.abs(rec.amount) !== mutation.amount) return false;
-        if (!doesDirectionMatch(mutation.direction, rec.recordType)) return false;
-        const diff = getCalendarDayDifference(rec.recordDate, mutation.date);
-        return diff <= maxDayDistance;
-      })
-      .map(rec => ({
-        record: rec,
-        dayDistance: getCalendarDayDifference(rec.recordDate, mutation.date),
-      }))
-      .sort((a, b) => a.dayDistance - b.dayDistance);
+    const otherMatch = findBestMatchingRecord(
+      mutation,
+      otherRecords,
+      usedOtherRecordIds,
+      maxDayDistance
+    );
 
-    if (otherCandidates.length > 0) {
-      const best = otherCandidates[0].record;
-      usedOtherRecordIds.add(best.id);
+    if (otherMatch) {
+      usedOtherRecordIds.add(otherMatch.id);
       wrongAccount.push({
         mutation,
-        walletRecord: best,
-        actualAccountName: best.accountName || 'Lainnya',
+        walletRecord: otherMatch,
+        actualAccountName: otherMatch.accountName || 'Lainnya',
       });
       continue;
     }

@@ -834,74 +834,59 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
         }
 
         const mediaGroupId = ctx.message.media_group_id;
-        if (mediaGroupId) {
-          const existingGroup = this.mediaGroupDebounceMap.get(mediaGroupId);
-          if (existingGroup) {
-            clearTimeout(existingGroup.timer);
-            if (!existingGroup.captionText && captionText) {
-              existingGroup.captionText = captionText;
-            }
-            existingGroup.buffers.push(imageBuffer);
-            existingGroup.timer = setTimeout(async () => {
-              this.mediaGroupDebounceMap.delete(mediaGroupId);
-              try {
-                await this.onUserMessageReceived({
-                  channel: 'telegram',
-                  chatIdentifier: existingGroup.chatId,
-                  senderIdentifier: existingGroup.senderIdentifier,
-                  messageType: 'image',
-                  textPayload: existingGroup.captionText,
-                  imageBuffer: existingGroup.buffers[0],
-                  imageBuffers: existingGroup.buffers,
-                  imageMimeType: 'image/jpeg',
-                });
-              } catch (dispatchError: unknown) {
-                applicationLogger.error(
-                  `[Telegram] Failed dispatching media group: ${dispatchError instanceof Error ? dispatchError.message : String(dispatchError)}`
-                );
-              }
-            }, 800);
-          } else {
-            const entry = {
-              chatId,
-              senderIdentifier,
-              captionText,
-              buffers: [imageBuffer],
-              timer: setTimeout(async () => {
-                this.mediaGroupDebounceMap.delete(mediaGroupId);
-                try {
-                  await this.onUserMessageReceived({
-                    channel: 'telegram',
-                    chatIdentifier: entry.chatId,
-                    senderIdentifier: entry.senderIdentifier,
-                    messageType: 'image',
-                    textPayload: entry.captionText,
-                    imageBuffer: entry.buffers[0],
-                    imageBuffers: entry.buffers,
-                    imageMimeType: 'image/jpeg',
-                  });
-                } catch (dispatchError: unknown) {
-                  applicationLogger.error(
-                    `[Telegram] Failed dispatching media group: ${dispatchError instanceof Error ? dispatchError.message : String(dispatchError)}`
-                  );
-                }
-              }, 800),
-            };
-            this.mediaGroupDebounceMap.set(mediaGroupId, entry);
-          }
+        if (!mediaGroupId) {
+          await this.onUserMessageReceived({
+            channel: 'telegram',
+            chatIdentifier: chatId,
+            senderIdentifier,
+            messageType: 'image',
+            textPayload: captionText,
+            imageBuffer,
+            imageBuffers: [imageBuffer],
+            imageMimeType: 'image/jpeg',
+          });
           return;
         }
 
-        await this.onUserMessageReceived({
-          channel: 'telegram',
-          chatIdentifier: chatId,
-          senderIdentifier,
-          messageType: 'image',
-          textPayload: captionText,
-          imageBuffer,
-          imageBuffers: [imageBuffer],
-          imageMimeType: 'image/jpeg',
-        });
+        let groupEntry = this.mediaGroupDebounceMap.get(mediaGroupId);
+        if (groupEntry) {
+          clearTimeout(groupEntry.timer);
+          if (!groupEntry.captionText && captionText) {
+            groupEntry.captionText = captionText;
+          }
+          groupEntry.buffers.push(imageBuffer);
+        } else {
+          groupEntry = {
+            chatId,
+            senderIdentifier,
+            captionText,
+            buffers: [imageBuffer],
+            timer: setTimeout(() => {}, 0),
+          };
+          this.mediaGroupDebounceMap.set(mediaGroupId, groupEntry);
+        }
+
+        const activeGroup = groupEntry;
+        activeGroup.timer = setTimeout(async () => {
+          this.mediaGroupDebounceMap.delete(mediaGroupId);
+          try {
+            await this.onUserMessageReceived({
+              channel: 'telegram',
+              chatIdentifier: activeGroup.chatId,
+              senderIdentifier: activeGroup.senderIdentifier,
+              messageType: 'image',
+              textPayload: activeGroup.captionText,
+              imageBuffer: activeGroup.buffers[0],
+              imageBuffers: activeGroup.buffers,
+              imageMimeType: 'image/jpeg',
+            });
+          } catch (dispatchError: unknown) {
+            applicationLogger.error(
+              `[Telegram] Failed dispatching media group: ${dispatchError instanceof Error ? dispatchError.message : String(dispatchError)}`
+            );
+          }
+        }, 800);
+        return;
       } catch (downloadError: unknown) {
         if (isMediaPayloadSizeLimitExceeded(downloadError)) {
           await this.rejectOversizedPhoto(

@@ -47,6 +47,24 @@ export function isReconciliationCommand(textPayload?: string): boolean {
   return /^\/reconciliation\b/i.test(textPayload.trim());
 }
 
+/**
+ * Resolves category for a suggested category name using guard clauses.
+ */
+export function resolveMatchingCategory(
+  suggestedName: string | undefined,
+  categories: readonly { id: string; name: string }[]
+): { id?: string; name?: string } {
+  if (!suggestedName) {
+    return {};
+  }
+  const query = suggestedName.toLowerCase();
+  const matched = categories.find(c => c.name.toLowerCase().includes(query));
+  if (!matched) {
+    return {};
+  }
+  return { id: matched.id, name: matched.name };
+}
+
 export class ReconciliationHandler {
   constructor(private readonly deps: ReconciliationHandlerDependencies) {}
 
@@ -189,18 +207,10 @@ export class ReconciliationHandler {
     const ticketReferences: FormattedTicketReference[] = [];
 
     for (const missingItem of comparisonResult.missing) {
-      let matchedCategoryId: string | undefined;
-      let matchedCategoryName: string | undefined;
-
-      if (missingItem.suggestedCategoryName) {
-        const foundCat = cachedCategories.find(c =>
-          c.name.toLowerCase().includes(missingItem.suggestedCategoryName!.toLowerCase())
-        );
-        if (foundCat) {
-          matchedCategoryId = foundCat.id;
-          matchedCategoryName = foundCat.name;
-        }
-      }
+      const resolvedCategory = resolveMatchingCategory(
+        missingItem.suggestedCategoryName,
+        cachedCategories
+      );
 
       const isExpense = missingItem.mutation.direction === 'DEBIT';
       const signedAmount = isExpense
@@ -218,8 +228,8 @@ export class ReconciliationHandler {
         transactionType: isExpense
           ? INTERNAL_TRANSACTION_TYPES.EXPENSE
           : INTERNAL_TRANSACTION_TYPES.INCOME,
-        matchedCategoryId,
-        matchedCategoryName,
+        matchedCategoryId: resolvedCategory.id,
+        matchedCategoryName: resolvedCategory.name,
         note: missingItem.note,
         recordDate: new Date(missingItem.mutation.date + 'T12:00:00Z').toISOString(),
         evidenceSources: ['RECONCILIATION_STATEMENT'],
