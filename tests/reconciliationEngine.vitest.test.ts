@@ -500,4 +500,123 @@ describe('ReconciliationHandler Workflow Integration', () => {
     expect(sentMessages[0].text).toContain('Terlewat / Belum Tercatat (1)');
     expect(sentMessages[0].text).toContain('[Tiket #1]');
   });
+
+  it('reports warning when brainProvider does not support processStatementImages', async () => {
+    const { deps, sentMessages } = createMockDependencies();
+    deps.brainProvider = {} as any;
+    const handler = new (await import('../src/core/handlers/reconciliationHandler.js')).ReconciliationHandler(deps);
+    const handled = await handler.handleReconciliationRequest({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'image',
+      textPayload: '/reconciliation jago',
+      imageBuffer: Buffer.from('fake'),
+    });
+    expect(handled).toBe(true);
+    expect(sentMessages[0].text).toContain('belum mendukung ekstraksi mutasi');
+  });
+
+  it('handles walletClient fetch error gracefully', async () => {
+    const { deps, sentMessages } = createMockDependencies();
+    deps.walletClient.fetchRecords = async () => {
+      throw new Error('Network error');
+    };
+    const handler = new (await import('../src/core/handlers/reconciliationHandler.js')).ReconciliationHandler(deps);
+    const handled = await handler.handleReconciliationRequest({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'image',
+      textPayload: '/reconciliation jago',
+      imageBuffer: Buffer.from('fake'),
+    });
+    expect(handled).toBe(true);
+    expect(sentMessages[0].text).toContain('Hasil Rekonsiliasi: Bank Jago');
+  });
+
+  it('enqueues income missing item without category correctly', async () => {
+    const { deps, addedTickets } = createMockDependencies();
+    deps.brainProvider.processStatementImages = async () => [
+      {
+        id: 'mut-income',
+        date: '2026-11-06',
+        amount: 100000,
+        direction: 'CREDIT' as const,
+        counterParty: 'Gaji Masuk',
+      },
+    ];
+    const handler = new (await import('../src/core/handlers/reconciliationHandler.js')).ReconciliationHandler(deps);
+    const handled = await handler.handleReconciliationRequest({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'image',
+      textPayload: '/reconciliation jago',
+      imageBuffer: Buffer.from('fake'),
+    });
+    expect(handled).toBe(true);
+    expect(addedTickets[0].amount).toBe(100000);
+    expect(addedTickets[0].transactionType).toBe('INCOME');
+  });
+});
+
+describe('Provider Statement Processing Coverage', () => {
+  it('FallbackAiProvider delegates processStatementImages to active provider', async () => {
+    const { FallbackAiProvider } = await import('../src/brain/providers/fallbackProvider.js');
+    const mockProvider = {
+      providerName: 'gemini',
+      processStatementImages: async () => [
+        { id: 'm1', date: '2026-11-06', amount: 50000, direction: 'DEBIT' as const, counterParty: 'Grab' },
+      ],
+    };
+    const fallback = new FallbackAiProvider([mockProvider as any]);
+    const result = await fallback.processStatementImages([Buffer.from('test')], 'image/jpeg', 'test');
+    expect(result.length).toBe(1);
+    expect(result[0].amount).toBe(50000);
+
+    const fallbackWithoutStatement = new FallbackAiProvider([{ providerName: 'no-stmt' } as any]);
+    const empty = await fallbackWithoutStatement.processStatementImages([Buffer.from('test')], 'image/jpeg', 'test');
+    expect(empty).toEqual([]);
+  });
+
+  it('GeminiAiProvider.processStatementImages parses extraction output', async () => {
+    const { GeminiAiProvider } = await import('../src/brain/providers/geminiProvider.js');
+    const provider = new GeminiAiProvider('test-api-key', 'gemini-3.8-flash');
+    (provider as any).executeGeneration = async () => ({
+      responseText: JSON.stringify({
+        mutations: [
+          { date: '2026-11-06', amount: 54500, direction: 'DEBIT', counterParty: 'Grab' },
+        ],
+      }),
+    });
+    const mutations = await provider.processStatementImages([Buffer.from('img')], 'image/jpeg', 'test');
+    expect(mutations.length).toBe(1);
+    expect(mutations[0].amount).toBe(54500);
+    expect(mutations[0].counterParty).toBe('Grab');
+  });
+
+  it('formats card when all transactions matched 100% and previews >4 items', () => {
+    const comparisonResult = {
+      targetAccountId: 'acc-jago',
+      targetAccountName: 'Bank Jago',
+      dateRange: { startDate: '2026-11-01', endDate: '2026-11-06' },
+      totalMutations: 6,
+      matched: [
+        { mutation: { id: 'm1', date: '2026-11-01', amount: 10000, direction: 'DEBIT' as const, counterParty: 'T1' }, walletRecord: {} as any },
+        { mutation: { id: 'm2', date: '2026-11-02', amount: 20000, direction: 'DEBIT' as const, counterParty: 'T2' }, walletRecord: {} as any },
+        { mutation: { id: 'm3', date: '2026-11-03', amount: 30000, direction: 'DEBIT' as const, counterParty: 'T3' }, walletRecord: {} as any },
+        { mutation: { id: 'm4', date: '2026-11-04', amount: 40000, direction: 'DEBIT' as const, counterParty: 'T4' }, walletRecord: {} as any },
+        { mutation: { id: 'm5', date: '2026-11-05', amount: 50000, direction: 'DEBIT' as const, counterParty: 'T5' }, walletRecord: {} as any },
+        { mutation: { id: 'm6', date: '2026-11-06', amount: 60000, direction: 'DEBIT' as const, counterParty: 'T6' }, walletRecord: {} as any },
+      ],
+      wrongAccount: [],
+      missing: [],
+      extraInWallet: [],
+    };
+
+    const card = formatReconciliationCard(comparisonResult);
+    expect(card).toContain('Semua transaksi mutasi tercatat lengkap di Wallet!');
+    expect(card).toContain('...dan 2 transaksi lainnya cocok');
+  });
 });
