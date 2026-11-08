@@ -19,9 +19,9 @@ describe('Transaction History Formatting', () => {
     });
 
     it('deterministically truncates long titles at 72 graphemes with ellipsis', () => {
-      const longTitle = 'Pengkreditan otomatis PEMAGANGAN ANGKATAN 2 KEMENTERIAN KETENAGAKERJAAN REPUBLIK INDONESIA';
+      const longTitle = 'Pengkreditan otomatis GAJI BULANAN KARYAWAN PT KORPORASI NUSANTARA JAYA ABADI';
       const truncated = truncateTransactionTitle(longTitle);
-      expect(truncated).toBe('Pengkreditan otomatis PEMAGANGAN ANGKATAN 2 KEMENTERIAN KETENAGAKERJAAN...');
+      expect(truncated).toBe('Pengkreditan otomatis GAJI BULANAN KARYAWAN PT KORPORASI NUSANTARA JAYA...');
       expect(longTitle.startsWith('Pengkreditan')).toBe(true);
     });
 
@@ -51,7 +51,7 @@ describe('Transaction History Formatting', () => {
     });
 
     it('formats positive income with plus prefix and no spacing after currency symbol', () => {
-      expect(formatCompactTransactionAmount(5729876, 'income', 'IDR', 'id')).toBe('+Rp5.729.876');
+      expect(formatCompactTransactionAmount(5000000, 'income', 'IDR', 'id')).toBe('+Rp5.000.000');
       expect(formatCompactTransactionAmount(100.5, 'income', 'USD', 'en')).toBe('+$100.50');
     });
   });
@@ -155,12 +155,12 @@ describe('Transaction History Formatting', () => {
         {
           id: 'rec-3',
           accountId: 'acc-3',
-          accountName: 'Mandiri Debit Card',
-          amount: 5729876,
+          accountName: 'Rekening Payroll',
+          amount: 5000000,
           currency: 'IDR',
           recordDate: '2026-09-10T14:31:00.000Z',
           recordType: 'income',
-          note: 'Pengkreditan otomatis PEMAGANGAN ANGKATAN 2 KEMENTERIAN KETENAGAKERJAAN REPUBLIK INDONESIA',
+          note: 'Pengkreditan otomatis GAJI BULANAN KARYAWAN PT KORPORASI NUSANTARA JAYA ABADI',
           category: { id: 'cat-3', name: 'Wage, invoices' },
           labels: [{ id: 'lbl-1', name: 'salary' }],
         },
@@ -188,7 +188,7 @@ describe('Transaction History Formatting', () => {
       expect(output).toMatch(/2\. Pembayaran ke Nodus Digital Store\n\*-Rp20\.895\* • Gopay\nPengeluaran Digital • \d+ Sep \d\d:\d\d/m);
 
       // Item 3 (truncated title, bold amount, hashtags preserved)
-      expect(output).toMatch(/3\. Pengkreditan otomatis PEMAGANGAN ANGKATAN 2 KEMENTERIAN KETENAGAKERJAAN\.\.\.\n\*\+Rp5\.729\.876\* • Mandiri Debit Card\nWage, invoices • \d+ Sep \d\d:\d\d • #salary/m);
+      expect(output).toMatch(/3\. Pengkreditan otomatis GAJI BULANAN KARYAWAN PT KORPORASI NUSANTARA JAYA\.\.\.\n\*\+Rp5\.000\.000\* • Rekening Payroll\nWage, invoices • \d+ Sep \d\d:\d\d • #salary/m);
 
       // Exactly one blank line between items
       expect(output).toContain('\n\n1. Biaya admin tf');
@@ -208,7 +208,7 @@ describe('Transaction History Formatting', () => {
 
       expect(output).toMatch(/^📋 \*Transaction History\*\nPage 1\/375 • 3 items/m);
       expect(output).toMatch(/1\. Biaya admin tf\n\*-Rp1,000\* • Cash/m);
-      expect(output).toMatch(/3\. Pengkreditan otomatis PEMAGANGAN ANGKATAN 2 KEMENTERIAN KETENAGAKERJAAN\.\.\.\n\*\+Rp5,729,876\* • Mandiri Debit Card/m);
+      expect(output).toMatch(/3\. Pengkreditan otomatis GAJI BULANAN KARYAWAN PT KORPORASI NUSANTARA JAYA\.\.\.\n\*\+Rp5,000,000\* • Rekening Payroll/m);
       expect(output).toContain('_Type *history page 2* for the next page._');
     });
   });
