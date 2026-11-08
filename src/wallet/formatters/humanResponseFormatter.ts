@@ -554,14 +554,23 @@ export function formatBudgetSummaryMessage(
   ].join('\n');
 }
 
+export interface FormatTransactionHistoryOptions {
+  languageCode?: SupportedLanguage;
+  omitNavigationHint?: boolean;
+}
+
 /**
  * Formats a paginated transaction history result into a mobile-friendly list with navigation hints.
  */
 export function formatTransactionHistoryMessage(
   historyPage: TransactionHistoryPage,
-  languageCode?: SupportedLanguage
+  languageCodeOrOptions?: SupportedLanguage | FormatTransactionHistoryOptions
 ): string {
-  const activeLanguage = languageCode || getActiveLanguage();
+  const options: FormatTransactionHistoryOptions =
+    typeof languageCodeOrOptions === 'object' && languageCodeOrOptions !== null
+      ? languageCodeOrOptions
+      : { languageCode: languageCodeOrOptions };
+  const activeLanguage = options.languageCode || getActiveLanguage();
   const dictionary = getDictionary(activeLanguage);
 
   // If fail-closed unresolved filter issues occurred, return explicit explanation
@@ -700,7 +709,7 @@ export function formatTransactionHistoryMessage(
     recordLines.join('\n\n'),
   ];
 
-  if (historyPage.hasMore) {
+  if (historyPage.hasMore && !options.omitNavigationHint) {
     const nextPageIndex = historyPage.page + 1;
     const filterTokens: string[] = [];
 

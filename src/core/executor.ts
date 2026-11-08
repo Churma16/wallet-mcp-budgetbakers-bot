@@ -15,6 +15,7 @@ import {
 import { formatTransactionSummaryMessage } from '../wallet/formatters/transactionSummaryFormatter.js';
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../lib/logger.js';
+import { historySessionStore, buildHistoryPaginationInlineKeyboard } from './history/index.js';
 
 export interface FinancialActionExecutionContext {
   readonly processingStartTimestamp?: number;
@@ -109,9 +110,29 @@ export class FinancialActionExecutor {
     const dictionary = getDictionary();
 
     const historyPage = await this.transactionHistoryService.getTransactionHistory(queryOptions);
-    const historyReplyMessage = formatTransactionHistoryMessage(historyPage, dictionary.languageCode);
+    const isTelegram = event.channel === 'telegram';
+    const historyReplyMessage = formatTransactionHistoryMessage(historyPage, {
+      languageCode: dictionary.languageCode,
+      omitNavigationHint: isTelegram,
+    });
 
-    await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, historyReplyMessage);
+    let replyMarkup: unknown | undefined;
+    if (isTelegram && (historyPage.totalPages ?? 1) > 1) {
+      const sessionId = historySessionStore.createSession(
+        event.chatIdentifier,
+        queryOptions,
+        historyPage.totalPages!
+      );
+      replyMarkup = buildHistoryPaginationInlineKeyboard(
+        sessionId,
+        historyPage.page,
+        historyPage.totalPages!
+      );
+    }
+
+    await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, historyReplyMessage, {
+      replyMarkup,
+    });
 
     const executionDurationMilliseconds = Date.now() - processingStartTimestamp;
     const totalCountSuffix = typeof historyPage.total === 'number' ? ` of ${historyPage.total}` : '';

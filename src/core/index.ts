@@ -7,3 +7,4 @@ export * from './dispatcher.js';
 export * from './inboundRescanService.js';
 export * from './referenceRegistry.js';
 export * from './handlers/index.js';
+export * from './history/index.js';
