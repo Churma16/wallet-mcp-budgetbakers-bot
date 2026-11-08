@@ -197,7 +197,7 @@ export function isGenericNote(
     if (
       !strippedNote ||
       strippedNote.split(/\s+/).length <= 2 ||
-      (merchantOrCounterParty && strippedNote === strippedNote)
+      (merchantOrCounterParty && strippedNote === merchantOrCounterParty.trim().toLowerCase())
     ) {
       return true;
     }

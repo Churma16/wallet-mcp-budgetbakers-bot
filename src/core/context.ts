@@ -30,6 +30,7 @@ import {
 } from '../gateway/index.js';
 import { EmailListenerService, TransactionCorrelationEngine } from '../email/index.js';
 import { PendingTransactionService } from './pending.js';
+import { InboundReferenceRegistry } from './referenceRegistry.js';
 import { applicationLogger } from '../lib/logger.js';
 
 /**
@@ -102,6 +103,7 @@ export function createAppContext(customConfig?: ApplicationEnvironmentConfigurat
 
   const gateway = new MessagingGatewayService();
   const pending = new PendingTransactionService(config.pendingTransactionsStoragePath);
+  InboundReferenceRegistry.getInstance(config.inboundReferenceRegistryStoragePath);
   const emailCorrelation = new TransactionCorrelationEngine();
   const notificationStore = new InboundNotificationStore(config.inboundNotificationStoragePath);
 

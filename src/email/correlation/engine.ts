@@ -3,7 +3,7 @@ import type { WalletRecordItem } from '../../wallet/types.js';
 import type { TransactionEvidence, CorrelationResult, CorrelationMatchTarget } from '../types.js';
 import { INTERNAL_TRANSACTION_TYPES, WALLET_MCP_RECORD_TYPES } from '../../wallet/constants.js';
 import { CommercePlatformRegistry } from '../../config/commercePlatforms.js';
-import { isGenericMerchant, isGenericCardAccountOrMethod } from './predicates.js';
+import { isGenericMerchant, isGenericCardAccountOrMethod, isGenericNote } from './predicates.js';
 import { InboundReferenceRegistry, normalizeReferenceNumber } from '../../core/referenceRegistry.js';
 import { TransactionMessageStore } from '../../wallet/records/transactionMessageStore.js';
 import { InformationDensityResolver } from './densityResolver.js';
@@ -162,18 +162,22 @@ export class TransactionCorrelationEngine {
     }
 
     // 3. Direction / Sign compatibility
+    const isPending = 'ticketId' in candidate;
     const isEvidTransfer = evidence.transactionType === INTERNAL_TRANSACTION_TYPES.TRANSFER;
     const isCandTransfer =
-      'transfer' in candidate
-        ? Boolean(candidate.transfer)
-        : 'recordType' in candidate
-          ? candidate.recordType === WALLET_MCP_RECORD_TYPES.TRANSFER || Boolean(candidate.transfer)
-          : false;
+      ('transactionType' in candidate && candidate.transactionType === INTERNAL_TRANSACTION_TYPES.TRANSFER) ||
+      ('recordType' in candidate && candidate.recordType === WALLET_MCP_RECORD_TYPES.TRANSFER) ||
+      Boolean(candidate.transfer);
 
     if (isEvidTransfer !== isCandTransfer) {
-      // Transfer vs non-transfer only valid if proposing counterpart pairing
+      // Transfer vs non-transfer counterpart pairing only applies to existing Wallet records with opposite sign
+      const isRecord = 'id' in candidate && !isPending;
       const isPotentialCounterpart =
-        Boolean(evidence.destinationAccountId) || Boolean(evidence.destinationAccountHint);
+        isRecord &&
+        isEvidTransfer &&
+        (Boolean(evidence.destinationAccountId) || Boolean(evidence.destinationAccountHint)) &&
+        Math.sign(candidate.amount) === -Math.sign(evidence.amount);
+
       if (!isPotentialCounterpart) {
         return { passed: false, reason: 'Transaction direction mismatch (transfer vs non-transfer)' };
       }
@@ -236,24 +240,27 @@ export class TransactionCorrelationEngine {
     } else {
       const r = candidate as WalletRecordItem;
       candRefs.push(normalizeReferenceNumber(r.id));
-      // Check message store mapping if available
-      const messageMapping = this.transactionMessageStore?.findMappingByReference(evidenceRefs[0]);
-      if (messageMapping && messageMapping.mapping.recordId === r.id) {
-        return {
-          matched: true,
-          matchedReference: evidenceRefs[0],
-          matchTarget: { type: 'WALLET_RECORD', record: r },
-          suggestedAction: 'ATTACH_WALLET_RECORD',
-          reasons: [`Persistent mapping matched reference ID (${evidenceRefs[0]}) to record (${r.id})`],
-        };
-      }
     }
 
     const candNoteUpper = ((candidate.note || '') + ' ' + ((candidate as any).counterParty || '')).toUpperCase();
 
     for (const ref of evidenceRefs) {
-      // Direct ref equality
-      if (candRefs.includes(ref) || candNoteUpper.includes(ref)) {
+      // Check message store mapping if available
+      if (!isPending && this.transactionMessageStore) {
+        const messageMapping = this.transactionMessageStore.findMappingByReference(ref);
+        if (messageMapping && messageMapping.mapping.recordId === (candidate as WalletRecordItem).id) {
+          return {
+            matched: true,
+            matchedReference: ref,
+            matchTarget: { type: 'WALLET_RECORD', record: candidate as WalletRecordItem },
+            suggestedAction: 'ATTACH_WALLET_RECORD',
+            reasons: [`Persistent mapping matched reference ID (${ref}) to record (${(candidate as WalletRecordItem).id})`],
+          };
+        }
+      }
+
+      // Direct ref equality or note containment (min 4 chars to prevent short numeric collisions)
+      if (candRefs.includes(ref) || (ref.length >= 4 && candNoteUpper.includes(ref))) {
         if (isPending) {
           return {
             matched: true,
@@ -556,8 +563,19 @@ export class TransactionCorrelationEngine {
       !isCrossTargetTypesWithHighRecord &&
       top.scores.composite - runnerUp.scores.composite < this.disambiguationDelta
     ) {
-      const topTitle = ('note' in top.candidateItem ? top.candidateItem.note : '') || (top.candidateItem as any).counterParty || 'Transaksi 1';
-      const runnerTitle = ('note' in runnerUp.candidateItem ? runnerUp.candidateItem.note : '') || (runnerUp.candidateItem as any).counterParty || 'Transaksi 2';
+      const getCandidateDisplayName = (c: ScoredCandidate, fallback: string) => {
+        const item = c.candidateItem;
+        const note = 'note' in item ? item.note : '';
+        const counterParty = 'counterParty' in item ? item.counterParty : '';
+        const hasRichNote = note && !isGenericNote(note);
+        const name = hasRichNote ? note : counterParty || note || fallback;
+        if ('ticketId' in item) {
+          return `Tiket #${item.ticketId} (${name})`;
+        }
+        return name;
+      };
+      const topTitle = getCandidateDisplayName(top, 'Transaksi 1');
+      const runnerTitle = getCandidateDisplayName(runnerUp, 'Transaksi 2');
       return {
         confidence: 'MEDIUM',
         matchTarget: top.target,
