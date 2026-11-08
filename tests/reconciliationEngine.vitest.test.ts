@@ -619,4 +619,60 @@ describe('Provider Statement Processing Coverage', () => {
     expect(card).toContain('Semua transaksi mutasi tercatat lengkap di Wallet!');
     expect(card).toContain('...dan 2 transaksi lainnya cocok');
   });
+
+  it('covers statement parser edge cases and date fallback', () => {
+    expect(parseStatementExtractionResponse('not a json at all')).toEqual([]);
+    expect(parseStatementExtractionResponse(JSON.stringify({ mutations: 'not-array' }))).toEqual([]);
+    expect(parseStatementExtractionResponse(JSON.stringify({ other: 123 }))).toEqual([]);
+
+    const textWithJson = 'Result: {"mutations": [{"amount": 10000, "direction": "CREDIT", "date": "invalid-date"}]}';
+    const parsed = parseStatementExtractionResponse(textWithJson);
+    expect(parsed.length).toBe(1);
+    expect(parsed[0].direction).toBe('CREDIT');
+    expect(parsed[0].date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+    const zeroAmount = JSON.stringify({
+      mutations: [
+        { amount: 0, direction: 'DEBIT', counterParty: 'Zero' },
+        { amount: -50, direction: 'DEBIT', counterParty: 'Negative' },
+        { amount: 'invalid-amount', direction: 'DEBIT', counterParty: 'Bad' },
+      ],
+    });
+    const parsedZero = parseStatementExtractionResponse(zeroAmount);
+    expect(parsedZero.length).toBe(1);
+    expect(parsedZero[0].counterParty).toBe('Negative');
+  });
+
+  it('covers card formatter date edge cases', () => {
+    const result = {
+      targetAccountId: 'acc-1',
+      targetAccountName: 'Test Wallet',
+      dateRange: { startDate: 'invalid_date', endDate: 'invalid_date' },
+      totalMutations: 0,
+      matched: [],
+      wrongAccount: [],
+      missing: [],
+      extraInWallet: [],
+    };
+    const card = formatReconciliationCard(result);
+    expect(card).toContain('invalid_date');
+  });
+
+  it('covers CREDIT/income matching in comparison engine', () => {
+    const mutations: BankMutationItem[] = [
+      { id: 'm-inc', date: '2026-11-06', amount: 5000000, direction: 'CREDIT', counterParty: 'Gaji' },
+    ];
+    const records: WalletRecordItem[] = [
+      { id: 'r-inc', accountId: 'acc-jago', amount: 5000000, currency: 'IDR', recordDate: '2026-11-06', recordType: 'income' },
+    ];
+    const result = compareMutationsWithWalletRecords(mutations, 'acc-jago', 'Jago', records);
+    expect(result.matched.length).toBe(1);
+    expect(result.matched[0].walletRecord.id).toBe('r-inc');
+  });
+
+  it('covers statement prompt without caption', async () => {
+    const { buildStatementPrompt } = await import('../src/brain/prompts/promptStatementTemplate.js');
+    const prompt = buildStatementPrompt();
+    expect(prompt).not.toContain('User Context Caption');
+  });
 });

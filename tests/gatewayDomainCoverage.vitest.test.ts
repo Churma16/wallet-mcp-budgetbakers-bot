@@ -98,12 +98,82 @@ describe('Gateway Domain Coverage Gate', () => {
 
       // When running and botInstance throws during stop
       (adapter as any).isRunning = true;
+      (adapter as any).mediaGroupDebounceMap.set('group-dummy', {
+        chatId: '123',
+        senderIdentifier: '123',
+        captionText: '',
+        buffers: [],
+        timer: setTimeout(() => {}, 10000),
+      });
       (adapter as any).botInstance = {
         stop: vi.fn().mockRejectedValue(new Error('Stop failed')),
       };
       await expect(adapter.stopConnection()).resolves.not.toThrow();
       expect((adapter as any).isRunning).toBe(false);
       expect((adapter as any).botInstance).toBeNull();
+      expect((adapter as any).mediaGroupDebounceMap.size).toBe(0);
+    });
+
+    it('buffers media_group_id photos and dispatches consolidated event', async () => {
+      vi.useFakeTimers();
+      const mockCallback = vi.fn();
+      const adapter = new TelegramMessagingAdapter('123:test-token', '12345', mockCallback);
+      const handlers = new Map<string, Function>();
+      const mockBot: any = {
+        use: vi.fn(),
+        on: vi.fn((event: string, fn: Function) => {
+          handlers.set(event, fn);
+        }),
+        catch: vi.fn(),
+      };
+      (adapter as any).setupBotHandlers(mockBot);
+      const photoHandler = handlers.get('message:photo');
+      expect(photoHandler).toBeDefined();
+
+      const mockAxios = (await import('axios')).default;
+      const getSpy = vi.spyOn(mockAxios, 'get').mockResolvedValue({
+        data: Buffer.from('photo-bytes'),
+      });
+
+      const ctx1: any = {
+        chat: { id: 12345 },
+        from: { id: 12345 },
+        message: {
+          media_group_id: 'mg-1',
+          caption: '/reconciliation jago',
+          photo: [{ file_id: 'p1', file_size: 50 }],
+        },
+        api: {
+          getFile: async () => ({ file_path: 'p1.jpg', file_size: 50 }),
+        },
+      };
+
+      const ctx2: any = {
+        chat: { id: 12345 },
+        from: { id: 12345 },
+        message: {
+          media_group_id: 'mg-1',
+          photo: [{ file_id: 'p2', file_size: 50 }],
+        },
+        api: {
+          getFile: async () => ({ file_path: 'p2.jpg', file_size: 50 }),
+        },
+      };
+
+      await photoHandler!(ctx1);
+      await photoHandler!(ctx2);
+
+      expect(mockCallback).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(850);
+
+      expect(mockCallback).toHaveBeenCalledTimes(1);
+      const event = mockCallback.mock.calls[0][0];
+      expect(event.imageBuffers.length).toBe(2);
+      expect(event.textPayload).toBe('/reconciliation jago');
+
+      getSpy.mockRestore();
+      vi.useRealTimers();
     });
 
     it('exercises global error handler in setupBotHandlers', () => {
