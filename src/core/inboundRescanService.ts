@@ -4,7 +4,7 @@ import { EmailListenerService } from '../email/listener.js';
 import { PendingTransactionService } from './pending.js';
 import { TransactionCorrelationService } from '../email/correlation.js';
 import type { TransactionEvidence } from '../email/types.js';
-import { isGenericMerchant, isGenericCategory } from '../email/transactionFusion.js';
+import { isGenericMerchant, isGenericCategory } from '../email/index.js';
 import {
   WalletCacheService,
   WalletMcpClientService,

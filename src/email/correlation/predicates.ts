@@ -1,25 +1,7 @@
-import type { PendingTransactionItem } from '../core/pending.js';
-import type {
-  TransactionEvidence,
-  BankSourceCandidate,
-  PaymentSourceCandidate,
-  ResolvedAccountDetails,
-  ResolvedCategoryDetails,
-  ComplementaryEvaluationOptions,
-  ComplementaryEvaluationResult,
-} from './types.js';
-import { InformationDensityResolver } from './correlation/densityResolver.js';
-
-export type {
-  BankSourceCandidate,
-  PaymentSourceCandidate,
-  ResolvedAccountDetails,
-  ResolvedCategoryDetails,
-  ComplementaryEvaluationOptions,
-  ComplementaryEvaluationResult,
-};
-
-const defaultDensityResolver = new InformationDensityResolver();
+/**
+ * Pure predicate and normalization functions for financial entities,
+ * payment notes, account strings, and categories.
+ */
 
 /**
  * Checks whether a merchant or counterparty name is generic or placeholder (e.g. "Unknown", "Kartu Debit").
@@ -215,7 +197,7 @@ export function isGenericNote(
     if (
       !strippedNote ||
       strippedNote.split(/\s+/).length <= 2 ||
-      (merchantOrCounterParty && strippedNote === merchantOrCounterParty.trim().toLowerCase())
+      (merchantOrCounterParty && strippedNote === strippedNote)
     ) {
       return true;
     }
@@ -257,16 +239,4 @@ export function isGenericCategory(categoryName: string | undefined | null): bool
   ];
 
   return prefixOrContains.some(token => lower.includes(token));
-}
-
-/**
- * Fuses existing candidate state with incoming evidence according to field precedence rules.
- * Ensures arrival order invariance: (Bank + Receipt) produces the same outcome as (Receipt + Bank).
- * Delegated to InformationDensityResolver.
- */
-export function fuseCandidateWithEvidence(
-  candidate: PendingTransactionItem,
-  incoming: TransactionEvidence
-): Partial<PendingTransactionItem> {
-  return defaultDensityResolver.fusePendingItemWithEvidence(candidate, incoming);
 }

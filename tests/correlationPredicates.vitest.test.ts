@@ -4,49 +4,9 @@ import {
   isGenericCardAccountOrMethod,
   isGenericNote,
   isGenericCategory,
-  fuseCandidateWithEvidence,
 } from '../src/email/index.js';
-import type { PendingTransactionItem } from '../src/core/pending.js';
-import type { TransactionEvidence } from '../src/email/index.js';
 
-describe('transactionFusion unit tests', () => {
-  const mockPending: PendingTransactionItem = {
-    ticketId: 10,
-    sourceType: 'EMAIL',
-    bankDisplayName: 'Bank Mandiri (Livin)',
-    accountNameHint: 'Mandiri',
-    counterParty: 'BLIBLI.COM KUDUS - ID',
-    amount: -16700,
-    currency: 'IDR',
-    transactionType: 'EXPENSE',
-    matchedAccountId: 'acc-mandiri-123',
-    matchedCategoryId: 'cat-general',
-    matchedCategoryName: 'Belanja',
-    note: 'Pembayaran QRIS',
-    recordDate: '2026-10-14T10:18:00.000Z',
-    referenceNumber: 'REF-BANK-001',
-    referenceNumbers: ['REF-BANK-001'],
-    evidenceSources: ['EMAIL_BANK'],
-    createdAt: new Date('2026-10-14T10:18:00.000Z'),
-    expiresAt: new Date('2026-10-15T10:18:00.000Z'),
-    isBankSyncedAccount: true,
-  };
-
-  const mockEvidence: TransactionEvidence = {
-    sourceType: 'EMAIL_PAYMENT',
-    amount: -16700,
-    currency: 'IDR',
-    occurredAt: '2026-10-14T10:18:15.000Z',
-    merchant: 'Blibli Offline Store',
-    accountHint: 'Cash',
-    accountId: 'acc-cash',
-    referenceNumbers: ['ORDER-BLIBLI-999'],
-    note: '2x Bakwan Sayur [1pcs], 1x NASI UDUK + TELUR',
-    categoryId: 'cat-food',
-    categoryName: 'Makanan & Minuman',
-    transactionType: 'EXPENSE',
-  };
-
+describe('correlationPredicates unit tests', () => {
   describe('isGenericMerchant', () => {
     it('correctly identifies generic merchant strings', () => {
       expect(isGenericMerchant(undefined)).toBe(true);
@@ -103,19 +63,6 @@ describe('transactionFusion unit tests', () => {
       expect(isGenericCategory('Makanan & Minuman')).toBe(false);
       expect(isGenericCategory('Transportasi')).toBe(false);
       expect(isGenericCategory('Pendidikan')).toBe(false);
-    });
-  });
-
-  describe('fuseCandidateWithEvidence', () => {
-    it('fuses candidate state with arrival order invariance and preserves bank sync flag', () => {
-      const fused = fuseCandidateWithEvidence(mockPending, mockEvidence);
-      expect(fused.matchedAccountId).toBe('acc-mandiri-123');
-      expect(fused.counterParty).toBe('Blibli Offline Store');
-      expect(fused.note).toBe('2x Bakwan Sayur [1pcs], 1x NASI UDUK + TELUR');
-      expect(fused.matchedCategoryId).toBe('cat-food');
-      expect(fused.referenceNumbers).toEqual(['REF-BANK-001', 'ORDER-BLIBLI-999']);
-      expect(fused.evidenceSources).toEqual(['EMAIL_BANK', 'EMAIL_PAYMENT']);
-      expect(fused.isBankSyncedAccount).toBe(true);
     });
   });
 });

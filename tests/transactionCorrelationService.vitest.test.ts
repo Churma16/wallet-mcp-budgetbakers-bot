@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { TransactionCorrelationService } from '../src/email/index.js';
+import {
+  TransactionCorrelationService,
+  InformationDensityResolver,
+  isGenericMerchant,
+  isGenericNote,
+} from '../src/email/index.js';
 import { PendingTransactionItem } from '../src/core/pending.js';
 import { TransactionEvidence } from '../src/email/index.js';
 import { WalletRecordItem } from '../src/wallet/index.js';
@@ -10,6 +15,7 @@ import {
 
 describe('TransactionCorrelationService', () => {
   const service = new TransactionCorrelationService();
+  const densityResolver = new InformationDensityResolver();
 
   const baseInstant = '2026-10-14T10:18:00.000Z';
 
@@ -655,11 +661,11 @@ describe('TransactionCorrelationService', () => {
       expect(result.reasons).toContain('Account is bank-synced; Wallet record may arrive later with sync delay');
     });
 
-    it('preserves isBankSyncedAccount in fuseCandidateWithEvidence (Finding 3)', () => {
+    it('preserves isBankSyncedAccount in InformationDensityResolver (Finding 3)', () => {
       const candidate = createPendingItem({ isBankSyncedAccount: false });
       const incoming = createEvidence({ isBankSyncedAccount: true });
 
-      const fused = service.fuseCandidateWithEvidence(candidate, incoming);
+      const fused = densityResolver.fusePendingItemWithEvidence(candidate, incoming);
       expect(fused.isBankSyncedAccount).toBe(true);
     });
   });
@@ -675,7 +681,7 @@ describe('TransactionCorrelationService', () => {
         note: 'Pembayaran QRIS',
       });
 
-      const fused = service.fuseCandidateWithEvidence(candidate, evidence);
+      const fused = densityResolver.fusePendingItemWithEvidence(candidate, evidence);
       expect(fused.note).toBe('2x Bakwan Sayur, 1x Nasi Uduk');
     });
 
@@ -689,7 +695,7 @@ describe('TransactionCorrelationService', () => {
         note: 'Voucher Diskon Rp 5.000 Digunakan',
       });
 
-      const fused = service.fuseCandidateWithEvidence(candidate, evidence);
+      const fused = densityResolver.fusePendingItemWithEvidence(candidate, evidence);
       expect(fused.note).toBe('Catatan Kasir #1 • Voucher Diskon Rp 5.000 Digunakan');
     });
   });
@@ -940,54 +946,54 @@ describe('TransactionCorrelationService', () => {
 
     it('accurately distinguishes generic tokens from legitimate merchants like Pos Indonesia and Deposit (Finding 2)', () => {
       // Legitimate merchants must NOT be marked generic
-      expect(defaultService.isGenericMerchant('Pos Indonesia')).toBe(false);
-      expect(defaultService.isGenericMerchant('PT Pos Indonesia')).toBe(false);
-      expect(defaultService.isGenericMerchant('Deposit Box')).toBe(false);
-      expect(defaultService.isGenericMerchant('Mastercard Secure')).toBe(false);
-      expect(defaultService.isGenericMerchant('Grab')).toBe(false);
-      expect(defaultService.isGenericMerchant('Blibli')).toBe(false);
+      expect(isGenericMerchant('Pos Indonesia')).toBe(false);
+      expect(isGenericMerchant('PT Pos Indonesia')).toBe(false);
+      expect(isGenericMerchant('Deposit Box')).toBe(false);
+      expect(isGenericMerchant('Mastercard Secure')).toBe(false);
+      expect(isGenericMerchant('Grab')).toBe(false);
+      expect(isGenericMerchant('Blibli')).toBe(false);
 
       // Generic placeholders and payment gateways MUST be marked generic
-      expect(defaultService.isGenericMerchant('Unknown')).toBe(true);
-      expect(defaultService.isGenericMerchant('unknown')).toBe(true);
-      expect(defaultService.isGenericMerchant('Kartu Debit')).toBe(true);
-      expect(defaultService.isGenericMerchant('Debit Card')).toBe(true);
-      expect(defaultService.isGenericMerchant('POS Debit')).toBe(true);
-      expect(defaultService.isGenericMerchant('EDC')).toBe(true);
-      expect(defaultService.isGenericMerchant('QRIS')).toBe(true);
-      expect(defaultService.isGenericMerchant(undefined)).toBe(true);
-      expect(defaultService.isGenericMerchant(null)).toBe(true);
-      expect(defaultService.isGenericMerchant('')).toBe(true);
+      expect(isGenericMerchant('Unknown')).toBe(true);
+      expect(isGenericMerchant('unknown')).toBe(true);
+      expect(isGenericMerchant('Kartu Debit')).toBe(true);
+      expect(isGenericMerchant('Debit Card')).toBe(true);
+      expect(isGenericMerchant('POS Debit')).toBe(true);
+      expect(isGenericMerchant('EDC')).toBe(true);
+      expect(isGenericMerchant('QRIS')).toBe(true);
+      expect(isGenericMerchant(undefined)).toBe(true);
+      expect(isGenericMerchant(null)).toBe(true);
+      expect(isGenericMerchant('')).toBe(true);
     });
 
     it('accurately identifies generic note boilerplate vs specific items and order numbers', () => {
       // Boilerplate bank notes
-      expect(defaultService.isGenericNote('Transaction using Jago debit card')).toBe(true);
-      expect(defaultService.isGenericNote('Transaksi menggunakan kartu debit')).toBe(true);
-      expect(defaultService.isGenericNote('Pembayaran QRIS')).toBe(true);
-      expect(defaultService.isGenericNote('Kartu Debit')).toBe(true);
-      expect(defaultService.isGenericNote('QRIS')).toBe(true);
-      expect(defaultService.isGenericNote('')).toBe(true);
-      expect(defaultService.isGenericNote(undefined)).toBe(true);
+      expect(isGenericNote('Transaction using Jago debit card')).toBe(true);
+      expect(isGenericNote('Transaksi menggunakan kartu debit')).toBe(true);
+      expect(isGenericNote('Pembayaran QRIS')).toBe(true);
+      expect(isGenericNote('Kartu Debit')).toBe(true);
+      expect(isGenericNote('QRIS')).toBe(true);
+      expect(isGenericNote('')).toBe(true);
+      expect(isGenericNote(undefined)).toBe(true);
 
       // Notes repeating merchant name
-      expect(defaultService.isGenericNote('Shopee', 'Shopee')).toBe(true);
-      expect(defaultService.isGenericNote('Grab', 'Grab')).toBe(true);
+      expect(isGenericNote('Shopee', 'Shopee')).toBe(true);
+      expect(isGenericNote('Grab', 'Grab')).toBe(true);
 
       // Generic e-receipts and debit card patterns
-      expect(defaultService.isGenericNote('Debit card transaction via Bank Jago')).toBe(true);
-      expect(defaultService.isGenericNote('Debit card transaction')).toBe(true);
-      expect(defaultService.isGenericNote('Grab E-Receipt')).toBe(true);
-      expect(defaultService.isGenericNote('Tokopedia Receipt')).toBe(true);
-      expect(defaultService.isGenericNote('Bukti Pembayaran')).toBe(true);
+      expect(isGenericNote('Debit card transaction via Bank Jago')).toBe(true);
+      expect(isGenericNote('Debit card transaction')).toBe(true);
+      expect(isGenericNote('Grab E-Receipt')).toBe(true);
+      expect(isGenericNote('Tokopedia Receipt')).toBe(true);
+      expect(isGenericNote('Bukti Pembayaran')).toBe(true);
 
       // Rich merchant and receipt notes (MUST NOT be generic)
-      expect(defaultService.isGenericNote('Pembayaran pesanan Shopee (#261015PF5NYVHP)')).toBe(false);
-      expect(defaultService.isGenericNote('Grab ride')).toBe(false);
-      expect(defaultService.isGenericNote('GrabBike: Stasiun Gambir -> Grand Indonesia')).toBe(false);
-      expect(defaultService.isGenericNote('GrabCar: Bandara Soekarno Hatta -> Hotel')).toBe(false);
-      expect(defaultService.isGenericNote('2x Bakwan Sayur, 1x Nasi Uduk')).toBe(false);
-      expect(defaultService.isGenericNote('Kopi Kenangan Mantan')).toBe(false);
+      expect(isGenericNote('Pembayaran pesanan Shopee (#261015PF5NYVHP)')).toBe(false);
+      expect(isGenericNote('Grab ride')).toBe(false);
+      expect(isGenericNote('GrabBike: Stasiun Gambir -> Grand Indonesia')).toBe(false);
+      expect(isGenericNote('GrabCar: Bandara Soekarno Hatta -> Hotel')).toBe(false);
+      expect(isGenericNote('2x Bakwan Sayur, 1x Nasi Uduk')).toBe(false);
+      expect(isGenericNote('Kopi Kenangan Mantan')).toBe(false);
     });
   });
 

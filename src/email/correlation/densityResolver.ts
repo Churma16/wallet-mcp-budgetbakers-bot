@@ -5,7 +5,7 @@ import {
   isGenericCardAccountOrMethod,
   isGenericNote,
   isGenericCategory,
-} from '../transactionFusion.js';
+} from './predicates.js';
 import { CommercePlatformRegistry } from '../../config/commercePlatforms.js';
 
 export interface ResolvedTransactionFields {

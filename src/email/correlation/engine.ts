@@ -3,7 +3,7 @@ import type { WalletRecordItem } from '../../wallet/types.js';
 import type { TransactionEvidence, CorrelationResult, CorrelationMatchTarget } from '../types.js';
 import { INTERNAL_TRANSACTION_TYPES, WALLET_MCP_RECORD_TYPES } from '../../wallet/constants.js';
 import { CommercePlatformRegistry } from '../../config/commercePlatforms.js';
-import { isGenericMerchant, isGenericCardAccountOrMethod } from '../transactionFusion.js';
+import { isGenericMerchant, isGenericCardAccountOrMethod } from './predicates.js';
 import { InboundReferenceRegistry, normalizeReferenceNumber } from '../../core/referenceRegistry.js';
 import { TransactionMessageStore } from '../../wallet/records/transactionMessageStore.js';
 import { InformationDensityResolver } from './densityResolver.js';
@@ -33,9 +33,13 @@ export interface CorrelationEngineOptions {
   weights?: ScoringWeights;
   timeHalfLifeMs?: number;
   maxWindowMs?: number;
+  maxCorrelationWindowMilliseconds?: number;
+  tightWindowMs?: number;
+  tightWindowMilliseconds?: number;
   highThreshold?: number;
   mediumThreshold?: number;
   disambiguationDelta?: number;
+  platformRegistry?: CommercePlatformRegistry;
 }
 
 const GENERIC_FINANCIAL_TOKENS = new Set([
@@ -84,6 +88,7 @@ export class TransactionCorrelationEngine {
   private readonly platformRegistry: CommercePlatformRegistry;
   private readonly referenceRegistry: InboundReferenceRegistry;
   private readonly densityResolver: InformationDensityResolver;
+  private readonly transactionMessageStore?: TransactionMessageStore;
   private readonly weights: ScoringWeights;
   private readonly timeHalfLifeMs: number;
   private readonly maxWindowMs: number;
@@ -92,18 +97,48 @@ export class TransactionCorrelationEngine {
   private readonly disambiguationDelta: number;
 
   constructor(
-    private readonly deps: CorrelationEngineDependencies = {},
-    options: CorrelationEngineOptions = {}
+    depsOrOptions?: CorrelationEngineDependencies | (CorrelationEngineDependencies & CorrelationEngineOptions),
+    options?: CorrelationEngineOptions
   ) {
-    this.platformRegistry = deps.platformRegistry ?? CommercePlatformRegistry.getInstance();
-    this.referenceRegistry = deps.referenceRegistry ?? InboundReferenceRegistry.getInstance();
+    const isSingleArg =
+      !options &&
+      depsOrOptions &&
+      ('maxWindowMs' in depsOrOptions ||
+        'maxCorrelationWindowMilliseconds' in depsOrOptions ||
+        'platformRegistry' in depsOrOptions);
+    const deps = isSingleArg
+      ? (depsOrOptions as CorrelationEngineDependencies)
+      : (depsOrOptions as CorrelationEngineDependencies) ?? {};
+    const opts =
+      options ?? (isSingleArg ? (depsOrOptions as CorrelationEngineOptions) : {});
+
+    this.platformRegistry =
+      deps.platformRegistry ?? opts.platformRegistry ?? CommercePlatformRegistry.getInstance();
+    this.referenceRegistry =
+      deps.referenceRegistry ?? InboundReferenceRegistry.getInstance();
     this.densityResolver = deps.densityResolver ?? new InformationDensityResolver();
-    this.weights = options.weights ?? DEFAULT_CORRELATION_WEIGHTS;
-    this.timeHalfLifeMs = options.timeHalfLifeMs ?? DEFAULT_TIME_HALF_LIFE_MS;
-    this.maxWindowMs = options.maxWindowMs ?? DEFAULT_MAX_CORRELATION_WINDOW_MS;
-    this.highThreshold = options.highThreshold ?? DEFAULT_HIGH_CONFIDENCE_THRESHOLD;
-    this.mediumThreshold = options.mediumThreshold ?? DEFAULT_MEDIUM_CONFIDENCE_THRESHOLD;
-    this.disambiguationDelta = options.disambiguationDelta ?? DEFAULT_DISAMBIGUATION_DELTA;
+    this.transactionMessageStore = deps.transactionMessageStore;
+    this.weights = opts.weights ?? DEFAULT_CORRELATION_WEIGHTS;
+    this.timeHalfLifeMs = opts.timeHalfLifeMs ?? DEFAULT_TIME_HALF_LIFE_MS;
+    this.maxWindowMs =
+      opts.maxWindowMs ??
+      opts.maxCorrelationWindowMilliseconds ??
+      DEFAULT_MAX_CORRELATION_WINDOW_MS;
+    this.highThreshold = opts.highThreshold ?? DEFAULT_HIGH_CONFIDENCE_THRESHOLD;
+    this.mediumThreshold = opts.mediumThreshold ?? DEFAULT_MEDIUM_CONFIDENCE_THRESHOLD;
+    this.disambiguationDelta = opts.disambiguationDelta ?? DEFAULT_DISAMBIGUATION_DELTA;
+  }
+
+  /**
+   * Evaluates incoming evidence against existing pending candidates and recent Wallet records.
+   * Drop-in compatible with TransactionCorrelationService.correlateEvidence().
+   */
+  public correlateEvidence(
+    incomingEvidence: TransactionEvidence,
+    existingPendingItems: PendingTransactionItem[] = [],
+    recentWalletRecords: WalletRecordItem[] = []
+  ): EngineCorrelationResult {
+    return this.correlate(incomingEvidence, existingPendingItems, recentWalletRecords);
   }
 
   /**
@@ -203,7 +238,7 @@ export class TransactionCorrelationEngine {
       const r = candidate as WalletRecordItem;
       candRefs.push(normalizeReferenceNumber(r.id));
       // Check message store mapping if available
-      const messageMapping = this.deps.transactionMessageStore?.findMappingByReference(evidenceRefs[0]);
+      const messageMapping = this.transactionMessageStore?.findMappingByReference(evidenceRefs[0]);
       if (messageMapping && messageMapping.mapping.recordId === r.id) {
         return {
           matched: true,

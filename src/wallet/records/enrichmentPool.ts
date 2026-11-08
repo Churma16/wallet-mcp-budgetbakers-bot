@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { applicationLogger } from '../../lib/logger.js';
 import type { TransactionEvidence } from '../../email/types.js';
-import { isGenericMerchant, isGenericCategory } from '../../email/transactionFusion.js';
+import { isGenericMerchant, isGenericCategory } from '../../email/index.js';
 
 export interface EnrichmentPoolItem {
   readonly recordId: string;

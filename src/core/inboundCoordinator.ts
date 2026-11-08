@@ -3,7 +3,7 @@ import { GateEvaluationResult } from '../email/index.js';
 import { PendingTransactionService, buildRecordsForPendingItem } from './pending.js';
 import { MessagingGatewayService } from '../gateway/index.js';
 import { TransactionCorrelationService, TransactionEvidence, TransactionEvidenceSource } from '../email/index.js';
-import { isGenericMerchant, isGenericCategory } from '../email/transactionFusion.js';
+import { isGenericMerchant, isGenericCategory } from '../email/index.js';
 import {
   WalletCacheService,
   WalletMcpClientService,
