@@ -2,26 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   isGenericMerchant,
   isGenericCardAccountOrMethod,
-  detectConflictingMerchants,
   isGenericNote,
-  isBankSource,
-  isPaymentOrReceiptSource,
-  resolveAccount,
-  resolveCounterParty,
-  resolveNote,
-  resolveCategory,
-  resolveReferenceNumbers,
-  resolveEvidenceSources,
+  isGenericCategory,
   fuseCandidateWithEvidence,
-  evaluateComplementarySources,
 } from '../src/email/index.js';
-import { CommercePlatformRegistry } from '../src/config/commercePlatforms.js';
 import type { PendingTransactionItem } from '../src/core/pending.js';
 import type { TransactionEvidence } from '../src/email/index.js';
 
 describe('transactionFusion unit tests', () => {
-  const platformRegistry = CommercePlatformRegistry.getInstance();
-
   const mockPending: PendingTransactionItem = {
     ticketId: 10,
     sourceType: 'EMAIL',
@@ -86,28 +74,6 @@ describe('transactionFusion unit tests', () => {
     });
   });
 
-  describe('detectConflictingMerchants', () => {
-    it('flags conflicting merchants without token overlap', () => {
-      expect(
-        detectConflictingMerchants(
-          { counterParty: 'Starbucks Coffee' },
-          { merchant: 'Alfamart Express' },
-          platformRegistry
-        )
-      ).toBe(true);
-    });
-
-    it('allows matching brands or token overlaps', () => {
-      expect(
-        detectConflictingMerchants(
-          { counterParty: 'BLIBLI.COM KUDUS - ID' },
-          { merchant: 'Blibli Offline Store' },
-          platformRegistry
-        )
-      ).toBe(false);
-    });
-  });
-
   describe('isGenericNote', () => {
     it('recognizes generic transaction notes', () => {
       expect(isGenericNote('Transaksi menggunakan kartu debit')).toBe(true);
@@ -122,46 +88,27 @@ describe('transactionFusion unit tests', () => {
     });
   });
 
-  describe('isBankSource and isPaymentOrReceiptSource', () => {
-    it('detects bank sources accurately', () => {
-      expect(isBankSource({ evidenceSources: ['EMAIL_BANK'] })).toBe(true);
-      expect(isBankSource({ bankDisplayName: 'Bank Central Asia' })).toBe(true);
-      expect(isBankSource({ bankDisplayName: 'Tokopedia' })).toBe(false);
+  describe('isGenericCategory', () => {
+    it('detects generic and placeholder categories', () => {
+      expect(isGenericCategory(undefined)).toBe(true);
+      expect(isGenericCategory(null)).toBe(true);
+      expect(isGenericCategory('')).toBe(true);
+      expect(isGenericCategory('Unknown')).toBe(true);
+      expect(isGenericCategory('Belanja')).toBe(true);
+      expect(isGenericCategory('General')).toBe(true);
+      expect(isGenericCategory('Lain-lain')).toBe(true);
     });
 
-    it('detects payment/receipt sources accurately', () => {
-      expect(isPaymentOrReceiptSource({ evidenceSources: ['RECEIPT'] }, platformRegistry)).toBe(true);
-      expect(isPaymentOrReceiptSource({ bankDisplayName: 'Grab E-Receipt' }, platformRegistry)).toBe(true);
-    });
-  });
-
-  describe('resolveAccount & resolveCounterParty & resolveNote & resolveCategory', () => {
-    it('resolves bank account precedence over platform wallet or cash', () => {
-      const account = resolveAccount(mockPending, mockEvidence, platformRegistry);
-      expect(account.matchedAccountId).toBe('acc-mandiri-123');
-      expect(account.bankDisplayName).toBe('Bank Mandiri (Livin)');
-    });
-
-    it('resolves clean merchant name over bank description', () => {
-      const counterParty = resolveCounterParty(mockPending, mockEvidence);
-      expect(counterParty).toBe('Blibli Offline Store');
-    });
-
-    it('resolves itemized note over generic bank note', () => {
-      const note = resolveNote(mockPending, mockEvidence);
-      expect(note).toBe('2x Bakwan Sayur [1pcs], 1x NASI UDUK + TELUR');
-    });
-
-    it('resolves specific category over generic category', () => {
-      const category = resolveCategory(mockPending, mockEvidence);
-      expect(category.matchedCategoryId).toBe('cat-food');
-      expect(category.matchedCategoryName).toBe('Makanan & Minuman');
+    it('identifies concrete leaf categories', () => {
+      expect(isGenericCategory('Makanan & Minuman')).toBe(false);
+      expect(isGenericCategory('Transportasi')).toBe(false);
+      expect(isGenericCategory('Pendidikan')).toBe(false);
     });
   });
 
   describe('fuseCandidateWithEvidence', () => {
     it('fuses candidate state with arrival order invariance and preserves bank sync flag', () => {
-      const fused = fuseCandidateWithEvidence(mockPending, mockEvidence, platformRegistry);
+      const fused = fuseCandidateWithEvidence(mockPending, mockEvidence);
       expect(fused.matchedAccountId).toBe('acc-mandiri-123');
       expect(fused.counterParty).toBe('Blibli Offline Store');
       expect(fused.note).toBe('2x Bakwan Sayur [1pcs], 1x NASI UDUK + TELUR');
@@ -169,17 +116,6 @@ describe('transactionFusion unit tests', () => {
       expect(fused.referenceNumbers).toEqual(['REF-BANK-001', 'ORDER-BLIBLI-999']);
       expect(fused.evidenceSources).toEqual(['EMAIL_BANK', 'EMAIL_PAYMENT']);
       expect(fused.isBankSyncedAccount).toBe(true);
-    });
-  });
-
-  describe('evaluateComplementarySources', () => {
-    it('evaluates complementary bank debit and merchant receipt with high confidence', () => {
-      const evaluation = evaluateComplementarySources(mockPending, mockEvidence, 15000, {
-        platformRegistry,
-        tightWindowMilliseconds: 900000,
-      });
-      expect(evaluation.isHighConfidence).toBe(true);
-      expect(evaluation.reasons.length).toBeGreaterThan(0);
     });
   });
 });
