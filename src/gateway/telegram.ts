@@ -37,6 +37,8 @@ import {
 } from './formatters/telegramFormatter.js';
 import { handleReconciliationPagination } from '../core/reconciliation/reconciliationCardFormatter.js';
 import { reconciliationSessionStore } from '../core/reconciliation/reconciliationSessionStore.js';
+import { handleHistoryPagination } from '../core/history/historyPaginationFormatter.js';
+import type { TransactionHistoryService } from '../wallet/index.js';
 import { getActiveLanguage, getDictionary } from '../i18n/index.js';
 
 export type { TelegramSafeguardConfiguration };
@@ -154,6 +156,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
   private readonly startupRetryBaseDelayMs: number;
   private readonly startupRetryMaxDelayMs: number;
   private readonly maxMediaDownloadBytes: number;
+  private transactionHistoryService?: TransactionHistoryService;
   private readonly mediaGroupDebounceMap = new Map<
     string,
     {
@@ -177,6 +180,11 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     this.startupRetryBaseDelayMs = safeguardConfiguration?.startupRetryBaseDelayMs ?? 2000;
     this.startupRetryMaxDelayMs = safeguardConfiguration?.startupRetryMaxDelayMs ?? 15000;
     this.maxMediaDownloadBytes = safeguardConfiguration?.maxMediaDownloadBytes ?? (10 * 1024 * 1024);
+    this.transactionHistoryService = safeguardConfiguration?.transactionHistoryService;
+  }
+
+  public setTransactionHistoryService(service: TransactionHistoryService): void {
+    this.transactionHistoryService = service;
   }
 
   public isAuthorizedSender(senderUserId: string, _senderUsername?: string): boolean {
@@ -771,6 +779,37 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
         } else {
           await ctx.answerCallbackQuery({
             text: 'Sesi rekonsiliasi telah berakhir. Silakan jalankan ulang /reconciliation.',
+            show_alert: true,
+          });
+        }
+      } else if (callbackData.startsWith('hist:')) {
+        if (callbackData === 'hist:noop' || callbackData.endsWith(':noop')) {
+          await ctx.answerCallbackQuery();
+          return;
+        }
+
+        const currentLanguage = getActiveLanguage();
+        const paginationResult = await handleHistoryPagination(
+          callbackData,
+          this.transactionHistoryService,
+          currentLanguage
+        );
+
+        if (paginationResult) {
+          await ctx.answerCallbackQuery();
+          try {
+            await ctx.editMessageText(formatTelegramHtml(paginationResult.text), {
+              parse_mode: 'HTML',
+              reply_markup: paginationResult.replyMarkup as any,
+            });
+          } catch {
+            // ignore unchanged edits or network drops
+          }
+        } else {
+          await ctx.answerCallbackQuery({
+            text: currentLanguage === 'en'
+              ? 'History session has expired. Please run /history again.'
+              : 'Sesi riwayat telah berakhir. Silakan jalankan ulang /riwayat.',
             show_alert: true,
           });
         }

@@ -138,6 +138,7 @@ export class Application {
             maxStartupAttempts: this.context.config.telegramMaxStartupAttempts,
             startupRetryBaseDelayMs: this.context.config.telegramStartupRetryDelayMs,
             maxMediaDownloadBytes: this.context.config.maxMediaDownloadMb * 1024 * 1024,
+            transactionHistoryService: this.context.wallet.history,
           }
         );
         this.context.gateway.registerAdapter(telegramAdapter);
