@@ -144,13 +144,18 @@ export class TransactionCorrelationEngine {
         return { passed: false, reason: 'Transaction direction mismatch (transfer vs non-transfer)' };
       }
     } else if (!isEvidTransfer) {
+      const candRawAmount = candidate.amount;
       const candIsExpense =
-        ('recordType' in candidate && candidate.recordType === WALLET_MCP_RECORD_TYPES.EXPENSE) ||
-        ('transactionType' in candidate && candidate.transactionType === INTERNAL_TRANSACTION_TYPES.EXPENSE) ||
-        candidate.amount < 0;
+        'recordType' in candidate
+          ? candidate.recordType === WALLET_MCP_RECORD_TYPES.EXPENSE
+          : 'transactionType' in candidate
+            ? candidate.transactionType === INTERNAL_TRANSACTION_TYPES.EXPENSE
+            : candRawAmount < 0;
 
       const evidIsExpense =
-        evidence.transactionType === INTERNAL_TRANSACTION_TYPES.EXPENSE || evidence.amount < 0;
+        evidence.transactionType
+          ? evidence.transactionType === INTERNAL_TRANSACTION_TYPES.EXPENSE
+          : evidence.amount < 0;
 
       if (candIsExpense !== evidIsExpense) {
         return { passed: false, reason: 'Transaction sign mismatch (income vs expense)' };
