@@ -133,7 +133,7 @@ export function formatTransactionDate(dateInput?: string | number | Date, langua
   return `${formattedDate}, ${timeString}`;
 }
 
-export const MAX_TRANSACTION_HISTORY_TITLE_LENGTH = 43;
+export const MAX_TRANSACTION_HISTORY_TITLE_LENGTH = 72;
 
 /**
  * Deterministically truncates excessively long transaction descriptions for compact chat history.

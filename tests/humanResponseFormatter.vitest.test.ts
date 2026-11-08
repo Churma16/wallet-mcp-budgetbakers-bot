@@ -161,15 +161,15 @@ describe('human response formatter', () => {
     const longTitle = 'Pengkreditan otomatis PEMAGANGAN ANGKATAN 2 KEMENTERIAN KETENAGAKERJAAN REPUBLIK INDONESIA';
     assert.strictEqual(
       truncateTransactionTitle(longTitle, MAX_TRANSACTION_HISTORY_TITLE_LENGTH),
-      'Pengkreditan otomatis PEMAGANGAN ANGKATAN 2...'
+      'Pengkreditan otomatis PEMAGANGAN ANGKATAN 2 KEMENTERIAN KETENAGAKERJAAN...'
     );
     assert.strictEqual(longTitle.startsWith('Pengkreditan otomatis'), true);
 
     const multilineTitle = 'Pembayaran Toko Buku\nLantai 2\r\nBlok B';
     assert.strictEqual(truncateTransactionTitle(multilineTitle), 'Pembayaran Toko Buku Lantai 2 Blok B');
 
-    const emojiBoundaryTitle = `${'A'.repeat(42)}🎉 EXTRA_TEXT_THAT_SHOULD_BE_TRUNCATED`;
-    assert.strictEqual(truncateTransactionTitle(emojiBoundaryTitle), `${'A'.repeat(42)}🎉...`);
+    const emojiBoundaryTitle = `${'A'.repeat(71)}🎉 EXTRA_TEXT_THAT_SHOULD_BE_TRUNCATED`;
+    assert.strictEqual(truncateTransactionTitle(emojiBoundaryTitle), `${'A'.repeat(71)}🎉...`);
   });
 
   test('formats compact signed amounts across IDR and USD', () => {
@@ -213,7 +213,7 @@ describe('human response formatter', () => {
         {
           id: 'rec-3', accountId: 'acc-3', accountName: 'Mandiri Debit Card', amount: 5729876, currency: 'IDR',
           recordDate: '2026-09-10T14:31:00.000Z', recordType: 'income' as const,
-          note: 'Pengkreditan otomatis PEMAGANGAN ANGKATAN 2 KEMENTERIAN KETENAGAKERJAAN',
+          note: 'Pengkreditan otomatis PEMAGANGAN ANGKATAN 2 KEMENTERIAN KETENAGAKERJAAN REPUBLIK INDONESIA',
           category: { id: 'cat-3', name: 'Wage, invoices' }, labels: [{ id: 'lbl-1', name: 'salary' }],
         },
       ],
@@ -225,7 +225,7 @@ describe('human response formatter', () => {
     assert.match(idMessage, /^📋 \*Riwayat Transaksi\*\nHal\. 1\/375 • 3 item/m);
     assert.match(idMessage, /1\. Biaya admin tf\n\*-Rp1\.000\* • Cash\nCharges, fees • \d+ Sep \d\d:\d\d/m);
     assert.match(idMessage, /2\. Pembayaran ke Nodus Digital Store\n\*-Rp20\.895\* • Gopay\nPengeluaran Digital • \d+ Sep \d\d:\d\d/m);
-    assert.match(idMessage, /3\. Pengkreditan otomatis PEMAGANGAN ANGKATAN 2\.\.\.\n\*\+Rp5\.729\.876\* • Mandiri Debit Card\nWage, invoices • \d+ Sep \d\d:\d\d • #salary/m);
+    assert.match(idMessage, /3\. Pengkreditan otomatis PEMAGANGAN ANGKATAN 2 KEMENTERIAN KETENAGAKERJAAN\.\.\.\n\*\+Rp5\.729\.876\* • Mandiri Debit Card\nWage, invoices • \d+ Sep \d\d:\d\d • #salary/m);
     assert.ok(idMessage.includes('\n\n1. Biaya admin tf'));
     assert.ok(idMessage.includes('\n\n2. Pembayaran ke Nodus Digital Store'));
     assert.ok(idMessage.includes('\n\n3. Pengkreditan otomatis'));
@@ -235,7 +235,7 @@ describe('human response formatter', () => {
     const enMessage = formatTransactionHistoryMessage(page, 'en');
     assert.match(enMessage, /^📋 \*Transaction History\*\nPage 1\/375 • 3 items/m);
     assert.match(enMessage, /1\. Biaya admin tf\n\*-Rp1,000\* • Cash/m);
-    assert.match(enMessage, /3\. Pengkreditan otomatis PEMAGANGAN ANGKATAN 2\.\.\.\n\*\+Rp5,729,876\* • Mandiri Debit Card/m);
+    assert.match(enMessage, /3\. Pengkreditan otomatis PEMAGANGAN ANGKATAN 2 KEMENTERIAN KETENAGAKERJAAN\.\.\.\n\*\+Rp5,729,876\* • Mandiri Debit Card/m);
   });
 
   test('falls back safely when optional transaction-history fields are absent', () => {
