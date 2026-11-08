@@ -21,6 +21,7 @@ export interface StoredRecordMessageMapping {
   partnerRecordId?: string;
   isTransfer?: boolean;
   destinationAccountName?: string;
+  referenceNumbers?: string[];
 }
 
 export interface TransactionMessageStoreSnapshot {
@@ -112,6 +113,30 @@ export class TransactionMessageStore {
       }
     }
     return results;
+  }
+
+  public findMappingByReference(
+    reference?: string | null
+  ): { messageId: string; mapping: StoredRecordMessageMapping } | undefined {
+    if (!reference) return undefined;
+    const cleanRef = reference.trim().toUpperCase();
+    if (!cleanRef || cleanRef.length < 3) return undefined;
+
+    this.pruneOldMappings();
+    for (const [msgId, mapping] of this.mappingMap.entries()) {
+      const hasDirectRef = mapping.referenceNumbers?.some(
+        r => (r || '').trim().toUpperCase() === cleanRef
+      );
+      const hasNoteRef = (mapping.note || '').toUpperCase().includes(cleanRef);
+      if (hasDirectRef || hasNoteRef) {
+        return { messageId: msgId, mapping };
+      }
+    }
+    return undefined;
+  }
+
+  public findRecordIdByReference(reference?: string | null): string | undefined {
+    return this.findMappingByReference(reference)?.mapping.recordId;
   }
 
   public updateMessageMappingsByRecordId(

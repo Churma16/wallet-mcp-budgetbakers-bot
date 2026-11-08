@@ -2,9 +2,9 @@ import { InboundNotificationStore } from '../gateway/notificationStore.js';
 import { NotificationTransactionHandler } from './handlers/inboundHandlers.js';
 import { EmailListenerService } from '../email/listener.js';
 import { PendingTransactionService } from './pending.js';
-import { TransactionCorrelationService } from '../email/correlation.js';
+import { TransactionCorrelationEngine } from '../email/index.js';
 import type { TransactionEvidence } from '../email/types.js';
-import { isGenericMerchant, isGenericCategory } from '../email/transactionFusion.js';
+import { isGenericMerchant, isGenericCategory } from '../email/index.js';
 import {
   WalletCacheService,
   WalletMcpClientService,
@@ -74,7 +74,8 @@ export interface InboundRescanServiceDependencies {
   notificationHandler: NotificationTransactionHandler;
   emailListener?: EmailListenerService | null | (() => EmailListenerService | null);
   pendingTransactionManager: PendingTransactionService;
-  correlationService: TransactionCorrelationService;
+  correlationEngine?: TransactionCorrelationEngine;
+  correlationService?: TransactionCorrelationEngine;
   walletCacheService: WalletCacheService;
   messagingGateway: MessagingGatewayService;
   walletMcpClient?: WalletMcpClientService;
@@ -292,7 +293,8 @@ export class InboundRescanService {
         transactionType: item.transactionType,
       };
 
-      const correlationResult = this.deps.correlationService.correlateEvidence(
+      const correlationEngine = this.deps.correlationEngine || this.deps.correlationService;
+      const correlationResult = correlationEngine!.correlateEvidence(
         evidence,
         [],
         combinedRecords

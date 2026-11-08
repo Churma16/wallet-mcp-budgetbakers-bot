@@ -35,7 +35,7 @@ import { coordinateInboundTransactionCandidate } from './inboundCoordinator.js';
 import { NotificationTransactionHandler } from './handlers/inboundHandlers.js';
 import { InboundRescanService, parseRescanDurationMinutes, type InboundRescanStage } from './inboundRescanService.js';
 import { formatInboundRescanResponse } from '../wallet/formatters/inboundRescanFormatter.js';
-import { TransactionCorrelationService } from '../email/index.js';
+import { TransactionCorrelationEngine } from '../email/index.js';
 import {
   normalizeTransactionHistoryFilters,
   formatErrorMessageForHuman,
@@ -280,7 +280,7 @@ export class MessageDispatcher {
         context.pending,
         context.gateway,
         context.config?.defaultCurrency || 'IDR',
-        context.email?.correlation || new TransactionCorrelationService(),
+        context.email?.correlation || new TransactionCorrelationEngine(),
         context.wallet?.client,
         context.wallet?.transactionMessages,
         context.wallet?.enrichmentPool,
@@ -294,7 +294,7 @@ export class MessageDispatcher {
         notificationHandler: this.notificationHandler,
         emailListener: () => context.email?.listener,
         pendingTransactionManager: context.pending,
-        correlationService: context.email?.correlation || new TransactionCorrelationService(),
+        correlationService: context.email?.correlation || new TransactionCorrelationEngine(),
         walletCacheService: context.wallet.cache,
         messagingGateway: context.gateway,
         walletMcpClient: context.wallet?.client,

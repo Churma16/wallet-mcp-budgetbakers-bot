@@ -150,4 +150,54 @@ describe('TransactionMessageStore', () => {
     expect(store.deleteMessageMappingsByRecordId('')).toBe(0);
     expect(store.deleteMessageMappingsByRecordId('non-existent')).toBe(0);
   });
+
+  describe('findMappingByReference and findRecordIdByReference', () => {
+    it('finds mapping by direct referenceNumbers array', () => {
+      const store = new TransactionMessageStore(storageFile);
+      store.recordMessageMapping('msg-ref-1', {
+        recordId: 'rec-target-1',
+        accountId: 'acc-1',
+        referenceNumbers: ['GF-98765', 'ORD-555'],
+      });
+
+      const found = store.findMappingByReference('gf-98765');
+      expect(found).toBeDefined();
+      expect(found?.messageId).toBe('msg-ref-1');
+      expect(found?.mapping.recordId).toBe('rec-target-1');
+
+      expect(store.findRecordIdByReference('ord-555')).toBe('rec-target-1');
+    });
+
+    it('finds mapping by reference contained in note', () => {
+      const store = new TransactionMessageStore(storageFile);
+      store.recordMessageMapping('msg-ref-2', {
+        recordId: 'rec-target-2',
+        accountId: 'acc-2',
+        note: 'GrabFood Order #GF-33333 Chicken',
+      });
+
+      const found = store.findMappingByReference('GF-33333');
+      expect(found).toBeDefined();
+      expect(found?.messageId).toBe('msg-ref-2');
+      expect(found?.mapping.recordId).toBe('rec-target-2');
+
+      expect(store.findRecordIdByReference('GF-33333')).toBe('rec-target-2');
+    });
+
+    it('returns undefined for invalid, short, or non-matching reference numbers', () => {
+      const store = new TransactionMessageStore(storageFile);
+      store.recordMessageMapping('msg-ref-3', {
+        recordId: 'rec-target-3',
+        accountId: 'acc-3',
+        note: 'Simple note',
+      });
+
+      expect(store.findMappingByReference(null)).toBeUndefined();
+      expect(store.findMappingByReference('')).toBeUndefined();
+      expect(store.findMappingByReference('AB')).toBeUndefined();
+      expect(store.findMappingByReference('NON-EXISTENT')).toBeUndefined();
+      expect(store.findRecordIdByReference(null)).toBeUndefined();
+      expect(store.findRecordIdByReference('NON-EXISTENT')).toBeUndefined();
+    });
+  });
 });

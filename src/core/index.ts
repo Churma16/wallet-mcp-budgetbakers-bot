@@ -5,4 +5,5 @@ export * from './executor.js';
 export * from './inboundCoordinator.js';
 export * from './dispatcher.js';
 export * from './inboundRescanService.js';
+export * from './referenceRegistry.js';
 export * from './handlers/index.js';

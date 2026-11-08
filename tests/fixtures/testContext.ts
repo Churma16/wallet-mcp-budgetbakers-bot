@@ -5,7 +5,7 @@ import {
   ClarificationService,
 } from '../../src/brain/index.js';
 import { TransactionMessageStore, WalletRecordPreparationService } from '../../src/wallet/index.js';
-import { TransactionCorrelationService } from '../../src/email/index.js';
+import { TransactionCorrelationEngine } from '../../src/email/index.js';
 import { InboundNotificationStore } from '../../src/gateway/notificationStore.js';
 
 export interface TestAppContextOptions {
@@ -73,7 +73,7 @@ export function createTestAppContext(options: TestAppContextOptions = {}): AppCo
       semanticBoundary: options.brain?.semanticBoundary || new SemanticToolBoundary(),
     } as any,
     email: options.email || {
-      correlation: new TransactionCorrelationService(),
+      correlation: new TransactionCorrelationEngine(),
       listener: null,
     },
     webhook: options.webhook || null,

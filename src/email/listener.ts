@@ -14,6 +14,7 @@ import type {
 } from './types.js';
 import { calculateExponentialBackoff } from '../lib/resilience.js';
 import { applicationLogger } from '../lib/logger.js';
+import { InboundReferenceRegistry } from '../core/referenceRegistry.js';
 
 export type {
   GateEvaluationResult,
@@ -128,7 +129,10 @@ export class EmailListenerService {
           });
         }
         if (Array.isArray(parsedCache.processedReferenceNumbers)) {
-          parsedCache.processedReferenceNumbers.forEach(ref => this.processedReferenceNumberSet.add(ref));
+          parsedCache.processedReferenceNumbers.forEach(ref => {
+            this.processedReferenceNumberSet.add(ref);
+            InboundReferenceRegistry.getInstance().recordReference(ref);
+          });
         }
         if (Array.isArray(parsedCache.deadLetterQueue)) {
           this.deadLetterQueue = [...parsedCache.deadLetterQueue];
@@ -279,6 +283,7 @@ export class EmailListenerService {
     }
     if (referenceNumber) {
       this.processedReferenceNumberSet.add(referenceNumber);
+      InboundReferenceRegistry.getInstance().recordReference(referenceNumber);
     }
     this.savePersistentCache();
   }

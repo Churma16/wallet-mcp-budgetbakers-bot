@@ -6,13 +6,14 @@ import {
 import {
   EmailTransactionDetectedEvent,
   EmailListenerService,
-  TransactionCorrelationService,
+  TransactionCorrelationEngine,
 } from '../../email/index.js';
 import { FinancialAiProvider } from '../../brain/index.js';
 import { PendingTransactionService } from '../pending.js';
 import { WalletCacheService, WalletMcpClientService } from '../../wallet/index.js';
 import { TransactionMessageStore, EnrichmentPoolService } from '../../wallet/records/index.js';
 import { coordinateInboundTransactionCandidate } from '../inboundCoordinator.js';
+import { InboundReferenceRegistry } from '../referenceRegistry.js';
 import { evaluateNotificationThroughGate } from '../../config/notificationRules.js';
 import { applicationLogger } from '../../lib/logger.js';
 
@@ -27,7 +28,7 @@ export class EmailTransactionHandler {
     private readonly pendingTransactionManager: PendingTransactionService,
     private readonly messagingGateway: MessagingGatewayService,
     private readonly defaultCurrency: string = 'IDR',
-    private readonly correlationService: TransactionCorrelationService = new TransactionCorrelationService(),
+    private readonly correlationEngine: TransactionCorrelationEngine = new TransactionCorrelationEngine(),
     private readonly emailListenerServiceGetter?: () => EmailListenerService | null,
     private readonly walletMcpClient?: WalletMcpClientService,
     private readonly transactionMessageStore?: TransactionMessageStore,
@@ -88,6 +89,7 @@ export class EmailTransactionHandler {
           detectedEvent.gateResult.matchedBankRule?.displayName || 'Merchant',
         fallbackNote: detectedEvent.emailSubject,
         onRecordProcessed: ref => {
+          InboundReferenceRegistry.getInstance().recordReference(ref);
           const activeListener = this.emailListenerServiceGetter
             ? this.emailListenerServiceGetter()
             : null;
@@ -101,7 +103,7 @@ export class EmailTransactionHandler {
         pendingTransactionManager: this.pendingTransactionManager,
         messagingGateway: this.messagingGateway,
         defaultCurrency: this.defaultCurrency,
-        correlationService: this.correlationService,
+        correlationEngine: this.correlationEngine,
         walletMcpClient: this.walletMcpClient,
         transactionMessageStore: this.transactionMessageStore,
         enrichmentPoolService: this.enrichmentPoolService,
@@ -121,7 +123,7 @@ export class NotificationTransactionHandler {
     private readonly pendingTransactionManager: PendingTransactionService,
     private readonly messagingGateway: MessagingGatewayService,
     private readonly defaultCurrency: string = 'IDR',
-    private readonly correlationService: TransactionCorrelationService = new TransactionCorrelationService(),
+    private readonly correlationEngine: TransactionCorrelationEngine = new TransactionCorrelationEngine(),
     private readonly walletMcpClient?: WalletMcpClientService,
     private readonly transactionMessageStore?: TransactionMessageStore,
     private readonly enrichmentPoolService?: EnrichmentPoolService,
@@ -234,7 +236,9 @@ export class NotificationTransactionHandler {
         fallbackNote: payload.title
           ? `${payload.title} - ${payload.text}`
           : payload.text,
-        onRecordProcessed: () => {},
+        onRecordProcessed: ref => {
+          InboundReferenceRegistry.getInstance().recordReference(ref);
+        },
         isReplay: options?.isReplay,
       },
       {
@@ -242,7 +246,7 @@ export class NotificationTransactionHandler {
         pendingTransactionManager: this.pendingTransactionManager,
         messagingGateway: this.messagingGateway,
         defaultCurrency: this.defaultCurrency,
-        correlationService: this.correlationService,
+        correlationEngine: this.correlationEngine,
         walletMcpClient: this.walletMcpClient,
         transactionMessageStore: this.transactionMessageStore,
         enrichmentPoolService: this.enrichmentPoolService,

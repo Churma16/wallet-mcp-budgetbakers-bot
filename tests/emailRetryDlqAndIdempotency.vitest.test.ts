@@ -10,7 +10,7 @@ import { FallbackAiProvider } from '../src/brain/index.js';
 import { EmailListenerService, DeadLetterQueueItem } from '../src/email/index.js';
 import { EmailTransactionHandler } from '../src/core/index.js';
 import { PendingTransactionService } from '../src/core/pending.js';
-import { TransactionCorrelationService } from '../src/email/index.js';
+import { TransactionCorrelationEngine } from '../src/email/index.js';
 import { BANK_EMAIL_RULES } from '../src/email/index.js';
 import { GateEvaluationResult } from '../src/email/index.js';
 
@@ -331,7 +331,7 @@ describe('Email AI Error Propagation, Retry DLQ, and Idempotency', () => {
 
     it('merges seamlessly into pending transaction created in the meantime without duplicating tickets', async () => {
       const pendingService = new PendingTransactionService();
-      const correlationService = new TransactionCorrelationService();
+      const correlationService = new TransactionCorrelationEngine();
       const mockMessaging = {
         broadcastNotification: vi.fn().mockResolvedValue(undefined),
         sendMessage: vi.fn().mockResolvedValue(undefined),
@@ -410,7 +410,7 @@ describe('Email AI Error Propagation, Retry DLQ, and Idempotency', () => {
 
     it('attaches cleanly to existing Wallet record if user confirmed bank transaction earlier', async () => {
       const pendingService = new PendingTransactionService();
-      const correlationService = new TransactionCorrelationService();
+      const correlationService = new TransactionCorrelationEngine();
       const mockMessaging = {
         broadcastNotification: vi.fn().mockResolvedValue(undefined),
         sendMessage: vi.fn().mockResolvedValue(undefined),

@@ -28,8 +28,9 @@ import {
   NotificationWebhookServer,
   InboundNotificationStore,
 } from '../gateway/index.js';
-import { EmailListenerService, TransactionCorrelationService } from '../email/index.js';
+import { EmailListenerService, TransactionCorrelationEngine } from '../email/index.js';
 import { PendingTransactionService } from './pending.js';
+import { InboundReferenceRegistry } from './referenceRegistry.js';
 import { applicationLogger } from '../lib/logger.js';
 
 /**
@@ -58,7 +59,7 @@ export interface AppContext {
   readonly gateway: MessagingGatewayService;
   readonly pending: PendingTransactionService;
   readonly email: {
-    readonly correlation: TransactionCorrelationService;
+    readonly correlation: TransactionCorrelationEngine;
     listener: EmailListenerService | null;
   };
   webhook: NotificationWebhookServer | null;
@@ -102,7 +103,8 @@ export function createAppContext(customConfig?: ApplicationEnvironmentConfigurat
 
   const gateway = new MessagingGatewayService();
   const pending = new PendingTransactionService(config.pendingTransactionsStoragePath);
-  const emailCorrelation = new TransactionCorrelationService();
+  InboundReferenceRegistry.getInstance(config.inboundReferenceRegistryStoragePath);
+  const emailCorrelation = new TransactionCorrelationEngine();
   const notificationStore = new InboundNotificationStore(config.inboundNotificationStoragePath);
 
   return {

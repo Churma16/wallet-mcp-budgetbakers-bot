@@ -4,7 +4,7 @@ import {
   DEFAULT_COMMERCE_PLATFORMS,
   CommercePlatformDefinition,
 } from '../src/config/commercePlatforms.js';
-import { TransactionCorrelationService } from '../src/email/index.js';
+import { TransactionCorrelationEngine } from '../src/email/index.js';
 import type { PendingTransactionItem } from '../src/core/pending.js';
 import type { TransactionEvidence } from '../src/email/index.js';
 
@@ -131,7 +131,7 @@ describe('CommercePlatformRegistry', () => {
   });
 
   describe('Extensibility & Strategy Pattern (Adding a new platform like Tokopedia)', () => {
-    it('dynamically supports a new platform and integrates with TransactionCorrelationService without code changes', () => {
+    it('dynamically supports a new platform and integrates with TransactionCorrelationEngine without code changes', () => {
       const customRegistry = new CommercePlatformRegistry();
 
       // Register Tokopedia dynamically
@@ -155,9 +155,9 @@ describe('CommercePlatformRegistry', () => {
       expect(customRegistry.isCommerceMerchant('Tokopedia Official Store')).toBe(true);
       expect(customRegistry.isPlatformWallet('Tokopedia Saldo')).toBe(true);
 
-      // Verify that TransactionCorrelationService initialized with customRegistry
+      // Verify that TransactionCorrelationEngine initialized with customRegistry
       // seamlessly correlates a generic bank debit with Tokopedia invoice
-      const correlationService = new TransactionCorrelationService({
+      const correlationService = new TransactionCorrelationEngine({
         platformRegistry: customRegistry,
       });
 
