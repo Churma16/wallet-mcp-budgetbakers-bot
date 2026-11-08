@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { ReconciliationComparisonResult } from './types.js';
 
 export interface FormattedTicketReference {
@@ -33,7 +34,7 @@ export class ReconciliationSessionStore {
     ticketReferences: readonly FormattedTicketReference[] = []
   ): string {
     this.pruneExpired();
-    const id = Math.random().toString(36).substring(2, 10);
+    const id = randomBytes(4).toString('hex');
     const now = Date.now();
     const session: ReconciliationSession = {
       id,
