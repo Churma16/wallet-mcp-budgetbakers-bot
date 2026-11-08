@@ -270,37 +270,72 @@ export class ReconciliationHandler {
       });
     }
 
-    // Send Missing Transactions: 1 dedicated bubble per transaction for direct swipe-reply interaction
-    if (comparisonResult.missing.length > 0) {
-      for (const missingItem of comparisonResult.missing) {
-        const ticketRef = ticketReferences.find(t => t.mutationId === missingItem.mutation.id);
-        const ticketId = ticketRef ? ticketRef.ticketId : 1;
-        const itemBubbleText = buildSingleMissingItemBubble(missingItem, ticketId);
+    // Send Bubble 4: Missing List Card with CTA button (if any)
+    if (cards.missing) {
+      await this.deps.gateway.sendMessage(event.channel, event.chatIdentifier, cards.missing.text, {
+        replyMarkup: cards.missing.replyMarkup,
+      });
+    }
 
-        const receipt = await this.deps.gateway.sendMessage(
-          event.channel,
-          event.chatIdentifier,
-          itemBubbleText
-        );
+    return true;
+  }
 
-        if (
-          receipt &&
-          receipt.messageId &&
-          typeof this.deps.pendingTransactionManager.updateNotificationMessageIds === 'function'
-        ) {
-          this.deps.pendingTransactionManager.updateNotificationMessageIds(ticketId, {
-            [event.channel]: receipt.messageId,
-          });
-        }
+  /**
+   * Spawns individual transaction bubbles for unrecorded mutations when the CTA button is clicked.
+   */
+  public async handleSpawnMissingRequest(
+    event: IncomingUserMessageEvent,
+    sessionId: string
+  ): Promise<boolean> {
+    const session = reconciliationSessionStore.getSession(sessionId);
+    if (!session) {
+      await this.deps.gateway.sendMessage(
+        event.channel,
+        event.chatIdentifier,
+        '⚠️ Sesi rekonsiliasi telah berakhir. Silakan jalankan kembali `/reconciliation`.'
+      );
+      return true;
+    }
+
+    if (session.hasSpawnedMissingBubbles) {
+      await this.deps.gateway.sendMessage(
+        event.channel,
+        event.chatIdentifier,
+        '⚠️ _Transaksi terlewat sudah ditampilkan. Silakan swipe reply pada bubble transaksi di atas, atau balas *Ya semua*._'
+      );
+      return true;
+    }
+
+    reconciliationSessionStore.markMissingBubblesSpawned(sessionId);
+
+    for (const missingItem of session.result.missing) {
+      const ticketRef = session.ticketReferences.find(t => t.mutationId === missingItem.mutation.id);
+      const ticketId = ticketRef ? ticketRef.ticketId : 1;
+      const itemBubbleText = buildSingleMissingItemBubble(missingItem, ticketId);
+
+      const receipt = await this.deps.gateway.sendMessage(
+        event.channel,
+        event.chatIdentifier,
+        itemBubbleText
+      );
+
+      if (
+        receipt &&
+        receipt.messageId &&
+        typeof this.deps.pendingTransactionManager.updateNotificationMessageIds === 'function'
+      ) {
+        this.deps.pendingTransactionManager.updateNotificationMessageIds(ticketId, {
+          [event.channel]: receipt.messageId,
+        });
       }
+    }
 
-      if (comparisonResult.missing.length > 1) {
-        await this.deps.gateway.sendMessage(
-          event.channel,
-          event.chatIdentifier,
-          `💡 _Terdapat ${comparisonResult.missing.length} transaksi terlewat. Balas *Ya semua* untuk catat sekaligus, atau swipe reply per bubble di atas._`
-        );
-      }
+    if (session.result.missing.length > 1) {
+      await this.deps.gateway.sendMessage(
+        event.channel,
+        event.chatIdentifier,
+        `💡 _Terdapat ${session.result.missing.length} transaksi terlewat. Balas *Ya semua* untuk catat sekaligus, atau swipe reply per bubble di atas._`
+      );
     }
 
     return true;

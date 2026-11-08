@@ -14,6 +14,7 @@ export interface ReconciliationSession {
   readonly ticketReferences: readonly FormattedTicketReference[];
   readonly createdAt: number;
   readonly expiresAt: number;
+  hasSpawnedMissingBubbles?: boolean;
 }
 
 /**
@@ -56,6 +57,13 @@ export class ReconciliationSessionStore {
 
   public deleteSession(id: string): void {
     this.sessions.delete(id);
+  }
+
+  public markMissingBubblesSpawned(id: string): void {
+    const session = this.sessions.get(id);
+    if (session) {
+      session.hasSpawnedMissingBubbles = true;
+    }
   }
 
   public pruneExpired(): void {

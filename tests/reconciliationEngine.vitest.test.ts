@@ -439,7 +439,7 @@ describe('Reconciliation Card Formatter & Command Parser', () => {
     expect(card).toContain('*[Tiket #1] Rp50.000* • _4 Nov_');
     expect(card).toContain('2. *Roti O*');
     expect(card).toContain('*[Tiket #2] Rp35.000* • _4 Nov_');
-    expect(card).toContain('Balas *Ya semua* untuk catat sekaligus, atau *Ya #1*, atau *Batal*.');
+    expect(card).toContain('Tekan tombol di bawah untuk catat per transaksi, atau balas *Ya semua*.');
     expect(buildMissingCard([], new Map())).toBe('');
   });
 
@@ -752,9 +752,25 @@ describe('ReconciliationHandler Workflow Integration', () => {
     expect(sentMessages[1].text).toContain('🟢 *Sudah Sesuai (Total 1)*');
     expect(sentMessages[1].text).toContain('Grab');
 
-    expect(sentMessages[2].text).toContain('🔴 *Belum Tercatat [Tiket #1]*');
+    expect(sentMessages[2].text).toContain('🔴 *Terlewat / Belum Tercatat (Total 1)*');
     expect(sentMessages[2].text).toContain('Gojek via Jago');
     expect(sentMessages[2].text).toContain('Rp58.500');
+    expect(sentMessages[2].options?.replyMarkup?.inline_keyboard[0][0].text).toBe('✍️ Catat Per Transaksi');
+
+    // Trigger CTA spawn to expand into individual bubbles
+    const sessions = (reconciliationSessionStore as any).sessions;
+    const sessId = Array.from(sessions.keys()).pop() as string;
+    await handler.handleSpawnMissingRequest({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: `/recon_spawn ${sessId}`,
+    }, sessId);
+
+    expect(sentMessages.length).toBe(4);
+    expect(sentMessages[3].text).toContain('🔴 *Belum Tercatat [Tiket #1]*');
+    expect(sentMessages[3].text).toContain('Gojek via Jago');
   });
 
   it('reports warning when brainProvider does not support processStatementImages', async () => {

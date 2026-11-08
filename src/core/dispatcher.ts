@@ -351,6 +351,19 @@ export class MessageDispatcher {
         }
       }
 
+      // 0a. Explicit /recon_spawn command triggered from inline button callback
+      if (
+        event.messageType === 'text' &&
+        event.textPayload &&
+        event.textPayload.startsWith('/recon_spawn ')
+      ) {
+        const sessionId = event.textPayload.slice('/recon_spawn '.length).trim();
+        const handledSpawn = await this.reconciliationHandler.handleSpawnMissingRequest(event, sessionId);
+        if (handledSpawn) {
+          return;
+        }
+      }
+
       // 0a. Explicit transaction delete confirmation or cancellation commands (e.g. from inline button callback)
       if (
         event.messageType === 'text' &&

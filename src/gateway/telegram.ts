@@ -36,6 +36,7 @@ import {
   convertWhatsAppMarkupToTelegramHtml,
 } from './formatters/telegramFormatter.js';
 import { handleReconciliationPagination } from '../core/reconciliation/reconciliationCardFormatter.js';
+import { reconciliationSessionStore } from '../core/reconciliation/reconciliationSessionStore.js';
 import { getActiveLanguage, getDictionary } from '../i18n/index.js';
 
 export type { TelegramSafeguardConfiguration };
@@ -727,6 +728,32 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       } else if (callbackData.startsWith('recon:')) {
         if (callbackData === 'recon:noop') {
           await ctx.answerCallbackQuery();
+          return;
+        }
+
+        if (callbackData.endsWith(':spawn_missing')) {
+          const parts = callbackData.split(':');
+          const sessionId = parts[1];
+          const session = reconciliationSessionStore.getSession(sessionId);
+          if (!session) {
+            await ctx.answerCallbackQuery({
+              text: 'Sesi rekonsiliasi telah berakhir. Silakan jalankan ulang /reconciliation.',
+              show_alert: true,
+            });
+            return;
+          }
+
+          const chatId = String(ctx.chat?.id);
+          const senderIdentifier = ctx.from?.id ? String(ctx.from.id) : chatId;
+
+          await ctx.answerCallbackQuery({ text: 'Menampilkan transaksi terlewat...' });
+          await this.onUserMessageReceived({
+            channel: 'telegram',
+            messageType: 'text',
+            chatIdentifier: chatId,
+            senderIdentifier,
+            textPayload: `/recon_spawn ${sessionId}`,
+          });
           return;
         }
 

@@ -56,6 +56,25 @@ export function buildPaginationInlineKeyboard(
   page: number,
   totalPages: number
 ): InlineKeyboardMarkup | undefined {
+  if (type === 'x') {
+    const keyboard: InlineKeyboardButton[][] = [];
+    if (totalPages > 1) {
+      const navRow: InlineKeyboardButton[] = [];
+      if (page > 1) {
+        navRow.push({ text: '⬅️ Prev', callback_data: `recon:${sessionId}:x:${page - 1}` });
+      }
+      navRow.push({ text: `${page}/${totalPages}`, callback_data: 'recon:noop' });
+      if (page < totalPages) {
+        navRow.push({ text: 'Next ➡️', callback_data: `recon:${sessionId}:x:${page + 1}` });
+      }
+      keyboard.push(navRow);
+    }
+    keyboard.push([
+      { text: '✍️ Catat Per Transaksi', callback_data: `recon:${sessionId}:spawn_missing` },
+    ]);
+    return { inline_keyboard: keyboard };
+  }
+
   if (totalPages <= 1) {
     return undefined;
   }
@@ -198,8 +217,8 @@ export function buildMissingCard(
 
   if (ticketIds.length > 0) {
     const hintStr = ticketIds.length === 1
-      ? `💡 _Balas *Ya #${ticketIds[0]}* untuk konfirmasi catat ke Wallet, atau *Batal*._`
-      : `💡 _Balas *Ya semua* untuk catat sekaligus, atau *Ya #${ticketIds[0]}*, atau *Batal*._`;
+      ? `💡 _Balas *Ya #${ticketIds[0]}* untuk catat ke Wallet, atau tekan tombol di bawah._`
+      : `💡 _Tekan tombol di bawah untuk catat per transaksi, atau balas *Ya semua*._`;
     lines.push(hintStr);
   }
 
