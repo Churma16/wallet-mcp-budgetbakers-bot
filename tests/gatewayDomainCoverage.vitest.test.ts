@@ -165,7 +165,7 @@ describe('Gateway Domain Coverage Gate', () => {
 
       expect(mockCallback).not.toHaveBeenCalled();
 
-      await vi.advanceTimersByTimeAsync(850);
+      await vi.advanceTimersByTimeAsync(2050);
 
       expect(mockCallback).toHaveBeenCalledTimes(1);
       const event = mockCallback.mock.calls[0][0];

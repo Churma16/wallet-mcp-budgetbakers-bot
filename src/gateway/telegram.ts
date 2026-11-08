@@ -41,6 +41,8 @@ import { getActiveLanguage, getDictionary } from '../i18n/index.js';
 export type { TelegramSafeguardConfiguration };
 export { escapeHtmlEntities, formatTelegramHtml, convertWhatsAppMarkupToTelegramHtml };
 
+export const MEDIA_GROUP_DEBOUNCE_MS = 2000;
+
 type SettingPropertyUpdater = (value: string, manager: RuntimeSettingsManager) => Promise<void>;
 
 const SETTING_PROPERTY_UPDATERS: Record<string, SettingPropertyUpdater> = {
@@ -903,7 +905,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
               `[Telegram] Failed dispatching media group: ${dispatchError instanceof Error ? dispatchError.message : String(dispatchError)}`
             );
           }
-        }, 800);
+        }, MEDIA_GROUP_DEBOUNCE_MS);
         return;
       } catch (downloadError: unknown) {
         if (isMediaPayloadSizeLimitExceeded(downloadError)) {
