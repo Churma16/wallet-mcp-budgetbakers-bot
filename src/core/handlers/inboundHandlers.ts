@@ -13,6 +13,7 @@ import { PendingTransactionService } from '../pending.js';
 import { WalletCacheService, WalletMcpClientService } from '../../wallet/index.js';
 import { TransactionMessageStore, EnrichmentPoolService } from '../../wallet/records/index.js';
 import { coordinateInboundTransactionCandidate } from '../inboundCoordinator.js';
+import { InboundReferenceRegistry } from '../referenceRegistry.js';
 import { evaluateNotificationThroughGate } from '../../config/notificationRules.js';
 import { applicationLogger } from '../../lib/logger.js';
 
@@ -88,6 +89,7 @@ export class EmailTransactionHandler {
           detectedEvent.gateResult.matchedBankRule?.displayName || 'Merchant',
         fallbackNote: detectedEvent.emailSubject,
         onRecordProcessed: ref => {
+          InboundReferenceRegistry.getInstance().recordReference(ref);
           const activeListener = this.emailListenerServiceGetter
             ? this.emailListenerServiceGetter()
             : null;
@@ -234,7 +236,9 @@ export class NotificationTransactionHandler {
         fallbackNote: payload.title
           ? `${payload.title} - ${payload.text}`
           : payload.text,
-        onRecordProcessed: () => {},
+        onRecordProcessed: ref => {
+          InboundReferenceRegistry.getInstance().recordReference(ref);
+        },
         isReplay: options?.isReplay,
       },
       {

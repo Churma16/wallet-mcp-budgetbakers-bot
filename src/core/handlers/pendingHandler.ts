@@ -24,6 +24,7 @@ import {
 import { normalizeTransactionText } from '../../lib/textCasing.js';
 import { getDictionary } from '../../i18n/index.js';
 import { SupportedLanguage } from '../../i18n/types.js';
+import { InboundReferenceRegistry } from '../referenceRegistry.js';
 import {
   buildItemViewModelFromPendingItem,
   buildTransactionAttentionSummary,
@@ -311,17 +312,31 @@ export class PendingActionHandler {
               labels: item.labels,
               notificationMessageIds: item.notificationMessageIds,
               channel: event.channel,
+              referenceNumbers:
+                item.referenceNumbers ||
+                (item.referenceNumber ? [item.referenceNumber] : undefined),
             });
           }
         }
 
+        const allRefs = Array.from(
+          new Set([
+            ...(item.referenceNumbers || []),
+            ...(item.referenceNumber ? [item.referenceNumber] : []),
+          ])
+        ).filter(Boolean);
+
+        if (createdId && allRefs.length > 0) {
+          InboundReferenceRegistry.getInstance().recordReferences(allRefs, {
+            recordId: createdId,
+            amount: item.amount,
+            currency: item.currency,
+            accountId: item.matchedAccountId,
+            source: item.sourceType === 'PUSH_NOTIFICATION' ? 'push' : 'email',
+          });
+        }
+
         if (activeEmailListener) {
-          const allRefs = Array.from(
-            new Set([
-              ...(item.referenceNumbers || []),
-              ...(item.referenceNumber ? [item.referenceNumber] : []),
-            ])
-          ).filter(Boolean);
           if (allRefs.length > 0) {
             for (const ref of allRefs) {
               activeEmailListener.recordProcessedTransaction(undefined, ref);
@@ -488,6 +503,9 @@ export class PendingActionHandler {
             counterParty: item.counterParty,
             channel: event.channel,
             isTransfer: item.transactionType === 'TRANSFER',
+            referenceNumbers:
+              item.referenceNumbers ||
+              (item.referenceNumber ? [item.referenceNumber] : undefined),
           });
 
           if (this.enrichmentPoolService) {

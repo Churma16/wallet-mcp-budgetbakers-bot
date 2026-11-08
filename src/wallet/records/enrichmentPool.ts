@@ -17,6 +17,7 @@ export interface EnrichmentPoolItem {
   categoryId?: string;
   categoryName?: string;
   labels?: string[];
+  referenceNumbers?: string[];
   channel?: string;
   notificationMessageIds?: Record<string, string>;
   isBankSynced?: boolean;

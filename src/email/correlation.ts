@@ -21,6 +21,8 @@ import {
   fuseCandidateWithEvidence,
   evaluateComplementarySources,
 } from './transactionFusion.js';
+import { TransactionCorrelationEngine } from './correlation/engine.js';
+import { InformationDensityResolver } from './correlation/densityResolver.js';
 
 export type {
   BankSourceCandidate,
@@ -40,6 +42,8 @@ export class TransactionCorrelationService {
   private readonly maxCorrelationWindowMilliseconds: number;
   private readonly tightWindowMilliseconds: number;
   private readonly platformRegistry: CommercePlatformRegistry;
+  private readonly engine: TransactionCorrelationEngine;
+  private readonly densityResolver: InformationDensityResolver;
 
   constructor(options?: TransactionCorrelationOptions) {
     this.maxCorrelationWindowMilliseconds =
@@ -48,6 +52,16 @@ export class TransactionCorrelationService {
       options?.tightWindowMilliseconds ?? 15 * 60 * 1000; // 15 mins
     this.platformRegistry =
       options?.platformRegistry ?? CommercePlatformRegistry.getInstance();
+    this.densityResolver = new InformationDensityResolver();
+    this.engine = new TransactionCorrelationEngine(
+      {
+        platformRegistry: this.platformRegistry,
+        densityResolver: this.densityResolver,
+      },
+      {
+        maxWindowMs: this.maxCorrelationWindowMilliseconds,
+      }
+    );
   }
 
   /**
@@ -79,26 +93,18 @@ export class TransactionCorrelationService {
 
   /**
    * Evaluates incoming evidence against existing pending candidates and recent Wallet records.
-   * Produces a deterministic correlation decision with confidence and suggested action.
+   * Produces a deterministic correlation decision with confidence and suggested action
+   * via the Unified Multi-Signal Correlation & Scoring Engine.
    */
   public correlateEvidence(
     incomingEvidence: TransactionEvidence,
     existingPendingItems: PendingTransactionItem[],
     recentWalletRecords: WalletRecordItem[] = []
   ): CorrelationResult {
-    // 1. Check against existing native/bank-synced Wallet records first
-    const walletRecordResult = this.correlateAgainstWalletRecords(
+    return this.engine.correlate(
       incomingEvidence,
+      existingPendingItems,
       recentWalletRecords
-    );
-    if (walletRecordResult) {
-      return walletRecordResult;
-    }
-
-    // 2. Check against unresolved pending transactions
-    return this.correlateAgainstPendingTransactions(
-      incomingEvidence,
-      existingPendingItems
     );
   }
 
@@ -497,6 +503,6 @@ export class TransactionCorrelationService {
     candidate: PendingTransactionItem,
     incoming: TransactionEvidence
   ): Partial<PendingTransactionItem> {
-    return fuseCandidateWithEvidence(candidate, incoming, this.platformRegistry);
+    return this.densityResolver.fusePendingItemWithEvidence(candidate, incoming);
   }
 }

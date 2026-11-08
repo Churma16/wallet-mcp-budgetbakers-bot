@@ -22,6 +22,7 @@ import {
   EnrichmentPoolService,
   isEligibleForEnrichmentPool,
 } from '../wallet/records/index.js';
+import { InboundReferenceRegistry } from './referenceRegistry.js';
 import { RuntimeSettingsManager } from '../config/runtimeSettingsManager.js';
 import { applicationLogger } from '../lib/logger.js';
 
@@ -115,6 +116,13 @@ export async function coordinateInboundTransactionCandidate(
       ...(gateResult.referenceNumber ? [gateResult.referenceNumber] : []),
     ])
   ).filter(Boolean);
+
+  if (extractedRefs.length > 0) {
+    InboundReferenceRegistry.getInstance().recordReferences(extractedRefs, {
+      amount: parsedData.amount,
+      source: evidenceSourceType,
+    });
+  }
 
   const incomingEvidence: TransactionEvidence = {
     sourceType: evidenceSourceType,
@@ -282,6 +290,16 @@ export async function coordinateInboundTransactionCandidate(
           `[Retroactive Enrichment] Successfully patched Wallet MCP record ${matchedRecord.id}.`
         );
 
+        if (incomingEvidence.referenceNumbers && incomingEvidence.referenceNumbers.length > 0) {
+          InboundReferenceRegistry.getInstance().recordReferences(incomingEvidence.referenceNumbers, {
+            recordId: matchedRecord.id,
+            amount: incomingEvidence.amount,
+            currency: incomingEvidence.currency,
+            accountId: matchedRecord.accountId,
+            source: incomingEvidence.sourceType === 'PUSH_NOTIFICATION' ? 'push' : 'email',
+          });
+        }
+
         // Prune from enrichment pool
         deps.enrichmentPoolService?.removeCandidate(matchedRecord.id);
 
@@ -316,6 +334,9 @@ export async function coordinateInboundTransactionCandidate(
             ...(patchPayload.categoryId ? { categoryId: patchPayload.categoryId, categoryName: incomingCategoryName } : {}),
             ...(patchPayload.note ? { note: patchPayload.note } : {}),
             ...(patchPayload.labels ? { labels: patchPayload.labels } : {}),
+            ...(incomingEvidence.referenceNumbers && incomingEvidence.referenceNumbers.length > 0
+              ? { referenceNumbers: incomingEvidence.referenceNumbers }
+              : {}),
           });
         }
 
@@ -370,6 +391,7 @@ export async function coordinateInboundTransactionCandidate(
                   counterParty:
                     patchPayload.counterParty || matchedRecord.counterParty || incomingEvidence.merchant,
                   channel,
+                  referenceNumbers: incomingEvidence.referenceNumbers,
                 });
               }
             }
@@ -538,6 +560,25 @@ export async function coordinateInboundTransactionCandidate(
                 channel: enrichedItem.notificationMessageIds
                   ? Object.keys(enrichedItem.notificationMessageIds)[0]
                   : undefined,
+                referenceNumbers:
+                  enrichedItem.referenceNumbers ||
+                  (enrichedItem.referenceNumber ? [enrichedItem.referenceNumber] : undefined),
+              });
+            }
+          }
+
+          if (createdId) {
+            const allRefs = [
+              ...(enrichedItem.referenceNumbers || []),
+              ...(enrichedItem.referenceNumber ? [enrichedItem.referenceNumber] : []),
+            ];
+            if (allRefs.length > 0) {
+              InboundReferenceRegistry.getInstance().recordReferences(allRefs, {
+                recordId: createdId,
+                amount: enrichedItem.amount,
+                currency: enrichedItem.currency,
+                accountId: enrichedItem.matchedAccountId,
+                source: 'email',
               });
             }
           }
@@ -603,6 +644,9 @@ export async function coordinateInboundTransactionCandidate(
                   counterParty: enrichedItem.counterParty,
                   channel,
                   isTransfer: enrichedItem.transactionType === 'TRANSFER',
+                  referenceNumbers:
+                    enrichedItem.referenceNumbers ||
+                    (enrichedItem.referenceNumber ? [enrichedItem.referenceNumber] : undefined),
                 });
               }
             }
