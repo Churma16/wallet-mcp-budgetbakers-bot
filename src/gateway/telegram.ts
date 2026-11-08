@@ -35,6 +35,7 @@ import {
   formatTelegramHtml,
   convertWhatsAppMarkupToTelegramHtml,
 } from './formatters/telegramFormatter.js';
+import { handleReconciliationPagination } from '../core/reconciliation/reconciliationCardFormatter.js';
 import { getActiveLanguage, getDictionary } from '../i18n/index.js';
 
 export type { TelegramSafeguardConfiguration };
@@ -720,6 +721,23 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
           await ctx.editMessageText(formatTelegramHtml(cancelledText), { parse_mode: 'HTML' });
         } catch {
           // ignore edit errors
+        }
+      } else if (callbackData.startsWith('recon:')) {
+        await ctx.answerCallbackQuery();
+        if (callbackData === 'recon:noop') {
+          return;
+        }
+
+        const paginationResult = handleReconciliationPagination(callbackData);
+        if (paginationResult) {
+          try {
+            await ctx.editMessageText(formatTelegramHtml(paginationResult.text), {
+              parse_mode: 'HTML',
+              reply_markup: paginationResult.replyMarkup as any,
+            });
+          } catch {
+            // ignore unchanged edits or network drops
+          }
         }
       } else {
         await ctx.answerCallbackQuery();

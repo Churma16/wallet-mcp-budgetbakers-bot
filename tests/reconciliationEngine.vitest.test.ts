@@ -10,7 +10,17 @@ import {
   jagoGopayRule,
 } from '../src/core/reconciliation/rules/jagoGopayRules.js';
 import { parseStatementExtractionResponse } from '../src/brain/parsers/statementParser.js';
-import { formatReconciliationCard } from '../src/core/reconciliation/reconciliationCardFormatter.js';
+import {
+  formatReconciliationCard,
+  formatReconciliationCards,
+  buildOverviewCard,
+  buildMatchedCard,
+  buildWrongAccountCard,
+  buildMissingCard,
+  buildPaginationInlineKeyboard,
+  handleReconciliationPagination,
+} from '../src/core/reconciliation/reconciliationCardFormatter.js';
+import { reconciliationSessionStore } from '../src/core/reconciliation/reconciliationSessionStore.js';
 import { extractReconciliationAccountHint, isReconciliationCommand } from '../src/core/handlers/reconciliationHandler.js';
 
 describe('Reconciliation Engine - Distance Priority & Exact Matching', () => {
@@ -301,22 +311,227 @@ describe('Reconciliation Card Formatter & Command Parser', () => {
     });
 
     expect(card).toContain('Hasil Rekonsiliasi: Bank Jago');
-    expect(card).toContain('Sudah Sesuai (1)');
-    expect(card).toContain('Salah Wallet / Akun (1)');
-    expect(card).toContain('Terlewat / Belum Tercatat (1)');
+    expect(card).toContain('Sudah Sesuai (Total 1)');
+    expect(card).toContain('Salah Wallet / Akun (Total 1)');
+    expect(card).toContain('Terlewat / Belum Tercatat (Total 1)');
     expect(card).toContain('[Tiket #101]');
-    expect(card).toContain('Balas <b>Ya 101</b>');
+    expect(card).toContain('Balas *Ya 101*');
+  });
+
+  it('builds overview card with status breakdown and celebration on 100% matched', () => {
+    const allMatched = {
+      targetAccountId: 'acc-jago',
+      targetAccountName: 'Bank Jago',
+      dateRange: { startDate: '2026-11-04', endDate: '2026-11-06' },
+      totalMutations: 2,
+      matched: [
+        {
+          mutation: { id: 'm1', date: '2026-11-06', amount: 50000, direction: 'DEBIT' as const, counterParty: 'Store 1' },
+          walletRecord: { id: 'r1', accountId: 'acc-jago', amount: -50000, currency: 'IDR', recordDate: '2026-11-06', recordType: 'expense' as const },
+        },
+      ],
+      wrongAccount: [],
+      missing: [],
+      extraInWallet: [],
+    };
+
+    const overview = buildOverviewCard(allMatched);
+    expect(overview).toContain('Sudah Sesuai: *1 transaksi*');
+    expect(overview).toContain('Salah Akun / Wallet: *0 transaksi*');
+    expect(overview).toContain('Belum Tercatat: *0 transaksi*');
+    expect(overview).toContain('Semua transaksi mutasi tercatat lengkap di Wallet!');
+  });
+
+  it('formats matched card with 2-line numbered items and continuous page numbering', () => {
+    const pairs = Array.from({ length: 7 }, (_, i) => ({
+      mutation: {
+        id: `m-${i + 1}`,
+        date: '2026-11-06',
+        amount: (i + 1) * 10000,
+        direction: 'DEBIT' as const,
+        counterParty: `Merchant ${i + 1}`,
+      },
+      walletRecord: {
+        id: `r-${i + 1}`,
+        accountId: 'acc-jago',
+        amount: -((i + 1) * 10000),
+        currency: 'IDR',
+        recordDate: '2026-11-06',
+        recordType: 'expense' as const,
+      },
+    }));
+
+    // Page 1 (items 1..5)
+    const page1 = buildMatchedCard(pairs, 1, 5);
+    expect(page1).toContain('🟢 *Sudah Sesuai (Hal 1/2 - Total 7)*');
+    expect(page1).toContain('1. *Merchant 1*\n   Rp10.000 • _6 Nov_');
+    expect(page1).toContain('5. *Merchant 5*\n   Rp50.000 • _6 Nov_');
+    expect(page1).not.toContain('6. *Merchant 6*');
+
+    // Page 2 (items 6..7)
+    const page2 = buildMatchedCard(pairs, 2, 5);
+    expect(page2).toContain('🟢 *Sudah Sesuai (Hal 2/2 - Total 7)*');
+    expect(page2).toContain('6. *Merchant 6*\n   Rp60.000 • _6 Nov_');
+    expect(page2).toContain('7. *Merchant 7*\n   Rp70.000 • _6 Nov_');
+    expect(page2).not.toContain('1. *Merchant 1*');
+
+    // Empty list returns empty string
+    expect(buildMatchedCard([])).toBe('');
+  });
+
+  it('formats wrong account card with 2-line detail and actual account note', () => {
+    const wrong = [
+      {
+        mutation: { id: 'm1', date: '2026-11-05', amount: 15799, direction: 'DEBIT' as const, counterParty: 'Tokopedia' },
+        walletRecord: { id: 'r1', accountId: 'acc-mandiri', amount: -15799, currency: 'IDR', recordDate: '2026-11-05', recordType: 'expense' as const },
+        actualAccountName: 'Mandiri Debit Card',
+      },
+    ];
+
+    const card = buildWrongAccountCard(wrong, 'Jago Expense');
+    expect(card).toContain('🟡 *Salah Wallet / Akun (Total 1)*');
+    expect(card).toContain('1. *Tokopedia*');
+    expect(card).toContain('*Rp15.799* • _5 Nov_');
+    expect(card).toContain('↳ Tercatat di: *Mandiri Debit Card* (seharusnya Jago Expense)');
+    expect(buildWrongAccountCard([], 'Jago Expense')).toBe('');
+  });
+
+  it('formats missing card with ticket references and confirmation prompt', () => {
+    const missing = [
+      {
+        mutation: { id: 'm1', date: '2026-11-04', amount: 50000, direction: 'DEBIT' as const, counterParty: 'Kopi Kenangan' },
+      },
+      {
+        mutation: { id: 'm2', date: '2026-11-04', amount: 35000, direction: 'DEBIT' as const, counterParty: 'Roti O' },
+      },
+    ];
+
+    const ticketMap = new Map([
+      ['m1', 1],
+      ['m2', 2],
+    ]);
+
+    const card = buildMissingCard(missing, ticketMap);
+    expect(card).toContain('🔴 *Terlewat / Belum Tercatat (Total 2)*');
+    expect(card).toContain('1. *Kopi Kenangan*');
+    expect(card).toContain('*[Tiket #1] Rp50.000* • _4 Nov_');
+    expect(card).toContain('2. *Roti O*');
+    expect(card).toContain('*[Tiket #2] Rp35.000* • _4 Nov_');
+    expect(card).toContain('Balas *Ya 1,2* untuk konfirmasi catat ke Wallet, atau *Batal*.');
+    expect(buildMissingCard([], new Map())).toBe('');
+  });
+
+  it('builds pagination inline keyboard properly with boundary guards', () => {
+    // Single page returns undefined
+    expect(buildPaginationInlineKeyboard('sess1', 'm', 1, 1)).toBeUndefined();
+
+    // First page of multi-page
+    const p1 = buildPaginationInlineKeyboard('sess1', 'm', 1, 3);
+    expect(p1?.inline_keyboard[0].length).toBe(2);
+    expect(p1?.inline_keyboard[0][0].text).toBe('1/3');
+    expect(p1?.inline_keyboard[0][1].text).toBe('Next ➡️');
+    expect(p1?.inline_keyboard[0][1].callback_data).toBe('recon:sess1:m:2');
+
+    // Middle page of multi-page
+    const p2 = buildPaginationInlineKeyboard('sess1', 'm', 2, 3);
+    expect(p2?.inline_keyboard[0].length).toBe(3);
+    expect(p2?.inline_keyboard[0][0].text).toBe('⬅️ Prev');
+    expect(p2?.inline_keyboard[0][1].text).toBe('2/3');
+    expect(p2?.inline_keyboard[0][2].text).toBe('Next ➡️');
+
+    // Last page of multi-page
+    const p3 = buildPaginationInlineKeyboard('sess1', 'm', 3, 3);
+    expect(p3?.inline_keyboard[0].length).toBe(2);
+    expect(p3?.inline_keyboard[0][0].text).toBe('⬅️ Prev');
+    expect(p3?.inline_keyboard[0][1].text).toBe('3/3');
+  });
+
+  it('manages reconciliation session store lifecycle and pruning', () => {
+    reconciliationSessionStore.clear();
+
+    const dummyResult = {
+      targetAccountId: 'acc-1',
+      targetAccountName: 'Jago',
+      dateRange: { startDate: '2026-11-01', endDate: '2026-11-02' },
+      totalMutations: 0,
+      matched: [],
+      wrongAccount: [],
+      missing: [],
+      extraInWallet: [],
+    };
+
+    const sessId = reconciliationSessionStore.createSession('chat-1', 'Jago', dummyResult, []);
+    expect(sessId).toBeDefined();
+
+    const session = reconciliationSessionStore.getSession(sessId);
+    expect(session?.chatId).toBe('chat-1');
+
+    reconciliationSessionStore.deleteSession(sessId);
+    expect(reconciliationSessionStore.getSession(sessId)).toBeUndefined();
+  });
+
+  it('handles reconciliation pagination callback queries correctly', () => {
+    reconciliationSessionStore.clear();
+
+    const result = {
+      targetAccountId: 'acc-jago',
+      targetAccountName: 'Bank Jago',
+      dateRange: { startDate: '2026-11-01', endDate: '2026-11-02' },
+      totalMutations: 6,
+      matched: Array.from({ length: 6 }, (_, i) => ({
+        mutation: { id: `m-${i}`, date: '2026-11-01', amount: 10000, direction: 'DEBIT' as const, counterParty: `M${i}` },
+        walletRecord: { id: `r-${i}`, accountId: 'acc-jago', amount: -10000, currency: 'IDR', recordDate: '2026-11-01', recordType: 'expense' as const },
+      })),
+      wrongAccount: [
+        {
+          mutation: { id: 'w1', date: '2026-11-01', amount: 20000, direction: 'DEBIT' as const, counterParty: 'WrongStore' },
+          walletRecord: { id: 'rw1', accountId: 'acc-other', amount: -20000, currency: 'IDR', recordDate: '2026-11-01', recordType: 'expense' as const },
+          actualAccountName: 'OtherBank',
+        },
+      ],
+      missing: [
+        {
+          mutation: { id: 'x1', date: '2026-11-01', amount: 30000, direction: 'DEBIT' as const, counterParty: 'MissingStore' },
+        },
+      ],
+      extraInWallet: [],
+    };
+
+    const sessId = reconciliationSessionStore.createSession('chat-1', 'Bank Jago', result, [
+      { mutationId: 'x1', ticketId: 42 },
+    ]);
+
+    // Ignored / invalid callbacks
+    expect(handleReconciliationPagination('other:command')).toBeNull();
+    expect(handleReconciliationPagination('recon:noop')).toBeNull();
+    expect(handleReconciliationPagination('recon:sess:invalid')).toBeNull();
+    expect(handleReconciliationPagination('recon:non-existent:m:1')).toBeNull();
+
+    // Valid matched page 2
+    const mPage2 = handleReconciliationPagination(`recon:${sessId}:m:2`);
+    expect(mPage2).not.toBeNull();
+    expect(mPage2?.text).toContain('🟢 *Sudah Sesuai (Hal 2/2 - Total 6)*');
+    expect(mPage2?.text).toContain('6. *M5*');
+
+    // Valid wrong account page 1
+    const wPage1 = handleReconciliationPagination(`recon:${sessId}:w:1`);
+    expect(wPage1?.text).toContain('🟡 *Salah Wallet / Akun (Total 1)*');
+
+    // Valid missing page 1
+    const xPage1 = handleReconciliationPagination(`recon:${sessId}:x:1`);
+    expect(xPage1?.text).toContain('🔴 *Terlewat / Belum Tercatat (Total 1)*');
+    expect(xPage1?.text).toContain('[Tiket #42]');
   });
 });
 
 describe('ReconciliationHandler Workflow Integration', () => {
   function createMockDependencies() {
-    const sentMessages: Array<{ channel: string; chatIdentifier: string; text: string }> = [];
+    const sentMessages: Array<{ channel: string; chatIdentifier: string; text: string; options?: any }> = [];
     const addedTickets: any[] = [];
 
     const mockGateway = {
-      sendMessage: async (channel: string, chatIdentifier: string, text: string) => {
-        sentMessages.push({ channel, chatIdentifier, text });
+      sendMessage: async (channel: string, chatIdentifier: string, text: string, options?: any) => {
+        sentMessages.push({ channel, chatIdentifier, text, options });
       },
       sendTypingPresence: async () => {},
     };
@@ -494,11 +709,18 @@ describe('ReconciliationHandler Workflow Integration', () => {
     expect(addedTickets[0].amount).toBe(-58500);
     expect(addedTickets[0].matchedCategoryId).toBe('cat-transport');
 
-    // Sent message card must mention Bank Jago and ticket #1
+    // Sent messages: Bubble 1 (Overview), Bubble 2 (Matched), Bubble 3 (Missing)
+    expect(sentMessages.length).toBe(3);
     expect(sentMessages[0].text).toContain('Hasil Rekonsiliasi: Bank Jago');
-    expect(sentMessages[0].text).toContain('Sudah Sesuai (1)');
-    expect(sentMessages[0].text).toContain('Terlewat / Belum Tercatat (1)');
-    expect(sentMessages[0].text).toContain('[Tiket #1]');
+    expect(sentMessages[0].text).toContain('Sudah Sesuai: *1 transaksi*');
+    expect(sentMessages[0].text).toContain('Belum Tercatat: *1 transaksi*');
+
+    expect(sentMessages[1].text).toContain('🟢 *Sudah Sesuai (Total 1)*');
+    expect(sentMessages[1].text).toContain('Grab');
+
+    expect(sentMessages[2].text).toContain('🔴 *Terlewat / Belum Tercatat (Total 1)*');
+    expect(sentMessages[2].text).toContain('[Tiket #1]');
+    expect(sentMessages[2].text).toContain('Gojek via Jago');
   });
 
   it('reports warning when brainProvider does not support processStatementImages', async () => {
@@ -617,7 +839,8 @@ describe('Provider Statement Processing Coverage', () => {
 
     const card = formatReconciliationCard(comparisonResult);
     expect(card).toContain('Semua transaksi mutasi tercatat lengkap di Wallet!');
-    expect(card).toContain('...dan 2 transaksi lainnya cocok');
+    expect(card).toContain('🟢 *Sudah Sesuai (Hal 1/2 - Total 6)*');
+    expect(card).toContain('1. *T1*');
   });
 
   it('covers statement parser edge cases and date fallback', () => {

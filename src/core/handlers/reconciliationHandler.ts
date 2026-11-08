@@ -8,9 +8,10 @@ import { enrichHistoryRecords } from '../../wallet/records/recordNormalizer.js';
 import { applyReconciliationRules } from '../reconciliation/rules/jagoGopayRules.js';
 import { compareMutationsWithWalletRecords } from '../reconciliation/comparisonEngine.js';
 import {
-  formatReconciliationCard,
+  formatReconciliationCards,
   type FormattedTicketReference,
 } from '../reconciliation/reconciliationCardFormatter.js';
+import { reconciliationSessionStore } from '../reconciliation/reconciliationSessionStore.js';
 import { applicationLogger } from '../../lib/logger.js';
 import type { WalletRecordItem } from '../../wallet/types.js';
 
@@ -241,9 +242,39 @@ export class ReconciliationHandler {
       });
     }
 
-    // 8. Format & Send Telegram Card Response
-    const responseCard = formatReconciliationCard(comparisonResult, { ticketReferences });
-    await this.deps.gateway.sendMessage(event.channel, event.chatIdentifier, responseCard);
+    // 8. Create session and format separate cards
+    const sessionId = reconciliationSessionStore.createSession(
+      event.chatIdentifier,
+      targetAccount.name,
+      comparisonResult,
+      ticketReferences
+    );
+
+    const cards = formatReconciliationCards(sessionId, comparisonResult, { ticketReferences });
+
+    // Send Bubble 1: Overview Card
+    await this.deps.gateway.sendMessage(event.channel, event.chatIdentifier, cards.overview);
+
+    // Send Bubble 2: Matched (if any)
+    if (cards.matched) {
+      await this.deps.gateway.sendMessage(event.channel, event.chatIdentifier, cards.matched.text, {
+        replyMarkup: cards.matched.replyMarkup,
+      });
+    }
+
+    // Send Bubble 3: Wrong Account (if any)
+    if (cards.wrongAccount) {
+      await this.deps.gateway.sendMessage(event.channel, event.chatIdentifier, cards.wrongAccount.text, {
+        replyMarkup: cards.wrongAccount.replyMarkup,
+      });
+    }
+
+    // Send Bubble 4: Missing (if any)
+    if (cards.missing) {
+      await this.deps.gateway.sendMessage(event.channel, event.chatIdentifier, cards.missing.text, {
+        replyMarkup: cards.missing.replyMarkup,
+      });
+    }
 
     return true;
   }
