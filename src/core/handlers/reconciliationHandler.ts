@@ -20,8 +20,10 @@ export interface ReconciliationHandlerDependencies {
   readonly gateway: MessagingGatewayService;
   readonly walletClient: {
     fetchRecords(options?: {
+      dateRange?: string[];
       startDate?: string;
       endDate?: string;
+      offset?: number;
       limit?: number;
     }): Promise<{ records: WalletRecordItem[] }>;
   };
@@ -177,14 +179,36 @@ export class ReconciliationHandler {
     endDateObj.setUTCDate(endDateObj.getUTCDate() + 2);
     const expandedEndDate = endDateObj.toISOString().slice(0, 10);
 
+    const startDateIso = `${expandedStartDate}T00:00:00.000Z`;
+    const endDateIso = `${expandedEndDate}T23:59:59.999Z`;
+
     let rawRecords: WalletRecordItem[] = [];
     try {
-      const pageResult = await this.deps.walletClient.fetchRecords({
-        startDate: expandedStartDate,
-        endDate: expandedEndDate,
-        limit: 50,
-      });
-      rawRecords = pageResult.records;
+      let offset = 0;
+      const fetchPageLimit = 50;
+      const maxReconciliationRecords = 300;
+
+      while (true) {
+        const pageResult = await this.deps.walletClient.fetchRecords({
+          dateRange: [`gte.${startDateIso}`, `lte.${endDateIso}`],
+          startDate: expandedStartDate,
+          endDate: expandedEndDate,
+          offset,
+          limit: fetchPageLimit,
+        });
+
+        const fetchedRecords = pageResult?.records || [];
+        rawRecords.push(...fetchedRecords);
+
+        if (
+          fetchedRecords.length < fetchPageLimit ||
+          rawRecords.length >= maxReconciliationRecords
+        ) {
+          break;
+        }
+
+        offset += fetchPageLimit;
+      }
     } catch (fetchError: unknown) {
       applicationLogger.error(
         `[Reconciliation] Failed querying Wallet records: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`

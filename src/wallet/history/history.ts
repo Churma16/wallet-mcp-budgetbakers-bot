@@ -94,7 +94,16 @@ export async function fetchRecords(
       ? { categoryGroup: queryOptions.categoryGroup }
       : {}),
     ...(queryOptions?.recordType ? { recordType: queryOptions.recordType } : {}),
-    ...(Array.isArray(queryOptions?.dateRange) ? { recordDate: queryOptions.dateRange } : {}),
+    ...(Array.isArray(queryOptions?.dateRange)
+      ? { recordDate: queryOptions.dateRange }
+      : queryOptions?.startDate && queryOptions?.endDate
+        ? {
+            recordDate: [
+              `gte.${queryOptions.startDate.includes('T') ? queryOptions.startDate : `${queryOptions.startDate}T00:00:00.000Z`}`,
+              `lte.${queryOptions.endDate.includes('T') ? queryOptions.endDate : `${queryOptions.endDate}T23:59:59.999Z`}`,
+            ],
+          }
+        : {}),
     ...(queryOptions?.counterParty
       ? {
           counterParty: (() => {
