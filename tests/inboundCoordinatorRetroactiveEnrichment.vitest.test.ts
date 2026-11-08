@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { coordinateInboundTransactionCandidate } from '../src/core/inboundCoordinator.js';
 import { PendingTransactionService } from '../src/core/pending.js';
-import { TransactionCorrelationService } from '../src/email/index.js';
+import { TransactionCorrelationEngine } from '../src/email/index.js';
 import { EnrichmentPoolService } from '../src/wallet/records/enrichmentPool.js';
 import { TransactionMessageStore } from '../src/wallet/records/transactionMessageStore.js';
 
 describe('InboundCoordinator Retroactive Record Enrichment', () => {
   let pendingManager: PendingTransactionService;
-  let correlationService: TransactionCorrelationService;
+  let correlationService: TransactionCorrelationEngine;
   let enrichmentPool: EnrichmentPoolService;
   let transactionMessageStore: TransactionMessageStore;
 
@@ -26,7 +26,7 @@ describe('InboundCoordinator Retroactive Record Enrichment', () => {
 
   beforeEach(() => {
     pendingManager = new PendingTransactionService();
-    correlationService = new TransactionCorrelationService();
+    correlationService = new TransactionCorrelationEngine();
     enrichmentPool = new EnrichmentPoolService();
     transactionMessageStore = new TransactionMessageStore();
   });

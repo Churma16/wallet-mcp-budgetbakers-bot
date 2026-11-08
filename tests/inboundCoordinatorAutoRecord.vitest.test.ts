@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EmailTransactionHandler } from '../src/core/index.js';
 import { PendingTransactionService } from '../src/core/pending.js';
-import { TransactionCorrelationService, BANK_EMAIL_RULES } from '../src/email/index.js';
+import { TransactionCorrelationEngine, BANK_EMAIL_RULES } from '../src/email/index.js';
 import { RuntimeSettingsManager } from '../src/config/runtimeSettingsManager.js';
 import { TransactionMessageStore } from '../src/wallet/records/index.js';
 
@@ -103,7 +103,7 @@ describe('Inbound Auto-Record Enriched Transactions Integration', () => {
     const emailListener = {
       recordProcessedTransaction: vi.fn(),
     };
-    const correlationService = new TransactionCorrelationService();
+    const correlationService = new TransactionCorrelationEngine();
     const mockMcpClient = {
       fetchRecords: vi.fn().mockResolvedValue({ records: [] }),
       createRecords: vi.fn().mockResolvedValue({
@@ -211,7 +211,7 @@ describe('Inbound Auto-Record Enriched Transactions Integration', () => {
       pendingManager,
       messaging as any,
       'IDR',
-      new TransactionCorrelationService(),
+      new TransactionCorrelationEngine(),
       () => null,
       mockMcpClient as any
     );
@@ -270,7 +270,7 @@ describe('Inbound Auto-Record Enriched Transactions Integration', () => {
       pendingManager,
       messaging as any,
       'IDR',
-      new TransactionCorrelationService(),
+      new TransactionCorrelationEngine(),
       () => null,
       mockMcpClient as any
     );
@@ -332,7 +332,7 @@ describe('Inbound Auto-Record Enriched Transactions Integration', () => {
       pendingManager,
       messaging as any,
       'IDR',
-      new TransactionCorrelationService(),
+      new TransactionCorrelationEngine(),
       () => null,
       mockMcpClient as any
     );

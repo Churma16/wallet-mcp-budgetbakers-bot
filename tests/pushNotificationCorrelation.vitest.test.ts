@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { TransactionCorrelationService } from '../src/email/index.js';
+import { TransactionCorrelationEngine } from '../src/email/index.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { TransactionEvidence } from '../src/email/index.js';
 import { WalletRecordItem } from '../src/wallet/index.js';
 
 describe('pushNotificationCorrelation', () => {
-  let correlationService: TransactionCorrelationService;
+  let correlationService: TransactionCorrelationEngine;
   let pendingManager: PendingTransactionService;
 
   beforeEach(() => {
-    correlationService = new TransactionCorrelationService();
+    correlationService = new TransactionCorrelationEngine();
     pendingManager = new PendingTransactionService();
   });
 

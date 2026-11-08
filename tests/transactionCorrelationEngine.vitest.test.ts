@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  TransactionCorrelationService,
+  TransactionCorrelationEngine,
   InformationDensityResolver,
   isGenericMerchant,
   isGenericNote,
@@ -13,8 +13,8 @@ import {
   formatCorrelatedWalletRecordNotification,
 } from '../src/wallet/formatters/humanResponseFormatter.js';
 
-describe('TransactionCorrelationService', () => {
-  const service = new TransactionCorrelationService();
+describe('TransactionCorrelationEngine', () => {
+  const service = new TransactionCorrelationEngine();
   const densityResolver = new InformationDensityResolver();
 
   const baseInstant = '2026-10-14T10:18:00.000Z';
@@ -747,7 +747,7 @@ describe('TransactionCorrelationService', () => {
   });
 
   describe('Ride receipt latency and generic bank debit correlation (Grab + Bank Jago scenario)', () => {
-    const defaultService = new TransactionCorrelationService(); // Uses default 2-hour window
+    const defaultService = new TransactionCorrelationEngine(); // Uses default 2-hour window
 
     it('correlates a Grab receipt arriving 46 minutes after a Bank Jago debit card charge with Unknown merchant', () => {
       // 17:27 WIB (10:27 UTC): Jago debit card charge notification
@@ -998,7 +998,7 @@ describe('TransactionCorrelationService', () => {
   });
 
   describe('E-commerce platform orders and authoritative bank debit correlation (Shopee + Bank Jago scenario)', () => {
-    const defaultService = new TransactionCorrelationService();
+    const defaultService = new TransactionCorrelationEngine();
 
     it('correlates a Bank Jago debit with a Shopee order receipt where candidate has Shopeepay platform account', () => {
       // 21:07 WIB: Shopee order receipt arrives first (parsed with Shopeepay account from platform)

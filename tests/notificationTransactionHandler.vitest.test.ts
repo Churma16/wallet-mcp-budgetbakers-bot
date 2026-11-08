@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { NotificationTransactionHandler } from '../src/core/index.js';
 import { MessageDispatcher } from '../src/core/dispatcher.js';
 import { PendingTransactionService } from '../src/core/pending.js';
-import { TransactionCorrelationService } from '../src/email/index.js';
+import { TransactionCorrelationEngine } from '../src/email/index.js';
 
 describe('NotificationTransactionHandler', () => {
   function createMockAiProvider(isTransaction = true, amount = -15799) {
@@ -333,7 +333,7 @@ describe('NotificationTransactionHandler', () => {
       wallet: { cache: walletCache, client: undefined, recordPreparation: undefined, history: undefined, summary: undefined },
       pending: pendingManager,
       gateway: messaging,
-      email: { correlation: new TransactionCorrelationService(), listener: null },
+      email: { correlation: new TransactionCorrelationEngine(), listener: null },
       webhook: null,
     };
 

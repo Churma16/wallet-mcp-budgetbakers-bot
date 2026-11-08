@@ -131,7 +131,6 @@ export class TransactionCorrelationEngine {
 
   /**
    * Evaluates incoming evidence against existing pending candidates and recent Wallet records.
-   * Drop-in compatible with TransactionCorrelationService.correlateEvidence().
    */
   public correlateEvidence(
     incomingEvidence: TransactionEvidence,
@@ -633,7 +632,7 @@ export class TransactionCorrelationEngine {
 
   /**
    * Determines whether candidate and evidence point to mutually exclusive distinct physical stores.
-   * Never flags conflict if either side mentions a commerce/delivery platform or generic placeholder.
+   * Compares literal non-stopword tokens across merchant names and notes without hardcoded platform lists.
    */
   private detectConflictingStores(
     candMerchant: string,
@@ -647,34 +646,28 @@ export class TransactionCorrelationEngine {
     if (!cm || !em) return false;
     if (isGenericMerchant(cm) || isGenericMerchant(em)) return false;
 
-    // Known commerce/delivery platform tokens never conflict with restaurant/itemized stores
-    const platformTokens = ['grab', 'grabbike', 'grabcar', 'grabfood', 'grabmart', 'gojek', 'goride', 'gocar', 'gofood', 'shopee', 'shopeefood', 'tokopedia', 'blibli'];
-    const candCombined = `${candMerchant} ${candNote}`.toLowerCase();
-    const evidCombined = `${evidMerchant} ${evidNote}`.toLowerCase();
-
-    const isCandPlatform = platformTokens.some(p => candCombined.includes(p));
-    const isEvidPlatform = platformTokens.some(p => evidCombined.includes(p));
-
-    if (isCandPlatform || isEvidPlatform) {
-      // If both are different platforms (e.g. Grab vs Gojek), they conflict
-      const candPlatforms = platformTokens.filter(p => candCombined.includes(p));
-      const evidPlatforms = platformTokens.filter(p => evidCombined.includes(p));
-      const sharesPlatform = candPlatforms.some(p => evidPlatforms.includes(p));
-      if (!sharesPlatform && candPlatforms.length > 0 && evidPlatforms.length > 0) {
-        return true; // e.g. Grab vs Gojek
-      }
-      return false; // Complementary platform + store
-    }
-
     // Substring match
     if (cm.includes(em) || em.includes(cm)) return false;
 
-    // Token overlap of length >= 4
-    const candWordTokens = cm.split(/[^a-z0-9]+/).filter(t => t.length >= 4);
-    const evidWordTokens = em.split(/[^a-z0-9]+/).filter(t => t.length >= 4);
-    if (candWordTokens.some(t => evidWordTokens.includes(t))) return false;
+    // Check token overlap across combined merchant and note bodies
+    const candTokens = `${candMerchant} ${candNote}`
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(t => t.length >= 4 && !GENERIC_FINANCIAL_TOKENS.has(t));
+    const evidTokens = `${evidMerchant} ${evidNote}`
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(t => t.length >= 4 && !GENERIC_FINANCIAL_TOKENS.has(t));
 
-    // Both are specific, distinct, non-platform store names that share zero tokens
+    if (
+      candTokens.some(ct =>
+        evidTokens.some(et => ct === et || ct.includes(et) || et.includes(ct))
+      )
+    ) {
+      return false;
+    }
+
+    // Both are specific, distinct store names that share zero tokens across merchant & notes
     return true;
   }
 

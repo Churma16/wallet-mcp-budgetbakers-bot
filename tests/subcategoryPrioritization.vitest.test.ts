@@ -7,7 +7,7 @@ import {
   resolveEmailExtractedEntities,
 } from '../src/brain/index.js';
 import { resolveSemanticCategoryHint } from '../src/brain/semantic/semanticEntityResolver.js';
-import { TransactionCorrelationService } from '../src/email/index.js';
+import { TransactionCorrelationEngine } from '../src/email/index.js';
 import { WalletCategoryItem, WalletAccountItem } from '../src/wallet/index.js';
 
 describe('Universal Specific Subcategory Prioritization Across All Categories', () => {
@@ -213,9 +213,9 @@ describe('Universal Specific Subcategory Prioritization Across All Categories', 
     });
   });
 
-  describe('TransactionCorrelationService generic category override', () => {
+  describe('TransactionCorrelationEngine generic category override', () => {
     it('allows specific merchant category to supersede any generic parent category', () => {
-      const service = new TransactionCorrelationService();
+      const service = new TransactionCorrelationEngine();
 
       const genericCandidate = {
         candidateId: 'test-cand-1',

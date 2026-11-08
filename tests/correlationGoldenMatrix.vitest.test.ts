@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { TransactionCorrelationService } from '../src/email/index.js';
-import { TransactionCorrelationEngine } from '../src/email/correlation/engine.js';
+import { TransactionCorrelationEngine } from '../src/email/index.js';
 import { InformationDensityResolver } from '../src/email/correlation/densityResolver.js';
 import { InboundReferenceRegistry } from '../src/core/referenceRegistry.js';
 import { TransactionEvidence } from '../src/email/types.js';
@@ -8,12 +7,12 @@ import { PendingTransactionItem } from '../src/core/pending.js';
 import { WalletRecordItem } from '../src/wallet/types.js';
 
 describe('Correlation Golden Matrix & Real-World Reproduction Tests', () => {
-  let service: TransactionCorrelationService;
+  let service: TransactionCorrelationEngine;
   let registry: InboundReferenceRegistry;
   let densityResolver: InformationDensityResolver;
 
   beforeEach(() => {
-    service = new TransactionCorrelationService();
+    service = new TransactionCorrelationEngine();
     registry = InboundReferenceRegistry.getInstance();
     registry.clear();
     densityResolver = new InformationDensityResolver();

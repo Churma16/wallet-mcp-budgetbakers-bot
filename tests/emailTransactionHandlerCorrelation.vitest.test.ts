@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { EmailTransactionHandler } from '../src/core/index.js';
 import { PendingTransactionService } from '../src/core/pending.js';
-import { TransactionCorrelationService } from '../src/email/index.js';
+import { TransactionCorrelationEngine } from '../src/email/index.js';
 import { EmailTransactionDetectedEvent } from '../src/email/index.js';
 import { BANK_EMAIL_RULES } from '../src/email/index.js';
 
@@ -61,7 +61,7 @@ describe('EmailTransactionHandler Multi-Source Correlation Integration', () => {
     const pendingManager = new PendingTransactionService();
     const messaging = createMockMessaging();
     const emailListener = createMockEmailListener();
-    const correlationService = new TransactionCorrelationService();
+    const correlationService = new TransactionCorrelationEngine();
 
     const mockAi = createMockAiProvider({
       'Pembayaran Berhasil!': {
@@ -169,7 +169,7 @@ describe('EmailTransactionHandler Multi-Source Correlation Integration', () => {
     const pendingManager = new PendingTransactionService();
     const messaging = createMockMessaging();
     const emailListener = createMockEmailListener();
-    const correlationService = new TransactionCorrelationService();
+    const correlationService = new TransactionCorrelationEngine();
 
     const mockAi = createMockAiProvider({
       'Pembayaran Berhasil!': {
@@ -256,7 +256,7 @@ describe('EmailTransactionHandler Multi-Source Correlation Integration', () => {
     const pendingManager = new PendingTransactionService();
     const messaging = createMockMessaging();
     const emailListener = createMockEmailListener();
-    const correlationService = new TransactionCorrelationService();
+    const correlationService = new TransactionCorrelationEngine();
 
     const mockAi = createMockAiProvider({
       'Pembayaran Berhasil!': {
@@ -380,7 +380,7 @@ describe('EmailTransactionHandler Multi-Source Correlation Integration', () => {
       pendingManager,
       messaging as any,
       'IDR',
-      new TransactionCorrelationService(),
+      new TransactionCorrelationEngine(),
       () => null,
       failingWalletMcpClient as any
     );

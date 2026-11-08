@@ -2,7 +2,7 @@ import { ExtractedEmailTransactionData } from '../brain/types.js';
 import { GateEvaluationResult } from '../email/index.js';
 import { PendingTransactionService, buildRecordsForPendingItem } from './pending.js';
 import { MessagingGatewayService } from '../gateway/index.js';
-import { TransactionCorrelationService, TransactionEvidence, TransactionEvidenceSource } from '../email/index.js';
+import { TransactionCorrelationEngine, TransactionEvidence, TransactionEvidenceSource } from '../email/index.js';
 import { isGenericMerchant, isGenericCategory } from '../email/index.js';
 import {
   WalletCacheService,
@@ -44,7 +44,8 @@ export interface InboundTransactionCoordinatorDependencies {
   pendingTransactionManager: PendingTransactionService;
   messagingGateway: MessagingGatewayService;
   defaultCurrency: string;
-  correlationService: TransactionCorrelationService;
+  correlationEngine?: TransactionCorrelationEngine;
+  correlationService?: TransactionCorrelationEngine;
   walletMcpClient?: WalletMcpClientService;
   transactionMessageStore?: TransactionMessageStore;
   runtimeSettingsManager?: RuntimeSettingsManager;
@@ -76,9 +77,12 @@ export async function coordinateInboundTransactionCandidate(
     pendingTransactionManager,
     messagingGateway,
     defaultCurrency,
-    correlationService,
     walletMcpClient,
   } = deps;
+  const correlationEngine = deps.correlationEngine || deps.correlationService;
+  if (!correlationEngine) {
+    throw new Error('TransactionCorrelationEngine is required for coordinateInboundTransactionCandidate');
+  }
 
   const cachedAccounts = walletCacheService.getAccounts();
 
@@ -188,7 +192,7 @@ export async function coordinateInboundTransactionCandidate(
     }
   }
 
-  const correlationResult = correlationService.correlateEvidence(
+  const correlationResult = correlationEngine.correlateEvidence(
     incomingEvidence,
     pendingTransactionManager.getAllPendingTransactions(),
     combinedRecords

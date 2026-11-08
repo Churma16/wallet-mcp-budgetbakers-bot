@@ -38,59 +38,64 @@ export class InformationDensityResolver {
     const cpCandidate = (candidateMerchant || '').trim();
     const cpEvidence = (evidenceMerchant || '').trim();
 
+    if (!cpCandidate && !cpEvidence) return undefined;
+    if (!cpCandidate) return cpEvidence;
+    if (!cpEvidence) return cpCandidate;
+
     const isCandGeneric = isGenericMerchant(cpCandidate);
     const isEvidGeneric = isGenericMerchant(cpEvidence);
 
-    // 1. If one side is generic and the other is specific, the specific one wins immediately
-    if (isCandGeneric && !isEvidGeneric && cpEvidence) {
+    // 1. Specific beats generic placeholder
+    if (isCandGeneric && !isEvidGeneric) {
       return cpEvidence;
     }
-    if (!isCandGeneric && isEvidGeneric && cpCandidate) {
+    if (!isCandGeneric && isEvidGeneric) {
       return cpCandidate;
     }
-
-    // 2. Check for bank settlement strings vs human merchant names
-    const isCandSettlement =
-      /([A-Z0-9]+\.COM|[A-Z]{3,}\s*-\s*[A-Z]{2,}|[A-Z\s]+(ID|JAKARTA|KUDUS))/i.test(cpCandidate) &&
-      cpCandidate === cpCandidate.toUpperCase();
-    const isEvidSettlement =
-      /([A-Z0-9]+\.COM|[A-Z]{3,}\s*-\s*[A-Z]{2,}|[A-Z\s]+(ID|JAKARTA|KUDUS))/i.test(cpEvidence) &&
-      cpEvidence === cpEvidence.toUpperCase();
-
-    if (isCandSettlement && !isEvidSettlement && cpEvidence) {
-      return cpEvidence;
-    }
-    if (!isCandSettlement && isEvidSettlement && cpCandidate) {
-      return cpCandidate;
+    if (isCandGeneric && isEvidGeneric) {
+      return cpCandidate || cpEvidence;
     }
 
-    // 3. If evidence is an explicit payment/receipt, prefer evidence's merchant name
+    // 2. Explicit itemized payment receipt beats bank acquirer memo
     if (
-      evidenceSourceType === 'EMAIL_PAYMENT' ||
-      evidenceSourceType === 'RECEIPT'
+      (evidenceSourceType === 'EMAIL_PAYMENT' || evidenceSourceType === 'RECEIPT') &&
+      !isEvidGeneric
     ) {
-      if (cpEvidence && !isEvidGeneric) {
-        return cpEvidence;
-      }
+      return cpEvidence;
     }
 
-    // 4. If both are specific, check if one is a platform and the other is an itemized merchant
-    const platformKeywords = ['grab', 'gojek', 'shopee', 'tokopedia', 'blibli'];
-    const isCandPlatform = platformKeywords.some(p => cpCandidate.toLowerCase().includes(p));
-    const isEvidPlatform = platformKeywords.some(p => cpEvidence.toLowerCase().includes(p));
-
-    if (isCandPlatform && !isEvidPlatform && cpEvidence) {
-      return cpEvidence; // e.g. "d'BestO - RSUD Koja" beats "Grab"
+    // 3. Natural mixed-case merchant name beats raw all-caps terminal/gateway settlement string
+    // e.g. "Blibli Offline Store" beats "BLIBLI.COM KUDUS - ID"
+    const isCandAllCaps =
+      cpCandidate.length >= 4 &&
+      cpCandidate === cpCandidate.toUpperCase() &&
+      /[A-Z]/.test(cpCandidate);
+    const isEvidAllCaps =
+      cpEvidence.length >= 4 &&
+      cpEvidence === cpEvidence.toUpperCase() &&
+      /[A-Z]/.test(cpEvidence);
+    if (isCandAllCaps && !isEvidAllCaps) {
+      return cpEvidence;
     }
-    if (!isCandPlatform && isEvidPlatform && cpCandidate) {
-      return cpCandidate; // e.g. "d'BestO - RSUD Koja" beats "Grab"
+    if (!isCandAllCaps && isEvidAllCaps) {
+      return cpCandidate;
     }
 
-    // 5. Fallback: Longer, more descriptive name wins
+    // 4. Substring containment: the more specific / descriptive superstring wins
+    const lowerCand = cpCandidate.toLowerCase();
+    const lowerEvid = cpEvidence.toLowerCase();
+    if (lowerCand.includes(lowerEvid) && lowerCand !== lowerEvid) {
+      return cpCandidate;
+    }
+    if (lowerEvid.includes(lowerCand) && lowerCand !== lowerEvid) {
+      return cpEvidence;
+    }
+
+    // 5. Richest field wins: longer, more descriptive name
     if (cpEvidence.length > cpCandidate.length) {
       return cpEvidence;
     }
-    return cpCandidate || cpEvidence || undefined;
+    return cpCandidate;
   }
 
   /**

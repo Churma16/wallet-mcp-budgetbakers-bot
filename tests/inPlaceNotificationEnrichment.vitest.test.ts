@@ -4,7 +4,7 @@ import { TelegramMessagingAdapter } from '../src/gateway/telegram.js';
 import { MessagingGatewayService } from '../src/gateway/coordinator.js';
 import { coordinateInboundTransactionCandidate } from '../src/core/inboundCoordinator.js';
 import { PendingTransactionService } from '../src/core/pending.js';
-import { TransactionCorrelationService } from '../src/email/correlation.js';
+import { TransactionCorrelationEngine } from '../src/email/index.js';
 
 describe('In-Place Notification Enrichment and Channel Source Icons', () => {
   describe('resolveEvidenceSourceIcons', () => {
@@ -189,7 +189,7 @@ describe('In-Place Notification Enrichment and Channel Source Icons', () => {
         editBroadcastNotification: vi.fn().mockResolvedValue(true),
       };
 
-      const correlationService = new TransactionCorrelationService();
+      const correlationService = new TransactionCorrelationEngine();
       const walletCache = {
         getAccounts: () => [{ id: 'acc-mandiri', name: 'Mandiri Debit', isBankSynced: false } as any],
         getCategories: () => [],
@@ -278,7 +278,7 @@ describe('In-Place Notification Enrichment and Channel Source Icons', () => {
         editBroadcastNotification: vi.fn().mockResolvedValue(false), // edit failed
       };
 
-      const correlationService = new TransactionCorrelationService();
+      const correlationService = new TransactionCorrelationEngine();
       const walletCache = {
         getAccounts: () => [],
         getCategories: () => [],
@@ -352,7 +352,7 @@ describe('In-Place Notification Enrichment and Channel Source Icons', () => {
         editBroadcastNotification: vi.fn().mockResolvedValue(true),
       };
 
-      const correlationService = new TransactionCorrelationService();
+      const correlationService = new TransactionCorrelationEngine();
       const walletCache = {
         getAccounts: () => [],
         getCategories: () => [],
