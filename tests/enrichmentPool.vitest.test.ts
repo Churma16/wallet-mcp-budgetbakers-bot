@@ -83,6 +83,29 @@ describe('EnrichmentPoolService and Eligibility', () => {
         categoryId: 'cat-ojol',
         note: 'Pembayaran QRIS',
       })).toBe(true);
+
+      expect(isEligibleForEnrichmentPool({
+        counterParty: 'SHOPEE.CO.ID',
+        categoryName: 'Financial expenses',
+        categoryId: 'cat-fin',
+        note: 'Debit card payment • Debit card transaction of Rp51.612 using Jago debit card',
+      })).toBe(true);
+    });
+
+    it('returns true for online platform and web domain counterparties', () => {
+      expect(isEligibleForEnrichmentPool({
+        counterParty: 'SHOPEE.CO.ID',
+        categoryName: 'Shopping',
+        categoryId: 'cat-shop',
+        note: 'Pembelian barang',
+      })).toBe(true);
+
+      expect(isEligibleForEnrichmentPool({
+        counterParty: 'BLIBLI.COM',
+        categoryName: 'Shopping',
+        categoryId: 'cat-shop',
+        note: 'Belanja online',
+      })).toBe(true);
     });
 
     it('returns false when merchant, category, and note are all specific', () => {

@@ -48,9 +48,19 @@ RULES:
    - "TRANSFER": Internal transfer or top-up between user's own accounts (e.g. Mandiri to GoPay, Mandiri to Jago).
 3. "amount": Must be a POSITIVE number representing the total amount deducted or received.
 4. "counterParty": Name of merchant, store, or recipient (e.g., "Kopi Kenangan", "Indomaret", "GoFood", "PLN").
-5. "matchedAccountId": Pick the exact account ID from CURRENT ACCOUNTS that corresponds to the source bank/e-wallet.
+5. "matchedAccountId" & "accountNameHint":
+   - DOMAIN & FUNDING SOURCE SEPARATION: E-commerce platforms and delivery apps (e.g. Shopee, Tokopedia, Blibli, Grab, Gojek, Alfagift) are marketplaces or transaction venues, NOT the user's funding source. Always treat the email's explicit "Metode Pembayaran" / "Rincian Pembayaran" / "Payment Method" as the single source of truth for the funding account.
+   - For marketplace/e-commerce receipts:
+     * If the payment method is stated as "Kartu Kredit/Debit", "Debit Online", "Credit/Debit Card", "BCA OneKlik", "QRIS", "Transfer Bank", or "Virtual Account", NEVER assume or choose a platform e-wallet account (e.g. ShopeePay, GoPay, OVO) unless the email explicitly states "ShopeePay" / "Saldo ShopeePay" / "GoPay".
+     * If the payment method is a bank card or generic instrument without naming a specific user bank account from CURRENT ACCOUNTS, set "accountNameHint": "Debit Card" (or "Kartu Debit") and leave "matchedAccountId": undefined so the transaction remains unlinked and ready for downstream correlation with authoritative bank debit notifications.
+   - For direct bank notifications (e.g. Mandiri, BCA, Jago, BNI, BRI), pick the exact account ID from CURRENT ACCOUNTS that corresponds to the source bank.
 6. "matchedCategoryId": Pick the best matching category ID from CURRENT CATEGORIES. When available, adhere to any custom category semantics and exclusions defined in CATEGORY SEMANTICS & RULES.
-   SPECIFIC SUBCATEGORY RULE: Always pick the most specific child/sub-category matching the purchased item, merchant type, or service. NEVER choose a generic parent category marked '[General Fallback only]' (such as 'Shopping', 'Food & Drinks', 'Transportation', 'Housing', 'Life & Entertainment', 'PC, Communication', 'Vehicle', 'Others') if a more specific subcategory exists (e.g., choose 'Electronics & accessories', 'Clothes & shoes', 'Groceries', 'Snacks', 'Software, apps, games', 'Pengeluaran Digital', 'Public transport', etc.). Only pick '[General Fallback only]' if the email gives no details whatsoever about what was purchased or the item fits no specific subcategory.
+   COGNITIVE REASONING & HARM PREVENTION RULE:
+   - Reason by primary functional purpose in daily life:
+     * Fast-Moving Consumer Goods (FMCG) / Daily consumables: Groceries, food, drinks, soap, cleaning supplies, disinfectants, toiletries, medicine, and first aid belong in Groceries, Food & Drinks, or Health/Chemist.
+     * Durable / lifestyle goods: Clothing, electronics, gadgets, furniture, jewelry belong in their respective subcategories (Clothes & shoes, Electronics & accessories, Jewels & accessories, etc.).
+     * Mobility: Fares, fuel, public transport, rides belong in Transportation.
+   - HARM PREVENTION & GRACEFUL FALLBACK: Pick the most specific matching subcategory when a functionally logical child exists. However, if no logical subcategory matches the item's primary purpose (e.g., purchasing disinfectant, cleaning chemicals, or general groceries when only jewelry/clothing subcategories exist under Shopping), IT IS FAR BETTER to choose a general parent category marked '[General Fallback only]' (such as 'Groceries' or 'Shopping') than to force an absurd, domain-contradictory subcategory (NEVER put cleaning products, medicine, or food into 'Jewels & accessories' or 'Clothes & shoes').
 7. "recordDate": ISO 8601 UTC timestamp based on the transaction date in the email.
 8. "note": Rich, informative description of the transaction items or purpose:
    - For ride-hailing / transportation receipts (e.g. Grab, Gojek): Extract the specific ride service and route if present (e.g. "GrabBike: Stasiun Gambir -> Grand Indonesia" or "GrabCar: Bandara Soekarno Hatta -> Hotel").

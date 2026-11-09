@@ -4,6 +4,7 @@ import {
   isGenericCardAccountOrMethod,
   isGenericNote,
   isGenericCategory,
+  isOnlinePlatformOrGateway,
 } from '../src/email/index.js';
 
 describe('correlationPredicates unit tests', () => {
@@ -63,6 +64,43 @@ describe('correlationPredicates unit tests', () => {
       expect(isGenericCategory('Makanan & Minuman')).toBe(false);
       expect(isGenericCategory('Transportasi')).toBe(false);
       expect(isGenericCategory('Pendidikan')).toBe(false);
+    });
+
+    it('identifies financial expenses as generic catch-all', () => {
+      expect(isGenericCategory('Financial expenses')).toBe(true);
+      expect(isGenericCategory('biaya keuangan')).toBe(true);
+    });
+  });
+
+  describe('isOnlinePlatformOrGateway', () => {
+    it('detects online platforms with web TLDs', () => {
+      expect(isOnlinePlatformOrGateway('SHOPEE.CO.ID')).toBe(true);
+      expect(isOnlinePlatformOrGateway('BLIBLI.COM')).toBe(true);
+      expect(isOnlinePlatformOrGateway('TOKOPEDIA.COM')).toBe(true);
+      expect(isOnlinePlatformOrGateway('ALFAGIFT.ID')).toBe(true);
+      expect(isOnlinePlatformOrGateway('GRAB.COM')).toBe(true);
+    });
+
+    it('detects gateway aggregator prefixes and star delimiters', () => {
+      expect(isOnlinePlatformOrGateway('MIDTRANS*STORE')).toBe(true);
+      expect(isOnlinePlatformOrGateway('QRIS_NOBU')).toBe(true);
+      expect(isOnlinePlatformOrGateway('PG_DOKU')).toBe(true);
+      expect(isOnlinePlatformOrGateway('SHOPEEPAY_MERCHANT')).toBe(true);
+    });
+
+    it('does not classify specific store or seller names as platforms', () => {
+      expect(isOnlinePlatformOrGateway('dettolvanishharpic')).toBe(false);
+      expect(isOnlinePlatformOrGateway('Starbucks')).toBe(false);
+      expect(isOnlinePlatformOrGateway('Indomaret')).toBe(false);
+      expect(isOnlinePlatformOrGateway(undefined)).toBe(false);
+    });
+  });
+
+  describe('isGenericNote with Bank Jago single-line bullet format', () => {
+    it('recognizes Bank Jago debit bullet boilerplate as generic', () => {
+      expect(
+        isGenericNote('Debit card payment • Debit card transaction of Rp51.612 using Jago debit card')
+      ).toBe(true);
     });
   });
 });

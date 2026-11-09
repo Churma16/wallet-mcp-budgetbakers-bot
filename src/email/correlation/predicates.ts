@@ -98,8 +98,22 @@ export function isGenericNote(
   const trimmedNote = note.trim();
   if (!trimmedNote) return true;
 
-  // Detailed receipt notes containing order IDs (#), bullets, or item lines are NEVER generic
-  if (trimmedNote.includes('#') || trimmedNote.includes('•') || trimmedNote.includes('\n')) {
+  // Detailed receipt notes containing order IDs (#) or multi-line items (\n) are NEVER generic
+  if (trimmedNote.includes('#') || trimmedNote.includes('\n')) {
+    return false;
+  }
+
+  // Bullet point check: if it contains bullets and has bank debit keywords without item quantities,
+  // it is boilerplate financial text (e.g. "Debit card payment • Debit card transaction of Rp51.612 using Jago debit card").
+  if (trimmedNote.includes('•')) {
+    const isItemizedList = /(?:\d+x\s|[0-9]+(?:\.[0-9]{3})*,\s*|qty|item|pcs)/i.test(trimmedNote);
+    const hasBankDebitKeyword = /(?:debit card|kartu debit|pembayaran qris|transaksi|jago debit card|mandiri debit)/i.test(trimmedNote);
+    if (isItemizedList && !hasBankDebitKeyword) {
+      return false;
+    }
+    if (hasBankDebitKeyword) {
+      return true;
+    }
     return false;
   }
 
@@ -221,6 +235,9 @@ export function isGenericCategory(categoryName: string | undefined | null): bool
     'pengeluaran',
     'expense',
     'expenses',
+    'financial expenses',
+    'financial expense',
+    'biaya keuangan',
     'transaksi',
     'transaction',
   ];
@@ -240,3 +257,46 @@ export function isGenericCategory(categoryName: string | undefined | null): bool
 
   return prefixOrContains.some(token => lower.includes(token));
 }
+
+/**
+ * Detects whether a merchant or counterparty represents an online commerce platform,
+ * web domain, or payment gateway aggregator (e.g. "SHOPEE.CO.ID", "BLIBLI.COM", "MIDTRANS*", "QRIS_NOBU").
+ */
+export function isOnlinePlatformOrGateway(text: string | undefined | null): boolean {
+  if (!text) return false;
+  const lower = text.trim().toLowerCase();
+  if (!lower) return false;
+
+  // 1. Web TLD pattern: e.g. .co.id, .com, .id, .net, .org, .app, .io
+  if (/\b[a-z0-9_-]+\.(?:co\.id|com|id|net|org|app|io)\b/i.test(lower)) {
+    return true;
+  }
+
+  // 2. Gateway / Aggregator keywords, prefixes or delimiters (e.g. PG_, QRIS_, MIDTRANS*, DOKU*, XENDIT*)
+  const gatewayTokens = new Set([
+    'pg',
+    'qris',
+    'payment',
+    'pembayaran',
+    'midtrans',
+    'xendit',
+    'doku',
+    'espay',
+    'faspay',
+    'airpay',
+    'shopeepay',
+    'gopay',
+    'ovo',
+    'dana',
+  ]);
+  const words = lower.split(/[^a-z0-9]+/);
+  if (words.some(word => gatewayTokens.has(word))) {
+    return true;
+  }
+  if (lower.includes('*')) {
+    return true;
+  }
+
+  return false;
+}
+

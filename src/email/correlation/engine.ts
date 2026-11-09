@@ -3,7 +3,7 @@ import type { WalletRecordItem } from '../../wallet/types.js';
 import type { TransactionEvidence, CorrelationResult, CorrelationMatchTarget } from '../types.js';
 import { INTERNAL_TRANSACTION_TYPES, WALLET_MCP_RECORD_TYPES } from '../../wallet/constants.js';
 import { CommercePlatformRegistry } from '../../config/commercePlatforms.js';
-import { isGenericMerchant, isGenericCardAccountOrMethod, isGenericNote } from './predicates.js';
+import { isGenericMerchant, isGenericCardAccountOrMethod, isGenericNote, isOnlinePlatformOrGateway } from './predicates.js';
 import { InboundReferenceRegistry, normalizeReferenceNumber } from '../../core/referenceRegistry.js';
 import { TransactionMessageStore } from '../../wallet/records/transactionMessageStore.js';
 import { InformationDensityResolver } from './densityResolver.js';
@@ -361,7 +361,7 @@ export class TransactionCorrelationEngine {
     let sMerchant = 0.20;
 
     // Check distinct conflicting stores veto (e.g. Starbucks vs Indomaret)
-    const isDistinctConflict = this.detectConflictingStores(candMerchant, evidMerchant, candNote, evidNote);
+    const isDistinctConflict = this.detectConflictingStores(candMerchant, evidMerchant, candNote, evidNote, evidence);
     if (isDistinctConflict) {
       sMerchant = -1.0;
       reasons.push(`Distinct conflicting stores veto (${candMerchant} vs ${evidMerchant})`);
@@ -388,6 +388,11 @@ export class TransactionCorrelationEngine {
       const isCandGeneric = isGenericMerchant(candMerchant);
       const isEvidGeneric = isGenericMerchant(evidMerchant);
 
+      const isDynamicMatch = this.isDynamicPlatformMatch(candMerchant, candNote, evidence);
+      const isPlatformSellerPair =
+        isDynamicMatch ||
+        (isOnlinePlatformOrGateway(candMerchant) && !isOnlinePlatformOrGateway(evidMerchant) && !isGenericMerchant(evidMerchant));
+
       const isPending = 'ticketId' in candidate;
       const isDualChannelBank =
         isPending &&
@@ -401,6 +406,9 @@ export class TransactionCorrelationEngine {
       if (hasTokenMatch || hasSubstringMatch) {
         sMerchant = 1.0;
         reasons.push('Literal merchant token overlap / substring containment');
+      } else if (isPlatformSellerPair) {
+        sMerchant = 0.95;
+        reasons.push('Commerce platform marketplace paired with specific seller receipt');
       } else if (isDualChannelBank) {
         sMerchant = 0.85;
         reasons.push('Identical bank debit across push notification and email channels');
@@ -656,13 +664,18 @@ export class TransactionCorrelationEngine {
     candMerchant: string,
     evidMerchant: string,
     candNote: string,
-    evidNote: string
+    evidNote: string,
+    evidence?: TransactionEvidence
   ): boolean {
     const cm = candMerchant.trim().toLowerCase();
     const em = evidMerchant.trim().toLowerCase();
 
     if (!cm || !em) return false;
     if (isGenericMerchant(cm) || isGenericMerchant(em)) return false;
+
+    if (evidence && this.isDynamicPlatformMatch(candMerchant, candNote, evidence)) {
+      return false;
+    }
 
     // Substring match
     if (cm.includes(em) || em.includes(cm)) return false;
@@ -687,6 +700,56 @@ export class TransactionCorrelationEngine {
 
     // Both are specific, distinct store names that share zero tokens across merchant & notes
     return true;
+  }
+
+  /**
+   * Dynamically checks whether candidate counterparty or note matches the platform domain or brand of the incoming evidence.
+   */
+  public isDynamicPlatformMatch(
+    candMerchant: string,
+    candNote: string,
+    evidence?: TransactionEvidence
+  ): boolean {
+    if (!evidence) return false;
+    const cm = (candMerchant || '').trim().toLowerCase();
+    const cn = (candNote || '').toLowerCase();
+    const candCombined = `${cm} ${cn}`;
+    if (!candCombined.trim()) return false;
+
+    // 1. Evidence sender domains check (e.g. 'shopee.co.id' or 'mail.shopee.co.id')
+    const senderDomains = evidence.senderDomains || [];
+    for (const domain of senderDomains) {
+      const parts = domain.toLowerCase().split('.');
+      const brandToken = parts[0] === 'mail' && parts.length > 2 ? parts[1] : parts[0];
+      if (brandToken && brandToken.length >= 3 && candCombined.includes(brandToken)) {
+        return true;
+      }
+      if (candCombined.includes(domain.toLowerCase())) {
+        return true;
+      }
+    }
+
+    // 2. Evidence platformId check
+    if (evidence.platformId && evidence.platformId.length >= 3) {
+      if (candCombined.includes(evidence.platformId.toLowerCase())) {
+        return true;
+      }
+    }
+
+    // 3. If evidence is an e-receipt from a specific platform, check if candidate matches that platform
+    if (evidence.sourceType === 'EMAIL_PAYMENT' && evidence.platformId) {
+      const platformDef = this.platformRegistry.getById(evidence.platformId);
+      if (platformDef) {
+        if (candCombined.includes(platformDef.id) || candCombined.includes(platformDef.displayName.toLowerCase())) {
+          return true;
+        }
+        if (platformDef.merchantKeywords.some(kw => candCombined.includes(kw.toLowerCase()))) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   /**
