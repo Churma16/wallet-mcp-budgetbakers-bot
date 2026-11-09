@@ -4,7 +4,8 @@ import { EmailListenerService } from '../email/listener.js';
 import { PendingTransactionService } from './pending.js';
 import { TransactionCorrelationEngine } from '../email/index.js';
 import type { TransactionEvidence } from '../email/types.js';
-import { isGenericMerchant, isGenericCategory } from '../email/index.js';
+import { isGenericMerchant, isGenericCategory, isOnlinePlatformOrGateway } from '../email/index.js';
+import { CommercePlatformRegistry } from '../config/commercePlatforms.js';
 import {
   WalletCacheService,
   WalletMcpClientService,
@@ -332,9 +333,15 @@ export class InboundRescanService {
         const shouldPatchCategory = hasGenericCategory && incomingHasSpecificCategory && Boolean(incomingCategoryId);
 
         const currentMerchant = matchedRecord.counterParty || poolCandidate?.counterParty;
-        const hasGenericMerchant = !currentMerchant || isGenericMerchant(currentMerchant);
+        const hasGenericMerchant =
+          !currentMerchant ||
+          isGenericMerchant(currentMerchant) ||
+          isOnlinePlatformOrGateway(currentMerchant) ||
+          CommercePlatformRegistry.getInstance().isCommerceMerchant(currentMerchant);
         const incomingHasSpecificMerchant = Boolean(
-          evidence.merchant && !isGenericMerchant(evidence.merchant)
+          evidence.merchant &&
+          !isGenericMerchant(evidence.merchant) &&
+          !isOnlinePlatformOrGateway(evidence.merchant)
         );
         const shouldPatchMerchant = hasGenericMerchant && incomingHasSpecificMerchant;
 
@@ -344,6 +351,8 @@ export class InboundRescanService {
           !noteLower ||
           noteLower === 'pembayaran qris' ||
           noteLower.startsWith('pembayaran kartu debit') ||
+          noteLower.includes('debit card') ||
+          noteLower.includes('kartu debit') ||
           noteLower === 'transaksi' ||
           noteLower === (currentMerchant || '').trim().toLowerCase();
         const incomingNote =

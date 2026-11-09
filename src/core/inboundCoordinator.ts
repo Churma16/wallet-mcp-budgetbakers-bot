@@ -3,7 +3,8 @@ import { GateEvaluationResult } from '../email/index.js';
 import { PendingTransactionService, buildRecordsForPendingItem } from './pending.js';
 import { MessagingGatewayService } from '../gateway/index.js';
 import { TransactionCorrelationEngine, TransactionEvidence, TransactionEvidenceSource } from '../email/index.js';
-import { isGenericMerchant, isGenericCategory } from '../email/index.js';
+import { isGenericMerchant, isGenericCategory, isOnlinePlatformOrGateway } from '../email/index.js';
+import { CommercePlatformRegistry } from '../config/commercePlatforms.js';
 import {
   WalletCacheService,
   WalletMcpClientService,
@@ -146,6 +147,8 @@ export async function coordinateInboundTransactionCandidate(
     labels: evidenceSourceType === 'EMAIL_PAYMENT' ? ['e-receipt'] : undefined,
     transactionType: parsedData.transactionType,
     isBankSyncedAccount: Boolean(matchedAccountItem?.isBankSynced),
+    platformId: gateResult.matchedBankRule?.bankKey,
+    senderDomains: gateResult.matchedBankRule?.senderDomains,
   };
 
   // 2. Query recent Wallet records if MCP client is provided
@@ -239,8 +242,16 @@ export async function coordinateInboundTransactionCandidate(
     const shouldPatchCategory = hasGenericCategory && incomingHasSpecificCategory && Boolean(incomingCategoryId);
 
     const currentMerchant = matchedRecord.counterParty || poolCandidate?.counterParty;
-    const hasGenericMerchant = !currentMerchant || isGenericMerchant(currentMerchant);
-    const incomingHasSpecificMerchant = Boolean(incomingEvidence.merchant && !isGenericMerchant(incomingEvidence.merchant));
+    const hasGenericMerchant =
+      !currentMerchant ||
+      isGenericMerchant(currentMerchant) ||
+      isOnlinePlatformOrGateway(currentMerchant) ||
+      CommercePlatformRegistry.getInstance().isCommerceMerchant(currentMerchant);
+    const incomingHasSpecificMerchant = Boolean(
+      incomingEvidence.merchant &&
+      !isGenericMerchant(incomingEvidence.merchant) &&
+      !isOnlinePlatformOrGateway(incomingEvidence.merchant)
+    );
     const shouldPatchMerchant = hasGenericMerchant && incomingHasSpecificMerchant;
 
     const currentNote = matchedRecord.note || poolCandidate?.note || '';
@@ -249,6 +260,8 @@ export async function coordinateInboundTransactionCandidate(
       !noteLower ||
       noteLower === 'pembayaran qris' ||
       noteLower.startsWith('pembayaran kartu debit') ||
+      noteLower.includes('debit card') ||
+      noteLower.includes('kartu debit') ||
       noteLower === 'transaksi' ||
       noteLower === (currentMerchant || '').trim().toLowerCase();
     const incomingNote = incomingEvidence.note && incomingEvidence.note !== fallbackNote ? incomingEvidence.note : undefined;

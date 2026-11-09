@@ -1156,6 +1156,50 @@ describe('TransactionCorrelationEngine', () => {
       expect(fused.referenceNumbers).toContain('A-9VNE5TRGWUABAV');
       expect(fused.evidenceSources?.sort()).toEqual(['EMAIL_BANK', 'EMAIL_PAYMENT'].sort());
     });
+
+    it('correlates existing Jago debit record for SHOPEE.CO.ID with Shopee e-receipt from seller dettolvanishharpic without conflicting stores veto', () => {
+      const existingJagoRecord: WalletRecordItem = {
+        id: 'c98084af-3026-429b-95e6-159b65d548eb',
+        accountId: 'a7a51081-350c-4013-b99c-ffdaae10651d',
+        accountName: 'Jago Expense',
+        amount: -51612,
+        currency: 'IDR',
+        recordDate: '2026-11-09T12:25:00.000Z',
+        recordType: 'expense',
+        counterParty: 'SHOPEE.CO.ID',
+        note: 'Debit card payment • Debit card transaction of Rp51.612 using Jago debit card',
+        category: {
+          id: '5c5c1f48-0050-8000-8000-000000000000',
+          name: 'Financial expenses',
+        },
+      };
+
+      const shopeeReceiptEvidence = createEvidence({
+        sourceType: 'EMAIL_PAYMENT',
+        sourceId: 'Pembayaranmu Berhasil Dikonfirmasi',
+        merchant: 'dettolvanishharpic',
+        amount: -51612,
+        currency: 'IDR',
+        occurredAt: '2026-11-09T12:26:00.000Z',
+        accountHint: 'Debit Card',
+        accountId: undefined,
+        note: '1x Dettol Antibakteri & Antiseptik Disinfektan Cair - 245ml dari dettolvanishharpic',
+        categoryId: '5c5c07d1-groceries',
+        categoryName: 'Groceries',
+        referenceNumbers: ['261109TXP5C8SM'],
+        senderDomains: ['shopee.co.id', 'mail.shopee.co.id'],
+        platformId: 'shopee',
+      });
+
+      const result = service.correlateEvidence(shopeeReceiptEvidence, [], [existingJagoRecord]);
+
+      expect(result.confidence).toBe('HIGH');
+      expect(result.suggestedAction).toBe('ATTACH_WALLET_RECORD');
+      expect(result.matchTarget.type).toBe('WALLET_RECORD');
+      if (result.matchTarget.type === 'WALLET_RECORD') {
+        expect(result.matchTarget.record.id).toBe('c98084af-3026-429b-95e6-159b65d548eb');
+      }
+    });
   });
 });
 

@@ -417,4 +417,96 @@ describe('InboundCoordinator Retroactive Record Enrichment', () => {
       })
     );
   });
+
+  it('retroactively enriches recorded SHOPEE.CO.ID debit with seller dettolvanishharpic and rich item note when Shopee email arrives', async () => {
+    const recordId = 'c98084af-3026-429b-95e6-159b65d548eb';
+
+    // 1. Registered candidate in enrichment pool with platform placeholder and English debit boilerplate
+    enrichmentPool.addCandidate({
+      recordId,
+      accountId: 'acc-jago',
+      accountName: 'Jago Expense',
+      amount: -51612,
+      currency: 'IDR',
+      recordDate: '2026-11-09T12:25:00.000Z',
+      counterParty: 'SHOPEE.CO.ID',
+      note: 'Debit card payment • Debit card transaction of Rp51.612 using Jago debit card',
+      categoryId: 'cat-fin',
+      categoryName: 'Financial expenses',
+    });
+
+    const mockMcpClient = {
+      fetchRecords: vi.fn().mockResolvedValue({ records: [] }),
+      createRecords: vi.fn(),
+      patchRecords: vi.fn().mockResolvedValue({
+        summary: { total: 1, succeeded: 1 },
+        results: [{ id: recordId, success: true }],
+      }),
+    };
+
+    const mockMessaging = {
+      broadcastNotification: vi.fn().mockResolvedValue({ telegram: { messageId: 'msg-enriched-shopee' } }),
+      editBroadcastNotification: vi.fn().mockResolvedValue(false),
+      sendMessage: vi.fn(),
+    };
+
+    const mockStore = {
+      findMappingByRecordId: vi.fn().mockReturnValue(null),
+      recordMessageMapping: vi.fn(),
+      updateMessageMappingsByRecordId: vi.fn(),
+    };
+
+    // 2. Shopee email arrives with seller dettolvanishharpic and itemized note
+    await coordinateInboundTransactionCandidate(
+      {
+        parsedData: {
+          isTransaction: true,
+          transactionType: 'EXPENSE',
+          amount: -51612,
+          counterParty: 'dettolvanishharpic',
+          accountNameHint: 'Debit Card',
+          matchedAccountId: undefined,
+          matchedCategoryId: 'cat-food',
+          matchedCategoryName: 'Groceries',
+          note: '1x Dettol Antibakteri & Antiseptik Disinfektan Cair - 245ml dari dettolvanishharpic',
+          recordDate: '2026-11-09T12:26:00.000Z',
+          explanation: 'Pembelian Dettol di Shopee via debit card',
+        },
+        gateResult: {
+          isCandidate: true,
+          matchedBankRule: {
+            bankKey: 'shopee',
+            displayName: 'Shopee',
+            senderDomains: ['shopee.co.id', 'mail.shopee.co.id'],
+          } as any,
+          ruleCategory: 'MERCHANT_RECEIPT' as any,
+        },
+        sourceType: 'EMAIL',
+        evidenceSourceType: 'EMAIL_PAYMENT',
+        sourceId: 'email-shopee-receipt-dettol',
+        sourceDate: new Date('2026-11-09T12:26:00.000Z'),
+        sourceDisplayName: 'Shopee',
+        fallbackNote: 'Pembayaranmu Berhasil Dikonfirmasi',
+      },
+      {
+        walletCacheService: mockWalletCache as any,
+        pendingTransactionManager: pendingManager,
+        messagingGateway: mockMessaging as any,
+        defaultCurrency: 'IDR',
+        correlationService,
+        walletMcpClient: mockMcpClient as any,
+        enrichmentPoolService: enrichmentPool,
+        transactionMessageStore: mockStore as any,
+      }
+    );
+
+    expect(mockMcpClient.patchRecords).toHaveBeenCalledWith([
+      expect.objectContaining({
+        id: recordId,
+        counterParty: 'dettolvanishharpic',
+        note: '1x Dettol Antibakteri & Antiseptik Disinfektan Cair - 245ml dari dettolvanishharpic',
+      }),
+    ]);
+    expect(enrichmentPool.getCandidate(recordId)).toBeUndefined();
+  });
 });

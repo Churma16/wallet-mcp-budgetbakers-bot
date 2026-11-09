@@ -1,5 +1,5 @@
 import { WalletAccountItem, WalletCategoryItem } from '../../wallet/index.js';
-import { GateEvaluationResult } from '../../email/index.js';
+import { GateEvaluationResult, isGenericCardAccountOrMethod } from '../../email/index.js';
 import { getActiveLanguage } from '../../i18n/index.js';
 import { formatLocalTimeAnchor } from '../parsers/timeParser.js';
 import {
@@ -97,7 +97,8 @@ export function resolveEmailExtractedEntities(
   availableAccountList: WalletAccountItem[],
   availableCategoryList: WalletCategoryItem[]
 ): ExtractedEmailTransactionData {
-  if (!parsedData.matchedAccountId && (parsedData.accountNameHint || gateResult.matchedBankRule?.accountNameHint)) {
+  const isGenericCard = isGenericCardAccountOrMethod(parsedData.accountNameHint);
+  if (!parsedData.matchedAccountId && !isGenericCard && (parsedData.accountNameHint || gateResult.matchedBankRule?.accountNameHint)) {
     const targetSearch = (parsedData.accountNameHint || gateResult.matchedBankRule?.accountNameHint || '').toLowerCase();
     const matched = availableAccountList.find(acc => acc.name.toLowerCase().includes(targetSearch));
     if (matched) {

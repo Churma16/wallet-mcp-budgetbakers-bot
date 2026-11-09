@@ -102,6 +102,8 @@ export interface TransactionEvidence {
   labels?: string[];
   transactionType?: InternalTransactionTypeValue;
   isBankSyncedAccount?: boolean;
+  platformId?: string;
+  senderDomains?: string[];
   rawPayload?: Record<string, unknown>;
 }
 

@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { applicationLogger } from '../../lib/logger.js';
 import type { TransactionEvidence } from '../../email/types.js';
-import { isGenericMerchant, isGenericCategory } from '../../email/index.js';
+import { isGenericMerchant, isGenericCategory, isOnlinePlatformOrGateway } from '../../email/index.js';
+import { CommercePlatformRegistry } from '../../config/commercePlatforms.js';
 
 export interface EnrichmentPoolItem {
   readonly recordId: string;
@@ -44,13 +45,18 @@ export function isEligibleForEnrichmentPool(item: {
   categoryId?: string;
   note?: string;
 }): boolean {
-  const isGenericCp = isGenericMerchant(item.counterParty);
+  const isGenericCp =
+    isGenericMerchant(item.counterParty) ||
+    isOnlinePlatformOrGateway(item.counterParty) ||
+    CommercePlatformRegistry.getInstance().isCommerceMerchant(item.counterParty);
   const isGenericCat = isGenericCategory(item.categoryName) || !item.categoryId;
   const noteLower = (item.note || '').trim().toLowerCase();
   const isBoilerplate =
     !noteLower ||
     noteLower === 'pembayaran qris' ||
     noteLower.startsWith('pembayaran kartu debit') ||
+    noteLower.includes('debit card') ||
+    noteLower.includes('kartu debit') ||
     noteLower === 'transaksi' ||
     noteLower === (item.counterParty || '').trim().toLowerCase();
 
