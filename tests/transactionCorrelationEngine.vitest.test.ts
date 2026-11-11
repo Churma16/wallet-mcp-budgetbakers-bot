@@ -5,6 +5,7 @@ import {
   isGenericMerchant,
   isGenericNote,
 } from '../src/email/index.js';
+import { CommercePlatformRegistry } from '../src/config/commercePlatforms.js';
 import { PendingTransactionItem } from '../src/core/pending.js';
 import { TransactionEvidence } from '../src/email/index.js';
 import { WalletRecordItem } from '../src/wallet/index.js';
@@ -1241,6 +1242,59 @@ describe('TransactionCorrelationEngine', () => {
       if (result.matchTarget.type === 'WALLET_RECORD') {
         expect(result.matchTarget.record.id).toBe('8028c21a-edb8-4d86-a29a-79199c1128ea');
       }
+    });
+
+    it('vetoes correlation when candidate and evidence are distinct conflicting marketplace platforms (Shopee vs Tokopedia)', () => {
+      const existingShopeeRecord: WalletRecordItem = {
+        id: 'record-shopee-1',
+        accountId: 'acc-1',
+        amount: -100000,
+        currency: 'IDR',
+        recordDate: '2026-11-10T10:00:00.000Z',
+        recordType: 'expense',
+        counterParty: 'Shopee',
+        note: 'Pembayaran pesanan Shopee',
+      };
+
+      const tokopediaEvidence = createEvidence({
+        sourceType: 'PUSH_NOTIFICATION',
+        sourceId: 'Jago',
+        merchant: 'Tokopedia',
+        amount: -100000,
+        currency: 'IDR',
+        occurredAt: '2026-11-10T10:01:00.000Z',
+        accountHint: 'Jago Expense',
+        accountId: 'acc-1',
+        note: 'Pembayaran pesanan Tokopedia',
+      });
+
+      // Register Tokopedia in registry for test
+      const customRegistry = new CommercePlatformRegistry();
+      customRegistry.register({
+        id: 'tokopedia',
+        displayName: 'Tokopedia',
+        isMarketplace: true,
+        defaultCategory: 'Shopping',
+        defaultAccountHint: 'Cash',
+        senderDomains: ['tokopedia.com'],
+        subjectKeywords: ['pesanan'],
+        blacklistKeywords: [],
+        bodyRequiredPatterns: [/pesanan/i],
+        amountPriorityPatterns: [/(?:Total)[:\s]*Rp\s*([\d.,]+)/i],
+        referencePatterns: [/INV\/[0-9]+/i],
+        platformWallets: ['tokopedia'],
+        merchantKeywords: ['tokopedia'],
+      });
+
+      const customEngine = new TransactionCorrelationEngine({
+        platformRegistry: customRegistry,
+      });
+
+      const result = customEngine.correlateEvidence(tokopediaEvidence, [], [existingShopeeRecord]);
+
+      expect(result.confidence).toBe('LOW');
+      expect(result.suggestedAction).toBe('CREATE_INDEPENDENT');
+      expect(result.matchTarget.type).toBe('NONE');
     });
   });
 });

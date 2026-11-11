@@ -86,16 +86,11 @@ describe('correlationPredicates unit tests', () => {
       expect(isOnlinePlatformOrGateway('QRIS_NOBU')).toBe(true);
       expect(isOnlinePlatformOrGateway('PG_DOKU')).toBe(true);
       expect(isOnlinePlatformOrGateway('SHOPEEPAY_MERCHANT')).toBe(true);
-      expect(isOnlinePlatformOrGateway('Shopee')).toBe(true);
-      expect(isOnlinePlatformOrGateway('Shopee Indonesia')).toBe(true);
-      expect(isOnlinePlatformOrGateway('Tokopedia')).toBe(true);
-      expect(isOnlinePlatformOrGateway('Grab')).toBe(true);
-      expect(isOnlinePlatformOrGateway('Gojek')).toBe(true);
-      expect(isOnlinePlatformOrGateway('Blibli')).toBe(true);
     });
 
     it('does not classify specific store or seller names as platforms', () => {
       expect(isOnlinePlatformOrGateway('dettolvanishharpic')).toBe(false);
+      expect(isOnlinePlatformOrGateway('reltonindonesia')).toBe(false);
       expect(isOnlinePlatformOrGateway('Starbucks')).toBe(false);
       expect(isOnlinePlatformOrGateway('Indomaret')).toBe(false);
       expect(isOnlinePlatformOrGateway(undefined)).toBe(false);

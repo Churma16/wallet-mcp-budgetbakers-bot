@@ -102,6 +102,44 @@ describe('CommercePlatformRegistry', () => {
     });
   });
 
+  describe('isMarketplacePlatform and findMarketplacePlatform identification', () => {
+    it('identifies registered marketplace platforms where bank debits display platform name while receipts display 3rd-party sellers', () => {
+      expect(registry.isMarketplacePlatform('Shopee')).toBe(true);
+      expect(registry.isMarketplacePlatform('Shopee Indonesia')).toBe(true);
+      expect(registry.isMarketplacePlatform('Grab')).toBe(true);
+      expect(registry.isMarketplacePlatform('GrabFood')).toBe(true);
+      expect(registry.isMarketplacePlatform('Blibli')).toBe(true);
+      expect(registry.isMarketplacePlatform('Blibli Offline Store')).toBe(true);
+
+      const shopeeDef = registry.findMarketplacePlatform('Shopee');
+      expect(shopeeDef).toBeDefined();
+      expect(shopeeDef?.id).toBe('shopee');
+
+      const grabDef = registry.findMarketplacePlatform('GrabFood');
+      expect(grabDef).toBeDefined();
+      expect(grabDef?.id).toBe('grab');
+    });
+
+    it('returns false for retail stores and platforms marked isMarketplace: false', () => {
+      expect(registry.isMarketplacePlatform('Alfagift')).toBe(false);
+      expect(registry.isMarketplacePlatform('Alfamart')).toBe(false);
+      expect(registry.isMarketplacePlatform('Indomaret')).toBe(false);
+      expect(registry.isMarketplacePlatform('Starbucks')).toBe(false);
+      expect(registry.findMarketplacePlatform('Alfagift')).toBeUndefined();
+      expect(registry.findMarketplacePlatform('Alfamart')).toBeUndefined();
+      expect(registry.findMarketplacePlatform('Indomaret')).toBeUndefined();
+    });
+
+    it('returns false for generic placeholders, pure banks, and null/undefined', () => {
+      expect(registry.isMarketplacePlatform('Unknown')).toBe(false);
+      expect(registry.isMarketplacePlatform('Kartu Debit')).toBe(false);
+      expect(registry.isMarketplacePlatform('Bank Jago')).toBe(false);
+      expect(registry.isMarketplacePlatform(undefined)).toBe(false);
+      expect(registry.isMarketplacePlatform(null)).toBe(false);
+      expect(registry.isMarketplacePlatform('')).toBe(false);
+    });
+  });
+
   describe('toBankEmailRules translation', () => {
     it('generates valid BankEmailRuleDefinition entries with MERCHANT_RECEIPT category', () => {
       const generatedRules = registry.toBankEmailRules();
@@ -138,6 +176,7 @@ describe('CommercePlatformRegistry', () => {
       const tokopediaDef: CommercePlatformDefinition = {
         id: 'tokopedia',
         displayName: 'Tokopedia',
+        isMarketplace: true,
         defaultCategory: 'Shopping',
         defaultAccountHint: 'Cash',
         senderDomains: ['tokopedia.com', 'tokomail.com'],
@@ -153,6 +192,7 @@ describe('CommercePlatformRegistry', () => {
       customRegistry.register(tokopediaDef);
 
       expect(customRegistry.isCommerceMerchant('Tokopedia Official Store')).toBe(true);
+      expect(customRegistry.isMarketplacePlatform('Tokopedia')).toBe(true);
       expect(customRegistry.isPlatformWallet('Tokopedia Saldo')).toBe(true);
 
       // Verify that TransactionCorrelationEngine initialized with customRegistry

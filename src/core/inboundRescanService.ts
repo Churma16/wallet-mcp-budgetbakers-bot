@@ -334,14 +334,20 @@ export class InboundRescanService {
 
         const currentMerchant = matchedRecord.counterParty || poolCandidate?.counterParty;
         const isCurrentGeneric = !currentMerchant || isGenericMerchant(currentMerchant);
+        const isCurrentPlatformOrGateway =
+          isOnlinePlatformOrGateway(currentMerchant) ||
+          CommercePlatformRegistry.getInstance().isMarketplacePlatform(currentMerchant);
         const hasGenericMerchant =
           isCurrentGeneric ||
-          isOnlinePlatformOrGateway(currentMerchant) ||
+          isCurrentPlatformOrGateway ||
           CommercePlatformRegistry.getInstance().isCommerceMerchant(currentMerchant);
+        const isIncomingPlatformOrGateway =
+          isOnlinePlatformOrGateway(evidence.merchant) ||
+          CommercePlatformRegistry.getInstance().isMarketplacePlatform(evidence.merchant);
         const incomingHasSpecificMerchant = Boolean(
           evidence.merchant &&
           !isGenericMerchant(evidence.merchant) &&
-          (!isOnlinePlatformOrGateway(evidence.merchant) || isCurrentGeneric)
+          (!isIncomingPlatformOrGateway || isCurrentGeneric)
         );
         const shouldPatchMerchant = hasGenericMerchant && incomingHasSpecificMerchant;
 

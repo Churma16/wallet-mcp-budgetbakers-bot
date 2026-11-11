@@ -388,8 +388,10 @@ export class TransactionCorrelationEngine {
       const isCandGeneric = isGenericMerchant(candMerchant);
       const isEvidGeneric = isGenericMerchant(evidMerchant);
 
-      const isCandPlatform = isOnlinePlatformOrGateway(candMerchant);
-      const isEvidPlatform = isOnlinePlatformOrGateway(evidMerchant);
+      const candMarketplace = this.platformRegistry.findMarketplacePlatform(candMerchant);
+      const evidMarketplace = this.platformRegistry.findMarketplacePlatform(evidMerchant);
+      const isCandPlatform = Boolean(candMarketplace) || isOnlinePlatformOrGateway(candMerchant);
+      const isEvidPlatform = Boolean(evidMarketplace) || isOnlinePlatformOrGateway(evidMerchant);
       const isDynamicMatch = this.isDynamicPlatformMatch(candMerchant, candNote, evidence);
       const isPlatformSellerPair =
         isDynamicMatch ||
@@ -676,9 +678,17 @@ export class TransactionCorrelationEngine {
     if (!cm || !em) return false;
     if (isGenericMerchant(cm) || isGenericMerchant(em)) return false;
 
+    // Marketplace platforms vs marketplace platforms:
+    // If both belong to distinct registered marketplaces (e.g. Shopee vs Tokopedia), they conflict.
+    const candMarketplace = this.platformRegistry.findMarketplacePlatform(cm);
+    const evidMarketplace = this.platformRegistry.findMarketplacePlatform(em);
+    if (candMarketplace && evidMarketplace && candMarketplace.id !== evidMarketplace.id) {
+      return true;
+    }
+
     // A commerce platform (marketplace) or payment gateway never conflicts with a specific merchant/seller
-    const isCandPlatform = isOnlinePlatformOrGateway(cm);
-    const isEvidPlatform = isOnlinePlatformOrGateway(em);
+    const isCandPlatform = Boolean(candMarketplace) || isOnlinePlatformOrGateway(cm);
+    const isEvidPlatform = Boolean(evidMarketplace) || isOnlinePlatformOrGateway(em);
     if (isCandPlatform || isEvidPlatform) {
       return false;
     }
