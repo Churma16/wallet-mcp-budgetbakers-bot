@@ -1275,15 +1275,14 @@ describe('native Wallet MCP summary aggregation', () => {
       expect(capabilityService.supportsTool('get_records_aggregation')).toBe(false);
 
       // Access the internal runtime services wired in the application
-      const summaryService = (app as unknown as { transactionSummaryService: TransactionSummaryService })
-        .transactionSummaryService;
+      const summaryService = app.context.wallet.summary;
       const fetchAggregationSpy = vi.spyOn(
-        (app as unknown as { walletMcpClient: WalletMcpClientService }).walletMcpClient,
+        app.context.wallet.client,
         'fetchRecordsAggregation'
       );
 
       const historySpy = vi.spyOn(
-        (app as unknown as { transactionHistoryService: TransactionHistoryService }).transactionHistoryService,
+        app.context.wallet.history,
         'getTransactionHistory'
       ).mockResolvedValue({
         records: [],
