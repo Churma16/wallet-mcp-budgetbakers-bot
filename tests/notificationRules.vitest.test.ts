@@ -71,6 +71,17 @@ describe('notificationRules', () => {
       expect(result.candidateAmount).toBe(50000);
     });
 
+    it('accepts and correctly maps Toco push notification', () => {
+      const result = evaluateNotificationThroughGate({
+        packageName: 'id.toco',
+        title: 'Pesanan Berhasil',
+        text: 'Pembayaran sebesar Rp 150.000 telah berhasil diterima',
+      });
+      expect(result.passed).toBe(true);
+      expect(result.matchedBankRule?.displayName).toBe('Toco');
+      expect(result.candidateAmount).toBe(150000);
+    });
+
     it('accepts and correctly maps TikTok Shop notification', () => {
       const result = evaluateNotificationThroughGate({
         packageName: 'com.zhiliaoapp.musically',

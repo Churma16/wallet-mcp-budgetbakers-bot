@@ -5,6 +5,7 @@ import {
   isGenericMerchant,
   isGenericNote,
 } from '../src/email/index.js';
+import { CommercePlatformRegistry } from '../src/config/commercePlatforms.js';
 import { PendingTransactionItem } from '../src/core/pending.js';
 import { TransactionEvidence } from '../src/email/index.js';
 import { WalletRecordItem } from '../src/wallet/index.js';
@@ -1199,6 +1200,148 @@ describe('TransactionCorrelationEngine', () => {
       if (result.matchTarget.type === 'WALLET_RECORD') {
         expect(result.matchTarget.record.id).toBe('c98084af-3026-429b-95e6-159b65d548eb');
       }
+    });
+
+    it('correlates existing Shopee e-receipt record from seller reltonindonesia with subsequent Bank Jago debit for Shopee without conflicting stores veto', () => {
+      const existingShopeeRecord: WalletRecordItem = {
+        id: '8028c21a-edb8-4d86-a29a-79199c1128ea',
+        accountId: 'a7a51081-350c-4013-b99c-ffdaae10651d',
+        accountName: 'Jago Expense',
+        amount: -53831,
+        currency: 'IDR',
+        recordDate: '2026-11-10T17:46:53.687Z',
+        recordType: 'expense',
+        counterParty: 'reltonindonesia',
+        note: '1x Timbangan Dapur Digital 10kg Commercial Kitchen Scale Premium RELTON',
+        category: {
+          id: '5c5c07d4-0014-8000-8000-000000000000',
+          name: 'Home & garden',
+        },
+      };
+
+      const jagoDebitEvidence = createEvidence({
+        sourceType: 'PUSH_NOTIFICATION',
+        sourceId: 'Jago',
+        merchant: 'Shopee',
+        amount: -53831,
+        currency: 'IDR',
+        occurredAt: '2026-11-10T17:46:26.183Z',
+        accountHint: 'Jago Expense',
+        accountId: 'a7a51081-350c-4013-b99c-ffdaae10651d',
+        note: 'Pembayaran pesanan Shopee',
+        categoryId: '5c5c07da-0014-8000-8000-000000000000',
+        categoryName: 'Shopping',
+        referenceNumbers: [],
+      });
+
+      const result = service.correlateEvidence(jagoDebitEvidence, [], [existingShopeeRecord]);
+
+      expect(result.confidence).toBe('HIGH');
+      expect(result.suggestedAction).toBe('ATTACH_WALLET_RECORD');
+      expect(result.matchTarget.type).toBe('WALLET_RECORD');
+      if (result.matchTarget.type === 'WALLET_RECORD') {
+        expect(result.matchTarget.record.id).toBe('8028c21a-edb8-4d86-a29a-79199c1128ea');
+      }
+    });
+
+    it('vetoes correlation when candidate and evidence are distinct conflicting marketplace platforms (Shopee vs Tokopedia)', () => {
+      const existingShopeeRecord: WalletRecordItem = {
+        id: 'record-shopee-1',
+        accountId: 'acc-1',
+        amount: -100000,
+        currency: 'IDR',
+        recordDate: '2026-11-10T10:00:00.000Z',
+        recordType: 'expense',
+        counterParty: 'Shopee',
+        note: 'Pembayaran pesanan Shopee',
+      };
+
+      const tokopediaEvidence = createEvidence({
+        sourceType: 'PUSH_NOTIFICATION',
+        sourceId: 'Jago',
+        merchant: 'Tokopedia',
+        amount: -100000,
+        currency: 'IDR',
+        occurredAt: '2026-11-10T10:01:00.000Z',
+        accountHint: 'Jago Expense',
+        accountId: 'acc-1',
+        note: 'Pembayaran pesanan Tokopedia',
+      });
+
+      // Register Tokopedia in registry for test
+      const customRegistry = new CommercePlatformRegistry();
+      customRegistry.register({
+        id: 'tokopedia',
+        displayName: 'Tokopedia',
+        isMarketplace: true,
+        defaultCategory: 'Shopping',
+        defaultAccountHint: 'Cash',
+        senderDomains: ['tokopedia.com'],
+        subjectKeywords: ['pesanan'],
+        blacklistKeywords: [],
+        bodyRequiredPatterns: [/pesanan/i],
+        amountPriorityPatterns: [/(?:Total)[:\s]*Rp\s*([\d.,]+)/i],
+        referencePatterns: [/INV\/[0-9]+/i],
+        platformWallets: ['tokopedia'],
+        merchantKeywords: ['tokopedia'],
+      });
+
+      const customEngine = new TransactionCorrelationEngine({
+        platformRegistry: customRegistry,
+      });
+
+      const result = customEngine.correlateEvidence(tokopediaEvidence, [], [existingShopeeRecord]);
+
+      expect(result.confidence).toBe('LOW');
+      expect(result.suggestedAction).toBe('CREATE_INDEPENDENT');
+      expect(result.matchTarget.type).toBe('NONE');
+    });
+
+    it('correlates an arbitrary unregistered platform settlement rail (e.g. TOCO QRIS) with an itemized commercial receipt agnostic of platform registry', () => {
+      // Existing pending candidate from Bank Mandiri for TOCO QRIS payment (settlement rail)
+      const tocoDebitCandidate = createPendingItem({
+        sourceType: 'EMAIL',
+        bankDisplayName: 'Bank Mandiri (Livin)',
+        accountNameHint: 'Mandiri Debit Card',
+        matchedAccountId: '8d0dce90-8e6f-4698-84f3-97833b7f6c84',
+        counterParty: 'TOCO',
+        amount: -320965,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        matchedCategoryId: '5c5c07da-0014-8000-8000-000000000000',
+        matchedCategoryName: 'Shopping',
+        note: 'Pembayaran QRIS di TOCO',
+        recordDate: '2026-11-11T07:19:42.000Z',
+        evidenceSources: ['EMAIL_BANK'],
+      });
+
+      // Commercial receipt arriving from merchant with specific itemized store name
+      const merchantReceiptEvidence = createEvidence({
+        sourceType: 'EMAIL_PAYMENT',
+        sourceId: 'Receipt #TC-20261111-9988',
+        merchant: 'Toko Buku & Stationary Berkah',
+        amount: -320965,
+        currency: 'IDR',
+        occurredAt: '2026-11-11T07:19:50.000Z', // 8 seconds later
+        accountHint: 'Cash',
+        accountId: undefined,
+        note: '1x Kertas HVS A4 80gsm, 2x Pulpen Gel 0.5',
+        categoryId: 'cat-office',
+        categoryName: 'Office & stationary',
+        referenceNumbers: ['TC-20261111-9988'],
+      });
+
+      // Use standard engine configured with DEFAULT_COMMERCE_PLATFORMS (including Toco)
+      const result = service.correlateEvidence(merchantReceiptEvidence, [tocoDebitCandidate]);
+
+      expect(result.confidence).toBe('HIGH');
+      expect(result.suggestedAction).toBe('MERGE_PENDING');
+      expect(result.matchTarget.type).toBe('PENDING_TRANSACTION');
+      if (result.matchTarget.type === 'PENDING_TRANSACTION') {
+        expect(result.matchTarget.pendingItem.ticketId).toBe(tocoDebitCandidate.ticketId);
+      }
+      expect(result.fusedPendingItem?.counterParty).toBe('Toko Buku & Stationary Berkah');
+      expect(result.fusedPendingItem?.note).toBe('1x Kertas HVS A4 80gsm, 2x Pulpen Gel 0.5');
     });
   });
 });

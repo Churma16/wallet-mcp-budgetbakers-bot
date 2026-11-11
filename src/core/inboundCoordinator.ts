@@ -242,15 +242,21 @@ export async function coordinateInboundTransactionCandidate(
     const shouldPatchCategory = hasGenericCategory && incomingHasSpecificCategory && Boolean(incomingCategoryId);
 
     const currentMerchant = matchedRecord.counterParty || poolCandidate?.counterParty;
-    const hasGenericMerchant =
-      !currentMerchant ||
-      isGenericMerchant(currentMerchant) ||
+    const isCurrentGeneric = !currentMerchant || isGenericMerchant(currentMerchant);
+    const isCurrentPlatformOrGateway =
       isOnlinePlatformOrGateway(currentMerchant) ||
+      CommercePlatformRegistry.getInstance().isMarketplacePlatform(currentMerchant);
+    const hasGenericMerchant =
+      isCurrentGeneric ||
+      isCurrentPlatformOrGateway ||
       CommercePlatformRegistry.getInstance().isCommerceMerchant(currentMerchant);
+    const isIncomingPlatformOrGateway =
+      isOnlinePlatformOrGateway(incomingEvidence.merchant) ||
+      CommercePlatformRegistry.getInstance().isMarketplacePlatform(incomingEvidence.merchant);
     const incomingHasSpecificMerchant = Boolean(
       incomingEvidence.merchant &&
       !isGenericMerchant(incomingEvidence.merchant) &&
-      !isOnlinePlatformOrGateway(incomingEvidence.merchant)
+      (!isIncomingPlatformOrGateway || isCurrentGeneric)
     );
     const shouldPatchMerchant = hasGenericMerchant && incomingHasSpecificMerchant;
 
@@ -327,13 +333,21 @@ export async function coordinateInboundTransactionCandidate(
           if (Math.abs(pending.amount) === evidenceAmountAbs) {
             const timeDiff = Math.abs(new Date(pending.recordDate).getTime() - new Date(incomingEvidence.occurredAt).getTime());
             const isTimeMatch = Number.isNaN(timeDiff) || timeDiff <= 48 * 60 * 60 * 1000;
+            const isPlatformPending =
+              isOnlinePlatformOrGateway(pending.counterParty) ||
+              CommercePlatformRegistry.getInstance().isMarketplacePlatform(pending.counterParty);
+            const isPlatformEvidence =
+              isOnlinePlatformOrGateway(incomingEvidence.merchant) ||
+              CommercePlatformRegistry.getInstance().isMarketplacePlatform(incomingEvidence.merchant);
             const isMerchantMatch =
               !pending.counterParty ||
               !incomingEvidence.merchant ||
               isGenericMerchant(pending.counterParty) ||
               pending.counterParty.toLowerCase() === incomingEvidence.merchant.toLowerCase() ||
               incomingEvidence.merchant.toLowerCase().includes(pending.counterParty.toLowerCase()) ||
-              incomingEvidence.merchant.toLowerCase().includes('grab');
+              pending.counterParty.toLowerCase().includes(incomingEvidence.merchant.toLowerCase()) ||
+              isPlatformPending ||
+              isPlatformEvidence;
 
             if (isTimeMatch && isMerchantMatch) {
               applicationLogger.info(

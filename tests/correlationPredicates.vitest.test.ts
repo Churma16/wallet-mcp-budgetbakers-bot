@@ -90,6 +90,7 @@ describe('correlationPredicates unit tests', () => {
 
     it('does not classify specific store or seller names as platforms', () => {
       expect(isOnlinePlatformOrGateway('dettolvanishharpic')).toBe(false);
+      expect(isOnlinePlatformOrGateway('reltonindonesia')).toBe(false);
       expect(isOnlinePlatformOrGateway('Starbucks')).toBe(false);
       expect(isOnlinePlatformOrGateway('Indomaret')).toBe(false);
       expect(isOnlinePlatformOrGateway(undefined)).toBe(false);

@@ -5,6 +5,8 @@ export interface CommercePlatformDefinition {
   readonly id: string;
   /** Human-readable display name */
   readonly displayName: string;
+  /** Whether this platform is an intermediary/marketplace platform (e.g. Shopee, Grab, Blibli) where bank debits display platform name while receipts display 3rd-party sellers. Defaults to true. */
+  readonly isMarketplace?: boolean;
   /** Default category for this commerce platform (e.g. 'Ojol', 'Shopping') */
   readonly defaultCategory: string;
   /** Default account name hint if not specified (e.g. 'Cash', 'Grab') */
@@ -34,6 +36,7 @@ export const DEFAULT_COMMERCE_PLATFORMS: CommercePlatformDefinition[] = [
   {
     id: 'grab',
     displayName: 'Grab',
+    isMarketplace: true,
     defaultCategory: 'Ojol',
     defaultAccountHint: 'Grab',
     senderDomains: ['grab.com'],
@@ -76,6 +79,7 @@ export const DEFAULT_COMMERCE_PLATFORMS: CommercePlatformDefinition[] = [
   {
     id: 'blibli',
     displayName: 'Blibli',
+    isMarketplace: true,
     defaultCategory: 'Shopping',
     defaultAccountHint: 'Cash',
     senderDomains: ['blibli.com'],
@@ -119,6 +123,7 @@ export const DEFAULT_COMMERCE_PLATFORMS: CommercePlatformDefinition[] = [
   {
     id: 'shopee',
     displayName: 'Shopee',
+    isMarketplace: true,
     defaultCategory: 'Shopping',
     defaultAccountHint: 'Cash',
     senderDomains: ['shopee.co.id'],
@@ -165,6 +170,7 @@ export const DEFAULT_COMMERCE_PLATFORMS: CommercePlatformDefinition[] = [
   {
     id: 'alfagift',
     displayName: 'Alfagift',
+    isMarketplace: false,
     defaultCategory: 'Groceries',
     defaultAccountHint: 'Cash',
     senderDomains: ['alfagift.id', 'alfamart.co.id'],
@@ -209,6 +215,44 @@ export const DEFAULT_COMMERCE_PLATFORMS: CommercePlatformDefinition[] = [
     ],
     platformWallets: ['alfagift', 'a-poin', 'aladin'],
     merchantKeywords: ['alfagift', 'alfamart', 'sumber alfaria trijaya'],
+  },
+
+  // 5. Toco
+  {
+    id: 'toco',
+    displayName: 'Toco',
+    isMarketplace: true,
+    defaultCategory: 'Shopping',
+    defaultAccountHint: 'Cash',
+    senderDomains: ['toco.id', 'mail.toco.id'],
+    subjectKeywords: [
+      'pembayaran berhasil',
+      'pesanan berhasil',
+      'rincian pesanan',
+      'e-receipt',
+      'struk pembayaran',
+      'invoice',
+      'pembayaran qris',
+    ],
+    blacklistKeywords: [
+      'otp',
+      'verifikasi',
+      'promo',
+      'diskon',
+      'newsletter',
+    ],
+    bodyRequiredPatterns: [
+      /(?:total\s*pembayaran|total\s*tagihan|invoice|pesanan|toco)/i,
+    ],
+    amountPriorityPatterns: [
+      /(?:Total\s*Pembayaran|Total\s*Tagihan|Total)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
+      /(?:Rp|IDR)\s*([\d.,]+)/i,
+    ],
+    referencePatterns: [
+      /(?:No\.?\s*Pesanan|Nomor\s*Pesanan|Order\s*ID|No\.?\s*Transaksi)[:\s]*#?([A-Za-z0-9_-]+)/i,
+    ],
+    platformWallets: ['toco'],
+    merchantKeywords: ['toco', 'toco.id', 'toko ramai digital'],
   },
 ];
 
@@ -292,6 +336,40 @@ export class CommercePlatformRegistry {
       lower.includes(p.displayName.toLowerCase()) ||
       p.merchantKeywords.some(keyword => lower.includes(keyword.toLowerCase()))
     );
+  }
+
+  /**
+   * Finds the registered marketplace platform matching a merchant or counterparty name, if any.
+   * Only matches platforms designated as marketplaces (e.g. Shopee, Grab, Blibli),
+   * excluding retail merchants like Alfamart/Alfagift.
+   */
+  public findMarketplacePlatform(merchantName: string | undefined | null): CommercePlatformDefinition | undefined {
+    if (!merchantName) return undefined;
+    const lower = merchantName.toLowerCase().trim();
+    if (!lower) return undefined;
+
+    return Array.from(this.platforms.values())
+      .filter(p => p.isMarketplace !== false)
+      .find(p => {
+        if (lower === p.id || lower === p.displayName.toLowerCase()) return true;
+
+        const tokens = lower.split(/[^a-z0-9]+/);
+        if (tokens.includes(p.id) || tokens.includes(p.displayName.toLowerCase())) return true;
+
+        return p.merchantKeywords.some(kw => {
+          const kwLower = kw.toLowerCase();
+          return lower === kwLower || tokens.includes(kwLower);
+        });
+      });
+  }
+
+  /**
+   * Checks whether a merchant or counterparty name corresponds to a registered online marketplace
+   * or aggregator platform (e.g. Shopee, Grab, Blibli) where bank debits typically display
+   * the platform brand while itemized receipts display 3rd-party sellers.
+   */
+  public isMarketplacePlatform(merchantName: string | undefined | null): boolean {
+    return this.findMarketplacePlatform(merchantName) !== undefined;
   }
 
   /**
