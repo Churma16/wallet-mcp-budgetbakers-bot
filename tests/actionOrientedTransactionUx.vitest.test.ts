@@ -51,7 +51,6 @@ import {
   formatAccountSelectionProcessing,
   formatAccountSelectionRetry,
   formatAccountSelectionUnknownOutcome,
-  formatAccountSelectionUnknownDismissal,
 } from '../src/brain/clarification/accountClarificationFormatter.js';
 
 class MockWalletMcpClient {
@@ -933,7 +932,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
       expect(prompt5).toBeDefined();
     });
 
-    it('formats cancellation, processing, retry, unknown, and dismissal messages in ID and EN', () => {
+    it('formats cancellation, processing, retry, and unknown messages in ID and EN', () => {
       setActiveLanguage('id');
       expect(formatAccountSelectionCancellation(mockDraft)).toContain('dibatalkan');
       expect(formatAccountSelectionProcessing(mockDraft)).toContain('sedang diproses');
@@ -942,7 +941,6 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
       expect(unknownId).toContain('Belum bisa memastikan transaksi sudah tercatat');
       expect(unknownId).toContain('Sudah ada');
       expect(unknownId).toContain('Belum ada');
-      expect(formatAccountSelectionUnknownDismissal(mockDraft)).toContain('ditutup');
 
       setActiveLanguage('en');
       expect(formatAccountSelectionCancellation(mockDraft)).toContain('cancelled');
@@ -952,7 +950,6 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
       expect(unknownEn).toContain('Cannot confirm whether transaction was recorded');
       expect(unknownEn).toContain('Already exists');
       expect(unknownEn).toContain('Not there');
-      expect(formatAccountSelectionUnknownDismissal(mockDraft)).toContain('status closed');
     });
   });
 

@@ -33,7 +33,6 @@ import { RuntimeSettingsManager } from '../config/runtimeSettingsManager.js';
 import {
   escapeHtmlEntities,
   formatTelegramHtml,
-  convertWhatsAppMarkupToTelegramHtml,
 } from './formatters/telegramFormatter.js';
 import { handleReconciliationPagination } from '../core/reconciliation/reconciliationCardFormatter.js';
 import { reconciliationSessionStore } from '../core/reconciliation/reconciliationSessionStore.js';
@@ -42,7 +41,7 @@ import type { TransactionHistoryService } from '../wallet/index.js';
 import { getActiveLanguage, getDictionary } from '../i18n/index.js';
 
 export type { TelegramSafeguardConfiguration };
-export { escapeHtmlEntities, formatTelegramHtml, convertWhatsAppMarkupToTelegramHtml };
+export { escapeHtmlEntities, formatTelegramHtml };
 
 export const MEDIA_GROUP_DEBOUNCE_MS = 2000;
 

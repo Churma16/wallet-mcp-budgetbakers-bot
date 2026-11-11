@@ -10,7 +10,7 @@ import {
   WhatsappPresenceManager,
   WhatsappConnectionResilience,
   WhatsappInboundMessageProcessor,
-  convertWhatsAppMarkupToTelegramHtml,
+  formatTelegramHtml,
   formatBytesToMegabytes,
   formatBytesToMegabytesDisplay,
   isMediaSizeExceeded,
@@ -197,10 +197,10 @@ describe('Gateway Domain Coverage Gate', () => {
     });
 
     it('handles markup conversion edge cases', () => {
-      expect(convertWhatsAppMarkupToTelegramHtml('')).toBe('');
-      expect(convertWhatsAppMarkupToTelegramHtml('Normal text')).toBe('Normal text');
-      expect(convertWhatsAppMarkupToTelegramHtml('```pre code``` and `inline`')).toContain('<pre>pre code</pre>');
-      expect(convertWhatsAppMarkupToTelegramHtml('~strikethrough~')).toBe('<s>strikethrough</s>');
+      expect(formatTelegramHtml('')).toBe('');
+      expect(formatTelegramHtml('Normal text')).toBe('Normal text');
+      expect(formatTelegramHtml('```pre code``` and `inline`')).toContain('<pre>pre code</pre>');
+      expect(formatTelegramHtml('~strikethrough~')).toBe('<s>strikethrough</s>');
     });
   });
 

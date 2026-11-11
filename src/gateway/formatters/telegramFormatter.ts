@@ -43,11 +43,6 @@ export function formatTelegramHtml(sourceText: string): string {
   return transformedText;
 }
 
-/**
- * Backward compatibility alias for legacy callers and tests.
- */
-export const convertWhatsAppMarkupToTelegramHtml = formatTelegramHtml;
-
 export class TelegramMessageFormatter implements ChannelMessageFormatter {
   public readonly channelName = 'telegram' as const;
 
