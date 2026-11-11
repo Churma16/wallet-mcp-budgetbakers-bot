@@ -388,10 +388,13 @@ export class TransactionCorrelationEngine {
       const isCandGeneric = isGenericMerchant(candMerchant);
       const isEvidGeneric = isGenericMerchant(evidMerchant);
 
+      const isCandPlatform = isOnlinePlatformOrGateway(candMerchant);
+      const isEvidPlatform = isOnlinePlatformOrGateway(evidMerchant);
       const isDynamicMatch = this.isDynamicPlatformMatch(candMerchant, candNote, evidence);
       const isPlatformSellerPair =
         isDynamicMatch ||
-        (isOnlinePlatformOrGateway(candMerchant) && !isOnlinePlatformOrGateway(evidMerchant) && !isGenericMerchant(evidMerchant));
+        (isCandPlatform && !isEvidPlatform && !isEvidGeneric) ||
+        (isEvidPlatform && !isCandPlatform && !isCandGeneric);
 
       const isPending = 'ticketId' in candidate;
       const isDualChannelBank =
@@ -673,6 +676,13 @@ export class TransactionCorrelationEngine {
     if (!cm || !em) return false;
     if (isGenericMerchant(cm) || isGenericMerchant(em)) return false;
 
+    // A commerce platform (marketplace) or payment gateway never conflicts with a specific merchant/seller
+    const isCandPlatform = isOnlinePlatformOrGateway(cm);
+    const isEvidPlatform = isOnlinePlatformOrGateway(em);
+    if (isCandPlatform || isEvidPlatform) {
+      return false;
+    }
+
     if (evidence && this.isDynamicPlatformMatch(candMerchant, candNote, evidence)) {
       return false;
     }
@@ -746,6 +756,24 @@ export class TransactionCorrelationEngine {
         if (platformDef.merchantKeywords.some(kw => candCombined.includes(kw.toLowerCase()))) {
           return true;
         }
+      }
+    }
+
+    // 4. Bidirectional: If incoming evidence matches a registered commerce platform, check if candidate references it
+    const em = (evidence.merchant || '').toLowerCase();
+    const en = (evidence.note || '').toLowerCase();
+    const evidCombined = `${em} ${en}`;
+    for (const platform of this.platformRegistry.getAll()) {
+      const candHasPlatform =
+        candCombined.includes(platform.id) ||
+        candCombined.includes(platform.displayName.toLowerCase()) ||
+        platform.merchantKeywords.some(kw => candCombined.includes(kw.toLowerCase()));
+      const evidHasPlatform =
+        evidCombined.includes(platform.id) ||
+        evidCombined.includes(platform.displayName.toLowerCase()) ||
+        platform.merchantKeywords.some(kw => evidCombined.includes(kw.toLowerCase()));
+      if (candHasPlatform && evidHasPlatform) {
+        return true;
       }
     }
 

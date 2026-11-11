@@ -1200,6 +1200,48 @@ describe('TransactionCorrelationEngine', () => {
         expect(result.matchTarget.record.id).toBe('c98084af-3026-429b-95e6-159b65d548eb');
       }
     });
+
+    it('correlates existing Shopee e-receipt record from seller reltonindonesia with subsequent Bank Jago debit for Shopee without conflicting stores veto', () => {
+      const existingShopeeRecord: WalletRecordItem = {
+        id: '8028c21a-edb8-4d86-a29a-79199c1128ea',
+        accountId: 'a7a51081-350c-4013-b99c-ffdaae10651d',
+        accountName: 'Jago Expense',
+        amount: -53831,
+        currency: 'IDR',
+        recordDate: '2026-11-10T17:46:53.687Z',
+        recordType: 'expense',
+        counterParty: 'reltonindonesia',
+        note: '1x Timbangan Dapur Digital 10kg Commercial Kitchen Scale Premium RELTON',
+        category: {
+          id: '5c5c07d4-0014-8000-8000-000000000000',
+          name: 'Home & garden',
+        },
+      };
+
+      const jagoDebitEvidence = createEvidence({
+        sourceType: 'PUSH_NOTIFICATION',
+        sourceId: 'Jago',
+        merchant: 'Shopee',
+        amount: -53831,
+        currency: 'IDR',
+        occurredAt: '2026-11-10T17:46:26.183Z',
+        accountHint: 'Jago Expense',
+        accountId: 'a7a51081-350c-4013-b99c-ffdaae10651d',
+        note: 'Pembayaran pesanan Shopee',
+        categoryId: '5c5c07da-0014-8000-8000-000000000000',
+        categoryName: 'Shopping',
+        referenceNumbers: [],
+      });
+
+      const result = service.correlateEvidence(jagoDebitEvidence, [], [existingShopeeRecord]);
+
+      expect(result.confidence).toBe('HIGH');
+      expect(result.suggestedAction).toBe('ATTACH_WALLET_RECORD');
+      expect(result.matchTarget.type).toBe('WALLET_RECORD');
+      if (result.matchTarget.type === 'WALLET_RECORD') {
+        expect(result.matchTarget.record.id).toBe('8028c21a-edb8-4d86-a29a-79199c1128ea');
+      }
+    });
   });
 });
 

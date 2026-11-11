@@ -242,15 +242,15 @@ export async function coordinateInboundTransactionCandidate(
     const shouldPatchCategory = hasGenericCategory && incomingHasSpecificCategory && Boolean(incomingCategoryId);
 
     const currentMerchant = matchedRecord.counterParty || poolCandidate?.counterParty;
+    const isCurrentGeneric = !currentMerchant || isGenericMerchant(currentMerchant);
     const hasGenericMerchant =
-      !currentMerchant ||
-      isGenericMerchant(currentMerchant) ||
+      isCurrentGeneric ||
       isOnlinePlatformOrGateway(currentMerchant) ||
       CommercePlatformRegistry.getInstance().isCommerceMerchant(currentMerchant);
     const incomingHasSpecificMerchant = Boolean(
       incomingEvidence.merchant &&
       !isGenericMerchant(incomingEvidence.merchant) &&
-      !isOnlinePlatformOrGateway(incomingEvidence.merchant)
+      (!isOnlinePlatformOrGateway(incomingEvidence.merchant) || isCurrentGeneric)
     );
     const shouldPatchMerchant = hasGenericMerchant && incomingHasSpecificMerchant;
 
@@ -327,13 +327,17 @@ export async function coordinateInboundTransactionCandidate(
           if (Math.abs(pending.amount) === evidenceAmountAbs) {
             const timeDiff = Math.abs(new Date(pending.recordDate).getTime() - new Date(incomingEvidence.occurredAt).getTime());
             const isTimeMatch = Number.isNaN(timeDiff) || timeDiff <= 48 * 60 * 60 * 1000;
+            const isPlatformPending = isOnlinePlatformOrGateway(pending.counterParty);
+            const isPlatformEvidence = isOnlinePlatformOrGateway(incomingEvidence.merchant);
             const isMerchantMatch =
               !pending.counterParty ||
               !incomingEvidence.merchant ||
               isGenericMerchant(pending.counterParty) ||
               pending.counterParty.toLowerCase() === incomingEvidence.merchant.toLowerCase() ||
               incomingEvidence.merchant.toLowerCase().includes(pending.counterParty.toLowerCase()) ||
-              incomingEvidence.merchant.toLowerCase().includes('grab');
+              pending.counterParty.toLowerCase().includes(incomingEvidence.merchant.toLowerCase()) ||
+              isPlatformPending ||
+              isPlatformEvidence;
 
             if (isTimeMatch && isMerchantMatch) {
               applicationLogger.info(
