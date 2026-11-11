@@ -1,6 +1,6 @@
 import { AccountClarificationHandler } from '../src/core/handlers/accountClarificationHandler.js';
-import { UserMessageHandler } from '../src/core/dispatcher.js';
-import { createTestUserMessageHandler } from './fixtures/testContext.js';
+import { MessageDispatcher } from '../src/core/dispatcher.js';
+import { createTestMessageDispatcher } from './fixtures/testContext.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
@@ -226,7 +226,7 @@ it('routes ticket-specific standard pending commands around an active clarificat
   const routingWalletMcp = new MockWalletMcpClient();
   const routingCache = new MockWalletCacheService(accounts, categories);
   const routingPendingAction = new RecordingPendingActionHandler();
-  const routingHandler = createTestUserMessageHandler({
+  const routingHandler = createTestMessageDispatcher({
     messagingGateway: routingMessaging as any,
     pendingTransactionManager: routingPendingService,
     pendingActionHandler: routingPendingAction as any,

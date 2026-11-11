@@ -1,5 +1,5 @@
-import { UserMessageHandler } from '../src/core/dispatcher.js';
-import { createTestUserMessageHandler } from './fixtures/testContext.js';
+import { MessageDispatcher } from '../src/core/dispatcher.js';
+import { createTestMessageDispatcher } from './fixtures/testContext.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { CreateRecordInputPayload, WalletAccountItem, WalletCategoryItem } from '../src/wallet/index.js';
@@ -115,7 +115,7 @@ function createHarness() {
     currency: 'IDR',
   });
 
-  const handler = createTestUserMessageHandler({
+  const handler = createTestMessageDispatcher({
     messagingGateway: messagingGateway as any,
     pendingTransactionManager: pendingService,
     pendingActionHandler: pendingActionHandler as any,

@@ -1,6 +1,6 @@
 import { AccountClarificationHandler } from '../src/core/handlers/accountClarificationHandler.js';
-import { UserMessageHandler } from '../src/core/dispatcher.js';
-import { createTestUserMessageHandler } from './fixtures/testContext.js';
+import { MessageDispatcher } from '../src/core/dispatcher.js';
+import { createTestMessageDispatcher } from './fixtures/testContext.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
@@ -180,7 +180,7 @@ function createUserHandlerHarness(pendingService: PendingTransactionService, mes
   const pendingActionHandler = new MockPendingActionHandler(pendingService);
   const fastPathHandler = new MockFastPathHandler();
   const financialAiProvider = new MockFinancialAiProvider();
-  const handler = createTestUserMessageHandler({
+  const handler = createTestMessageDispatcher({
     messagingGateway: messaging as any,
     pendingTransactionManager: pendingService,
     pendingActionHandler: pendingActionHandler as any,

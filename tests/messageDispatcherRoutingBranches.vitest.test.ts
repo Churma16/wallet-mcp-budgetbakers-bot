@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserMessageHandler } from '../src/core/dispatcher.js';
+import { MessageDispatcher } from '../src/core/dispatcher.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
-import { createTestUserMessageHandler } from './fixtures/testContext.js';
+import { createTestMessageDispatcher } from './fixtures/testContext.js';
 
 function event(text: string) {
   return {
@@ -87,7 +87,7 @@ function createHandler(options: {
     execute: vi.fn(),
   };
 
-  const handler = createTestUserMessageHandler({
+  const handler = createTestMessageDispatcher({
     messagingGateway: gateway,
     pendingTransactionManager: pending,
     pendingActionHandler: pendingAction,

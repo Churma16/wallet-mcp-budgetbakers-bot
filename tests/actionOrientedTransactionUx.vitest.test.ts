@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { UserMessageHandler } from '../src/core/dispatcher.js';
-import { createTestUserMessageHandler } from './fixtures/testContext.js';
+import { MessageDispatcher } from '../src/core/dispatcher.js';
+import { createTestMessageDispatcher } from './fixtures/testContext.js';
 import {
   setActiveLanguage,
   getDictionary,
@@ -1466,12 +1466,12 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
     });
   });
 
-  describe('UserMessageHandler Reconciliation Command Routing', () => {
+  describe('MessageDispatcher Reconciliation Command Routing', () => {
     it('intercepts reconciliation commands and routes to PendingActionHandler', async () => {
       const mockPendingActionHandler = {
         handleReconciliationAction: vi.fn().mockResolvedValue(true),
       };
-      const userMessageHandler = createTestUserMessageHandler({
+      const userMessageHandler = createTestMessageDispatcher({
         messagingGateway: new MockMessagingGateway() as any,
         pendingTransactionManager: new PendingTransactionService() as any,
         pendingActionHandler: mockPendingActionHandler as any,
@@ -1495,7 +1495,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
       const mockPendingActionHandler = {
         handleReconciliationAction: vi.fn().mockResolvedValue(true),
       };
-      const userMessageHandler = createTestUserMessageHandler({
+      const userMessageHandler = createTestMessageDispatcher({
         messagingGateway: new MockMessagingGateway() as any,
         pendingTransactionManager: new PendingTransactionService() as any,
         pendingActionHandler: mockPendingActionHandler as any,

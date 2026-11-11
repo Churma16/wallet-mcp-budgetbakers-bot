@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { shouldDeferHistoryCategoryToSemanticResolver, UserMessageHandler } from '../src/core/dispatcher.js';
-import { createTestUserMessageHandler } from './fixtures/testContext.js';
+import { shouldDeferHistoryCategoryToSemanticResolver, MessageDispatcher } from '../src/core/dispatcher.js';
+import { createTestMessageDispatcher } from './fixtures/testContext.js';
 import { buildCompactSystemInstruction, buildTextMessagePrompt } from '../src/brain/index.js';
 import { postProcessFinancialIntentResponse } from '../src/brain/index.js';
 import {
@@ -13,7 +13,7 @@ function createHandler(ai: any, fastPathHandled = false, categories: any[] = [])
   const gateway = { sendTypingPresence: vi.fn(), clearTypingPresence: vi.fn(), sendMessage: vi.fn() };
   const registry = { hasHandler: vi.fn().mockReturnValue(true), execute: vi.fn() };
   const fastPath = { handleFastPath: vi.fn().mockResolvedValue(fastPathHandled) };
-  const handler = createTestUserMessageHandler({
+  const handler = createTestMessageDispatcher({
     messagingGateway: gateway as any,
     pendingTransactionManager: { hasPendingTransactions: vi.fn().mockReturnValue(false) } as any,
     fastPathHandler: fastPath as any,

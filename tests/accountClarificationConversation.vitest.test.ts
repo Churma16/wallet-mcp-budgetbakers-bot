@@ -1,5 +1,5 @@
-import { UserMessageHandler } from '../src/core/dispatcher.js';
-import { createTestUserMessageHandler } from './fixtures/testContext.js';
+import { MessageDispatcher } from '../src/core/dispatcher.js';
+import { createTestMessageDispatcher } from './fixtures/testContext.js';
 import { AccountClarificationHandler } from '../src/core/handlers/accountClarificationHandler.js';
 import { AccountClarificationConversationService } from '../src/brain/index.js';
 import { PendingTransactionService } from '../src/core/pending.js';
@@ -180,7 +180,7 @@ class ConfigurableClarificationAiProvider implements FinancialAiProvider {
 }
 
 interface TestHarness {
-  userMessageHandler: UserMessageHandler;
+  userMessageHandler: MessageDispatcher;
   financialAiProvider: ConfigurableClarificationAiProvider;
   accountClarificationHandler: AccountClarificationHandler;
   pendingTransactionManager: PendingTransactionService;
@@ -264,7 +264,7 @@ function createHarness(
     conversationService
   );
 
-  const userMessageHandler = createTestUserMessageHandler({
+  const userMessageHandler = createTestMessageDispatcher({
     messagingGateway: messagingGateway as any,
     pendingTransactionManager,
     pendingActionHandler,
@@ -368,7 +368,7 @@ describe('Account Clarification Conversation Layer', () => {
         conversationService
       );
 
-      const userMessageHandler = createTestUserMessageHandler({
+      const userMessageHandler = createTestMessageDispatcher({
         messagingGateway: messagingGateway as any,
         pendingTransactionManager,
         pendingActionHandler: new MockPendingActionHandler() as any,

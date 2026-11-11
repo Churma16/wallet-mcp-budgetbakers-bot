@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { UserMessageHandler } from '../src/core/dispatcher.js';
-import { createTestUserMessageHandler } from './fixtures/testContext.js';
+import { MessageDispatcher } from '../src/core/dispatcher.js';
+import { createTestMessageDispatcher } from './fixtures/testContext.js';
 import { PendingActionHandler } from '../src/core/handlers/pendingHandler.js';
 import { AccountClarificationHandler } from '../src/core/handlers/accountClarificationHandler.js';
 import { PendingTransactionService } from '../src/core/pending.js';
@@ -82,13 +82,13 @@ describe('reconciliation protocol regressions and edge cases', () => {
   });
 
   describe('bounded reconciliation routing', () => {
-    function createUserMessageHandler(
+    function createMessageDispatcher(
       pendingService: PendingTransactionService,
       reconciliationHandler = vi.fn().mockResolvedValue(true),
       accountClarificationHandler = vi.fn().mockResolvedValue(true)
-    ): UserMessageHandler {
+    ): MessageDispatcher {
       const gateway = new MockMessagingGateway();
-      return createTestUserMessageHandler({
+      return createTestMessageDispatcher({
         messagingGateway: gateway as any,
         pendingTransactionManager: pendingService,
         pendingActionHandler: {
@@ -114,7 +114,7 @@ describe('reconciliation protocol regressions and edge cases', () => {
         addUnknownStandardTransaction(pendingService);
         const reconciliationHandler = vi.fn().mockResolvedValue(true);
         const accountClarificationHandler = vi.fn().mockResolvedValue(true);
-        const handler = createUserMessageHandler(
+        const handler = createMessageDispatcher(
           pendingService,
           reconciliationHandler,
           accountClarificationHandler
@@ -132,7 +132,7 @@ describe('reconciliation protocol regressions and edge cases', () => {
       const ticketId = addUnknownStandardTransaction(pendingService);
       const reconciliationHandler = vi.fn().mockResolvedValue(true);
       const accountClarificationHandler = vi.fn().mockResolvedValue(true);
-      const handler = createUserMessageHandler(
+      const handler = createMessageDispatcher(
         pendingService,
         reconciliationHandler,
         accountClarificationHandler
@@ -152,7 +152,7 @@ describe('reconciliation protocol regressions and edge cases', () => {
       const pendingService = new PendingTransactionService();
       const reconciliationHandler = vi.fn().mockResolvedValue(true);
       const accountClarificationHandler = vi.fn().mockResolvedValue(true);
-      const handler = createUserMessageHandler(
+      const handler = createMessageDispatcher(
         pendingService,
         reconciliationHandler,
         accountClarificationHandler
@@ -168,7 +168,7 @@ describe('reconciliation protocol regressions and edge cases', () => {
       const pendingService = new PendingTransactionService();
       const ticketId = addUnknownStandardTransaction(pendingService);
       const reconciliationHandler = vi.fn().mockResolvedValue(true);
-      const handler = createUserMessageHandler(pendingService, reconciliationHandler);
+      const handler = createMessageDispatcher(pendingService, reconciliationHandler);
 
       await handler.handleIncomingUserMessage(event(`not there ${ticketId}`));
 

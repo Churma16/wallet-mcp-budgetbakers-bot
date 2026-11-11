@@ -14,8 +14,8 @@ import {
 } from '../src/core/index.js';
 import { FinancialActionExecutor } from '../src/core/executor.js';
 import { FastPathHandler } from '../src/core/handlers/fastPathHandler.js';
-import { UserMessageHandler } from '../src/core/dispatcher.js';
-import { createTestUserMessageHandler } from './fixtures/testContext.js';
+import { MessageDispatcher } from '../src/core/dispatcher.js';
+import { createTestMessageDispatcher } from './fixtures/testContext.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { WalletAccountItem, WalletCategoryItem, WalletBudgetProgressItem } from '../src/wallet/index.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
@@ -443,7 +443,7 @@ describe('FinancialActionRegistry & Action Handlers', () => {
   });
 
   describe('Fast-Path and AI-Path Routing Convergence to Shared Registry', () => {
-    it('converges FastPathHandler and UserMessageHandler on the same registered execution handlers', async () => {
+    it('converges FastPathHandler and MessageDispatcher on the same registered execution handlers', async () => {
       const registry = new FinancialActionRegistry();
       const executedActions: string[] = [];
 
@@ -493,7 +493,7 @@ describe('FinancialActionRegistry & Action Handlers', () => {
         processTextMessage: vi.fn(),
       };
 
-      const userMessageHandler = createTestUserMessageHandler({
+      const userMessageHandler = createTestMessageDispatcher({
         messagingGateway: mockGateway as any,
         pendingTransactionManager: { hasPendingTransactions: () => false } as any,
         fastPathHandler,
@@ -583,7 +583,7 @@ describe('FinancialActionRegistry & Action Handlers', () => {
         createRecords: vi.fn(),
       };
 
-      const userMessageHandler = createTestUserMessageHandler({
+      const userMessageHandler = createTestMessageDispatcher({
         messagingGateway: mockGateway as any,
         pendingTransactionManager: { hasPendingTransactions: () => false } as any,
         fastPathHandler: { handleFastPath: vi.fn().mockResolvedValue(false) } as any,
@@ -637,7 +637,7 @@ describe('FinancialActionRegistry & Action Handlers', () => {
         createRecords: vi.fn(),
       };
 
-      const userMessageHandler = createTestUserMessageHandler({
+      const userMessageHandler = createTestMessageDispatcher({
         messagingGateway: mockGateway as any,
         pendingTransactionManager: { hasPendingTransactions: () => false } as any,
         fastPathHandler: { handleFastPath: vi.fn().mockResolvedValue(false) } as any,
@@ -681,7 +681,7 @@ describe('FinancialActionRegistry & Action Handlers', () => {
         }),
       };
 
-      const userMessageHandler = createTestUserMessageHandler({
+      const userMessageHandler = createTestMessageDispatcher({
         messagingGateway: mockGateway as any,
         pendingTransactionManager: { hasPendingTransactions: () => false } as any,
         fastPathHandler: { handleFastPath: vi.fn().mockResolvedValue(false) } as any,
@@ -723,7 +723,7 @@ describe('FinancialActionRegistry & Action Handlers', () => {
         }),
       };
 
-      const userMessageHandler = createTestUserMessageHandler({
+      const userMessageHandler = createTestMessageDispatcher({
         messagingGateway: mockGateway as any,
         pendingTransactionManager: { hasPendingTransactions: () => false } as any,
         fastPathHandler: { handleFastPath: vi.fn().mockResolvedValue(false) } as any,

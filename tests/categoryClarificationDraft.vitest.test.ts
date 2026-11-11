@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { CategoryContextService } from '../src/brain/category/categoryContext.js';
-import { UserMessageHandler } from '../src/core/dispatcher.js';
-import { createTestUserMessageHandler } from './fixtures/testContext.js';
+import { MessageDispatcher } from '../src/core/dispatcher.js';
+import { createTestMessageDispatcher } from './fixtures/testContext.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
@@ -153,7 +153,7 @@ describe('Category Clarification and Auto Mode', () => {
       ],
     });
 
-    const handler = createTestUserMessageHandler({
+    const handler = createTestMessageDispatcher({
       messagingGateway: gateway as any,
       pendingTransactionManager: pendingManager,
       pendingActionHandler: new MockPendingActionHandler() as any,
@@ -200,7 +200,7 @@ describe('Category Clarification and Auto Mode', () => {
       ],
     });
 
-    const handler = createTestUserMessageHandler({
+    const handler = createTestMessageDispatcher({
       messagingGateway: gateway as any,
       pendingTransactionManager: pendingManager,
       pendingActionHandler: new MockPendingActionHandler() as any,
@@ -235,7 +235,7 @@ describe('Category Clarification and Auto Mode', () => {
       ],
     });
 
-    const handler = createTestUserMessageHandler({
+    const handler = createTestMessageDispatcher({
       messagingGateway: gateway as any,
       pendingTransactionManager: pendingManager,
       pendingActionHandler: new MockPendingActionHandler() as any,
@@ -274,7 +274,7 @@ describe('Category Clarification and Auto Mode', () => {
       ],
     });
 
-    const handler = createTestUserMessageHandler({
+    const handler = createTestMessageDispatcher({
       messagingGateway: gateway as any,
       pendingTransactionManager: pendingManager,
       pendingActionHandler: new MockPendingActionHandler() as any,
@@ -313,7 +313,7 @@ describe('Category Clarification and Auto Mode', () => {
       ],
     });
 
-    const handler = createTestUserMessageHandler({
+    const handler = createTestMessageDispatcher({
       messagingGateway: gateway as any,
       pendingTransactionManager: pendingManager,
       pendingActionHandler: new MockPendingActionHandler() as any,
@@ -353,7 +353,7 @@ describe('Category Clarification and Auto Mode', () => {
       ],
     });
 
-    const handler = createTestUserMessageHandler({
+    const handler = createTestMessageDispatcher({
       messagingGateway: gateway as any,
       pendingTransactionManager: pendingManager,
       pendingActionHandler: new MockPendingActionHandler() as any,
@@ -397,7 +397,7 @@ describe('Category Clarification and Auto Mode', () => {
       ],
     });
 
-    const handler = createTestUserMessageHandler({
+    const handler = createTestMessageDispatcher({
       messagingGateway: gateway as any,
       pendingTransactionManager: pendingManager,
       pendingActionHandler: new MockPendingActionHandler() as any,
@@ -430,7 +430,7 @@ describe('Category Clarification and Auto Mode', () => {
       ],
     });
 
-    const handler = createTestUserMessageHandler({
+    const handler = createTestMessageDispatcher({
       messagingGateway: gateway as any,
       pendingTransactionManager: pendingManager,
       pendingActionHandler: new MockPendingActionHandler() as any,
@@ -497,7 +497,7 @@ describe('Category Clarification and Auto Mode', () => {
       ],
     });
 
-    const handler = createTestUserMessageHandler({
+    const handler = createTestMessageDispatcher({
       messagingGateway: gateway as any,
       pendingTransactionManager: pendingManager,
       pendingActionHandler: new MockPendingActionHandler() as any,
@@ -546,9 +546,9 @@ describe('Category Clarification and Auto Mode', () => {
     try {
       delete process.env.CATEGORY_RESOLUTION_MODE;
 
-      // 1. When categoryResolutionMode is not explicitly passed to UserMessageHandler,
+      // 1. When categoryResolutionMode is not explicitly passed to MessageDispatcher,
       // it delegates resolution to CategoryContextService which resolves 'auto' from settings JSON
-      const handlerWithService = createTestUserMessageHandler({
+      const handlerWithService = createTestMessageDispatcher({
         messagingGateway: gateway as any,
         pendingTransactionManager: pendingManager,
         pendingActionHandler: new MockPendingActionHandler() as any,
