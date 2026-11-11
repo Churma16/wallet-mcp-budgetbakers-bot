@@ -1,8 +1,8 @@
 import assert from 'node:assert';
 import { FinancialActionExecutor } from '../src/core/executor.js';
 import { FastPathHandler } from '../src/core/handlers/fastPathHandler.js';
-import { UserMessageHandler } from '../src/core/dispatcher.js';
-import { createTestUserMessageHandler } from './fixtures/testContext.js';
+import { MessageDispatcher } from '../src/core/dispatcher.js';
+import { createTestMessageDispatcher } from './fixtures/testContext.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { TransactionHistoryService } from '../src/wallet/index.js';
 import { TransactionSummaryService } from '../src/wallet/index.js';
@@ -197,9 +197,9 @@ test('FastPathHandler delegates supported actions to FinancialActionExecutor', a
 });
 
 // -----------------------------------------------------------------------------
-// UserMessageHandler (AI-Path) Delegation to Shared Executor
+// MessageDispatcher (AI-Path) Delegation to Shared Executor
 // -----------------------------------------------------------------------------
-test('UserMessageHandler delegates AI-routed actions to FinancialActionExecutor', async () => {
+test('MessageDispatcher delegates AI-routed actions to FinancialActionExecutor', async () => {
   setActiveLanguage('id');
   const mockGateway = createMockGateway();
 
@@ -236,7 +236,7 @@ test('UserMessageHandler delegates AI-routed actions to FinancialActionExecutor'
     handleFastPath: async () => false,
   };
 
-  const userMessageHandler = createTestUserMessageHandler({
+  const userMessageHandler = createTestMessageDispatcher({
     messagingGateway: mockGateway as any,
     pendingTransactionManager: mockPendingManager as any,
     fastPathHandler: mockFastPath as any,
@@ -249,14 +249,14 @@ test('UserMessageHandler delegates AI-routed actions to FinancialActionExecutor'
   configuredAiAction = 'CHECK_BALANCE';
   const balanceEvent = createMockIncomingEvent('tolong tampilkan saldo rekening saya');
   await userMessageHandler.handleIncomingUserMessage(balanceEvent);
-  assert.deepStrictEqual(executedAiActions, ['CHECK_BALANCE'], 'UserMessageHandler should delegate AI CHECK_BALANCE to executor');
+  assert.deepStrictEqual(executedAiActions, ['CHECK_BALANCE'], 'MessageDispatcher should delegate AI CHECK_BALANCE to executor');
 
   // 3.2 AI returns CHECK_BUDGET
   executedAiActions = [];
   configuredAiAction = 'CHECK_BUDGET';
   const budgetEvent = createMockIncomingEvent('berapa sisa budget bulan ini');
   await userMessageHandler.handleIncomingUserMessage(budgetEvent);
-  assert.deepStrictEqual(executedAiActions, ['CHECK_BUDGET'], 'UserMessageHandler should delegate AI CHECK_BUDGET to executor');
+  assert.deepStrictEqual(executedAiActions, ['CHECK_BUDGET'], 'MessageDispatcher should delegate AI CHECK_BUDGET to executor');
 
 });
 
@@ -276,7 +276,7 @@ test('deferred category authority rejects unresolved categories and action switc
       executedContexts.push(context);
     },
   };
-  const handler = createTestUserMessageHandler({
+  const handler = createTestMessageDispatcher({
     messagingGateway: mockGateway as any,
     pendingTransactionManager: { hasPendingTransactions: () => false } as any,
     fastPathHandler: { handleFastPath: async () => false } as any,
@@ -329,7 +329,7 @@ test('deferred category authority rejects unresolved categories and action switc
     'Rejected transaction proposal should return validation guidance'
   );
 
-  const missingHandler = createTestUserMessageHandler({
+  const missingHandler = createTestMessageDispatcher({
     messagingGateway: mockGateway as any,
     pendingTransactionManager: { hasPendingTransactions: () => false } as any,
     fastPathHandler: { handleFastPath: async () => false } as any,
@@ -399,7 +399,7 @@ test('Fast-Path and AI routes produce equivalent balance and budget outputs', as
     }),
   };
 
-  const userMessageHandler = createTestUserMessageHandler({
+  const userMessageHandler = createTestMessageDispatcher({
     messagingGateway: aiPathGateway as any,
     pendingTransactionManager: { hasPendingTransactions: () => false } as any,
     fastPathHandler: { handleFastPath: async () => false } as any,

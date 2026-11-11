@@ -400,53 +400,29 @@ export function loadEnvironmentConfiguration(
     './data'
   ).trim();
 
-  const resolveStoragePathWithMigration = (filename: string): string => {
-    const dataTarget = path.join(dataStoragePath, filename);
-    const legacyTarget = path.join(whatsappSessionPath, filename);
-
-    if (fs.existsSync(dataTarget)) {
-      return dataTarget;
-    }
-
-    if (fs.existsSync(legacyTarget)) {
-      try {
-        const targetDir = path.dirname(dataTarget);
-        if (!fs.existsSync(targetDir)) {
-          fs.mkdirSync(targetDir, { recursive: true });
-        }
-        fs.copyFileSync(legacyTarget, dataTarget);
-        return dataTarget;
-      } catch {
-        return legacyTarget;
-      }
-    }
-
-    return dataTarget;
-  };
-
   const pendingTransactionsStoragePath = (
     process.env.PENDING_TRANSACTIONS_STORAGE_PATH ||
-    resolveStoragePathWithMigration('pending_transactions.json')
+    path.join(dataStoragePath, 'pending_transactions.json')
   ).trim();
 
   const transactionMessageStoragePath = (
     process.env.TRANSACTION_MESSAGE_STORAGE_PATH ||
-    resolveStoragePathWithMigration('transaction_message_mappings.json')
+    path.join(dataStoragePath, 'transaction_message_mappings.json')
   ).trim();
 
   const enrichmentPoolStoragePath = (
     process.env.ENRICHMENT_POOL_STORAGE_PATH ||
-    resolveStoragePathWithMigration('enrichment_pool.json')
+    path.join(dataStoragePath, 'enrichment_pool.json')
   ).trim();
 
   const inboundNotificationStoragePath = (
     process.env.INBOUND_NOTIFICATION_STORAGE_PATH ||
-    resolveStoragePathWithMigration('inbound_notifications.json')
+    path.join(dataStoragePath, 'inbound_notifications.json')
   ).trim();
 
   const inboundReferenceRegistryStoragePath = (
     process.env.INBOUND_REFERENCE_REGISTRY_STORAGE_PATH ||
-    resolveStoragePathWithMigration('inbound_references.json')
+    path.join(dataStoragePath, 'inbound_references.json')
   ).trim();
 
 

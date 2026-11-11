@@ -3,7 +3,6 @@ import { PendingActionHandler } from '../src/core/handlers/pendingHandler.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { buildTransactionAttentionSummary } from '../src/wallet/formatters/transactionStatusViewModel.js';
 import {
-  formatAccountSelectionUnknownDismissal,
   formatAccountSelectionUnknownOutcome,
 } from '../src/brain/clarification/accountClarificationFormatter.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
@@ -133,16 +132,5 @@ describe('clarification draft matching, confirmation warnings, and reconciliatio
     expect(en).toContain('• *Already exists*');
     expect(en).toContain('• *Not there*');
     expect(en).not.toContain(`Already exists #${draft.ticketId}`);
-  });
-
-  it('keeps the UNKNOWN dismissal compatibility formatter reconciliation-only in both languages', () => {
-    const service = new PendingTransactionService();
-    const draft = addDraft(service);
-
-    setActiveLanguage('id');
-    expect(formatAccountSelectionUnknownDismissal(draft)).toContain(`Sudah ada #${draft.ticketId}`);
-
-    setActiveLanguage('en');
-    expect(formatAccountSelectionUnknownDismissal(draft)).toContain(`Already exists #${draft.ticketId}`);
   });
 });

@@ -1,5 +1,5 @@
 import { AppContext } from '../../src/core/context.js';
-import { UserMessageHandler, DispatcherOverrides } from '../../src/core/dispatcher.js';
+import { MessageDispatcher, DispatcherOverrides } from '../../src/core/dispatcher.js';
 import {
   SemanticToolBoundary,
   ClarificationService,
@@ -103,11 +103,11 @@ export interface LegacyTestHandlerArgs {
 }
 
 /**
- * Helper to instantiate UserMessageHandler / MessageDispatcher from legacy test arguments.
+ * Helper to instantiate MessageDispatcher from legacy test arguments.
  */
 export function createTestUserMessageHandler(
   args: LegacyTestHandlerArgs
-): UserMessageHandler {
+): MessageDispatcher {
   const context = createTestAppContext({
     gateway: args.messagingGateway,
     pending: args.pendingTransactionManager,
@@ -137,5 +137,7 @@ export function createTestUserMessageHandler(
   if (args.deleteRecordHandler) overrides.deleteRecordHandler = args.deleteRecordHandler;
   if (args.modifyRecordHandler) overrides.modifyRecordHandler = args.modifyRecordHandler;
 
-  return new UserMessageHandler(context, overrides);
+  return new MessageDispatcher(context, overrides);
 }
+
+export const createTestMessageDispatcher = createTestUserMessageHandler;

@@ -350,17 +350,3 @@ export function handleReconciliationPagination(
   return null;
 }
 
-/**
- * Backward compatible single-card formatter.
- */
-export function formatReconciliationCard(
-  result: ReconciliationComparisonResult,
-  options?: ReconciliationCardFormatterOptions
-): string {
-  const cards = formatReconciliationCards('legacy', result, options);
-  const parts: string[] = [cards.overview];
-  if (cards.matched) parts.push(cards.matched.text);
-  if (cards.wrongAccount) parts.push(cards.wrongAccount.text);
-  if (cards.missing) parts.push(cards.missing.text);
-  return parts.join('\n\n');
-}

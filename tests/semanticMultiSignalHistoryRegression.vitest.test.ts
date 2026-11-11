@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { UserMessageHandler } from '../src/core/dispatcher.js';
-import { createTestUserMessageHandler } from './fixtures/testContext.js';
+import { MessageDispatcher } from '../src/core/dispatcher.js';
+import { createTestMessageDispatcher } from './fixtures/testContext.js';
 import { FastPathHandler } from '../src/core/handlers/fastPathHandler.js';
 import { detectFastPathAction } from '../src/brain/index.js';
 import {
@@ -150,7 +150,7 @@ function createRegressionHandler(
         )
       : { handleFastPath: vi.fn().mockResolvedValue(Boolean(fastPathMode)) };
 
-  const handler = createTestUserMessageHandler({
+  const handler = createTestMessageDispatcher({
     messagingGateway: gateway as any,
     pendingTransactionManager: { hasPendingTransactions: vi.fn().mockReturnValue(false) } as any,
     fastPathHandler: fastPath as any,

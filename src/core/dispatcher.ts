@@ -1110,8 +1110,3 @@ export class MessageDispatcher {
   }
 }
 
-/**
- * Convenience alias for MessageDispatcher to ensure seamless backward compatibility
- * across test suites referencing UserMessageHandler.
- */
-export { MessageDispatcher as UserMessageHandler };

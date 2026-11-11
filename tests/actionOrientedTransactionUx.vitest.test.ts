@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { UserMessageHandler } from '../src/core/dispatcher.js';
-import { createTestUserMessageHandler } from './fixtures/testContext.js';
+import { MessageDispatcher } from '../src/core/dispatcher.js';
+import { createTestMessageDispatcher } from './fixtures/testContext.js';
 import {
   setActiveLanguage,
   getDictionary,
@@ -51,7 +51,6 @@ import {
   formatAccountSelectionProcessing,
   formatAccountSelectionRetry,
   formatAccountSelectionUnknownOutcome,
-  formatAccountSelectionUnknownDismissal,
 } from '../src/brain/clarification/accountClarificationFormatter.js';
 
 class MockWalletMcpClient {
@@ -933,7 +932,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
       expect(prompt5).toBeDefined();
     });
 
-    it('formats cancellation, processing, retry, unknown, and dismissal messages in ID and EN', () => {
+    it('formats cancellation, processing, retry, and unknown messages in ID and EN', () => {
       setActiveLanguage('id');
       expect(formatAccountSelectionCancellation(mockDraft)).toContain('dibatalkan');
       expect(formatAccountSelectionProcessing(mockDraft)).toContain('sedang diproses');
@@ -942,7 +941,6 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
       expect(unknownId).toContain('Belum bisa memastikan transaksi sudah tercatat');
       expect(unknownId).toContain('Sudah ada');
       expect(unknownId).toContain('Belum ada');
-      expect(formatAccountSelectionUnknownDismissal(mockDraft)).toContain('ditutup');
 
       setActiveLanguage('en');
       expect(formatAccountSelectionCancellation(mockDraft)).toContain('cancelled');
@@ -952,7 +950,6 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
       expect(unknownEn).toContain('Cannot confirm whether transaction was recorded');
       expect(unknownEn).toContain('Already exists');
       expect(unknownEn).toContain('Not there');
-      expect(formatAccountSelectionUnknownDismissal(mockDraft)).toContain('status closed');
     });
   });
 
@@ -1469,12 +1466,12 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
     });
   });
 
-  describe('UserMessageHandler Reconciliation Command Routing', () => {
+  describe('MessageDispatcher Reconciliation Command Routing', () => {
     it('intercepts reconciliation commands and routes to PendingActionHandler', async () => {
       const mockPendingActionHandler = {
         handleReconciliationAction: vi.fn().mockResolvedValue(true),
       };
-      const userMessageHandler = createTestUserMessageHandler({
+      const userMessageHandler = createTestMessageDispatcher({
         messagingGateway: new MockMessagingGateway() as any,
         pendingTransactionManager: new PendingTransactionService() as any,
         pendingActionHandler: mockPendingActionHandler as any,
@@ -1498,7 +1495,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
       const mockPendingActionHandler = {
         handleReconciliationAction: vi.fn().mockResolvedValue(true),
       };
-      const userMessageHandler = createTestUserMessageHandler({
+      const userMessageHandler = createTestMessageDispatcher({
         messagingGateway: new MockMessagingGateway() as any,
         pendingTransactionManager: new PendingTransactionService() as any,
         pendingActionHandler: mockPendingActionHandler as any,

@@ -11,7 +11,6 @@ import {
 } from '../src/core/reconciliation/rules/jagoGopayRules.js';
 import { parseStatementExtractionResponse } from '../src/brain/parsers/statementParser.js';
 import {
-  formatReconciliationCard,
   formatReconciliationCards,
   buildOverviewCard,
   buildMatchedCard,
@@ -311,16 +310,16 @@ describe('Reconciliation Card Formatter & Command Parser', () => {
       extraInWallet: [],
     };
 
-    const card = formatReconciliationCard(comparisonResult, {
+    const cards = formatReconciliationCards('test-session', comparisonResult, {
       ticketReferences: [{ mutationId: 'm3', ticketId: 101 }],
     });
 
-    expect(card).toContain('Hasil Rekonsiliasi: Bank Jago');
-    expect(card).toContain('Sudah Sesuai (Total 1)');
-    expect(card).toContain('Salah Wallet / Akun (Total 1)');
-    expect(card).toContain('Terlewat / Belum Tercatat (Total 1)');
-    expect(card).toContain('[Tiket #101]');
-    expect(card).toContain('Balas *Ya #101*');
+    expect(cards.overview).toContain('Hasil Rekonsiliasi: Bank Jago');
+    expect(cards.matched?.text).toContain('Sudah Sesuai (Total 1)');
+    expect(cards.wrongAccount?.text).toContain('Salah Wallet / Akun (Total 1)');
+    expect(cards.missing?.text).toContain('Terlewat / Belum Tercatat (Total 1)');
+    expect(cards.missing?.text).toContain('[Tiket #101]');
+    expect(cards.missing?.text).toContain('Balas *Ya #101*');
   });
 
   it('builds overview card with status breakdown and celebration on 100% matched', () => {
@@ -887,10 +886,10 @@ describe('Provider Statement Processing Coverage', () => {
       extraInWallet: [],
     };
 
-    const card = formatReconciliationCard(comparisonResult);
-    expect(card).toContain('Semua transaksi mutasi tercatat lengkap di Wallet!');
-    expect(card).toContain('🟢 *Sudah Sesuai (Hal 1/2 - Total 6)*');
-    expect(card).toContain('1. *T1*');
+    const cards = formatReconciliationCards('test-session', comparisonResult);
+    expect(cards.overview).toContain('Semua transaksi mutasi tercatat lengkap di Wallet!');
+    expect(cards.matched?.text).toContain('🟢 *Sudah Sesuai (Hal 1/2 - Total 6)*');
+    expect(cards.matched?.text).toContain('1. *T1*');
   });
 
   it('covers statement parser edge cases and date fallback', () => {
@@ -927,8 +926,8 @@ describe('Provider Statement Processing Coverage', () => {
       missing: [],
       extraInWallet: [],
     };
-    const card = formatReconciliationCard(result);
-    expect(card).toContain('invalid_date');
+    const cards = formatReconciliationCards('test-session', result);
+    expect(cards.overview).toContain('invalid_date');
   });
 
   it('covers CREDIT/income matching in comparison engine', () => {

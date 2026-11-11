@@ -1,5 +1,5 @@
-import { UserMessageHandler } from '../src/core/dispatcher.js';
-import { createTestUserMessageHandler } from './fixtures/testContext.js';
+import { MessageDispatcher } from '../src/core/dispatcher.js';
+import { createTestMessageDispatcher } from './fixtures/testContext.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
@@ -150,7 +150,7 @@ function createHarness(
     records,
   });
   const fastPath = new MockFastPathHandler();
-  const handler = createTestUserMessageHandler({
+  const handler = createTestMessageDispatcher({
     messagingGateway: messaging as any,
     pendingTransactionManager: pendingService,
     pendingActionHandler: new MockPendingActionHandler() as any,

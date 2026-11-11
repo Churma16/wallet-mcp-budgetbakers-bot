@@ -12,8 +12,8 @@ import {
   WalletLabelItem,
   CreateRecordInputPayload,
 } from '../src/wallet/index.js';
-import { UserMessageHandler } from '../src/core/dispatcher.js';
-import { createTestUserMessageHandler } from './fixtures/testContext.js';
+import { MessageDispatcher } from '../src/core/dispatcher.js';
+import { createTestMessageDispatcher } from './fixtures/testContext.js';
 import { AccountClarificationHandler } from '../src/core/handlers/accountClarificationHandler.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
@@ -489,7 +489,7 @@ test('integrates label caching between WalletMcpClientService and WalletCacheSer
   assert.equal(realCacheService.isLabelsLoaded(), false);
 });
 
-test('resolves hashtags and labels through UserMessageHandler fallback', async () => {
+test('resolves hashtags and labels through MessageDispatcher fallback', async () => {
   const dispatchedMcpRecords: CreateRecordInputPayload[][] = [];
   const sentMessages: string[] = [];
   const mockMessagingGateway = {
@@ -519,7 +519,7 @@ test('resolves hashtags and labels through UserMessageHandler fallback', async (
   } as unknown as WalletMcpClientService;
   const testCache = new WalletCacheService(mockClient);
   await testCache.initialize();
-  const handler = createTestUserMessageHandler({
+  const handler = createTestMessageDispatcher({
     messagingGateway: mockMessagingGateway as any,
     pendingTransactionManager: mockPendingService as any,
     pendingActionHandler: mockPendingActionHandler as any,

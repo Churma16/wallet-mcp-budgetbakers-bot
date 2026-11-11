@@ -1,7 +1,7 @@
 import { Bot } from 'grammy';
 import { loadEnvironmentConfiguration } from '../src/config/environmentConfig.js';
 import { applicationLogger } from '../src/lib/logger.js';
-import { convertWhatsAppMarkupToTelegramHtml } from '../src/gateway/telegram.js';
+import { formatTelegramHtml } from '../src/gateway/telegram.js';
 
 async function runTelegramBotVerification(): Promise<void> {
   console.log('====================================================');
@@ -30,7 +30,7 @@ async function runTelegramBotVerification(): Promise<void> {
     if (environmentConfig.telegramAllowedUserId) {
       applicationLogger.info(`Testing test notification to whitelisted user: ${environmentConfig.telegramAllowedUserId}...`);
       const sampleWhatsAppText = '*[TEST]* Halo! Bot BudgetBakers Wallet berhasil terhubung ke Telegram.\n_Semua sistem beroperasi normal._';
-      const formattedHtmlText = convertWhatsAppMarkupToTelegramHtml(sampleWhatsAppText);
+      const formattedHtmlText = formatTelegramHtml(sampleWhatsAppText);
 
       await testBot.api.sendMessage(environmentConfig.telegramAllowedUserId, formattedHtmlText, {
         parse_mode: 'HTML',

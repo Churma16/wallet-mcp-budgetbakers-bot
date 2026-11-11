@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { convertWhatsAppMarkupToTelegramHtml } from '../src/gateway/telegram.js';
+import { formatTelegramHtml } from '../src/gateway/telegram.js';
 
-describe('convertWhatsAppMarkupToTelegramHtml', () => {
+describe('formatTelegramHtml', () => {
   it.each([
     {
       name: 'bold and italic markup',
@@ -60,7 +60,7 @@ describe('convertWhatsAppMarkupToTelegramHtml', () => {
       ],
     },
   ])('$name', ({ input, expectedContains }) => {
-    const output = convertWhatsAppMarkupToTelegramHtml(input);
+    const output = formatTelegramHtml(input);
 
     for (const expected of expectedContains) {
       expect(output).toContain(expected);
@@ -68,11 +68,11 @@ describe('convertWhatsAppMarkupToTelegramHtml', () => {
   });
 
   it('preserves non-markup characters and variable names without conversion', () => {
-    expect(convertWhatsAppMarkupToTelegramHtml('5 * 5 = 25')).toBe('5 * 5 = 25');
-    expect(convertWhatsAppMarkupToTelegramHtml('user_name_variable')).toBe('user_name_variable');
-    expect(convertWhatsAppMarkupToTelegramHtml('https://example.com/some_path_here')).toBe('https://example.com/some_path_here');
-    expect(convertWhatsAppMarkupToTelegramHtml('* item 1\n* item 2')).toBe('* item 1\n* item 2');
-    expect(convertWhatsAppMarkupToTelegramHtml('test * not bold * test')).toBe('test * not bold * test');
-    expect(convertWhatsAppMarkupToTelegramHtml('test _ not italic _ test')).toBe('test _ not italic _ test');
+    expect(formatTelegramHtml('5 * 5 = 25')).toBe('5 * 5 = 25');
+    expect(formatTelegramHtml('user_name_variable')).toBe('user_name_variable');
+    expect(formatTelegramHtml('https://example.com/some_path_here')).toBe('https://example.com/some_path_here');
+    expect(formatTelegramHtml('* item 1\n* item 2')).toBe('* item 1\n* item 2');
+    expect(formatTelegramHtml('test * not bold * test')).toBe('test * not bold * test');
+    expect(formatTelegramHtml('test _ not italic _ test')).toBe('test _ not italic _ test');
   });
 });
