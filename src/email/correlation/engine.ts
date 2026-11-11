@@ -80,6 +80,67 @@ const GENERIC_FINANCIAL_TOKENS = new Set([
 ]);
 
 /**
+ * Checks whether an item represents an authoritative financial settlement rail
+ * (e.g. Bank debit push notification, bank transaction email, or bank-synced record)
+ * where the counterparty is typically the payment rail, platform, or gateway.
+ */
+function isSettlementRailSource(item: PendingTransactionItem | WalletRecordItem | TransactionEvidence): boolean {
+  if ('sourceType' in item && item.sourceType) {
+    if (item.sourceType === 'PUSH_NOTIFICATION' || item.sourceType === 'EMAIL_BANK') {
+      return true;
+    }
+  }
+  if ('evidenceSources' in item && Array.isArray(item.evidenceSources)) {
+    if (
+      (item.evidenceSources.includes('PUSH_NOTIFICATION') || item.evidenceSources.includes('EMAIL_BANK')) &&
+      !item.evidenceSources.includes('EMAIL_PAYMENT')
+    ) {
+      return true;
+    }
+  }
+  if ('isBankSynced' in item && item.isBankSynced === true) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Checks whether an item represents an itemized commercial receipt or proof of purchase
+ * (e.g. e-receipt, order confirmation email, or record with e-receipt label)
+ * where the counterparty is the itemized merchant/seller.
+ */
+function isCommercialReceiptSource(item: PendingTransactionItem | WalletRecordItem | TransactionEvidence): boolean {
+  if ('sourceType' in item && item.sourceType) {
+    if (item.sourceType === 'EMAIL_PAYMENT') {
+      return true;
+    }
+  }
+  if ('labels' in item && Array.isArray(item.labels)) {
+    if (
+      item.labels.some((l: any) =>
+        (typeof l === 'string' ? l : l.name || '').toLowerCase() === 'e-receipt'
+      )
+    ) {
+      return true;
+    }
+  }
+  if ('evidenceSources' in item && Array.isArray(item.evidenceSources)) {
+    if (item.evidenceSources.includes('EMAIL_PAYMENT')) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Checks whether an item has generic/placeholder counterparty that warrants enrichment.
+ */
+function isEnrichmentCandidate(item: PendingTransactionItem | WalletRecordItem): boolean {
+  const cp = ('counterParty' in item ? item.counterParty : '') || '';
+  return !cp || isGenericMerchant(cp) || isOnlinePlatformOrGateway(cp);
+}
+
+/**
  * Unified Multi-Signal Transaction Correlation & Scoring Engine.
  * Combines fail-fast boundary gates, deterministic reference ID resolution,
  * continuous exponential decay scoring, and information density resolution.
@@ -361,7 +422,14 @@ export class TransactionCorrelationEngine {
     let sMerchant = 0.20;
 
     // Check distinct conflicting stores veto (e.g. Starbucks vs Indomaret)
-    const isDistinctConflict = this.detectConflictingStores(candMerchant, evidMerchant, candNote, evidNote, evidence);
+    const isDistinctConflict = this.detectConflictingStores(
+      candMerchant,
+      evidMerchant,
+      candNote,
+      evidNote,
+      evidence,
+      candidate
+    );
     if (isDistinctConflict) {
       sMerchant = -1.0;
       reasons.push(`Distinct conflicting stores veto (${candMerchant} vs ${evidMerchant})`);
@@ -392,8 +460,20 @@ export class TransactionCorrelationEngine {
       const evidMarketplace = this.platformRegistry.findMarketplacePlatform(evidMerchant);
       const isCandPlatform = Boolean(candMarketplace) || isOnlinePlatformOrGateway(candMerchant);
       const isEvidPlatform = Boolean(evidMarketplace) || isOnlinePlatformOrGateway(evidMerchant);
+
+      const candIsReceipt = isCommercialReceiptSource(candidate);
+      const evidIsReceipt = isCommercialReceiptSource(evidence);
+
+      const isCrossRolePair =
+        Boolean(candidate && evidence) &&
+        !isCandGeneric &&
+        !isEvidGeneric &&
+        (((isCandPlatform || isSettlementRailSource(candidate)) && evidIsReceipt && !isEvidPlatform) ||
+          (candIsReceipt && !isCandPlatform && (isEvidPlatform || isSettlementRailSource(evidence))));
+
       const isDynamicMatch = this.isDynamicPlatformMatch(candMerchant, candNote, evidence);
       const isPlatformSellerPair =
+        isCrossRolePair ||
         isDynamicMatch ||
         (isCandPlatform && !isEvidPlatform && !isEvidGeneric) ||
         (isEvidPlatform && !isCandPlatform && !isCandGeneric);
@@ -411,6 +491,9 @@ export class TransactionCorrelationEngine {
       if (hasTokenMatch || hasSubstringMatch) {
         sMerchant = 1.0;
         reasons.push('Literal merchant token overlap / substring containment');
+      } else if (isCrossRolePair) {
+        sMerchant = 0.95;
+        reasons.push('Cross-role match: settlement rail paired with commercial receipt / enrichment candidate');
       } else if (isPlatformSellerPair) {
         sMerchant = 0.95;
         reasons.push('Commerce platform marketplace paired with specific seller receipt');
@@ -670,13 +753,37 @@ export class TransactionCorrelationEngine {
     evidMerchant: string,
     candNote: string,
     evidNote: string,
-    evidence?: TransactionEvidence
+    evidence?: TransactionEvidence,
+    candidate?: PendingTransactionItem | WalletRecordItem
   ): boolean {
     const cm = candMerchant.trim().toLowerCase();
     const em = evidMerchant.trim().toLowerCase();
 
     if (!cm || !em) return false;
     if (isGenericMerchant(cm) || isGenericMerchant(em)) return false;
+
+    // Cross-role (Platform/Rail vs Commercial Seller Receipt):
+    // A bank payment notification and an itemized store receipt naturally have different counterparty descriptions.
+    // They are complementary views of the same financial event, not conflicting physical stores.
+    if (candidate && evidence) {
+      const candIsPlatformOrRail =
+        isEnrichmentCandidate(candidate) ||
+        isOnlinePlatformOrGateway(cm) ||
+        Boolean(this.platformRegistry.findMarketplacePlatform(cm));
+      const evidIsPlatformOrRail =
+        isOnlinePlatformOrGateway(em) ||
+        Boolean(this.platformRegistry.findMarketplacePlatform(em));
+
+      const candIsReceipt = isCommercialReceiptSource(candidate);
+      const evidIsReceipt = isCommercialReceiptSource(evidence);
+
+      if (candIsPlatformOrRail && evidIsReceipt && !evidIsPlatformOrRail) {
+        return false;
+      }
+      if (candIsReceipt && !candIsPlatformOrRail && (evidIsPlatformOrRail || isSettlementRailSource(evidence))) {
+        return false;
+      }
+    }
 
     // Marketplace platforms vs marketplace platforms:
     // If both belong to distinct registered marketplaces (e.g. Shopee vs Tokopedia), they conflict.

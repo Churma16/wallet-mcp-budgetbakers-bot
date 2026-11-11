@@ -86,6 +86,9 @@ const RAW_PACKAGE_RULES: readonly PackageRuleTuple[] = [
 
   // Grab
   ['com.grabtaxi.passenger', 'Grab', 'Grab', 'grab', 'MERCHANT'],
+
+  // Toco
+  ['id.toco', 'Toco', 'Toco', 'toco', 'MERCHANT'],
 ];
 
 export const NOTIFICATION_PACKAGE_RULES: readonly NotificationPackageDefinition[] =

@@ -1296,6 +1296,53 @@ describe('TransactionCorrelationEngine', () => {
       expect(result.suggestedAction).toBe('CREATE_INDEPENDENT');
       expect(result.matchTarget.type).toBe('NONE');
     });
+
+    it('correlates an arbitrary unregistered platform settlement rail (e.g. TOCO QRIS) with an itemized commercial receipt agnostic of platform registry', () => {
+      // Existing pending candidate from Bank Mandiri for TOCO QRIS payment (settlement rail)
+      const tocoDebitCandidate = createPendingItem({
+        sourceType: 'EMAIL',
+        bankDisplayName: 'Bank Mandiri (Livin)',
+        accountNameHint: 'Mandiri Debit Card',
+        matchedAccountId: '8d0dce90-8e6f-4698-84f3-97833b7f6c84',
+        counterParty: 'TOCO',
+        amount: -320965,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        matchedCategoryId: '5c5c07da-0014-8000-8000-000000000000',
+        matchedCategoryName: 'Shopping',
+        note: 'Pembayaran QRIS di TOCO',
+        recordDate: '2026-11-11T07:19:42.000Z',
+        evidenceSources: ['EMAIL_BANK'],
+      });
+
+      // Commercial receipt arriving from merchant with specific itemized store name
+      const merchantReceiptEvidence = createEvidence({
+        sourceType: 'EMAIL_PAYMENT',
+        sourceId: 'Receipt #TC-20261111-9988',
+        merchant: 'Toko Buku & Stationary Berkah',
+        amount: -320965,
+        currency: 'IDR',
+        occurredAt: '2026-11-11T07:19:50.000Z', // 8 seconds later
+        accountHint: 'Cash',
+        accountId: undefined,
+        note: '1x Kertas HVS A4 80gsm, 2x Pulpen Gel 0.5',
+        categoryId: 'cat-office',
+        categoryName: 'Office & stationary',
+        referenceNumbers: ['TC-20261111-9988'],
+      });
+
+      // Use standard engine configured with DEFAULT_COMMERCE_PLATFORMS (including Toco)
+      const result = service.correlateEvidence(merchantReceiptEvidence, [tocoDebitCandidate]);
+
+      expect(result.confidence).toBe('HIGH');
+      expect(result.suggestedAction).toBe('MERGE_PENDING');
+      expect(result.matchTarget.type).toBe('PENDING_TRANSACTION');
+      if (result.matchTarget.type === 'PENDING_TRANSACTION') {
+        expect(result.matchTarget.pendingItem.ticketId).toBe(tocoDebitCandidate.ticketId);
+      }
+      expect(result.fusedPendingItem?.counterParty).toBe('Toko Buku & Stationary Berkah');
+      expect(result.fusedPendingItem?.note).toBe('1x Kertas HVS A4 80gsm, 2x Pulpen Gel 0.5');
+    });
   });
 });
 

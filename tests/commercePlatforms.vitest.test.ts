@@ -17,7 +17,7 @@ describe('CommercePlatformRegistry', () => {
   });
 
   describe('Registration & Retrieval', () => {
-    it('initializes with default commerce platforms (Grab, Blibli, Shopee, Alfagift)', () => {
+    it('initializes with default commerce platforms (Grab, Blibli, Shopee, Alfagift, Toco)', () => {
       const allPlatforms = registry.getAll();
       const ids = allPlatforms.map(p => p.id);
 
@@ -25,6 +25,7 @@ describe('CommercePlatformRegistry', () => {
       expect(ids).toContain('blibli');
       expect(ids).toContain('shopee');
       expect(ids).toContain('alfagift');
+      expect(ids).toContain('toco');
       expect(allPlatforms.length).toBe(DEFAULT_COMMERCE_PLATFORMS.length);
     });
 
@@ -110,6 +111,7 @@ describe('CommercePlatformRegistry', () => {
       expect(registry.isMarketplacePlatform('GrabFood')).toBe(true);
       expect(registry.isMarketplacePlatform('Blibli')).toBe(true);
       expect(registry.isMarketplacePlatform('Blibli Offline Store')).toBe(true);
+      expect(registry.isMarketplacePlatform('Toco')).toBe(true);
 
       const shopeeDef = registry.findMarketplacePlatform('Shopee');
       expect(shopeeDef).toBeDefined();
@@ -118,6 +120,10 @@ describe('CommercePlatformRegistry', () => {
       const grabDef = registry.findMarketplacePlatform('GrabFood');
       expect(grabDef).toBeDefined();
       expect(grabDef?.id).toBe('grab');
+
+      const tocoDef = registry.findMarketplacePlatform('Toco');
+      expect(tocoDef).toBeDefined();
+      expect(tocoDef?.id).toBe('toco');
     });
 
     it('returns false for retail stores and platforms marked isMarketplace: false', () => {
@@ -165,6 +171,11 @@ describe('CommercePlatformRegistry', () => {
       expect(grabRule).toBeDefined();
       expect(grabRule?.displayName).toBe('Grab');
       expect(grabRule?.transferOrTopupKeywords).toContain('top up');
+
+      const tocoRule = generatedRules.find(r => r.bankKey === 'toco');
+      expect(tocoRule).toBeDefined();
+      expect(tocoRule?.displayName).toBe('Toco');
+      expect(tocoRule?.senderDomains).toContain('toco.id');
     });
   });
 

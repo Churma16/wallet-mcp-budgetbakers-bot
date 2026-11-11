@@ -216,6 +216,44 @@ export const DEFAULT_COMMERCE_PLATFORMS: CommercePlatformDefinition[] = [
     platformWallets: ['alfagift', 'a-poin', 'aladin'],
     merchantKeywords: ['alfagift', 'alfamart', 'sumber alfaria trijaya'],
   },
+
+  // 5. Toco
+  {
+    id: 'toco',
+    displayName: 'Toco',
+    isMarketplace: true,
+    defaultCategory: 'Shopping',
+    defaultAccountHint: 'Cash',
+    senderDomains: ['toco.id', 'mail.toco.id'],
+    subjectKeywords: [
+      'pembayaran berhasil',
+      'pesanan berhasil',
+      'rincian pesanan',
+      'e-receipt',
+      'struk pembayaran',
+      'invoice',
+      'pembayaran qris',
+    ],
+    blacklistKeywords: [
+      'otp',
+      'verifikasi',
+      'promo',
+      'diskon',
+      'newsletter',
+    ],
+    bodyRequiredPatterns: [
+      /(?:total\s*pembayaran|total\s*tagihan|invoice|pesanan|toco)/i,
+    ],
+    amountPriorityPatterns: [
+      /(?:Total\s*Pembayaran|Total\s*Tagihan|Total)[:\s]{0,30}(?:Rp|IDR)?[\s]{0,30}([\d.,]+)/i,
+      /(?:Rp|IDR)\s*([\d.,]+)/i,
+    ],
+    referencePatterns: [
+      /(?:No\.?\s*Pesanan|Nomor\s*Pesanan|Order\s*ID|No\.?\s*Transaksi)[:\s]*#?([A-Za-z0-9_-]+)/i,
+    ],
+    platformWallets: ['toco'],
+    merchantKeywords: ['toco', 'toco.id', 'toko ramai digital'],
+  },
 ];
 
 export class CommercePlatformRegistry {
