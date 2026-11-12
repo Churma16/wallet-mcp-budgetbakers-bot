@@ -2,6 +2,9 @@ import {
   TransactionAttentionSummaryViewModel,
   TransactionAttentionItemViewModel,
 } from './transactionStatusViewModel.js';
+import type { PendingTransactionItem } from '../../core/pending.js';
+import { formatCurrencyAmount, formatTransactionDate } from './humanResponseFormatter.js';
+import { getDefaultCurrency } from '../../config/applicationConfig.js';
 import { getDictionary, SupportedLanguage } from '../../i18n/index.js';
 
 /**
@@ -198,4 +201,125 @@ export function formatReconciliationAmbiguousResponse(
   const dictionary = getDictionary(languageCode);
   const ticketIds = items.map(item => item.ticketId);
   return dictionary.reconciliation.ambiguous(ticketIds);
+}
+
+/**
+ * Formats an individual pending transaction as a standalone mobile card for per-bubble queue display.
+ */
+export function formatPendingQueueItemCard(
+  pendingItem: PendingTransactionItem,
+  languageCode?: SupportedLanguage
+): string {
+  const dictionary = getDictionary(languageCode);
+  const isTransfer = pendingItem.transactionType === 'TRANSFER';
+  const isExpense = pendingItem.amount < 0 || pendingItem.transactionType === 'EXPENSE';
+  const typeIcon = isTransfer ? '🔄' : isExpense ? '💸' : '💰';
+  const itemCurrency = pendingItem.currency || getDefaultCurrency();
+  const formattedAmount = formatCurrencyAmount(pendingItem.amount, itemCurrency, languageCode);
+  const formattedTime = formatTransactionDate(pendingItem.recordDate, languageCode);
+
+  const headline = dictionary.status.queueItemHeadline(pendingItem.ticketId);
+  const promptBody = dictionary.status.queueItemPrompt;
+
+  if (isTransfer) {
+    const defaultAccount = dictionary.languageCode === 'en' ? 'Account' : 'Akun';
+    const route = pendingItem.destinationAccountNameHint
+      ? `${pendingItem.accountNameHint || defaultAccount} ➔ ${pendingItem.destinationAccountNameHint}`
+      : (pendingItem.accountNameHint || defaultAccount);
+
+    const lines = [
+      headline,
+      '',
+      `🔁 ${formattedAmount}`,
+      `💳 ${route}`,
+      `⏰ ${formattedTime}`,
+    ];
+    if (pendingItem.note) {
+      lines.push(`📝 ${pendingItem.note}`);
+    }
+    lines.push('', promptBody);
+    return lines.join('\n');
+  }
+
+  const account = pendingItem.accountNameHint || (dictionary.languageCode === 'en' ? 'Account' : 'Akun');
+  const category = pendingItem.matchedCategoryName || (dictionary.languageCode === 'en' ? 'General' : 'Umum');
+  const merchant = pendingItem.counterParty || pendingItem.bankDisplayName;
+
+  const lines = [
+    headline,
+    '',
+    `${typeIcon} ${formattedAmount} • ${account}`,
+  ];
+
+  if (merchant) {
+    lines.push(`🏪 ${merchant}`);
+  }
+
+  lines.push(`🏷️ ${category} • ${formattedTime}`);
+
+  if (pendingItem.note && pendingItem.note !== merchant) {
+    lines.push(`📝 ${pendingItem.note}`);
+  }
+
+  if (pendingItem.isBankSyncedAccount) {
+    lines.push(
+      dictionary.languageCode === 'en'
+        ? '💡 _This account is synced with Wallet bank sync._'
+        : '💡 _Rekening ini terhubung dengan bank sync Wallet._'
+    );
+  }
+
+  lines.push('', promptBody);
+  return lines.join('\n');
+}
+
+/**
+ * Fallback formatter for pending queue card using ViewModel representation.
+ */
+export function formatPendingQueueItemFromViewModel(
+  item: TransactionAttentionItemViewModel,
+  languageCode?: SupportedLanguage
+): string {
+  const dictionary = getDictionary(languageCode);
+  const headline = dictionary.status.queueItemHeadline(item.ticketId);
+  const promptBody = dictionary.status.queueItemPrompt;
+  const formattedTime = formatTransactionDate(item.createdAt.toISOString(), languageCode);
+
+  if (item.isTransfer) {
+    const route = item.destinationAccountName
+      ? `${item.accountName} ➔ ${item.destinationAccountName}`
+      : item.accountName;
+
+    const lines = [
+      headline,
+      '',
+      `🔁 ${item.formattedAmount}`,
+      `💳 ${route}`,
+      `⏰ ${formattedTime}`,
+    ];
+    if (item.description && item.description !== 'Transaksi') {
+      lines.push(`📝 ${item.description}`);
+    }
+    lines.push('', promptBody);
+    return lines.join('\n');
+  }
+
+  const lines = [
+    headline,
+    '',
+    `💸 ${item.formattedAmount} • ${item.accountName}`,
+  ];
+
+  if (item.description && item.description !== 'Transaksi') {
+    lines.push(`🏪 ${item.description}`);
+  }
+
+  if (item.categoryName) {
+    lines.push(`🏷️ ${item.categoryName} • ${formattedTime}`);
+  } else {
+    lines.push(`🏷️ ${dictionary.languageCode === 'en' ? 'General' : 'Umum'} • ${formattedTime}`);
+  }
+
+  lines.push('', promptBody);
+  return lines.join('\n');
 }

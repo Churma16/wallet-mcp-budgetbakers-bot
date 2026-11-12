@@ -23,6 +23,7 @@ import { getDefaultCurrency } from '../../config/applicationConfig.js';
 import { normalizeTransactionText } from '../../lib/textCasing.js';
 import { applicationLogger } from '../../lib/logger.js';
 import { getDictionary } from '../../i18n/index.js';
+import type { PendingTransactionService } from '../pending.js';
 
 /**
  * Coordinates conversational transaction edit commands triggered when a user
@@ -39,7 +40,8 @@ export class ModifyRecordHandler {
     private readonly messagingGateway: MessagingGatewayService,
     private readonly transactionMessageStore: TransactionMessageStore,
     private readonly categoryContextService?: CategoryContextService,
-    private readonly financialAiProvider?: FinancialAiProvider
+    private readonly financialAiProvider?: FinancialAiProvider,
+    private readonly pendingTransactionService?: PendingTransactionService
   ) {}
 
   public async handleModifyRecordReply(
@@ -63,6 +65,21 @@ export class ModifyRecordHandler {
     const dictionary = getDictionary();
     const mapping = this.transactionMessageStore.getMessageMapping(event.replyToMessageId);
     if (!mapping) {
+      // If the replied message belongs to an active pending transaction,
+      // allow dispatcher to proceed to pending transaction confirmation/edit handling.
+      if (this.pendingTransactionService) {
+        const allPending = typeof this.pendingTransactionService.getAllPendingTransactions === 'function'
+          ? this.pendingTransactionService.getAllPendingTransactions()
+          : [];
+        const isPendingItem = allPending.some(item =>
+          item.notificationMessageIds &&
+          Object.values(item.notificationMessageIds).includes(event.replyToMessageId!)
+        );
+        if (isPendingItem) {
+          return false;
+        }
+      }
+
       await this.messagingGateway.sendMessage(
         event.channel,
         event.chatIdentifier,

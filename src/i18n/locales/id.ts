@@ -336,6 +336,15 @@ export const indonesianDictionary: ResponseDictionary = {
       return `🏷️ *${count} transaksi menunggu pilihan kategori:*`;
     },
     noOtherTransactionsWaiting: 'Tidak ada transaksi lain yang menunggu konfirmasi.',
+    queueItemHeadline(ticketId: number): string {
+      return `⏳ *Antrean Transaksi (#${ticketId})*`;
+    },
+    queueItemPrompt: '_Geser (swipe) untuk edit (misal: c: <kategori> atau rek: <akun>)_',
+    remainingQueueNotice(count: number): string {
+      return `📌 *Masih ada ${count} transaksi antrean lainnya.*\nKetik *antrian* lagi untuk batch berikutnya, atau balas *Ya semua* / *Batal semua*.`;
+    },
+    queueConfirmButton: '✅ Ya',
+    queueCancelButton: '❌ Batalkan',
   },
 
   uncertain: {
