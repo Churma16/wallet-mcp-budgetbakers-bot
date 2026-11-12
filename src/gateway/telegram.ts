@@ -732,9 +732,10 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
         } catch {
           // ignore edit errors
         }
-      } else if (callbackData.startsWith('pending:confirm:')) {
+      } else if (callbackData.startsWith('pending:confirm:') || callbackData.startsWith('pending:reject:')) {
         await ctx.answerCallbackQuery();
-        const ticketId = callbackData.replace('pending:confirm:', '');
+        const isConfirm = callbackData.startsWith('pending:confirm:');
+        const ticketId = callbackData.replace(isConfirm ? 'pending:confirm:' : 'pending:reject:', '');
         const chatId = String(ctx.chat?.id);
         const senderIdentifier = ctx.from?.id ? String(ctx.from.id) : chatId;
 
@@ -749,27 +750,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
           messageType: 'text',
           chatIdentifier: chatId,
           senderIdentifier,
-          textPayload: `ya #${ticketId}`,
-          replyToMessageId: ctx.callbackQuery.message ? String(ctx.callbackQuery.message.message_id) : undefined,
-        });
-      } else if (callbackData.startsWith('pending:reject:')) {
-        await ctx.answerCallbackQuery();
-        const ticketId = callbackData.replace('pending:reject:', '');
-        const chatId = String(ctx.chat?.id);
-        const senderIdentifier = ctx.from?.id ? String(ctx.from.id) : chatId;
-
-        try {
-          await ctx.editMessageReplyMarkup({ reply_markup: undefined });
-        } catch {
-          // ignore edit errors
-        }
-
-        await this.onUserMessageReceived({
-          channel: 'telegram',
-          messageType: 'text',
-          chatIdentifier: chatId,
-          senderIdentifier,
-          textPayload: `batal #${ticketId}`,
+          textPayload: `${isConfirm ? 'ya' : 'batal'} #${ticketId}`,
           replyToMessageId: ctx.callbackQuery.message ? String(ctx.callbackQuery.message.message_id) : undefined,
         });
       } else if (callbackData.startsWith('recon:')) {

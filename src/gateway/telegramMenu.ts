@@ -104,12 +104,9 @@ export function createTelegramPendingConfirmInlineKeyboard(
   languageCode?: SupportedLanguage
 ): InlineKeyboard {
   const dictionary = getDictionary(languageCode);
-  const confirmText = dictionary.status.queueConfirmButton || (dictionary.languageCode === 'en' ? '✅ Yes' : '✅ Ya');
-  const cancelText = dictionary.status.queueCancelButton || (dictionary.languageCode === 'en' ? '❌ Cancel' : '❌ Batalkan');
-
   return new InlineKeyboard()
-    .text(confirmText, `pending:confirm:${ticketId}`)
-    .text(cancelText, `pending:reject:${ticketId}`);
+    .text(dictionary.status.queueConfirmButton, `pending:confirm:${ticketId}`)
+    .text(dictionary.status.queueCancelButton, `pending:reject:${ticketId}`);
 }
 
 export interface TelegramGuideTopicContent {
