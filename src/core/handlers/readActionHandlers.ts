@@ -147,12 +147,18 @@ export class CheckQueueActionHandler implements FinancialActionHandler<typeof FI
           ? createTelegramPendingConfirmInlineKeyboard(item.ticketId)
           : undefined;
 
-        const receipt = await this.messagingGateway.sendMessage(
-          context.event.channel,
-          context.event.chatIdentifier,
-          bubbleText,
-          replyMarkup ? { replyMarkup } : undefined
-        );
+        const receipt = replyMarkup
+          ? await this.messagingGateway.sendMessage(
+              context.event.channel,
+              context.event.chatIdentifier,
+              bubbleText,
+              { replyMarkup }
+            )
+          : await this.messagingGateway.sendMessage(
+              context.event.channel,
+              context.event.chatIdentifier,
+              bubbleText
+            );
 
         if (
           receipt &&
