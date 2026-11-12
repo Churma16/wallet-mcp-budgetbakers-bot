@@ -203,6 +203,69 @@ export function formatReconciliationAmbiguousResponse(
   return dictionary.reconciliation.ambiguous(ticketIds);
 }
 
+interface RenderQueueBubbleParams {
+  ticketId: number;
+  formattedAmount: string;
+  isTransfer: boolean;
+  route?: string;
+  formattedTime: string;
+  account: string;
+  merchant?: string;
+  category: string;
+  note?: string;
+  isBankSynced?: boolean;
+  typeIcon: string;
+  languageCode?: SupportedLanguage;
+}
+
+function renderQueueBubble(params: RenderQueueBubbleParams): string {
+  const dictionary = getDictionary(params.languageCode);
+  const headline = dictionary.status.queueItemHeadline(params.ticketId);
+  const promptBody = dictionary.status.queueItemPrompt;
+
+  if (params.isTransfer) {
+    const lines = [
+      headline,
+      '',
+      `🔁 ${params.formattedAmount}`,
+      `💳 ${params.route || params.account}`,
+      `⏰ ${params.formattedTime}`,
+    ];
+    if (params.note) {
+      lines.push(`📝 ${params.note}`);
+    }
+    lines.push('', promptBody);
+    return lines.join('\n');
+  }
+
+  const lines = [
+    headline,
+    '',
+    `${params.typeIcon} ${params.formattedAmount} • ${params.account}`,
+  ];
+
+  if (params.merchant) {
+    lines.push(`🏪 ${params.merchant}`);
+  }
+
+  lines.push(`🏷️ ${params.category} • ${params.formattedTime}`);
+
+  if (params.note && params.note !== params.merchant) {
+    lines.push(`📝 ${params.note}`);
+  }
+
+  if (params.isBankSynced) {
+    lines.push(
+      dictionary.languageCode === 'en'
+        ? '💡 _This account is synced with Wallet bank sync._'
+        : '💡 _Rekening ini terhubung dengan bank sync Wallet._'
+    );
+  }
+
+  lines.push('', promptBody);
+  return lines.join('\n');
+}
+
 /**
  * Formats an individual pending transaction as a standalone mobile card for per-bubble queue display.
  */
@@ -217,60 +280,25 @@ export function formatPendingQueueItemCard(
   const itemCurrency = pendingItem.currency || getDefaultCurrency();
   const formattedAmount = formatCurrencyAmount(pendingItem.amount, itemCurrency, languageCode);
   const formattedTime = formatTransactionDate(pendingItem.recordDate, languageCode);
+  const defaultAccount = dictionary.languageCode === 'en' ? 'Account' : 'Akun';
+  const route = pendingItem.destinationAccountNameHint
+    ? `${pendingItem.accountNameHint || defaultAccount} ➔ ${pendingItem.destinationAccountNameHint}`
+    : (pendingItem.accountNameHint || defaultAccount);
 
-  const headline = dictionary.status.queueItemHeadline(pendingItem.ticketId);
-  const promptBody = dictionary.status.queueItemPrompt;
-
-  if (isTransfer) {
-    const defaultAccount = dictionary.languageCode === 'en' ? 'Account' : 'Akun';
-    const route = pendingItem.destinationAccountNameHint
-      ? `${pendingItem.accountNameHint || defaultAccount} ➔ ${pendingItem.destinationAccountNameHint}`
-      : (pendingItem.accountNameHint || defaultAccount);
-
-    const lines = [
-      headline,
-      '',
-      `🔁 ${formattedAmount}`,
-      `💳 ${route}`,
-      `⏰ ${formattedTime}`,
-    ];
-    if (pendingItem.note) {
-      lines.push(`📝 ${pendingItem.note}`);
-    }
-    lines.push('', promptBody);
-    return lines.join('\n');
-  }
-
-  const account = pendingItem.accountNameHint || (dictionary.languageCode === 'en' ? 'Account' : 'Akun');
-  const category = pendingItem.matchedCategoryName || (dictionary.languageCode === 'en' ? 'General' : 'Umum');
-  const merchant = pendingItem.counterParty || pendingItem.bankDisplayName;
-
-  const lines = [
-    headline,
-    '',
-    `${typeIcon} ${formattedAmount} • ${account}`,
-  ];
-
-  if (merchant) {
-    lines.push(`🏪 ${merchant}`);
-  }
-
-  lines.push(`🏷️ ${category} • ${formattedTime}`);
-
-  if (pendingItem.note && pendingItem.note !== merchant) {
-    lines.push(`📝 ${pendingItem.note}`);
-  }
-
-  if (pendingItem.isBankSyncedAccount) {
-    lines.push(
-      dictionary.languageCode === 'en'
-        ? '💡 _This account is synced with Wallet bank sync._'
-        : '💡 _Rekening ini terhubung dengan bank sync Wallet._'
-    );
-  }
-
-  lines.push('', promptBody);
-  return lines.join('\n');
+  return renderQueueBubble({
+    ticketId: pendingItem.ticketId,
+    formattedAmount,
+    isTransfer,
+    route,
+    formattedTime,
+    account: pendingItem.accountNameHint || defaultAccount,
+    merchant: pendingItem.counterParty || pendingItem.bankDisplayName,
+    category: pendingItem.matchedCategoryName || (dictionary.languageCode === 'en' ? 'General' : 'Umum'),
+    note: pendingItem.note,
+    isBankSynced: pendingItem.isBankSyncedAccount,
+    typeIcon,
+    languageCode,
+  });
 }
 
 /**
@@ -281,45 +309,22 @@ export function formatPendingQueueItemFromViewModel(
   languageCode?: SupportedLanguage
 ): string {
   const dictionary = getDictionary(languageCode);
-  const headline = dictionary.status.queueItemHeadline(item.ticketId);
-  const promptBody = dictionary.status.queueItemPrompt;
   const formattedTime = formatTransactionDate(item.createdAt.toISOString(), languageCode);
+  const route = item.destinationAccountName
+    ? `${item.accountName} ➔ ${item.destinationAccountName}`
+    : item.accountName;
 
-  if (item.isTransfer) {
-    const route = item.destinationAccountName
-      ? `${item.accountName} ➔ ${item.destinationAccountName}`
-      : item.accountName;
-
-    const lines = [
-      headline,
-      '',
-      `🔁 ${item.formattedAmount}`,
-      `💳 ${route}`,
-      `⏰ ${formattedTime}`,
-    ];
-    if (item.description && item.description !== 'Transaksi') {
-      lines.push(`📝 ${item.description}`);
-    }
-    lines.push('', promptBody);
-    return lines.join('\n');
-  }
-
-  const lines = [
-    headline,
-    '',
-    `💸 ${item.formattedAmount} • ${item.accountName}`,
-  ];
-
-  if (item.description && item.description !== 'Transaksi') {
-    lines.push(`🏪 ${item.description}`);
-  }
-
-  if (item.categoryName) {
-    lines.push(`🏷️ ${item.categoryName} • ${formattedTime}`);
-  } else {
-    lines.push(`🏷️ ${dictionary.languageCode === 'en' ? 'General' : 'Umum'} • ${formattedTime}`);
-  }
-
-  lines.push('', promptBody);
-  return lines.join('\n');
+  return renderQueueBubble({
+    ticketId: item.ticketId,
+    formattedAmount: item.formattedAmount,
+    isTransfer: item.isTransfer,
+    route,
+    formattedTime,
+    account: item.accountName,
+    merchant: item.description && item.description !== 'Transaksi' ? item.description : undefined,
+    category: item.categoryName || (dictionary.languageCode === 'en' ? 'General' : 'Umum'),
+    note: item.description && item.description !== 'Transaksi' ? item.description : undefined,
+    typeIcon: item.isTransfer ? '🔄' : '💸',
+    languageCode,
+  });
 }
