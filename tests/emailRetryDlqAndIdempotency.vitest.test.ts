@@ -404,7 +404,8 @@ describe('Email AI Error Propagation, Retry DLQ, and Idempotency', () => {
       expect(allPending[0].note).toBe('1x Nu Fit - Kaos Kaki Olahraga');
       expect(allPending[0].referenceNumbers).toContain('261029VNREYMEW');
       expect(mockMessaging.broadcastNotification).toHaveBeenCalledWith(
-        expect.stringContaining('Diperbarui via 📩 Shopee')
+        expect.stringContaining('Diperbarui via 📩 Shopee'),
+        expect.anything()
       );
     });
 

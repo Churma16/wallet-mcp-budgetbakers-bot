@@ -124,7 +124,8 @@ describe('NotificationTransactionHandler', () => {
     expect(pendingItems[0].matchedAccountId).toBe('acc-jago');
     expect(messaging.broadcastNotification).toHaveBeenCalledTimes(1);
     expect(messaging.broadcastNotification).toHaveBeenCalledWith(
-      expect.stringContaining('Rp 15.799')
+      expect.stringContaining('Rp 15.799'),
+      expect.anything()
     );
   });
 
@@ -171,7 +172,8 @@ describe('NotificationTransactionHandler', () => {
     expect(pendingItems[0].evidenceSources).toContain('EMAIL_BANK');
     expect(pendingItems[0].evidenceSources).toContain('PUSH_NOTIFICATION');
     expect(messaging.broadcastNotification).toHaveBeenCalledWith(
-      expect.stringContaining('Diperbarui via 📩 com.jago')
+      expect.stringContaining('Diperbarui via 📩 com.jago'),
+      expect.anything()
     );
   });
 
