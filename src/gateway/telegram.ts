@@ -522,7 +522,9 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       return;
     }
 
-    return await this.sendTextMessage(this.normalizedAllowedUserId, messageText, options);
+    return options !== undefined
+      ? await this.sendTextMessage(this.normalizedAllowedUserId, messageText, options)
+      : await this.sendTextMessage(this.normalizedAllowedUserId, messageText);
   }
 
   public async editTextMessage(
@@ -606,7 +608,9 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     if (!this.normalizedAllowedUserId) {
       return false;
     }
-    return this.editTextMessage(this.normalizedAllowedUserId, messageId, messageText, options);
+    return options !== undefined
+      ? this.editTextMessage(this.normalizedAllowedUserId, messageId, messageText, options)
+      : this.editTextMessage(this.normalizedAllowedUserId, messageId, messageText);
   }
 
   public async deleteTextMessage(

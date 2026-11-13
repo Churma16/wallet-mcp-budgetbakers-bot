@@ -806,10 +806,9 @@ export async function coordinateInboundTransactionCandidate(
     ? createTelegramPendingConfirmInlineKeyboard(pendingItem.ticketId)
     : undefined;
 
-  const receipts = await messagingGateway.broadcastNotification(
-    notificationText,
-    replyMarkup ? { replyMarkup } : undefined
-  );
+  const receipts = replyMarkup
+    ? await messagingGateway.broadcastNotification(notificationText, { replyMarkup })
+    : await messagingGateway.broadcastNotification(notificationText);
   if (
     receipts &&
     typeof receipts === 'object' &&

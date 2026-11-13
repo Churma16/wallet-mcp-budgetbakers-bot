@@ -498,7 +498,8 @@ describe('EmailTransactionHandler Multi-Source Correlation Integration', () => {
     expect(item.isBankSyncedAccount).toBe(true);
 
     expect(messaging.broadcastNotification).toHaveBeenCalledWith(
-      expect.stringContaining('Rekening ini terhubung dengan bank sync Wallet')
+      expect.stringContaining('Rekening ini terhubung dengan bank sync Wallet'),
+      expect.anything()
     );
   });
 });
