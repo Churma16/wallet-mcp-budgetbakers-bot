@@ -30,8 +30,8 @@ describe('Pending Transaction UX & Concurrency Improvements', () => {
       });
 
       expect(output).toContain('BLIBLI.COM KUDUS - ID');
-      expect(output).toContain('Balas *Ya* atau *Catat* (atau *Ya 1*)');
-      expect(output).toContain('Balas *Batal* atau *Abaikan* (atau *Batal 1*)');
+      expect(output).toContain('Geser (swipe) untuk edit');
+      expect(output).not.toContain('Catat transaksi ini?');
     });
 
     it('always includes ticketId badge and prompt hints in English', () => {
@@ -47,8 +47,8 @@ describe('Pending Transaction UX & Concurrency Improvements', () => {
       });
 
       expect(output).toContain('Amazon');
-      expect(output).toContain('Reply *Yes* or *Record* (or *Yes 1*)');
-      expect(output).toContain('Reply *Cancel* or *Ignore* (or *Cancel 1*)');
+      expect(output).toContain('Swipe reply to edit');
+      expect(output).not.toContain('Record this transaction?');
     });
   });
 
