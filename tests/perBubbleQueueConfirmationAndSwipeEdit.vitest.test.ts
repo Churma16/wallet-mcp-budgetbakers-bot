@@ -624,6 +624,65 @@ describe('Per-Bubble Queue Confirmation & Swipe-Reply Edit', () => {
       // Verify transaction was canceled/rejected
       expect(pendingService.getPendingTransaction(item.ticketId)).toBeUndefined();
     });
+
+    it('ignores casual conversational replies to pending bubble without structured edit keys', async () => {
+      const gateway = new MockMessagingGateway();
+      const pendingService = new PendingTransactionService();
+      const mockMcpClient = {
+        createRecords: vi.fn(),
+      };
+
+      const mockBrainProvider = {
+        providerName: 'mock',
+        analyzeFinancialIntent: vi.fn().mockResolvedValue({
+          classification: 'GENERAL_CHAT',
+          intentType: 'CHAT',
+        }),
+      };
+
+      const context = createTestAppContext({
+        gateway: gateway as any,
+        pending: pendingService,
+        brain: {
+          provider: mockBrainProvider as any,
+        },
+        wallet: {
+          client: mockMcpClient as any,
+          cache: {
+            getAccounts: () => [],
+            getCategories: () => [],
+          } as any,
+        },
+      });
+
+      const dispatcher = new MessageDispatcher(context);
+
+      const item = pendingService.addPendingTransaction({
+        sourceType: 'NOTIFICATION',
+        bankDisplayName: 'BCA',
+        amount: -50000,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        accountNameHint: 'BCA',
+        note: 'Kopi',
+        recordDate: new Date().toISOString(),
+      });
+
+      pendingService.updateNotificationMessageIds(item.ticketId, { telegram: 'msg_bubble_chat' });
+
+      await dispatcher.handleIncomingUserMessage({
+        channel: 'telegram',
+        chatIdentifier: '12345678',
+        senderIdentifier: 'user_1',
+        messageType: 'text',
+        textPayload: 'ini transaksi apa ya?',
+        replyToMessageId: 'msg_bubble_chat',
+      });
+
+      // Transaction MUST NOT be committed as a note
+      expect(pendingService.getPendingTransaction(item.ticketId)).toBeDefined();
+      expect(mockMcpClient.createRecords).not.toHaveBeenCalled();
+    });
   });
 
   describe('Telegram Interactive Pending Callbacks', () => {

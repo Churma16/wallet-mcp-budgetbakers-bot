@@ -46,6 +46,7 @@ import {
   getHumanReadableTimestamp,
   TransactionHistoryQueryOptions,
   WalletRecordPreparationService,
+  parseRecordEditCommand,
 } from '../wallet/index.js';
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../lib/logger.js';
@@ -697,9 +698,15 @@ export class MessageDispatcher {
             if (matchedPendingItem) {
               const cleanedReplyText = event.textPayload.replace(/^(?:e|edit)\s+/i, '').trim();
               if (!confirmationIntent) {
-                confirmationIntent = detectPendingConfirmationAction(
-                  `Ya ${matchedPendingItem.ticketId} ${cleanedReplyText}`
+                const editCmd = parseRecordEditCommand(cleanedReplyText);
+                const isStructuredEdit = Boolean(
+                  (editCmd && editCmd.hasModifications) || cleanedReplyText.includes('#')
                 );
+                if (isStructuredEdit) {
+                  confirmationIntent = detectPendingConfirmationAction(
+                    `Ya ${matchedPendingItem.ticketId} ${cleanedReplyText}`
+                  );
+                }
               } else if (confirmationIntent.targetScope === 'LATEST') {
                 confirmationIntent.targetScope = matchedPendingItem.ticketId;
               }
