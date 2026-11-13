@@ -19,21 +19,8 @@ import {
   type UnresolvedFilterIssue,
 } from '../types.js';
 
-export function formatPendingConfirmationPromptEn(params: PendingConfirmationPromptParams): string {
-  const lines: string[] = ['Record this transaction?'];
-  if (params.totalPendingCount > 1) {
-    lines.push(`• Reply *Yes ${params.ticketId}* (or *Yes all*)`);
-    lines.push(`• Reply *Yes ${params.ticketId}: n:<note> c:<category> t:<tag> m:<merchant> acc:<account>*`);
-    lines.push(`• Reply *Cancel ${params.ticketId}*`);
-    const otherCount = params.totalPendingCount - 1;
-    lines.push('');
-    lines.push(`_There is ${otherCount} other transaction waiting for confirmation._`);
-  } else {
-    lines.push(`• Reply *Yes* or *Record* (or *Yes ${params.ticketId}*)`);
-    lines.push(`• Reply *Yes: n:<note> c:<category> t:<tag> m:<merchant> acc:<account>*`);
-    lines.push(`• Reply *Cancel* or *Ignore* (or *Cancel ${params.ticketId}*)`);
-  }
-  return lines.join('\n');
+export function formatPendingConfirmationPromptEn(_params?: PendingConfirmationPromptParams): string {
+  return '_Swipe reply to edit (e.g. c: <category> or acc: <account>)_';
 }
 
 

@@ -1160,7 +1160,7 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
         totalPendingCount: 1,
       });
 
-      expect(notifSingle).toContain('Balas *Ya: n:<catatan> c:<kategori> t:<tag> m:<merchant> acc:<akun>*');
+      expect(notifSingle).toContain('Geser (swipe) untuk edit');
 
       const notifMulti = indonesianDictionary.emailPending.formatNotification({
         ticketId: 2,
@@ -1173,7 +1173,7 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
         totalPendingCount: 2,
       });
 
-      expect(notifMulti).toContain('Balas *Ya 2: n:<catatan> c:<kategori> t:<tag> m:<merchant> acc:<akun>*');
+      expect(notifMulti).toContain('Geser (swipe) untuk edit');
     });
 
     it('includes inline note hint in English notification', () => {
@@ -1188,7 +1188,7 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
         totalPendingCount: 1,
       });
 
-      expect(notif).toContain('Reply *Yes: n:<note> c:<category> t:<tag> m:<merchant> acc:<account>*');
+      expect(notif).toContain('Swipe reply to edit');
     });
 
     it('formats centralized pending confirmation prompt in Indonesian and English', () => {
@@ -1196,37 +1196,29 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
         ticketId: 1,
         totalPendingCount: 1,
       });
-      expect(idSingle).toContain('Catat transaksi ini?');
-      expect(idSingle).toContain('• Balas *Ya* atau *Catat* (atau *Ya 1*)');
-      expect(idSingle).toContain('• Balas *Ya: n:<catatan> c:<kategori> t:<tag> m:<merchant> acc:<akun>*');
-      expect(idSingle).toContain('• Balas *Batal* atau *Abaikan* (atau *Batal 1*)');
+      expect(idSingle).toContain('Geser (swipe) untuk edit');
+      expect(idSingle).not.toContain('Catat transaksi ini?');
 
       const idMulti = indonesianDictionary.emailPending.formatConfirmationPrompt({
         ticketId: 5,
         totalPendingCount: 3,
       });
-      expect(idMulti).toContain('• Balas *Ya 5* (atau *Ya semua*)');
-      expect(idMulti).toContain('• Balas *Ya 5: n:<catatan> c:<kategori> t:<tag> m:<merchant> acc:<akun>*');
-      expect(idMulti).toContain('• Balas *Batal 5*');
-      expect(idMulti).toContain('_Ada 2 transaksi lain yang juga menunggu konfirmasi._');
+      expect(idMulti).toContain('Geser (swipe) untuk edit');
+      expect(idMulti).not.toContain('Catat transaksi ini?');
 
       const enSingle = englishDictionary.emailPending.formatConfirmationPrompt({
         ticketId: 1,
         totalPendingCount: 1,
       });
-      expect(enSingle).toContain('Record this transaction?');
-      expect(enSingle).toContain('• Reply *Yes* or *Record* (or *Yes 1*)');
-      expect(enSingle).toContain('• Reply *Yes: n:<note> c:<category> t:<tag> m:<merchant> acc:<account>*');
-      expect(enSingle).toContain('• Reply *Cancel* or *Ignore* (or *Cancel 1*)');
+      expect(enSingle).toContain('Swipe reply to edit');
+      expect(enSingle).not.toContain('Record this transaction?');
 
       const enMulti = englishDictionary.emailPending.formatConfirmationPrompt({
         ticketId: 8,
         totalPendingCount: 4,
       });
-      expect(enMulti).toContain('• Reply *Yes 8* (or *Yes all*)');
-      expect(enMulti).toContain('• Reply *Yes 8: n:<note> c:<category> t:<tag> m:<merchant> acc:<account>*');
-      expect(enMulti).toContain('• Reply *Cancel 8*');
-      expect(enMulti).toContain('_There is 3 other transaction waiting for confirmation._');
+      expect(enMulti).toContain('Swipe reply to edit');
+      expect(enMulti).not.toContain('Record this transaction?');
 
       const helperId = formatPendingConfirmationPrompt(1, 1, 'id');
       expect(helperId).toBe(idSingle);

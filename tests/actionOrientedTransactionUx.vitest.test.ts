@@ -144,28 +144,22 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
       expect(formatted).toContain('Starbucks Coffee');
       expect(formatted).toContain('BCA Prioritas');
 
-      // Single pending notification includes ticket ID in confirmation prompt
-      expect(formatted).toContain('Ya 101');
-
-      // Clear action choices without jargon
-      expect(formatted).toContain('Balas *Ya* atau *Catat*');
-      expect(formatted).toContain('Balas *Batal*');
+      // Concise swipe hint replaces old multi-line tooltip prompt
+      expect(formatted).toContain('Geser (swipe) untuk edit');
+      expect(formatted).not.toContain('Catat transaksi ini?');
 
       // Does not expose queue implementation jargon
       expect(formatted).not.toContain('antrean pending');
     });
 
-    it('formats multi-item pending notification with secondary ticket ID and count of others', () => {
+    it('formats multi-item pending notification with clean swipe prompt', () => {
       setActiveLanguage('id');
       const formatted = formatPendingEmailTransactionNotification(singlePendingItem, 3);
 
       expect(formatted).toContain('Pembayaran Baru');
       expect(formatted).toContain('Starbucks Coffee');
-      expect(formatted).toContain('2 transaksi lain');
-      expect(formatted).toContain('Ya 101');
-      expect(formatted).toContain('Balas *Ya 101*');
-      expect(formatted).toContain('Balas *Batal 101*');
-      expect(formatted).toContain('*Ya semua*');
+      expect(formatted).toContain('Geser (swipe) untuk edit');
+      expect(formatted).not.toContain('Catat transaksi ini?');
     });
 
     it('localizes pending notification to English cleanly', () => {
@@ -175,9 +169,8 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
       expect(formatted).toContain('New Payment');
       expect(formatted).toContain('Starbucks Coffee');
       expect(formatted).toContain('BCA Prioritas');
-      expect(formatted).toContain('Yes 101');
-      expect(formatted).toContain('Reply *Yes* or *Record*');
-      expect(formatted).toContain('Reply *Cancel*');
+      expect(formatted).toContain('Swipe reply to edit');
+      expect(formatted).not.toContain('Record this transaction?');
     });
   });
 
@@ -1103,7 +1096,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
       expect(nonTransferSingleId).toContain('Pembayaran Baru');
       expect(nonTransferSingleId).toContain('Rp 50.000 • BCA');
       expect(nonTransferSingleId).toContain('🏷️ Belanja');
-      expect(nonTransferSingleId).toContain('Balas *Ya* atau *Catat*');
+      expect(nonTransferSingleId).toContain('Geser (swipe) untuk edit');
 
       const nonTransferSingleEn = enDict.emailPending.formatNotification({
         ticketId: 1,
@@ -1119,7 +1112,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
       expect(nonTransferSingleEn).toContain('New Payment');
       expect(nonTransferSingleEn).toContain('$50.00 • Checking');
       expect(nonTransferSingleEn).toContain('🏷️ Shopping');
-      expect(nonTransferSingleEn).toContain('Reply *Yes* or *Record*');
+      expect(nonTransferSingleEn).toContain('Swipe reply to edit');
 
       // Non-transfer multiple
       const nonTransferMultiId = idDict.emailPending.formatNotification({
@@ -1131,8 +1124,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         bankDisplayName: 'BCA Prioritas',
         totalPendingCount: 3,
       });
-      expect(nonTransferMultiId).toContain('Ya 2');
-      expect(nonTransferMultiId).toContain('Ada 2 transaksi lain yang juga menunggu konfirmasi');
+      expect(nonTransferMultiId).toContain('Geser (swipe) untuk edit');
 
       const nonTransferMultiEn = enDict.emailPending.formatNotification({
         ticketId: 2,
@@ -1143,8 +1135,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         bankDisplayName: 'Chase Bank',
         totalPendingCount: 3,
       });
-      expect(nonTransferMultiEn).toContain('Yes 2');
-      expect(nonTransferMultiEn).toContain('There is 2 other transaction waiting for confirmation');
+      expect(nonTransferMultiEn).toContain('Swipe reply to edit');
 
       // Transfer multiple
       const transferMultiId = idDict.emailPending.formatNotification({
@@ -1155,7 +1146,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         formattedTime: '13 Sep 2026',
         totalPendingCount: 2,
       });
-      expect(transferMultiId).toContain('Ya 3');
+      expect(transferMultiId).toContain('Geser (swipe) untuk edit');
       expect(transferMultiId).toContain('💳 Akun');
 
       const transferMultiEn = enDict.emailPending.formatNotification({
@@ -1166,7 +1157,7 @@ describe('Action-Oriented Pending & Uncertain Transaction UX', () => {
         formattedTime: 'Sep 13, 2026',
         totalPendingCount: 2,
       });
-      expect(transferMultiEn).toContain('Yes 3');
+      expect(transferMultiEn).toContain('Swipe reply to edit');
       expect(transferMultiEn).toContain('💳 Account');
     });
 

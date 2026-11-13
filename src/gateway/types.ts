@@ -39,8 +39,15 @@ export interface MessagingAdapter {
   ): Promise<SentMessageReceipt | void>;
   sendTypingPresence(targetChatIdentifier: string): Promise<void>;
   clearTypingPresence(targetChatIdentifier: string): Promise<void>;
-  sendBroadcastNotification(messageText: string): Promise<SentMessageReceipt | void>;
-  editBroadcastNotification?(messageId: string, messageText: string): Promise<boolean>;
+  sendBroadcastNotification(
+    messageText: string,
+    options?: SendTextMessageOptions
+  ): Promise<SentMessageReceipt | void>;
+  editBroadcastNotification?(
+    messageId: string,
+    messageText: string,
+    options?: SendTextMessageOptions
+  ): Promise<boolean>;
   editTextMessage?(
     targetChatIdentifier: string,
     messageId: string,

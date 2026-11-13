@@ -288,7 +288,10 @@ export class MessagingGatewayService {
    * Broadcasts a notification message (e.g. email transaction prompt) to all connected channels.
    * Returns a dictionary of channel names to message IDs for channels that provided receipts.
    */
-  public async broadcastNotification(messageText: string): Promise<Record<string, string>> {
+  public async broadcastNotification(
+    messageText: string,
+    options?: SendTextMessageOptions
+  ): Promise<Record<string, string>> {
     const connectedAdapters = Array.from(this.adapterMap.entries())
       .filter(([channel]) => this.isChannelConnected(channel))
       .map(([, adapter]) => adapter);
@@ -302,7 +305,9 @@ export class MessagingGatewayService {
 
     const broadcastPromises = connectedAdapters.map(async adapter => {
       try {
-        const receipt = await adapter.sendBroadcastNotification(messageText);
+        const receipt = options !== undefined
+          ? await adapter.sendBroadcastNotification(messageText, options)
+          : await adapter.sendBroadcastNotification(messageText);
         if (receipt && receipt.messageId) {
           receipts[adapter.channelName] = receipt.messageId;
         }
@@ -326,7 +331,8 @@ export class MessagingGatewayService {
    */
   public async editBroadcastNotification(
     messageIds: Record<string, string>,
-    messageText: string
+    messageText: string,
+    options?: SendTextMessageOptions
   ): Promise<boolean> {
     const connectedAdapters = Array.from(this.adapterMap.entries())
       .filter(([channel]) => this.isChannelConnected(channel))
@@ -338,7 +344,9 @@ export class MessagingGatewayService {
       const messageId = messageIds[adapter.channelName];
       if (messageId && typeof adapter.editBroadcastNotification === 'function') {
         try {
-          const edited = await adapter.editBroadcastNotification(messageId, messageText);
+          const edited = options !== undefined
+            ? await adapter.editBroadcastNotification(messageId, messageText, options)
+            : await adapter.editBroadcastNotification(messageId, messageText);
           if (edited) {
             anyEdited = true;
             applicationLogger.success(
