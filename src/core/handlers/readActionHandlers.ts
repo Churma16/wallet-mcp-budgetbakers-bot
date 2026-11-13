@@ -1,8 +1,16 @@
 import { FinancialActionExecutor } from '../executor.js';
 import { PendingTransactionService } from '../pending.js';
-import { MessagingGatewayService } from '../../gateway/index.js';
-import { buildTransactionAttentionSummary } from '../../wallet/formatters/transactionStatusViewModel.js';
-import { formatTransactionAttentionSummary } from '../../wallet/formatters/transactionStatusFormatter.js';
+import { MessagingGatewayService, createTelegramPendingConfirmInlineKeyboard } from '../../gateway/index.js';
+import {
+  buildTransactionAttentionSummary,
+  TransactionAttentionSummaryViewModel,
+} from '../../wallet/formatters/transactionStatusViewModel.js';
+import {
+  formatTransactionAttentionSummary,
+  formatPendingQueueItemCard,
+  formatPendingQueueItemFromViewModel,
+} from '../../wallet/formatters/transactionStatusFormatter.js';
+import { getDictionary } from '../../i18n/index.js';
 import { FINANCIAL_ACTION_TYPES } from '../../brain/constants.js';
 import {
   CheckBalanceActionContext,
@@ -115,6 +123,83 @@ export class CheckQueueActionHandler implements FinancialActionHandler<typeof FI
 
   public async execute(context: CheckQueueActionContext): Promise<void> {
     const summary = buildTransactionAttentionSummary(this.pendingTransactionService);
+
+    // If completely empty, send the standard empty summary message
+    if (summary.totalNeedingAttention === 0) {
+      const replyMessage = formatTransactionAttentionSummary(summary);
+      await this.messagingGateway.sendMessage(context.event.channel, context.event.chatIdentifier, replyMessage);
+      return;
+    }
+
+    // If there are pending confirmation items, dispatch each as its own bubble (up to MAX_QUEUE_BUBBLES)
+    if (summary.waitingConfirmationItems.length > 0) {
+      const MAX_QUEUE_BUBBLES = 5;
+      const itemsToDisplay = summary.waitingConfirmationItems.slice(0, MAX_QUEUE_BUBBLES);
+      const remainingCount = summary.waitingConfirmationItems.length - itemsToDisplay.length;
+
+      for (const item of itemsToDisplay) {
+        const pendingItem = this.pendingTransactionService.getPendingTransaction(item.ticketId);
+        const bubbleText = pendingItem
+          ? formatPendingQueueItemCard(pendingItem)
+          : formatPendingQueueItemFromViewModel(item);
+
+        const replyMarkup = context.event.channel === 'telegram'
+          ? createTelegramPendingConfirmInlineKeyboard(item.ticketId)
+          : undefined;
+
+        const receipt = replyMarkup
+          ? await this.messagingGateway.sendMessage(
+              context.event.channel,
+              context.event.chatIdentifier,
+              bubbleText,
+              { replyMarkup }
+            )
+          : await this.messagingGateway.sendMessage(
+              context.event.channel,
+              context.event.chatIdentifier,
+              bubbleText
+            );
+
+        if (
+          receipt &&
+          typeof receipt === 'object' &&
+          'messageId' in receipt &&
+          receipt.messageId
+        ) {
+          this.pendingTransactionService.updateNotificationMessageIds(item.ticketId, {
+            [context.event.channel]: receipt.messageId,
+            [`${context.event.channel}:${receipt.messageId}`]: receipt.messageId,
+          });
+        }
+      }
+
+      if (remainingCount > 0) {
+        const dictionary = getDictionary();
+        const remainingNotice = dictionary.status.remainingQueueNotice(remainingCount);
+        await this.messagingGateway.sendMessage(context.event.channel, context.event.chatIdentifier, remainingNotice);
+      }
+
+      // If other non-standard attention items exist (uncertain or draft), send a subsequent summary bubble
+      const otherTotal =
+        summary.needsCheckItems.length +
+        summary.waitingAccountItems.length +
+        summary.waitingCategoryItems.length;
+
+      if (otherTotal > 0) {
+        const otherSummary: TransactionAttentionSummaryViewModel = {
+          totalNeedingAttention: otherTotal,
+          needsCheckItems: summary.needsCheckItems,
+          waitingConfirmationItems: [],
+          waitingAccountItems: summary.waitingAccountItems,
+          waitingCategoryItems: summary.waitingCategoryItems,
+        };
+        const otherReplyMessage = formatTransactionAttentionSummary(otherSummary);
+        await this.messagingGateway.sendMessage(context.event.channel, context.event.chatIdentifier, otherReplyMessage);
+      }
+      return;
+    }
+
+    // Fallback: If only uncertain or draft items exist without standard pending items
     const replyMessage = formatTransactionAttentionSummary(summary);
     await this.messagingGateway.sendMessage(context.event.channel, context.event.chatIdentifier, replyMessage);
   }

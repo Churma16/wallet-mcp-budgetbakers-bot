@@ -313,6 +313,11 @@ export interface ResponseDictionary {
     waitingAccountHeader(count: number): string;
     waitingCategoryHeader(count: number): string;
     noOtherTransactionsWaiting: string;
+    queueItemHeadline(ticketId: number): string;
+    queueItemPrompt: string;
+    remainingQueueNotice(count: number): string;
+    queueConfirmButton: string;
+    queueCancelButton: string;
   };
 
   uncertain: {

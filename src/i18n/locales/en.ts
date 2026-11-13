@@ -338,6 +338,15 @@ export const englishDictionary: ResponseDictionary = {
       return `🏷️ *${count} transaction(s) waiting for category selection:*`;
     },
     noOtherTransactionsWaiting: 'No other transactions waiting for confirmation.',
+    queueItemHeadline(ticketId: number): string {
+      return `⏳ *Pending Transaction (#${ticketId})*`;
+    },
+    queueItemPrompt: '_Swipe reply to edit (e.g. c: <category> or acc: <account>)_',
+    remainingQueueNotice(count: number): string {
+      return `📌 *There are ${count} more pending transactions.*\nType *queue* again for the next batch, or reply *Yes all* / *Cancel all*.`;
+    },
+    queueConfirmButton: '✅ Yes',
+    queueCancelButton: '❌ Cancel',
   },
 
   uncertain: {

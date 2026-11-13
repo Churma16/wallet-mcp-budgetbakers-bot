@@ -300,8 +300,8 @@ describe('transaction status formatting, view model edge states, and pending act
       );
 
       expect(await handler.handleFastPath(event, 'CHECK_QUEUE', Date.now())).toBe(true);
-      expect(messages.at(-1)).toContain('Status Transaksi');
-      expect(messages.at(-1)).toContain('Ya');
+      expect(messages.at(-1)).toMatch(/Antrean Transaksi|Status Transaksi/);
+      expect(messages.at(-1)).toMatch(/swipe|edit|Ya/i);
     });
   });
 

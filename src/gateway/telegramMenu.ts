@@ -96,6 +96,19 @@ export function createTelegramDeleteConfirmInlineKeyboard(
     .text(cancelButtonText, `delete:cancel:${targetMessageId}`);
 }
 
+/**
+ * Creates an inline keyboard with confirmation and cancellation buttons for a pending transaction ticket.
+ */
+export function createTelegramPendingConfirmInlineKeyboard(
+  ticketId: number,
+  languageCode?: SupportedLanguage
+): InlineKeyboard {
+  const dictionary = getDictionary(languageCode);
+  return new InlineKeyboard()
+    .text(dictionary.status.queueConfirmButton, `pending:confirm:${ticketId}`)
+    .text(dictionary.status.queueCancelButton, `pending:reject:${ticketId}`);
+}
+
 export interface TelegramGuideTopicContent {
   readonly text: string;
   readonly replyMarkup: InlineKeyboard;

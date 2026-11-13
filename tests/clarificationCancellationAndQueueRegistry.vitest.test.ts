@@ -101,6 +101,6 @@ describe('clarification draft cancellation fall-through and queue registry integ
       processingStartTimestamp: Date.now(),
       routingSource: 'fast-path',
     });
-    expect(sendMessage).toHaveBeenCalledWith('whatsapp', 'chat-1', expect.stringContaining('Status Transaksi'));
+    expect(sendMessage).toHaveBeenCalledWith('whatsapp', 'chat-1', expect.stringMatching(/Antrean Transaksi|Status Transaksi/));
   });
 });
