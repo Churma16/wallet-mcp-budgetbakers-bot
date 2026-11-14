@@ -108,7 +108,7 @@ export class ReconciliationHandler {
       await this.deps.gateway.sendMessage(
         event.channel,
         event.chatIdentifier,
-        '🔍 <b>Pilih Akun Rekonsiliasi</b>\nPilih akun rekening atau dompet yang ingin direkonsiliasi:',
+        '🔍 *Pilih Akun Rekonsiliasi*\nPilih akun rekening atau dompet yang ingin direkonsiliasi:',
         replyMarkup ? { replyMarkup } : undefined
       );
       return true;
@@ -130,7 +130,7 @@ export class ReconciliationHandler {
       await this.deps.gateway.sendMessage(
         event.channel,
         event.chatIdentifier,
-        `⚠️ Akun "<b>${accountHint}</b>" tidak ditemukan di Wallet.\n\nSilakan pilih salah satu akun berikut:`,
+        `⚠️ Akun *${accountHint}* tidak ditemukan di Wallet.\n\nSilakan pilih salah satu akun berikut:`,
         replyMarkup ? { replyMarkup } : undefined
       );
       return true;
@@ -145,7 +145,7 @@ export class ReconciliationHandler {
         : [];
 
     if (imageBuffers.length === 0) {
-      const promptText = `🔍 <b>Rekonsiliasi: ${targetAccount.name}</b>\n\nSilakan kirimkan foto atau screenshot riwayat mutasi rekening untuk akun ini.\n<i>(Kamu bisa langsung kirim foto atau swipe-reply pesan ini)</i>`;
+      const promptText = `🔍 *Rekonsiliasi: ${targetAccount.name}*\n\nSilakan kirimkan foto atau screenshot riwayat mutasi rekening untuk akun ini.`;
       const replyMarkup = event.channel === 'telegram'
         ? createTelegramReconciliationCancelInlineKeyboard()
         : undefined;
@@ -186,7 +186,7 @@ export class ReconciliationHandler {
       return true;
     }
 
-    const promptText = `🔍 <b>Rekonsiliasi: ${targetAccount.name}</b>\n\nSilakan kirimkan foto atau screenshot riwayat mutasi rekening untuk akun ini.\n<i>(Kamu bisa langsung kirim foto atau swipe-reply pesan ini)</i>`;
+    const promptText = `🔍 *Rekonsiliasi: ${targetAccount.name}*\n\nSilakan kirimkan foto atau screenshot riwayat mutasi rekening untuk akun ini.`;
     const replyMarkup = event.channel === 'telegram'
       ? createTelegramReconciliationCancelInlineKeyboard()
       : undefined;
@@ -235,13 +235,13 @@ export class ReconciliationHandler {
         event.channel,
         event.chatIdentifier,
         event.replyToMessageId,
-        '❌ <i>Rekonsiliasi dibatalkan.</i>'
+        '❌ _Rekonsiliasi dibatalkan._'
       );
     } else {
       await this.deps.gateway.sendMessage(
         event.channel,
         event.chatIdentifier,
-        '❌ <i>Rekonsiliasi dibatalkan.</i>'
+        '❌ _Rekonsiliasi dibatalkan._'
       );
     }
     return true;

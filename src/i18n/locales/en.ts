@@ -473,6 +473,7 @@ export const englishDictionary: ResponseDictionary = {
     commandMenuDescription: 'Open main menu and guide',
     commandSettingsDescription: 'Open bot settings menu',
     commandRescanDescription: 'Rescan and reconcile inbound emails & notifications (e.g. /rescan 60)',
+    commandReconciliationDescription: 'Reconcile transactions with statement photo',
 
     topicRecord: '\u{1F4DD} Record Transaction',
     topicTransfer: '\u{1F504} Transfer Funds',

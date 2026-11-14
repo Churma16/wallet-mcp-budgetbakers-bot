@@ -11,6 +11,7 @@ export function getTelegramBotCommands(languageCode?: SupportedLanguage): Array<
     { command: 'budget', description: dictionary.commandBudgetDescription },
     { command: 'riwayat', description: dictionary.commandHistoryDescription },
     { command: 'rekap', description: dictionary.commandSummaryDescription },
+    { command: 'reconciliation', description: dictionary.commandReconciliationDescription },
     { command: 'menu', description: dictionary.commandMenuDescription },
     { command: 'settings', description: dictionary.commandSettingsDescription },
     { command: 'rescan', description: dictionary.commandRescanDescription },
