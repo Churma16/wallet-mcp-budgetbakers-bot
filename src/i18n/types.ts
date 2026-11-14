@@ -123,18 +123,21 @@ export interface PendingCancellationParams {
 
 export interface TelegramMenuDictionary {
   buttonBalance: string;
+  buttonSummary: string;
   buttonBudget: string;
   buttonHistory: string;
+  buttonQueue: string;
   buttonGuide: string;
 
   commandBalanceDescription: string;
-  commandBudgetDescription: string;
-  commandHistoryDescription: string;
   commandSummaryDescription: string;
-  commandMenuDescription: string;
-  commandSettingsDescription: string;
+  commandHistoryDescription: string;
+  commandBudgetDescription: string;
+  commandQueueDescription: string;
   commandRescanDescription: string;
   commandReconciliationDescription: string;
+  commandMenuDescription: string;
+  commandSettingsDescription: string;
 
   topicRecord: string;
   topicTransfer: string;

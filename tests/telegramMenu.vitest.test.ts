@@ -11,85 +11,93 @@ import { setActiveLanguage } from '../src/i18n/index.js';
 
 describe('Telegram Menu and Keyboard Components', () => {
   describe('Bot Commands Registration', () => {
-    it('returns Indonesian bot commands when language is id', () => {
+    it('returns Indonesian bot commands in usage-frequency order when language is id', () => {
       setActiveLanguage('id');
       const commands = getTelegramBotCommands('id');
 
       expect(commands).toEqual([
-        { command: 'saldo', description: 'Cek saldo seluruh rekening' },
-        { command: 'budget', description: 'Cek limit dan sisa anggaran' },
-        { command: 'riwayat', description: 'Cek transaksi terakhir' },
-        { command: 'rekap', description: 'Cek ringkasan pengeluaran bulan ini' },
-        { command: 'reconciliation', description: 'Rekonsiliasi transaksi dengan foto mutasi' },
-        { command: 'menu', description: 'Buka menu utama dan panduan' },
-        { command: 'settings', description: 'Buka menu pengaturan bot' },
-        { command: 'rescan', description: 'Tarik ulang & selaraskan email & notifikasi (misal: /rescan 60)' },
+        { command: 'saldo', description: 'Saldo semua rekening' },
+        { command: 'rekap', description: 'Ringkasan masuk & keluar' },
+        { command: 'riwayat', description: 'Transaksi terbaru (mis. /riwayat 10)' },
+        { command: 'budget', description: 'Sisa limit anggaran' },
+        { command: 'antrean', description: 'Transaksi menunggu konfirmasi' },
+        { command: 'rescan', description: 'Scan ulang email & notif tertinggal' },
+        { command: 'reconciliation', description: 'Cocokkan transaksi vs foto mutasi' },
+        { command: 'menu', description: 'Tampilkan tombol cepat & panduan' },
+        { command: 'settings', description: 'Pengaturan bahasa, AI, & sistem' },
       ]);
     });
 
-    it('returns English bot commands when language is en', () => {
+    it('returns English bot commands in usage-frequency order when language is en', () => {
       const commands = getTelegramBotCommands('en');
 
       expect(commands).toEqual([
-        { command: 'saldo', description: 'Check all account balances' },
-        { command: 'budget', description: 'Check budget limits and remaining balance' },
-        { command: 'riwayat', description: 'Check recent transaction history' },
-        { command: 'rekap', description: 'Check this month expense summary' },
-        { command: 'reconciliation', description: 'Reconcile transactions with statement photo' },
-        { command: 'menu', description: 'Open main menu and guide' },
-        { command: 'settings', description: 'Open bot settings menu' },
-        { command: 'rescan', description: 'Rescan and reconcile inbound emails & notifications (e.g. /rescan 60)' },
+        { command: 'saldo', description: 'All account balances' },
+        { command: 'rekap', description: 'Income & expense summary' },
+        { command: 'riwayat', description: 'Recent transactions (e.g. /riwayat 10)' },
+        { command: 'budget', description: 'Remaining budget limits' },
+        { command: 'antrean', description: 'Transactions awaiting confirmation' },
+        { command: 'rescan', description: 'Rescan missed emails & notifs' },
+        { command: 'reconciliation', description: 'Match transactions vs bank statement' },
+        { command: 'menu', description: 'Show quick keyboard & guide' },
+        { command: 'settings', description: 'Bot language, AI & system settings' },
       ]);
     });
   });
 
   describe('Main Reply Keyboard Creation', () => {
-    it('creates persistent, resized 4-button keyboard in Indonesian', () => {
+    it('creates persistent, resized 6-button (3x2) keyboard in Indonesian', () => {
       const keyboard = createTelegramMainReplyKeyboard('id');
 
       expect(keyboard.is_persistent).toBe(true);
       expect(keyboard.resize_keyboard).toBe(true);
-      expect(keyboard.keyboard.length).toBe(2);
+      expect(keyboard.keyboard.length).toBe(3);
 
-      // Row 1: Saldo & Budget
-      expect(keyboard.keyboard[0][0].text).toContain('Cek Saldo');
-      expect(keyboard.keyboard[0][1].text).toContain('Cek Budget');
+      // Row 1: Saldo & Rekap
+      expect(keyboard.keyboard[0][0].text).toContain('Saldo');
+      expect(keyboard.keyboard[0][1].text).toContain('Rekap');
 
-      // Row 2: Riwayat & Panduan
-      expect(keyboard.keyboard[1][0].text).toContain('Riwayat');
-      expect(keyboard.keyboard[1][1].text).toContain('Panduan');
+      // Row 2: Budget & Riwayat
+      expect(keyboard.keyboard[1][0].text).toContain('Budget');
+      expect(keyboard.keyboard[1][1].text).toContain('Riwayat');
+
+      // Row 3: Antrean & Panduan
+      expect(keyboard.keyboard[2][0].text).toContain('Antrean');
+      expect(keyboard.keyboard[2][1].text).toContain('Panduan');
     });
 
-    it('creates persistent, resized 4-button keyboard in English', () => {
+    it('creates persistent, resized 6-button (3x2) keyboard in English', () => {
       const keyboard = createTelegramMainReplyKeyboard('en');
 
       expect(keyboard.is_persistent).toBe(true);
       expect(keyboard.resize_keyboard).toBe(true);
-      expect(keyboard.keyboard.length).toBe(2);
+      expect(keyboard.keyboard.length).toBe(3);
 
-      expect(keyboard.keyboard[0][0].text).toContain('Check Balance');
-      expect(keyboard.keyboard[0][1].text).toContain('Check Budget');
-      expect(keyboard.keyboard[1][0].text).toContain('History');
-      expect(keyboard.keyboard[1][1].text).toContain('Guide');
+      expect(keyboard.keyboard[0][0].text).toContain('Balance');
+      expect(keyboard.keyboard[0][1].text).toContain('Summary');
+      expect(keyboard.keyboard[1][0].text).toContain('Budget');
+      expect(keyboard.keyboard[1][1].text).toContain('History');
+      expect(keyboard.keyboard[2][0].text).toContain('Queue');
+      expect(keyboard.keyboard[2][1].text).toContain('Guide');
     });
   });
 
   describe('Interactive Guide Inline Keyboard Creation', () => {
-    it('creates 6-topic inline keyboard with exact callback_data mappings', () => {
+    it('creates 6-topic inline keyboard ordered by user workflow', () => {
       const inlineKeyboard = createTelegramGuideInlineKeyboard('id');
       const payload = inlineKeyboard.inline_keyboard;
 
       expect(payload.length).toBe(3);
 
-      // Row 1: Catat & Transfer
+      // Row 1: Record Text & Scan Receipt
       expect(payload[0][0].callback_data).toBe('guide:record');
-      expect(payload[0][1].callback_data).toBe('guide:transfer');
+      expect(payload[0][1].callback_data).toBe('guide:receipt');
 
-      // Row 2: Edit & Hapus & Foto Struk
-      expect(payload[1][0].callback_data).toBe('guide:edit_delete');
-      expect(payload[1][1].callback_data).toBe('guide:receipt');
+      // Row 2: Transfer & Edit/Delete
+      expect(payload[1][0].callback_data).toBe('guide:transfer');
+      expect(payload[1][1].callback_data).toBe('guide:edit_delete');
 
-      // Row 3: Rekap & Filter & Perintah Cepat
+      // Row 3: Summary/Filter & Command List
       expect(payload[2][0].callback_data).toBe('guide:summary_filter');
       expect(payload[2][1].callback_data).toBe('guide:fast_commands');
     });
@@ -165,7 +173,7 @@ describe('Telegram Menu and Keyboard Components', () => {
       ['edit_delete', 'Edit &amp; Hapus Transaksi (Via Reply)'],
       ['receipt', 'Kirim Foto Struk Belanja (Vision)'],
       ['summary_filter', 'Rekap &amp; Filter Riwayat'],
-      ['fast_commands', 'Perintah Cepat'],
+      ['fast_commands', 'Daftar Command &amp; Shortcut'],
     ])('resolves valid Indonesian content for topic "%s"', (topic, expectedKeyword) => {
       const content = getTelegramGuideTopicContent(topic, 'id');
       expect(content).not.toBeNull();
@@ -180,7 +188,7 @@ describe('Telegram Menu and Keyboard Components', () => {
       ['edit_delete', 'Edit &amp; Delete Transactions (Via Reply)'],
       ['receipt', 'Send Receipt Photo (Vision)'],
       ['summary_filter', 'Summary &amp; History Queries'],
-      ['fast_commands', 'Quick Commands'],
+      ['fast_commands', 'Command List &amp; Shortcuts'],
     ])('resolves valid English content for topic "%s"', (topic, expectedKeyword) => {
       const content = getTelegramGuideTopicContent(topic, 'en');
       expect(content).not.toBeNull();

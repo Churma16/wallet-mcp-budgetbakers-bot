@@ -42,7 +42,7 @@ import { handleReconciliationPagination } from '../core/reconciliation/reconcili
 import { reconciliationSessionStore } from '../core/reconciliation/reconciliationSessionStore.js';
 import { handleHistoryPagination } from '../core/history/historyPaginationFormatter.js';
 import type { TransactionHistoryService } from '../wallet/index.js';
-import { getActiveLanguage, getDictionary } from '../i18n/index.js';
+import { getActiveLanguage, getDictionary, SupportedLanguage } from '../i18n/index.js';
 
 export type { TelegramSafeguardConfiguration };
 export { escapeHtmlEntities, formatTelegramHtml };
@@ -293,7 +293,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
 
       // Register official bot commands menu
       try {
-        const botCommands = getTelegramBotCommands();
+        const botCommands = getTelegramBotCommands(getActiveLanguage());
         await this.executeWithStartupRetry(
           () => this.botInstance!.api.setMyCommands(botCommands),
           'Telegram api.setMyCommands()'
@@ -1223,6 +1223,22 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     await ctx.reply(dictionary.commandUsageHint, { parse_mode: 'HTML' });
   }
 
+  private syncBotCommandsForLanguage(languageCode: SupportedLanguage): void {
+    const setMyCommands = this.botInstance?.api?.setMyCommands;
+    if (typeof setMyCommands !== 'function') {
+      return;
+    }
+
+    const updatedCommands = getTelegramBotCommands(languageCode);
+    void Promise.resolve(setMyCommands.call(this.botInstance!.api, updatedCommands)).catch(
+      (syncError: unknown) => {
+        applicationLogger.warn(
+          `[WARN] Failed to refresh Telegram bot commands for language ${languageCode}: ${syncError instanceof Error ? syncError.message : String(syncError)}`
+        );
+      }
+    );
+  }
+
   public async handleSettingsCallbackQuery(ctx: Context, callbackData: string): Promise<void> {
     const senderUserId = ctx.from?.id ? String(ctx.from.id) : '';
     if (!this.isAuthorizedSender(senderUserId, ctx.from?.username)) {
@@ -1268,6 +1284,9 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       }
 
       const activeLanguage = getActiveLanguage();
+      if (callbackData.startsWith('settings:set:language:') || callbackData === 'settings:action:reset') {
+        this.syncBotCommandsForLanguage(activeLanguage);
+      }
       const menuContent = getTelegramSettingsMenuContent(targetPage, activeLanguage, settingsManager);
 
       try {
