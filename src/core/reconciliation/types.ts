@@ -9,6 +9,7 @@ export interface BankMutationItem {
   direction: MutationDirection;
   counterParty: string;
   note?: string;
+  categoryHint?: string;
 }
 
 export interface MutationTransformResult {

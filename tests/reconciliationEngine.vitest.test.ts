@@ -208,7 +208,9 @@ describe('Reconciliation Custom Rules - Bank Jago x GoPay', () => {
 
     expect(enriched[0].counterParty).toBe('Gojek via Jago');
     expect(enriched[0].note).toBe('Gojek via Jago');
+    expect(enriched[0].categoryHint).toBe('Transportasi');
     expect(enriched[1].counterParty).toBe('Grab'); // untouched
+    expect(enriched[1].categoryHint).toBeUndefined();
   });
 
   it('leaves GoPay mutation untouched if target wallet is not Jago', () => {
@@ -224,6 +226,23 @@ describe('Reconciliation Custom Rules - Bank Jago x GoPay', () => {
 
     const enriched = applyReconciliationRules('BCA Digital', mutations);
     expect(enriched[0].counterParty).toBe('GoPay');
+    expect(enriched[0].categoryHint).toBeUndefined();
+  });
+
+  it('preserves existing mutation categoryHint when rule does not set one', () => {
+    const mutations: BankMutationItem[] = [
+      {
+        id: 'm-custom',
+        date: '2026-11-06',
+        amount: 25000,
+        direction: 'DEBIT',
+        counterParty: 'Merchant',
+        categoryHint: 'Belanja',
+      },
+    ];
+
+    const enriched = applyReconciliationRules('Kantong Jago Utama', mutations);
+    expect(enriched[0].categoryHint).toBe('Belanja');
   });
 });
 
@@ -845,6 +864,34 @@ describe('ReconciliationHandler Workflow Integration', () => {
     expect(addedTickets[0].transactionType).toBe('INCOME');
   });
 
+  it('enqueues missing non-rule DEBIT item without forcing Transportasi category', async () => {
+    const { deps, addedTickets } = createMockDependencies();
+    deps.brainProvider.processStatementImages = async () => [
+      {
+        id: 'mut-superindo',
+        date: '2026-11-06',
+        amount: 150000,
+        direction: 'DEBIT' as const,
+        counterParty: 'Superindo Supermarket',
+      },
+    ];
+    const handler = new (await import('../src/core/handlers/reconciliationHandler.js')).ReconciliationHandler(deps);
+    const handled = await handler.handleReconciliationRequest({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'image',
+      textPayload: '/reconciliation jago',
+      imageBuffer: Buffer.from('fake'),
+    });
+    expect(handled).toBe(true);
+    expect(addedTickets.length).toBe(1);
+    expect(addedTickets[0].counterParty).toBe('Superindo Supermarket');
+    expect(addedTickets[0].amount).toBe(-150000);
+    expect(addedTickets[0].matchedCategoryId).toBeUndefined();
+    expect(addedTickets[0].matchedCategoryName).toBeUndefined();
+  });
+
   it('handleSelectAccountPrompt edits prompt message and stores active prompt', async () => {
     const { deps, editedMessages } = createMockDependencies();
     const { ReconciliationHandler } = await import('../src/core/handlers/reconciliationHandler.js');
@@ -1254,6 +1301,49 @@ describe('Provider Statement Processing Coverage', () => {
     const result = compareMutationsWithWalletRecords(mutations, 'acc-jago', 'Jago', records);
     expect(result.matched.length).toBe(1);
     expect(result.matched[0].walletRecord.id).toBe('r-inc');
+  });
+
+  it('does not force non-rule DEBIT mutations to Transportasi and preserves mutation categoryHint', () => {
+    const mutations: BankMutationItem[] = [
+      {
+        id: 'm-groceries',
+        date: '2026-11-06',
+        amount: 150000,
+        direction: 'DEBIT',
+        counterParty: 'Superindo',
+      },
+      {
+        id: 'm-gopay',
+        date: '2026-11-06',
+        amount: 58500,
+        direction: 'DEBIT',
+        counterParty: 'Gojek via Jago',
+        categoryHint: 'Transportasi',
+      },
+      {
+        id: 'm-custom-cat',
+        date: '2026-11-06',
+        amount: 75000,
+        direction: 'DEBIT',
+        counterParty: 'Steam',
+        categoryHint: 'Hiburan',
+      },
+    ];
+
+    const result = compareMutationsWithWalletRecords(mutations, 'acc-jago', 'Jago', []);
+    expect(result.missing.length).toBe(3);
+
+    // Superindo (no categoryHint) -> suggestedCategoryName is undefined (NOT 'Transportasi')
+    const superindo = result.missing.find(m => m.mutation.id === 'm-groceries');
+    expect(superindo?.suggestedCategoryName).toBeUndefined();
+
+    // Gojek via Jago (categoryHint: Transportasi) -> suggestedCategoryName is 'Transportasi'
+    const gopay = result.missing.find(m => m.mutation.id === 'm-gopay');
+    expect(gopay?.suggestedCategoryName).toBe('Transportasi');
+
+    // Steam (categoryHint: Hiburan) -> suggestedCategoryName is 'Hiburan'
+    const steam = result.missing.find(m => m.mutation.id === 'm-custom-cat');
+    expect(steam?.suggestedCategoryName).toBe('Hiburan');
   });
 
   it('covers statement prompt without caption', async () => {

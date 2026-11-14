@@ -57,6 +57,7 @@ export function applyReconciliationRules(
           ...transformed,
           counterParty: result.counterParty || transformed.counterParty,
           note: result.note || transformed.note,
+          categoryHint: result.categoryHint || transformed.categoryHint,
         };
       }
     }
