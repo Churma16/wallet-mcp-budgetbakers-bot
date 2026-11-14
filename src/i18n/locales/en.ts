@@ -565,12 +565,15 @@ export const englishDictionary: ResponseDictionary = {
     savedAlert: '✅ Settings updated successfully!',
     resetAlert: '🔄 Settings reset to system defaults!',
     unauthorizedAlert: '⛔ Access denied. Only the bot owner can modify settings.',
+    closeMenuNotice: '<i>Settings menu closed.</i>',
+    updateErrorAlert: 'Error updating setting',
 
     buttonCategoryMode: '🏷 Category Mode',
-    buttonAiModel: '🤖 AI Model & Provider',
-    buttonLanguage: '🌐 Response Language',
+    buttonAutoRecord: '⚡ Auto-Record',
+    buttonAiModel: '🤖 AI Model',
+    buttonLanguage: '🌐 Language',
     buttonCurrency: '💱 Currency',
-    buttonAdvanced: '🛠 Advanced Settings',
+    buttonAdvanced: '🛠 Advanced',
     buttonBackToMain: '🔙 Back to Settings Menu',
     buttonBackToAdvanced: '🔙 Back to Advanced',
     buttonClose: '✖️ Close Menu',
@@ -580,11 +583,16 @@ export const englishDictionary: ResponseDictionary = {
     categoryOptionAsk: 'Ask when ambiguous (ask)',
     categoryOptionAuto: 'Automatic best-match (auto)',
 
-    aiModelTitle: '<b>🤖 AI Model & Provider</b>',
+    autoRecordTitle: '<b>⚡ Automatic Transaction Recording</b>',
+    autoRecordInfo: 'Function: Controls whether incoming notifications/emails with a complete account, category, and amount are recorded directly to Wallet or require confirmation.',
+    autoRecordOptionOn: '⚡ Auto-record when complete',
+    autoRecordOptionOff: '✋ Always ask confirmation',
+
+    aiModelTitle: '<b>🤖 AI Model</b>',
     aiModelInfo: 'Function: Selects the primary LLM model for extracting transactions, receipts, and classifications.',
-    aiModelOptionFlashLite: 'Gemini 3.5 Flash Lite (Fast & Efficient)',
-    aiModelOptionFlash: 'Gemini 3.8 Flash (High Accuracy)',
-    aiModelOptionFallbackChain: 'Fallback Chain (3.6-flash, 3.8-flash)',
+    aiModelOptionFlashLite: 'Gemini 3.5 Flash Lite (Fast)',
+    aiModelOptionFlash: 'Gemini 3.8 Flash (Accurate)',
+    aiFallbackToggleLabel: (enabled: boolean) => `🛡 Auto-Fallback: ${enabled ? 'ON' : 'OFF'}`,
 
     languageTitle: '<b>🌐 Response Language</b>',
     languageInfo: 'Function: Configures the language for bot replies, reports, and transaction confirmations.',
@@ -592,27 +600,28 @@ export const englishDictionary: ResponseDictionary = {
     languageOptionEn: '🇬🇧 English (en)',
 
     currencyTitle: '<b>💱 Default Currency</b>',
-    currencyInfo: 'Function: Defines the base currency when amounts are recorded without currency symbols.',
+    currencyInfo: 'Function: Defines the base currency when amounts are recorded without currency symbols.\n<i>Tip: For any other ISO code, type</i> <code>/settings currency THB</code>',
 
     advancedTitle: '<b>🛠 Advanced Settings</b>',
-    advancedInfo: 'Function: Configures performance, message queuing, log retention, and system sync.',
+    advancedInfo: 'Function: Configures timezone, email sync, AI performance, and system logging.',
+    advancedPrompt: 'Select an option below to adjust technical bot parameters:',
     advancedButtonTimezone: '🌍 Timezone',
-    advancedButtonAiTimeout: '⏱ AI Request Timeout',
-    advancedButtonEmailLookback: '📬 Email Lookback',
-    advancedButtonQueueInterval: '⏳ Queue Throttle Interval',
+    advancedButtonAiTimeout: '⏱ AI Response Timeout',
+    advancedButtonEmailLookback: '📬 Email Sync Window',
+    advancedButtonQueueInterval: '⏳ Outbound Msg Delay',
     advancedButtonLogRetention: '🗄 Log Retention',
     advancedButtonReset: '🔄 Reset to Defaults',
 
     timezoneTitle: '<b>🌍 Operational Timezone</b>',
-    timezoneInfo: 'Function: Sets the operational timezone for transaction timestamping.',
+    timezoneInfo: 'Function: Sets the operational timezone for transaction timestamping.\n<i>Tip: For any other IANA zone, type</i> <code>/settings timezone Europe/London</code>',
 
-    aiTimeoutTitle: '<b>⏱ AI Request Timeout</b>',
+    aiTimeoutTitle: '<b>⏱ AI Response Timeout</b>',
     aiTimeoutInfo: 'Function: Maximum duration to await AI responses before switching to fallback models.',
 
-    emailLookbackTitle: '<b>📬 Email Sync Lookback</b>',
+    emailLookbackTitle: '<b>📬 Email Sync Window</b>',
     emailLookbackInfo: 'Function: Lookback window for fetching inbound transaction emails from IMAP.',
 
-    queueIntervalTitle: '<b>⏳ Message Queue Throttle</b>',
+    queueIntervalTitle: '<b>⏳ Outbound Msg Delay</b>',
     queueIntervalInfo: 'Function: Throttling interval for outgoing messages to prevent API rate limiting.',
 
     logRetentionTitle: '<b>🗄 Log File Retention</b>',
@@ -624,12 +633,38 @@ export const englishDictionary: ResponseDictionary = {
     resetConfirmButton: '✅ Yes, Reset Now',
     resetCancelButton: '❌ Cancel',
 
-    autoRecordEnrichedToggleLabel: (enabled: boolean) => `⚡ Auto-Record Enriched: ${enabled ? 'ACTIVE [ON]' : 'DISABLED [OFF]'}`,
-    debugToggleLabel: (enabled: boolean) => `🐞 Debug Logging: ${enabled ? 'ACTIVE [ON]' : 'DISABLED [OFF]'}`,
-    debugTitle: '<b>🐞 Debug Payload Logging</b>',
-    debugInfo: 'Function: Enables verbose payload logging to daily log files for troubleshooting.',
-    debugOptionOn: 'Active (ON)',
-    debugOptionOff: 'Disabled (OFF)',
+    debugToggleLabel: (enabled: boolean) => `🐞 Debug Log: ${enabled ? 'ON' : 'OFF'}`,
+
+    summaryLabels: {
+      categoryMode: 'Category Mode',
+      autoRecord: 'Auto-Record',
+      aiModel: 'AI Model',
+      aiFallback: 'Auto-Fallback',
+      language: 'Response Language',
+      currency: 'Default Currency',
+      timezone: 'Timezone',
+      aiTimeout: 'AI Response Timeout',
+      emailLookback: 'Email Sync Window',
+      queueInterval: 'Outbound Msg Delay',
+      logRetention: 'Log Retention',
+      debugLogging: 'Debug Log',
+    },
+    statusDisabled: 'Disabled',
+    statusEnabled: 'Enabled',
+    statusFallbackNone: 'disabled',
+    unitDays: (days: number) => `${days} days`,
+    unitMinutes: (minutes: number) => `${minutes} min`,
+    currentStatusLine: (label: string, value: string) => `${label}: <code>${value}</code>`,
+    currentFallbackLine: (value: string) => `Auto-fallback: <code>${value}</code>`,
+
+    commandInvalidTimezone: (value: string) =>
+      `❌ Invalid timezone <code>${value}</code>. Use an alias (WIB, WITA, WIT, UTC) or a valid IANA zone like <code>Asia/Tokyo</code>.`,
+    commandInvalidCurrency: (value: string) =>
+      `❌ Invalid currency code <code>${value}</code>. Use a valid 3-letter ISO code like <code>IDR</code>, <code>THB</code>, or <code>GBP</code>.`,
+    commandUpdatedSetting: (label: string, value: string) =>
+      `✅ <b>${label}</b> updated to <code>${value}</code>.`,
+    commandUsageHint:
+      'ℹ️ Use <code>/settings</code> to open the menu, or:\n• <code>/settings timezone &lt;IANA|WIB|WITA|WIT|UTC&gt;</code>\n• <code>/settings currency &lt;ISO_CODE&gt;</code>',
   },
 
   aiFallbackStatus: {

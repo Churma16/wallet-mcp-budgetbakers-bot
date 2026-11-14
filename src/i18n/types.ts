@@ -153,6 +153,21 @@ export interface TelegramMenuDictionary {
   guideFastCommandsContent: string;
 }
 
+export interface TelegramSettingsSummaryLabels {
+  categoryMode: string;
+  autoRecord: string;
+  aiModel: string;
+  aiFallback: string;
+  language: string;
+  currency: string;
+  timezone: string;
+  aiTimeout: string;
+  emailLookback: string;
+  queueInterval: string;
+  logRetention: string;
+  debugLogging: string;
+}
+
 export interface TelegramSettingsDictionary {
   title: string;
   subtitle: string;
@@ -160,8 +175,11 @@ export interface TelegramSettingsDictionary {
   savedAlert: string;
   resetAlert: string;
   unauthorizedAlert: string;
+  closeMenuNotice: string;
+  updateErrorAlert: string;
 
   buttonCategoryMode: string;
+  buttonAutoRecord: string;
   buttonAiModel: string;
   buttonLanguage: string;
   buttonCurrency: string;
@@ -175,11 +193,16 @@ export interface TelegramSettingsDictionary {
   categoryOptionAsk: string;
   categoryOptionAuto: string;
 
+  autoRecordTitle: string;
+  autoRecordInfo: string;
+  autoRecordOptionOn: string;
+  autoRecordOptionOff: string;
+
   aiModelTitle: string;
   aiModelInfo: string;
   aiModelOptionFlashLite: string;
   aiModelOptionFlash: string;
-  aiModelOptionFallbackChain: string;
+  aiFallbackToggleLabel(enabled: boolean): string;
 
   languageTitle: string;
   languageInfo: string;
@@ -191,6 +214,7 @@ export interface TelegramSettingsDictionary {
 
   advancedTitle: string;
   advancedInfo: string;
+  advancedPrompt: string;
   advancedButtonTimezone: string;
   advancedButtonAiTimeout: string;
   advancedButtonEmailLookback: string;
@@ -219,12 +243,21 @@ export interface TelegramSettingsDictionary {
   resetConfirmButton: string;
   resetCancelButton: string;
 
-  autoRecordEnrichedToggleLabel(enabled: boolean): string;
   debugToggleLabel(enabled: boolean): string;
-  debugTitle: string;
-  debugInfo: string;
-  debugOptionOn: string;
-  debugOptionOff: string;
+
+  summaryLabels: TelegramSettingsSummaryLabels;
+  statusDisabled: string;
+  statusEnabled: string;
+  statusFallbackNone: string;
+  unitDays(days: number): string;
+  unitMinutes(minutes: number): string;
+  currentStatusLine(label: string, value: string): string;
+  currentFallbackLine(value: string): string;
+
+  commandInvalidTimezone(value: string): string;
+  commandInvalidCurrency(value: string): string;
+  commandUpdatedSetting(label: string, value: string): string;
+  commandUsageHint: string;
 }
 
 export interface ResponseDictionary {
