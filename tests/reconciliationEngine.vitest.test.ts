@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { WalletRecordItem } from '../src/wallet/types.js';
-import type { BankMutationItem } from '../src/core/reconciliation/types.js';
+import type { BankMutationItem, ReconciliationRule } from '../src/core/reconciliation/types.js';
 import {
   compareMutationsWithWalletRecords,
   getCalendarDayDifference,
@@ -229,20 +229,39 @@ describe('Reconciliation Custom Rules - Bank Jago x GoPay', () => {
     expect(enriched[0].categoryHint).toBeUndefined();
   });
 
-  it('preserves existing mutation categoryHint when rule does not set one', () => {
+  it('preserves existing mutation categoryHint or leaves undefined when rule does not set one', () => {
+    const ruleWithoutHint: ReconciliationRule = {
+      id: 'rule-without-hint',
+      name: 'Rule Without Hint',
+      enabled: true,
+      targetWalletFilter: () => true,
+      matchMutation: () => true,
+      applyTransform: () => ({
+        counterParty: 'Renamed Party',
+      }),
+    };
+
     const mutations: BankMutationItem[] = [
       {
-        id: 'm-custom',
+        id: 'm-with-hint',
         date: '2026-11-06',
         amount: 25000,
         direction: 'DEBIT',
         counterParty: 'Merchant',
         categoryHint: 'Belanja',
       },
+      {
+        id: 'm-without-hint',
+        date: '2026-11-06',
+        amount: 35000,
+        direction: 'DEBIT',
+        counterParty: 'Merchant 2',
+      },
     ];
 
-    const enriched = applyReconciliationRules('Kantong Jago Utama', mutations);
+    const enriched = applyReconciliationRules('Kantong Jago Utama', mutations, [ruleWithoutHint]);
     expect(enriched[0].categoryHint).toBe('Belanja');
+    expect(enriched[1].categoryHint).toBeUndefined();
   });
 });
 
