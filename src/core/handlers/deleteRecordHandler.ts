@@ -28,6 +28,7 @@ const CONFIRMATION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 export interface ActiveDeleteConfirmation {
   readonly messageId: string;
+  readonly promptMessageId?: string;
   readonly expiresAt: number;
 }
 
@@ -79,14 +80,18 @@ export class DeleteRecordHandler {
     return isDeleteCancellationCommand(textPayload);
   }
 
-  public hasActiveConfirmation(chatIdentifier: string): boolean {
+  public getActiveConfirmation(chatIdentifier: string): ActiveDeleteConfirmation | undefined {
     const active = this.activeConfirmations.get(chatIdentifier);
-    if (!active) return false;
+    if (!active) return undefined;
     if (Date.now() > active.expiresAt) {
       this.activeConfirmations.delete(chatIdentifier);
-      return false;
+      return undefined;
     }
-    return true;
+    return active;
+  }
+
+  public hasActiveConfirmation(chatIdentifier: string): boolean {
+    return this.getActiveConfirmation(chatIdentifier) !== undefined;
   }
 
   public async handleDeleteRecordReply(
@@ -169,25 +174,26 @@ export class DeleteRecordHandler {
       dictionary.languageCode
     );
 
-    // Save active confirmation state
-    this.activeConfirmations.set(event.chatIdentifier, {
-      messageId: event.replyToMessageId,
-      expiresAt: Date.now() + CONFIRMATION_TIMEOUT_MS,
-    });
-
-    await this.messagingGateway.sendMessage(
+    const promptReceipt = await this.messagingGateway.sendMessage(
       event.channel,
       event.chatIdentifier,
       promptText,
       { replyMarkup }
     );
 
+    // Save active confirmation state
+    this.activeConfirmations.set(event.chatIdentifier, {
+      messageId: event.replyToMessageId,
+      promptMessageId: promptReceipt?.messageId,
+      expiresAt: Date.now() + CONFIRMATION_TIMEOUT_MS,
+    });
+
     return true;
   }
 
   public async handleDeleteConfirmationCommand(event: IncomingUserMessageEvent): Promise<boolean> {
     const match = event.textPayload?.trim().match(DELETE_CONFIRM_COMMAND_PATTERN);
-    const active = this.activeConfirmations.get(event.chatIdentifier);
+    const active = this.getActiveConfirmation(event.chatIdentifier);
     const targetMessageId = match?.[1] || active?.messageId;
 
     if (!targetMessageId) {
@@ -210,11 +216,14 @@ export class DeleteRecordHandler {
   }
 
   public async handleConversationalReply(event: IncomingUserMessageEvent): Promise<boolean> {
-    const active = this.activeConfirmations.get(event.chatIdentifier);
+    const active = this.getActiveConfirmation(event.chatIdentifier);
     if (!active) return false;
 
-    if (Date.now() > active.expiresAt) {
-      this.activeConfirmations.delete(event.chatIdentifier);
+    if (
+      event.replyToMessageId &&
+      event.replyToMessageId !== active.messageId &&
+      event.replyToMessageId !== active.promptMessageId
+    ) {
       return false;
     }
 
