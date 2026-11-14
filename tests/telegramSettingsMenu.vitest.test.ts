@@ -672,5 +672,47 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
       expect(manager.getSetting('defaultCurrency')).toBe('THB');
       expect(invalidCurrReply.mock.calls[0][0]).toContain('tidak valid');
     });
+
+    it('refreshes Telegram bot commands via setMyCommands when language changes or resets', async () => {
+      const adapter = new TelegramMessagingAdapter(dummyToken, allowedUserId, vi.fn());
+      const mockSetMyCommands = vi.fn().mockResolvedValue(true);
+      (adapter as any).botInstance = {
+        api: {
+          setMyCommands: mockSetMyCommands,
+        },
+      };
+
+      await adapter.handleSettingsCallbackQuery(
+        {
+          from: { id: Number(allowedUserId) },
+          callbackQuery: { data: 'settings:set:language:en' },
+          answerCallbackQuery: vi.fn().mockResolvedValue({}),
+          editMessageText: vi.fn().mockResolvedValue({}),
+        } as any,
+        'settings:set:language:en'
+      );
+
+      expect(mockSetMyCommands).toHaveBeenCalledTimes(1);
+      expect(mockSetMyCommands.mock.calls[0][0][0]).toEqual({
+        command: 'saldo',
+        description: 'All account balances',
+      });
+
+      await adapter.handleSettingsCallbackQuery(
+        {
+          from: { id: Number(allowedUserId) },
+          callbackQuery: { data: 'settings:action:reset' },
+          answerCallbackQuery: vi.fn().mockResolvedValue({}),
+          editMessageText: vi.fn().mockResolvedValue({}),
+        } as any,
+        'settings:action:reset'
+      );
+
+      expect(mockSetMyCommands).toHaveBeenCalledTimes(2);
+      expect(mockSetMyCommands.mock.calls[1][0][0]).toEqual({
+        command: 'saldo',
+        description: 'Saldo semua rekening',
+      });
+    });
   });
 });

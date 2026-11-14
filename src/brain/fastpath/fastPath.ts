@@ -28,15 +28,19 @@ export function normalizeFastPathInput(rawText: string): string {
  * Maps exact Telegram button labels and direct keywords to financial actions in O(1) time.
  */
 const EXACT_BUTTON_ACTION_MAP: Readonly<Record<string, FastPathAction>> = {
-  '\u{1F4B0} cek saldo': FINANCIAL_ACTION_TYPES.CHECK_BALANCE,
-  '\u{1F4B0} check balance': FINANCIAL_ACTION_TYPES.CHECK_BALANCE,
+  '\u{1F4B0} saldo': FINANCIAL_ACTION_TYPES.CHECK_BALANCE,
+  '\u{1F4B0} balance': FINANCIAL_ACTION_TYPES.CHECK_BALANCE,
   'cek saldo': FINANCIAL_ACTION_TYPES.CHECK_BALANCE,
   'check balance': FINANCIAL_ACTION_TYPES.CHECK_BALANCE,
   'saldo': FINANCIAL_ACTION_TYPES.CHECK_BALANCE,
   'balance': FINANCIAL_ACTION_TYPES.CHECK_BALANCE,
 
-  '\u{1F4CA} cek budget': FINANCIAL_ACTION_TYPES.CHECK_BUDGET,
-  '\u{1F4CA} check budget': FINANCIAL_ACTION_TYPES.CHECK_BUDGET,
+  '\u{1F4C8} rekap': { type: FINANCIAL_ACTION_TYPES.TRANSACTION_SUMMARY, options: {} },
+  '\u{1F4C8} summary': { type: FINANCIAL_ACTION_TYPES.TRANSACTION_SUMMARY, options: {} },
+  'rekap': { type: FINANCIAL_ACTION_TYPES.TRANSACTION_SUMMARY, options: {} },
+  'summary': { type: FINANCIAL_ACTION_TYPES.TRANSACTION_SUMMARY, options: {} },
+
+  '\u{1F4CA} budget': FINANCIAL_ACTION_TYPES.CHECK_BUDGET,
   'cek budget': FINANCIAL_ACTION_TYPES.CHECK_BUDGET,
   'check budget': FINANCIAL_ACTION_TYPES.CHECK_BUDGET,
   'budget': FINANCIAL_ACTION_TYPES.CHECK_BUDGET,
@@ -46,6 +50,13 @@ const EXACT_BUTTON_ACTION_MAP: Readonly<Record<string, FastPathAction>> = {
   'riwayat': { type: FINANCIAL_ACTION_TYPES.TRANSACTION_HISTORY, options: { sort: 'newest' } },
   'history': { type: FINANCIAL_ACTION_TYPES.TRANSACTION_HISTORY, options: { sort: 'newest' } },
 
+  '\u{23F3} antrean': FINANCIAL_ACTION_TYPES.CHECK_QUEUE,
+  '\u{23F3} queue': FINANCIAL_ACTION_TYPES.CHECK_QUEUE,
+  'antrean': FINANCIAL_ACTION_TYPES.CHECK_QUEUE,
+  'antrian': FINANCIAL_ACTION_TYPES.CHECK_QUEUE,
+  'queue': FINANCIAL_ACTION_TYPES.CHECK_QUEUE,
+  'pending': FINANCIAL_ACTION_TYPES.CHECK_QUEUE,
+
   '\u{2753} panduan': FINANCIAL_ACTION_TYPES.HELP_MENU,
   '\u{2753} guide': FINANCIAL_ACTION_TYPES.HELP_MENU,
   'panduan': FINANCIAL_ACTION_TYPES.HELP_MENU,
@@ -53,11 +64,6 @@ const EXACT_BUTTON_ACTION_MAP: Readonly<Record<string, FastPathAction>> = {
   'menu': FINANCIAL_ACTION_TYPES.HELP_MENU,
   'help': FINANCIAL_ACTION_TYPES.HELP_MENU,
   'start': FINANCIAL_ACTION_TYPES.HELP_MENU,
-
-  'antrean': FINANCIAL_ACTION_TYPES.CHECK_QUEUE,
-  'antrian': FINANCIAL_ACTION_TYPES.CHECK_QUEUE,
-  'queue': FINANCIAL_ACTION_TYPES.CHECK_QUEUE,
-  'pending': FINANCIAL_ACTION_TYPES.CHECK_QUEUE,
 };
 
 /**

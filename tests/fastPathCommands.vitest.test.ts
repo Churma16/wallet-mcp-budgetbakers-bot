@@ -14,9 +14,11 @@ describe('Fast-Path Deterministic Command & Button Resolution', () => {
     });
 
     it('strips leading emojis and UI symbols from button texts', () => {
-      expect(normalizeFastPathInput('\u{1F4B0} Cek Saldo')).toBe('Cek Saldo');
-      expect(normalizeFastPathInput('\u{1F4CA} Cek Budget')).toBe('Cek Budget');
+      expect(normalizeFastPathInput('\u{1F4B0} Saldo')).toBe('Saldo');
+      expect(normalizeFastPathInput('\u{1F4C8} Rekap')).toBe('Rekap');
+      expect(normalizeFastPathInput('\u{1F4CA} Budget')).toBe('Budget');
       expect(normalizeFastPathInput('\u{1F4DC} Riwayat')).toBe('Riwayat');
+      expect(normalizeFastPathInput('\u{23F3} Antrean')).toBe('Antrean');
       expect(normalizeFastPathInput('\u{2753} Panduan')).toBe('Panduan');
     });
 
@@ -91,22 +93,32 @@ describe('Fast-Path Deterministic Command & Button Resolution', () => {
 
   describe('O(1) Button Label Exact Matches', () => {
     it('resolves exact Indonesian reply keyboard buttons', () => {
-      expect(detectFastPathAction('\u{1F4B0} Cek Saldo')).toBe(FINANCIAL_ACTION_TYPES.CHECK_BALANCE);
-      expect(detectFastPathAction('\u{1F4CA} Cek Budget')).toBe(FINANCIAL_ACTION_TYPES.CHECK_BUDGET);
+      expect(detectFastPathAction('\u{1F4B0} Saldo')).toBe(FINANCIAL_ACTION_TYPES.CHECK_BALANCE);
+      expect(detectFastPathAction('\u{1F4C8} Rekap')).toEqual({
+        type: FINANCIAL_ACTION_TYPES.TRANSACTION_SUMMARY,
+        options: {},
+      });
+      expect(detectFastPathAction('\u{1F4CA} Budget')).toBe(FINANCIAL_ACTION_TYPES.CHECK_BUDGET);
       expect(detectFastPathAction('\u{1F4DC} Riwayat')).toEqual({
         type: FINANCIAL_ACTION_TYPES.TRANSACTION_HISTORY,
         options: { sort: 'newest' },
       });
+      expect(detectFastPathAction('\u{23F3} Antrean')).toBe(FINANCIAL_ACTION_TYPES.CHECK_QUEUE);
       expect(detectFastPathAction('\u{2753} Panduan')).toBe(FINANCIAL_ACTION_TYPES.HELP_MENU);
     });
 
     it('resolves exact English reply keyboard buttons', () => {
-      expect(detectFastPathAction('\u{1F4B0} Check Balance')).toBe(FINANCIAL_ACTION_TYPES.CHECK_BALANCE);
-      expect(detectFastPathAction('\u{1F4CA} Check Budget')).toBe(FINANCIAL_ACTION_TYPES.CHECK_BUDGET);
+      expect(detectFastPathAction('\u{1F4B0} Balance')).toBe(FINANCIAL_ACTION_TYPES.CHECK_BALANCE);
+      expect(detectFastPathAction('\u{1F4C8} Summary')).toEqual({
+        type: FINANCIAL_ACTION_TYPES.TRANSACTION_SUMMARY,
+        options: {},
+      });
+      expect(detectFastPathAction('\u{1F4CA} Budget')).toBe(FINANCIAL_ACTION_TYPES.CHECK_BUDGET);
       expect(detectFastPathAction('\u{1F4DC} History')).toEqual({
         type: FINANCIAL_ACTION_TYPES.TRANSACTION_HISTORY,
         options: { sort: 'newest' },
       });
+      expect(detectFastPathAction('\u{23F3} Queue')).toBe(FINANCIAL_ACTION_TYPES.CHECK_QUEUE);
       expect(detectFastPathAction('\u{2753} Guide')).toBe(FINANCIAL_ACTION_TYPES.HELP_MENU);
     });
   });

@@ -8,42 +8,46 @@ export function getTelegramBotCommands(languageCode?: SupportedLanguage): Array<
   const dictionary = getDictionary(languageCode).telegramMenu;
   return [
     { command: 'saldo', description: dictionary.commandBalanceDescription },
-    { command: 'budget', description: dictionary.commandBudgetDescription },
-    { command: 'riwayat', description: dictionary.commandHistoryDescription },
     { command: 'rekap', description: dictionary.commandSummaryDescription },
+    { command: 'riwayat', description: dictionary.commandHistoryDescription },
+    { command: 'budget', description: dictionary.commandBudgetDescription },
+    { command: 'antrean', description: dictionary.commandQueueDescription },
+    { command: 'rescan', description: dictionary.commandRescanDescription },
     { command: 'reconciliation', description: dictionary.commandReconciliationDescription },
     { command: 'menu', description: dictionary.commandMenuDescription },
     { command: 'settings', description: dictionary.commandSettingsDescription },
-    { command: 'rescan', description: dictionary.commandRescanDescription },
   ];
 }
 
 /**
- * Creates the persistent 4-button main menu reply keyboard for Telegram.
+ * Creates the persistent 6-button (3x2) main menu reply keyboard for Telegram.
  */
 export function createTelegramMainReplyKeyboard(languageCode?: SupportedLanguage): Keyboard {
   const dictionary = getDictionary(languageCode).telegramMenu;
   return new Keyboard()
     .text(dictionary.buttonBalance)
-    .text(dictionary.buttonBudget)
+    .text(dictionary.buttonSummary)
     .row()
+    .text(dictionary.buttonBudget)
     .text(dictionary.buttonHistory)
+    .row()
+    .text(dictionary.buttonQueue)
     .text(dictionary.buttonGuide)
     .resized()
     .persistent();
 }
 
 /**
- * Creates the 6-topic interactive guide inline keyboard.
+ * Creates the 6-topic interactive guide inline keyboard ordered by user workflow.
  */
 export function createTelegramGuideInlineKeyboard(languageCode?: SupportedLanguage): InlineKeyboard {
   const dictionary = getDictionary(languageCode).telegramMenu;
   return new InlineKeyboard()
     .text(dictionary.topicRecord, 'guide:record')
-    .text(dictionary.topicTransfer, 'guide:transfer')
-    .row()
-    .text(dictionary.topicEditDelete, 'guide:edit_delete')
     .text(dictionary.topicReceipt, 'guide:receipt')
+    .row()
+    .text(dictionary.topicTransfer, 'guide:transfer')
+    .text(dictionary.topicEditDelete, 'guide:edit_delete')
     .row()
     .text(dictionary.topicSummaryFilter, 'guide:summary_filter')
     .text(dictionary.topicFastCommands, 'guide:fast_commands');
