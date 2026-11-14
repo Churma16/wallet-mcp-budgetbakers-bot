@@ -311,6 +311,44 @@ describe('EnrichmentPoolService and Eligibility', () => {
       expect(timeMismatch).toBeUndefined();
     });
 
+    it('rejects candidates when evidence or stored recordDate is malformed (NaN)', () => {
+      const pool = new EnrichmentPoolService(tempStoragePath);
+      pool.addCandidate({
+        recordId: 'rec-valid-date',
+        accountId: 'acc-jago',
+        amount: -50000,
+        currency: 'IDR',
+        recordDate: '2026-11-05T18:32:00.000Z',
+        counterParty: 'Merchant',
+      });
+      pool.addCandidate({
+        recordId: 'rec-invalid-date',
+        accountId: 'acc-jago',
+        amount: -75000,
+        currency: 'IDR',
+        recordDate: 'not-a-valid-date',
+        counterParty: 'Merchant',
+      });
+
+      const invalidEvidenceDateMatch = pool.findMatchingCandidate({
+        sourceType: 'EMAIL_PAYMENT',
+        amount: -50000,
+        currency: 'IDR',
+        occurredAt: 'invalid-occurred-at',
+        accountId: 'acc-jago',
+      });
+      expect(invalidEvidenceDateMatch).toBeUndefined();
+
+      const invalidItemDateMatch = pool.findMatchingCandidate({
+        sourceType: 'EMAIL_PAYMENT',
+        amount: -75000,
+        currency: 'IDR',
+        occurredAt: '2026-11-05T18:32:00.000Z',
+        accountId: 'acc-jago',
+      });
+      expect(invalidItemDateMatch).toBeUndefined();
+    });
+
     it('clears pool completely', () => {
       const pool = new EnrichmentPoolService(tempStoragePath);
       pool.addCandidate({

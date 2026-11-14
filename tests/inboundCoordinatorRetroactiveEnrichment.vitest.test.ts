@@ -509,4 +509,125 @@ describe('InboundCoordinator Retroactive Record Enrichment', () => {
     ]);
     expect(enrichmentPool.getCandidate(recordId)).toBeUndefined();
   });
+
+  it('preserves unrelated pending tickets of the same amount when a platform receipt triggers retroactive enrichment', async () => {
+    const recordId = 'rec-platform-isolation';
+
+    enrichmentPool.addCandidate({
+      recordId,
+      accountId: 'acc-jago',
+      accountName: 'Jago Expense',
+      amount: -50000,
+      currency: 'IDR',
+      recordDate: '2026-11-09T12:00:00.000Z',
+      counterParty: 'Merchant',
+      note: 'Pembayaran kartu debit Bank Jago (Merchant)',
+      categoryId: 'cat-unknown',
+      categoryName: 'Unknown expense',
+    });
+
+    // Unrelated dining ticket of the exact same amount within 48 hours
+    const unrelatedTicket = pendingManager.addPendingTransaction({
+      sourceType: 'PUSH_NOTIFICATION',
+      bankDisplayName: 'Mandiri',
+      accountNameHint: 'Mandiri Utama',
+      counterParty: 'Warung Padang Sederhana',
+      amount: -50000,
+      currency: 'IDR',
+      transactionType: 'EXPENSE',
+      matchedAccountId: 'acc-mandiri',
+      matchedCategoryId: 'cat-food',
+      matchedCategoryName: 'Makanan & Minuman',
+      note: 'Makan siang',
+      recordDate: '2026-11-09T11:30:00.000Z',
+    });
+
+    // Matching dangling platform ticket on the same account should still be dismissed
+    const matchingPlatformTicket = pendingManager.addPendingTransaction({
+      sourceType: 'PUSH_NOTIFICATION',
+      bankDisplayName: 'Jago',
+      accountNameHint: 'Jago Expense',
+      counterParty: 'SHOPEE.CO.ID',
+      amount: -50000,
+      currency: 'IDR',
+      transactionType: 'EXPENSE',
+      matchedAccountId: 'acc-jago',
+      matchedCategoryId: 'cat-unknown',
+      matchedCategoryName: 'Unknown expense',
+      note: 'Pembayaran kartu debit',
+      recordDate: '2026-11-09T12:00:00.000Z',
+    });
+
+    // Pending ticket with malformed date should not be auto-dismissed
+    const malformedDateTicket = pendingManager.addPendingTransaction({
+      sourceType: 'PUSH_NOTIFICATION',
+      bankDisplayName: 'Jago',
+      accountNameHint: 'Jago Expense',
+      counterParty: 'Merchant',
+      amount: -50000,
+      currency: 'IDR',
+      transactionType: 'EXPENSE',
+      matchedAccountId: 'acc-jago',
+      matchedCategoryId: 'cat-unknown',
+      matchedCategoryName: 'Unknown expense',
+      note: 'Pembayaran',
+      recordDate: 'not-a-valid-date',
+    });
+
+    const mockMcpClient = {
+      fetchRecords: vi.fn().mockResolvedValue({ records: [] }),
+      patchRecords: vi.fn().mockResolvedValue({
+        summary: { total: 1, succeeded: 1 },
+        results: [{ id: recordId, success: true }],
+      }),
+    };
+
+    const mockMessaging = {
+      broadcastNotification: vi.fn().mockResolvedValue({ telegram: { messageId: 'msg-gopay-1' } }),
+      editBroadcastNotification: vi.fn().mockResolvedValue(false),
+    };
+
+    await coordinateInboundTransactionCandidate(
+      {
+        parsedData: {
+          isTransaction: true,
+          transactionType: 'EXPENSE',
+          amount: -50000,
+          counterParty: 'Shopee',
+          accountNameHint: 'Jago Expense',
+          matchedAccountId: 'acc-jago',
+          matchedCategoryId: 'cat-food',
+          matchedCategoryName: 'Makanan & Minuman',
+          note: 'Order Shopee',
+          recordDate: '2026-11-09T12:01:00.000Z',
+          explanation: 'Shopee receipt',
+        },
+        gateResult: {
+          isCandidate: true,
+          matchedBankRule: { bankKey: 'shopee', displayName: 'Shopee' } as any,
+          ruleCategory: 'MERCHANT_RECEIPT' as any,
+        },
+        sourceType: 'EMAIL',
+        evidenceSourceType: 'EMAIL_PAYMENT',
+        sourceId: 'email-shopee-50k',
+        sourceDate: new Date('2026-11-09T12:01:00.000Z'),
+        sourceDisplayName: 'Shopee',
+        fallbackNote: 'Order Shopee',
+      },
+      {
+        walletCacheService: mockWalletCache as any,
+        pendingTransactionManager: pendingManager,
+        messagingGateway: mockMessaging as any,
+        defaultCurrency: 'IDR',
+        correlationService,
+        walletMcpClient: mockMcpClient as any,
+        enrichmentPoolService: enrichmentPool,
+      }
+    );
+
+    const remainingIds = pendingManager.getAllPendingTransactions().map(item => item.ticketId);
+    expect(remainingIds).toContain(unrelatedTicket.ticketId);
+    expect(remainingIds).toContain(malformedDateTicket.ticketId);
+    expect(remainingIds).not.toContain(matchingPlatformTicket.ticketId);
+  });
 });

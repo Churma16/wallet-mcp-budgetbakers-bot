@@ -169,7 +169,7 @@ export class EnrichmentPoolService {
       const itemTime = new Date(item.recordDate).getTime();
       const evidenceTime = new Date(evidence.occurredAt).getTime();
       const timeDiff = Math.abs(evidenceTime - itemTime);
-      if (timeDiff > maxTimeDifferenceMs) {
+      if (!Number.isFinite(timeDiff) || timeDiff > maxTimeDifferenceMs) {
         continue;
       }
 

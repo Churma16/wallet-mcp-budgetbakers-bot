@@ -4,6 +4,7 @@ import { PendingTransactionService } from '../src/core/pending.js';
 import { TransactionCorrelationEngine, BANK_EMAIL_RULES } from '../src/email/index.js';
 import { RuntimeSettingsManager } from '../src/config/runtimeSettingsManager.js';
 import { TransactionMessageStore } from '../src/wallet/records/index.js';
+import { WalletMcpRequestError } from '../src/wallet/index.js';
 
 describe('Inbound Auto-Record Enriched Transactions Integration', () => {
   const mandiriRule = BANK_EMAIL_RULES.find(r => r.bankKey === 'mandiri')!;
@@ -369,5 +370,150 @@ describe('Inbound Auto-Record Enriched Transactions Integration', () => {
     // But ticket was NOT lost: safely retained in pending queue!
     expect(pendingManager.getAllPendingTransactions().length).toBe(1);
     expect(pendingManager.getAllPendingTransactions()[0].ticketId).toBe(1);
+  });
+
+  it('claims ticket atomically during auto-record so concurrent confirmation cannot double-record', async () => {
+    const pendingManager = new PendingTransactionService();
+    const messaging = {
+      broadcastNotification: vi.fn().mockResolvedValue({ telegram: { messageId: 'msg-105' } }),
+      editBroadcastNotification: vi.fn().mockResolvedValue(true),
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+    };
+
+    let resolveCreate!: (value: unknown) => void;
+    const createRecordsPromise = new Promise(resolve => {
+      resolveCreate = resolve;
+    });
+
+    const mockMcpClient = {
+      fetchRecords: vi.fn().mockResolvedValue({ records: [] }),
+      createRecords: vi.fn().mockReturnValue(createRecordsPromise),
+    };
+
+    const handler = new EmailTransactionHandler(
+      createMockAiProvider() as any,
+      createMockWalletCache() as any,
+      pendingManager,
+      messaging as any,
+      'IDR',
+      new TransactionCorrelationEngine(),
+      () => null,
+      mockMcpClient as any
+    );
+
+    await handler.handleEmailTransactionDetected({
+      emailId: 'email-1',
+      emailSubject: 'Pembayaran Berhasil!',
+      emailSender: 'no-reply@bankmandiri.co.id',
+      emailDate: new Date('2026-10-14T10:18:00.000Z'),
+      gateResult: { isFinancialCandidate: true, matchedBankRule: mandiriRule },
+      accountNameHint: 'Mandiri Utama',
+      emailBodyText: 'Pembayaran QRIS Rp 16.700',
+    });
+
+    vi.spyOn(RuntimeSettingsManager, 'getInstance').mockReturnValue({
+      getSettings: () => ({ autoRecordEnriched: true }),
+    } as any);
+
+    const autoRecordRun = handler.handleEmailTransactionDetected({
+      emailId: 'email-2',
+      emailSubject: 'Pembayaran QRIS Anda Telah Kami Terima - Offline Store',
+      emailSender: 'notification@blibli.com',
+      emailDate: new Date('2026-10-14T10:19:00.000Z'),
+      gateResult: { isFinancialCandidate: true, matchedBankRule: blibliRule },
+      accountNameHint: 'Cash',
+      emailBodyText: 'Pesanan Blibli Offline Store',
+    });
+
+    // Wait a microtask tick for createRecords to be invoked
+    await vi.waitFor(() => expect(mockMcpClient.createRecords).toHaveBeenCalledTimes(1));
+
+    // Concurrent manual confirmation cannot claim the same ticket while auto-record is in flight
+    expect(pendingManager.isTicketProcessing(1)).toBe(true);
+    expect(pendingManager.claimPendingTransaction(1)).toBeUndefined();
+
+    resolveCreate({ results: [{ id: 'rec-wallet-race-1' }] });
+    await autoRecordRun;
+
+    expect(pendingManager.getAllPendingTransactions()).toHaveLength(0);
+  });
+
+  it('releases claim on definitive failure and marks UNKNOWN without releasing on ambiguous failure', async () => {
+    const pendingManager = new PendingTransactionService();
+    const messaging = {
+      broadcastNotification: vi.fn().mockResolvedValue({ telegram: { messageId: 'msg-106' } }),
+      editBroadcastNotification: vi.fn().mockResolvedValue(true),
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+    };
+    const mockMcpClient = {
+      fetchRecords: vi.fn().mockResolvedValue({ records: [] }),
+      createRecords: vi.fn().mockRejectedValueOnce(
+        new WalletMcpRequestError('Invalid payload', 'DEFINITIVE_FAILURE', 'REQUEST_INVALID')
+      ),
+    };
+
+    const handler = new EmailTransactionHandler(
+      createMockAiProvider() as any,
+      createMockWalletCache() as any,
+      pendingManager,
+      messaging as any,
+      'IDR',
+      new TransactionCorrelationEngine(),
+      () => null,
+      mockMcpClient as any
+    );
+
+    await handler.handleEmailTransactionDetected({
+      emailId: 'email-1',
+      emailSubject: 'Pembayaran Berhasil!',
+      emailSender: 'no-reply@bankmandiri.co.id',
+      emailDate: new Date('2026-10-14T10:18:00.000Z'),
+      gateResult: { isFinancialCandidate: true, matchedBankRule: mandiriRule },
+      accountNameHint: 'Mandiri Utama',
+      emailBodyText: 'Pembayaran QRIS Rp 16.700',
+    });
+
+    vi.spyOn(RuntimeSettingsManager, 'getInstance').mockReturnValue({
+      getSettings: () => ({ autoRecordEnriched: true }),
+    } as any);
+
+    await handler.handleEmailTransactionDetected({
+      emailId: 'email-2',
+      emailSubject: 'Pembayaran QRIS Anda Telah Kami Terima - Offline Store',
+      emailSender: 'notification@blibli.com',
+      emailDate: new Date('2026-10-14T10:19:00.000Z'),
+      gateResult: { isFinancialCandidate: true, matchedBankRule: blibliRule },
+      accountNameHint: 'Cash',
+      emailBodyText: 'Pesanan Blibli Offline Store',
+    });
+
+    // Definitive failure releases claim back to PENDING so user can retry
+    expect(pendingManager.isTicketProcessing(1)).toBe(false);
+    const reclaimed = pendingManager.claimPendingTransaction(1);
+    expect(reclaimed?.ticketId).toBe(1);
+    pendingManager.releaseProcessingTransaction(1);
+
+    // Unknown outcome does NOT release back to PENDING and does NOT send a Confirm prompt
+    const broadcastCountBeforeUnknown = messaging.broadcastNotification.mock.calls.length;
+    const editCountBeforeUnknown = messaging.editBroadcastNotification.mock.calls.length;
+    mockMcpClient.createRecords.mockRejectedValueOnce(
+      new WalletMcpRequestError('Gateway timeout', 'UNKNOWN', 'TRANSIENT')
+    );
+
+    await handler.handleEmailTransactionDetected({
+      emailId: 'email-3',
+      emailSubject: 'Pembayaran QRIS Anda Telah Kami Terima - Offline Store',
+      emailSender: 'notification@blibli.com',
+      emailDate: new Date('2026-10-14T10:19:30.000Z'),
+      gateResult: { isFinancialCandidate: true, matchedBankRule: blibliRule },
+      accountNameHint: 'Cash',
+      emailBodyText: 'Pesanan Blibli Offline Store',
+    });
+
+    expect(pendingManager.isTicketProcessing(1)).toBe(false);
+    expect(pendingManager.claimPendingTransaction(1)).toBeUndefined();
+    expect(pendingManager.getAllPendingTransactions()).toHaveLength(1);
+    expect(messaging.broadcastNotification).toHaveBeenCalledTimes(broadcastCountBeforeUnknown);
+    expect(messaging.editBroadcastNotification).toHaveBeenCalledTimes(editCountBeforeUnknown);
   });
 });
