@@ -158,11 +158,11 @@ export class FinancialActionExecutor {
 
     const hasExplicitDate = Boolean(queryOptions?.datePeriod || queryOptions?.startDate || queryOptions?.endDate);
     const effectiveQueryOptions: TransactionSummaryQueryOptions = {
-      groupBy: queryOptions?.groupBy && queryOptions.groupBy !== 'none' ? queryOptions.groupBy : 'category',
+      groupBy: queryOptions?.groupBy ?? 'category',
       datePeriod: hasExplicitDate ? queryOptions?.datePeriod : 'this_month',
       ...queryOptions,
     };
-    if (!queryOptions?.groupBy || queryOptions.groupBy === 'none') {
+    if (queryOptions?.groupBy === undefined) {
       effectiveQueryOptions.groupBy = 'category';
     }
     if (!hasExplicitDate) {

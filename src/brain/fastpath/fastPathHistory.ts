@@ -148,10 +148,12 @@ export function parseTransactionSummaryIntent(userMessageText: string): FastPath
   let explicitRecordType: 'expense' | 'income' | undefined;
   let forcedGroupBy: TransactionSummaryQueryOptions['groupBy'] | undefined;
   let matchedPrefix = false;
+  let isGenericSummaryOrSlash = false;
 
   const slashCommandMatch = remainder.match(/^\/(?:summary|ringkasan|rekap)\b/i);
   if (slashCommandMatch) {
     matchedPrefix = true;
+    isGenericSummaryOrSlash = true;
     remainder = remainder.slice(slashCommandMatch[0].length).trim();
   }
 
@@ -161,6 +163,7 @@ export function parseTransactionSummaryIntent(userMessageText: string): FastPath
     );
     if (genericSummaryMatch) {
       matchedPrefix = true;
+      isGenericSummaryOrSlash = true;
       remainder = remainder.slice(genericSummaryMatch[0].length).trim();
     }
   }
@@ -249,7 +252,7 @@ export function parseTransactionSummaryIntent(userMessageText: string): FastPath
 
   if (!matchedPrefix) return null;
 
-  let groupBy: TransactionSummaryQueryOptions['groupBy'] = forcedGroupBy || 'none';
+  let groupBy: TransactionSummaryQueryOptions['groupBy'] = forcedGroupBy || (isGenericSummaryOrSlash ? 'category' : 'none');
   const categoryBreakdownPattern = /\b(?:per\s+kategori|berdasarkan\s+kategori|by\s+category|category\s+breakdown|breakdown\s+(?:per\s+)?kategori)\b/i;
   const accountBreakdownPattern = /\b(?:per\s+(?:akun|rekening)|berdasarkan\s+(?:akun|rekening)|by\s+account|account\s+breakdown|breakdown\s+(?:per\s+)?(?:akun|rekening))\b/i;
   const hasCategoryBreakdown = categoryBreakdownPattern.test(remainder);
@@ -287,6 +290,10 @@ export function parseTransactionSummaryIntent(userMessageText: string): FastPath
 
   if (explicitRecordType) {
     summaryFilters.recordType = explicitRecordType;
+  }
+
+  if (isGenericSummaryOrSlash && !summaryFilters.datePeriod && !summaryFilters.startDate && !summaryFilters.endDate) {
+    summaryFilters.datePeriod = 'this_month';
   }
 
   return {
