@@ -383,5 +383,68 @@ describe('pending action outcomes, reconciliation combinations, and routing cond
       expect(h.clarification.handlePendingAccountSelectionReply).not.toHaveBeenCalled();
       expect(h.fastPath.handleFastPath).not.toHaveBeenCalled();
     });
+
+    it('routes /recon_select command to reconciliationHandler', async () => {
+      const h = harness();
+      const mockRecon = {
+        handleSelectAccountPrompt: vi.fn().mockResolvedValue(true),
+        handleCancelPrompt: vi.fn().mockResolvedValue(true),
+        handlePhotoUploadForActivePrompt: vi.fn().mockResolvedValue(true),
+      };
+      (h.handler as any).reconciliationHandler = mockRecon;
+
+      await h.handler.handleIncomingUserMessage({
+        ...event,
+        textPayload: '/recon_select acc-jago',
+      });
+
+      expect(mockRecon.handleSelectAccountPrompt).toHaveBeenCalledWith(
+        expect.objectContaining({ textPayload: '/recon_select acc-jago' }),
+        'acc-jago'
+      );
+      expect(h.ai.processTextMessage).not.toHaveBeenCalled();
+    });
+
+    it('routes /recon_cancel command to reconciliationHandler', async () => {
+      const h = harness();
+      const mockRecon = {
+        handleSelectAccountPrompt: vi.fn().mockResolvedValue(true),
+        handleCancelPrompt: vi.fn().mockResolvedValue(true),
+        handlePhotoUploadForActivePrompt: vi.fn().mockResolvedValue(true),
+      };
+      (h.handler as any).reconciliationHandler = mockRecon;
+
+      await h.handler.handleIncomingUserMessage({
+        ...event,
+        textPayload: '/recon_cancel',
+      });
+
+      expect(mockRecon.handleCancelPrompt).toHaveBeenCalledWith(
+        expect.objectContaining({ textPayload: '/recon_cancel' })
+      );
+      expect(h.ai.processTextMessage).not.toHaveBeenCalled();
+    });
+
+    it('routes image upload with active prompt to reconciliationHandler', async () => {
+      const h = harness();
+      const mockRecon = {
+        handleSelectAccountPrompt: vi.fn().mockResolvedValue(true),
+        handleCancelPrompt: vi.fn().mockResolvedValue(true),
+        handlePhotoUploadForActivePrompt: vi.fn().mockResolvedValue(true),
+      };
+      (h.handler as any).reconciliationHandler = mockRecon;
+
+      await h.handler.handleIncomingUserMessage({
+        ...event,
+        messageType: 'image',
+        imageBuffer: Buffer.from('statement-img'),
+        textPayload: undefined,
+      });
+
+      expect(mockRecon.handlePhotoUploadForActivePrompt).toHaveBeenCalledWith(
+        expect.objectContaining({ messageType: 'image' })
+      );
+      expect(h.ai.processImageMessage).not.toHaveBeenCalled();
+    });
   });
 });

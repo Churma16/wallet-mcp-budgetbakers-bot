@@ -367,6 +367,31 @@ export class MessageDispatcher {
         }
       }
 
+      // 0a1. Explicit /recon_select command triggered from inline button callback
+      if (
+        event.messageType === 'text' &&
+        event.textPayload &&
+        event.textPayload.startsWith('/recon_select ')
+      ) {
+        const accountId = event.textPayload.slice('/recon_select '.length).trim();
+        const handledSelect = await this.reconciliationHandler.handleSelectAccountPrompt(event, accountId);
+        if (handledSelect) {
+          return;
+        }
+      }
+
+      // 0a2. Explicit /recon_cancel command triggered from inline button callback
+      if (
+        event.messageType === 'text' &&
+        event.textPayload &&
+        event.textPayload === '/recon_cancel'
+      ) {
+        const handledCancel = await this.reconciliationHandler.handleCancelPrompt(event);
+        if (handledCancel) {
+          return;
+        }
+      }
+
       // 0a. Explicit transaction delete confirmation or cancellation commands (e.g. from inline button callback)
       if (
         event.messageType === 'text' &&
@@ -437,6 +462,17 @@ export class MessageDispatcher {
           requestReferenceInstant
         );
         if (handledPendingImageReply) {
+          return;
+        }
+      }
+
+      // 0d. Active reconciliation statement photo upload
+      if (
+        event.messageType === 'image' &&
+        (event.imageBuffer || (event.imageBuffers && event.imageBuffers.length > 0))
+      ) {
+        const handledReconUpload = await this.reconciliationHandler.handlePhotoUploadForActivePrompt(event);
+        if (handledReconUpload) {
           return;
         }
       }

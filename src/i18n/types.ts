@@ -134,6 +134,7 @@ export interface TelegramMenuDictionary {
   commandMenuDescription: string;
   commandSettingsDescription: string;
   commandRescanDescription: string;
+  commandReconciliationDescription: string;
 
   topicRecord: string;
   topicTransfer: string;

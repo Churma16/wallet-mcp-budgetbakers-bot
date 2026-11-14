@@ -471,6 +471,7 @@ export const indonesianDictionary: ResponseDictionary = {
     commandMenuDescription: 'Buka menu utama dan panduan',
     commandSettingsDescription: 'Buka menu pengaturan bot',
     commandRescanDescription: 'Tarik ulang & selaraskan email & notifikasi (misal: /rescan 60)',
+    commandReconciliationDescription: 'Rekonsiliasi transaksi dengan foto mutasi',
 
     topicRecord: '\u{1F4DD} Catat Transaksi',
     topicTransfer: '\u{1F504} Cara Transfer',

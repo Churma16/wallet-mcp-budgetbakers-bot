@@ -831,6 +831,37 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
           return;
         }
 
+        if (callbackData === 'recon:cancel_prompt') {
+          const chatId = String(ctx.chat?.id);
+          const senderIdentifier = ctx.from?.id ? String(ctx.from.id) : chatId;
+          await ctx.answerCallbackQuery({ text: 'Rekonsiliasi dibatalkan' });
+          await this.onUserMessageReceived({
+            channel: 'telegram',
+            messageType: 'text',
+            chatIdentifier: chatId,
+            senderIdentifier,
+            textPayload: '/recon_cancel',
+            replyToMessageId: ctx.callbackQuery.message ? String(ctx.callbackQuery.message.message_id) : undefined,
+          });
+          return;
+        }
+
+        if (callbackData.startsWith('recon:select_acc:')) {
+          const accountId = callbackData.slice('recon:select_acc:'.length);
+          const chatId = String(ctx.chat?.id);
+          const senderIdentifier = ctx.from?.id ? String(ctx.from.id) : chatId;
+          await ctx.answerCallbackQuery();
+          await this.onUserMessageReceived({
+            channel: 'telegram',
+            messageType: 'text',
+            chatIdentifier: chatId,
+            senderIdentifier,
+            textPayload: `/recon_select ${accountId}`,
+            replyToMessageId: ctx.callbackQuery.message ? String(ctx.callbackQuery.message.message_id) : undefined,
+          });
+          return;
+        }
+
         if (callbackData.endsWith(':spawn_missing')) {
           const parts = callbackData.split(':');
           const sessionId = parts[1];
