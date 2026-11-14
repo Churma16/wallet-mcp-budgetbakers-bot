@@ -33,7 +33,7 @@ export interface NotificationWebhookServerOptions {
  * Protects against timing attacks and length leaks without throwing RangeError.
  */
 export function timingSafeCompare(actual: string, expected: string): boolean {
-  if (!expected) {
+  if (typeof actual !== 'string' || typeof expected !== 'string' || !expected) {
     return false;
   }
   const actualHash = crypto.createHash('sha256').update(actual).digest();

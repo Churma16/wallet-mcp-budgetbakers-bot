@@ -68,7 +68,8 @@ export function isLoopbackHost(host?: string): boolean {
     normalized === 'localhost' ||
     normalized === '127.0.0.1' ||
     normalized === '::1' ||
-    normalized.startsWith('127.')
+    normalized === '[::1]' ||
+    /^127(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)){3}$/.test(normalized)
   );
 }
 

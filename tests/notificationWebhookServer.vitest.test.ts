@@ -21,10 +21,12 @@ describe('timingSafeCompare', () => {
     expect(timingSafeCompare('Bearer very-long-secret-token-value', 'Bearer short')).toBe(false);
   });
 
-  it('returns false when actual or expected is empty', () => {
+  it('returns false when actual or expected is empty or not a string', () => {
     expect(timingSafeCompare('', 'Bearer secret')).toBe(false);
     expect(timingSafeCompare('Bearer secret', '')).toBe(false);
     expect(timingSafeCompare('', '')).toBe(false);
+    expect(timingSafeCompare(null as any, 'Bearer secret')).toBe(false);
+    expect(timingSafeCompare('Bearer secret', undefined as any)).toBe(false);
   });
 });
 
@@ -33,7 +35,9 @@ describe('isLoopbackHost', () => {
     expect(isLoopbackHost('127.0.0.1')).toBe(true);
     expect(isLoopbackHost('localhost')).toBe(true);
     expect(isLoopbackHost('::1')).toBe(true);
+    expect(isLoopbackHost('[::1]')).toBe(true);
     expect(isLoopbackHost('127.0.1.1')).toBe(true);
+    expect(isLoopbackHost('127.0.0.2')).toBe(true);
     expect(isLoopbackHost('  127.0.0.1  ')).toBe(true);
   });
 
@@ -42,6 +46,8 @@ describe('isLoopbackHost', () => {
     expect(isLoopbackHost('::')).toBe(false);
     expect(isLoopbackHost('192.168.1.1')).toBe(false);
     expect(isLoopbackHost('api.example.com')).toBe(false);
+    expect(isLoopbackHost('127.example.com')).toBe(false);
+    expect(isLoopbackHost('127.corp.internal')).toBe(false);
     expect(isLoopbackHost('')).toBe(false);
     expect(isLoopbackHost(undefined)).toBe(false);
   });
