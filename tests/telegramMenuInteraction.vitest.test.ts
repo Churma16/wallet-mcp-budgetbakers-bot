@@ -371,6 +371,82 @@ describe('Telegram Menu and Interactive Guide Gateway Integration', () => {
         })
       );
     });
+
+    it('handles recon:cancel_prompt callback query, answers query and dispatches /recon_cancel', async () => {
+      const mockUserMessageReceived = vi.fn().mockResolvedValue(undefined);
+      const adapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, mockUserMessageReceived);
+      const handlers: Record<string, (ctx: any) => Promise<void>> = {};
+      const mockBot: any = {
+        use: vi.fn(),
+        on: vi.fn((event: string, handler: any) => {
+          handlers[event] = handler;
+        }),
+        catch: vi.fn(),
+      };
+
+      adapter.setupBotHandlers(mockBot);
+      expect(handlers['callback_query:data']).toBeDefined();
+
+      const mockAnswerCallbackQuery = vi.fn().mockResolvedValue({});
+
+      await handlers['callback_query:data']({
+        callbackQuery: {
+          data: 'recon:cancel_prompt',
+          message: { message_id: 888 },
+        },
+        chat: { id: 123456789 },
+        from: { id: 123456789 },
+        answerCallbackQuery: mockAnswerCallbackQuery,
+      });
+
+      expect(mockAnswerCallbackQuery).toHaveBeenCalledWith({ text: 'Rekonsiliasi dibatalkan' });
+      expect(mockUserMessageReceived).toHaveBeenCalledWith({
+        channel: 'telegram',
+        messageType: 'text',
+        chatIdentifier: '123456789',
+        senderIdentifier: '123456789',
+        textPayload: '/recon_cancel',
+        replyToMessageId: '888',
+      });
+    });
+
+    it('handles recon:select_acc callback query, answers query and dispatches /recon_select', async () => {
+      const mockUserMessageReceived = vi.fn().mockResolvedValue(undefined);
+      const adapter = new TelegramMessagingAdapter(dummyToken, dummyUserId, mockUserMessageReceived);
+      const handlers: Record<string, (ctx: any) => Promise<void>> = {};
+      const mockBot: any = {
+        use: vi.fn(),
+        on: vi.fn((event: string, handler: any) => {
+          handlers[event] = handler;
+        }),
+        catch: vi.fn(),
+      };
+
+      adapter.setupBotHandlers(mockBot);
+      expect(handlers['callback_query:data']).toBeDefined();
+
+      const mockAnswerCallbackQuery = vi.fn().mockResolvedValue({});
+
+      await handlers['callback_query:data']({
+        callbackQuery: {
+          data: 'recon:select_acc:acc-jago',
+          message: { message_id: 889 },
+        },
+        chat: { id: 123456789 },
+        from: { id: 123456789 },
+        answerCallbackQuery: mockAnswerCallbackQuery,
+      });
+
+      expect(mockAnswerCallbackQuery).toHaveBeenCalledTimes(1);
+      expect(mockUserMessageReceived).toHaveBeenCalledWith({
+        channel: 'telegram',
+        messageType: 'text',
+        chatIdentifier: '123456789',
+        senderIdentifier: '123456789',
+        textPayload: '/recon_select acc-jago',
+        replyToMessageId: '889',
+      });
+    });
   });
 
   describe('Security Guardrails on Callback Queries', () => {

@@ -560,11 +560,21 @@ describe('Reconciliation Card Formatter & Command Parser', () => {
 describe('ReconciliationHandler Workflow Integration', () => {
   function createMockDependencies() {
     const sentMessages: Array<{ channel: string; chatIdentifier: string; text: string; options?: any }> = [];
+    const editedMessages: Array<{ channel: string; chatIdentifier: string; messageId: string; text: string; options?: any }> = [];
+    const clearedMarkupMessages: any[] = [];
     const addedTickets: any[] = [];
 
     const mockGateway = {
       sendMessage: async (channel: string, chatIdentifier: string, text: string, options?: any) => {
         sentMessages.push({ channel, chatIdentifier, text, options });
+        return { messageId: 'msg-sent-1' };
+      },
+      editMessage: async (channel: string, chatIdentifier: string, messageId: string, text: string, options?: any) => {
+        editedMessages.push({ channel, chatIdentifier, messageId, text, options });
+        return true;
+      },
+      clearNotificationReplyMarkup: async (messageRefs: Record<string, string>) => {
+        clearedMarkupMessages.push(messageRefs);
       },
       sendTypingPresence: async () => {},
     };
@@ -626,6 +636,8 @@ describe('ReconciliationHandler Workflow Integration', () => {
 
     return {
       sentMessages,
+      editedMessages,
+      clearedMarkupMessages,
       addedTickets,
       deps: {
         gateway: mockGateway as any,
@@ -666,7 +678,8 @@ describe('ReconciliationHandler Workflow Integration', () => {
     });
 
     expect(handled).toBe(true);
-    expect(sentMessages[0].text).toContain('Sertakan nama wallet/akun');
+    expect(sentMessages[0].text).toContain('Pilih Akun Rekonsiliasi');
+    expect(sentMessages[0].options?.replyMarkup).toBeDefined();
   });
 
   it('reports error when specified account is not found in cache', async () => {
@@ -687,7 +700,7 @@ describe('ReconciliationHandler Workflow Integration', () => {
     expect(sentMessages[0].text).toContain('tidak ditemukan');
   });
 
-  it('reports warning when no image buffers are attached', async () => {
+  it('prompts user to upload photo when no image buffers are attached', async () => {
     const { deps, sentMessages } = createMockDependencies();
     const handler = new (await import('../src/core/handlers/reconciliationHandler.js')).ReconciliationHandler(deps);
 
@@ -700,7 +713,8 @@ describe('ReconciliationHandler Workflow Integration', () => {
     });
 
     expect(handled).toBe(true);
-    expect(sentMessages[0].text).toContain('Mohon lampirkan foto/screenshot');
+    expect(sentMessages[0].text).toContain('Silakan kirimkan foto atau screenshot riwayat mutasi');
+    expect(sentMessages[0].options?.replyMarkup).toBeDefined();
   });
 
   it('reports warning when vision extraction produces 0 mutations', async () => {
@@ -829,6 +843,254 @@ describe('ReconciliationHandler Workflow Integration', () => {
     expect(handled).toBe(true);
     expect(addedTickets[0].amount).toBe(100000);
     expect(addedTickets[0].transactionType).toBe('INCOME');
+  });
+
+  it('handleSelectAccountPrompt edits prompt message and stores active prompt', async () => {
+    const { deps, editedMessages } = createMockDependencies();
+    const { ReconciliationHandler } = await import('../src/core/handlers/reconciliationHandler.js');
+    const { reconciliationPromptStore } = await import('../src/core/reconciliation/reconciliationPromptStore.js');
+    const handler = new ReconciliationHandler(deps);
+
+    const handled = await handler.handleSelectAccountPrompt(
+      {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-select-1',
+        messageType: 'text',
+        textPayload: '/recon_select acc-jago',
+        replyToMessageId: 'msg-bubble-1',
+      },
+      'acc-jago'
+    );
+
+    expect(handled).toBe(true);
+    expect(editedMessages.length).toBe(1);
+    expect(editedMessages[0].messageId).toBe('msg-bubble-1');
+    expect(editedMessages[0].text).toContain('Rekonsiliasi: Bank Jago');
+    expect(editedMessages[0].options?.replyMarkup).toBeDefined();
+
+    const stored = reconciliationPromptStore.getPrompt('chat-select-1');
+    expect(stored).not.toBeNull();
+    expect(stored?.accountId).toBe('acc-jago');
+    expect(stored?.accountName).toBe('Bank Jago');
+    expect(stored?.promptMessageId).toBe('msg-bubble-1');
+    reconciliationPromptStore.deletePrompt('chat-select-1');
+  });
+
+  it('handleSelectAccountPrompt sends new message when replyToMessageId is absent', async () => {
+    const { deps, sentMessages } = createMockDependencies();
+    const { ReconciliationHandler } = await import('../src/core/handlers/reconciliationHandler.js');
+    const { reconciliationPromptStore } = await import('../src/core/reconciliation/reconciliationPromptStore.js');
+    const handler = new ReconciliationHandler(deps);
+
+    const handled = await handler.handleSelectAccountPrompt(
+      {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-select-2',
+        messageType: 'text',
+        textPayload: '/recon_select acc-bca',
+      },
+      'acc-bca'
+    );
+
+    expect(handled).toBe(true);
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0].text).toContain('Rekonsiliasi: BCA Utama');
+
+    const stored = reconciliationPromptStore.getPrompt('chat-select-2');
+    expect(stored?.accountId).toBe('acc-bca');
+    expect(stored?.promptMessageId).toBe('msg-sent-1');
+    reconciliationPromptStore.deletePrompt('chat-select-2');
+  });
+
+  it('handleSelectAccountPrompt sends warning when accountId is unknown', async () => {
+    const { deps, sentMessages } = createMockDependencies();
+    const { ReconciliationHandler } = await import('../src/core/handlers/reconciliationHandler.js');
+    const handler = new ReconciliationHandler(deps);
+
+    const handled = await handler.handleSelectAccountPrompt(
+      {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-select-3',
+        messageType: 'text',
+        textPayload: '/recon_select acc-unknown',
+      },
+      'acc-unknown'
+    );
+
+    expect(handled).toBe(true);
+    expect(sentMessages[0].text).toContain('Akun tidak ditemukan atau sudah tidak aktif.');
+  });
+
+  it('handleCancelPrompt edits message when replyToMessageId is present and deletes active prompt', async () => {
+    const { deps, editedMessages } = createMockDependencies();
+    const { ReconciliationHandler } = await import('../src/core/handlers/reconciliationHandler.js');
+    const { reconciliationPromptStore } = await import('../src/core/reconciliation/reconciliationPromptStore.js');
+    const handler = new ReconciliationHandler(deps);
+
+    reconciliationPromptStore.setPrompt('chat-cancel-1', { id: 'acc-jago', name: 'Bank Jago' }, 'msg-bubble-2');
+
+    const handled = await handler.handleCancelPrompt({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-cancel-1',
+      messageType: 'text',
+      textPayload: '/recon_cancel',
+      replyToMessageId: 'msg-bubble-2',
+    });
+
+    expect(handled).toBe(true);
+    expect(editedMessages.length).toBe(1);
+    expect(editedMessages[0].text).toContain('Rekonsiliasi dibatalkan');
+    expect(reconciliationPromptStore.getPrompt('chat-cancel-1')).toBeUndefined();
+  });
+
+  it('handleCancelPrompt sends message when replyToMessageId is absent', async () => {
+    const { deps, sentMessages } = createMockDependencies();
+    const { ReconciliationHandler } = await import('../src/core/handlers/reconciliationHandler.js');
+    const { reconciliationPromptStore } = await import('../src/core/reconciliation/reconciliationPromptStore.js');
+    const handler = new ReconciliationHandler(deps);
+
+    reconciliationPromptStore.setPrompt('chat-cancel-2', { id: 'acc-jago', name: 'Bank Jago' });
+
+    const handled = await handler.handleCancelPrompt({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-cancel-2',
+      messageType: 'text',
+      textPayload: '/recon_cancel',
+    });
+
+    expect(handled).toBe(true);
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0].text).toContain('Rekonsiliasi dibatalkan');
+    expect(reconciliationPromptStore.getPrompt('chat-cancel-2')).toBeUndefined();
+  });
+
+  it('handlePhotoUploadForActivePrompt returns false when no active prompt exists', async () => {
+    const { deps } = createMockDependencies();
+    const { ReconciliationHandler } = await import('../src/core/handlers/reconciliationHandler.js');
+    const handler = new ReconciliationHandler(deps);
+
+    const handled = await handler.handlePhotoUploadForActivePrompt({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-no-prompt',
+      messageType: 'image',
+      imageBuffer: Buffer.from('img'),
+    });
+
+    expect(handled).toBe(false);
+  });
+
+  it('handlePhotoUploadForActivePrompt consumes prompt, clears notification markup, and executes reconciliation', async () => {
+    const { deps, sentMessages, clearedMarkupMessages } = createMockDependencies();
+    const { ReconciliationHandler } = await import('../src/core/handlers/reconciliationHandler.js');
+    const { reconciliationPromptStore } = await import('../src/core/reconciliation/reconciliationPromptStore.js');
+    const handler = new ReconciliationHandler(deps);
+
+    reconciliationPromptStore.setPrompt('chat-upload-1', { id: 'acc-jago', name: 'Bank Jago' }, 'prompt-msg-99');
+
+    const handled = await handler.handlePhotoUploadForActivePrompt({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-upload-1',
+      messageType: 'image',
+      imageBuffer: Buffer.from('statement-img'),
+    });
+
+    expect(handled).toBe(true);
+    expect(reconciliationPromptStore.getPrompt('chat-upload-1')).toBeUndefined();
+    expect(clearedMarkupMessages.length).toBe(1);
+    expect(clearedMarkupMessages[0]).toEqual({ telegram: 'prompt-msg-99' });
+    expect(sentMessages.length).toBeGreaterThan(0);
+    expect(sentMessages[0].text).toContain('Hasil Rekonsiliasi: Bank Jago');
+  });
+});
+
+describe('ReconciliationPromptStore Lifecycle & Expiration', () => {
+  it('stores, retrieves, and deletes prompts correctly', async () => {
+    const { ReconciliationPromptStore } = await import('../src/core/reconciliation/reconciliationPromptStore.js');
+    const store = new ReconciliationPromptStore(60 * 1000);
+
+    expect(store.getPrompt('test-chat')).toBeUndefined();
+
+    store.setPrompt('test-chat', { id: 'acc-1', name: 'Account 1' }, 'msg-100');
+    const active = store.getPrompt('test-chat');
+    expect(active).toBeDefined();
+    expect(active?.accountId).toBe('acc-1');
+    expect(active?.accountName).toBe('Account 1');
+    expect(active?.promptMessageId).toBe('msg-100');
+
+    store.deletePrompt('test-chat');
+    expect(store.getPrompt('test-chat')).toBeUndefined();
+  });
+
+  it('expires prompts after ttl and pruneExpired cleans up stale entries', async () => {
+    const { ReconciliationPromptStore } = await import('../src/core/reconciliation/reconciliationPromptStore.js');
+    // Store with 10ms TTL
+    const store = new ReconciliationPromptStore(10);
+
+    store.setPrompt('chat-expire', { id: 'acc-exp', name: 'Expired Acc' });
+    expect(store.size).toBe(1);
+
+    await new Promise(resolve => setTimeout(resolve, 25));
+
+    // getPrompt checks expiry and returns undefined
+    expect(store.getPrompt('chat-expire')).toBeUndefined();
+
+    // Re-set an expired entry manually
+    (store as any).prompts.set('chat-stale', {
+      chatId: 'chat-stale',
+      accountId: 'acc-stale',
+      accountName: 'Stale',
+      createdAt: Date.now() - 50000,
+      expiresAt: Date.now() - 10000,
+    });
+    expect(store.size).toBe(1);
+    store.pruneExpired();
+    expect(store.size).toBe(0);
+  });
+});
+
+describe('Telegram Reconciliation Keyboard Generators', () => {
+  it('generates 2-column account selection keyboard with cancel button', async () => {
+    const {
+      createTelegramReconciliationAccountSelectionKeyboard,
+      createTelegramReconciliationCancelInlineKeyboard,
+    } = await import('../src/gateway/telegramMenu.js');
+
+    const accounts = [
+      { id: 'acc-1', name: 'Jago' },
+      { id: 'acc-2', name: 'BCA' },
+      { id: 'acc-3', name: 'Mandiri' },
+    ];
+
+    const keyboard = createTelegramReconciliationAccountSelectionKeyboard(accounts);
+    const json = keyboard.inline_keyboard;
+
+    // Row 1: Jago, BCA
+    expect(json[0].length).toBe(2);
+    expect(json[0][0].text).toBe('Jago');
+    expect(json[0][0].callback_data).toBe('recon:select_acc:acc-1');
+    expect(json[0][1].text).toBe('BCA');
+    expect(json[0][1].callback_data).toBe('recon:select_acc:acc-2');
+
+    // Row 2: Mandiri (1 button)
+    expect(json[1].length).toBe(1);
+    expect(json[1][0].text).toBe('Mandiri');
+    expect(json[1][0].callback_data).toBe('recon:select_acc:acc-3');
+
+    // Row 3: ❌ Batal
+    expect(json[2].length).toBe(1);
+    expect(json[2][0].text).toBe('❌ Batal');
+    expect(json[2][0].callback_data).toBe('recon:cancel_prompt');
+
+    const cancelOnly = createTelegramReconciliationCancelInlineKeyboard();
+    expect(cancelOnly.inline_keyboard[0][0].text).toBe('❌ Batalkan');
+    expect(cancelOnly.inline_keyboard[0][0].callback_data).toBe('recon:cancel_prompt');
   });
 });
 

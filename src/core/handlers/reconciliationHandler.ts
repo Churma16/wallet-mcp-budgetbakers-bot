@@ -13,6 +13,11 @@ import {
   type FormattedTicketReference,
 } from '../reconciliation/reconciliationCardFormatter.js';
 import { reconciliationSessionStore } from '../reconciliation/reconciliationSessionStore.js';
+import { reconciliationPromptStore } from '../reconciliation/reconciliationPromptStore.js';
+import {
+  createTelegramReconciliationAccountSelectionKeyboard,
+  createTelegramReconciliationCancelInlineKeyboard,
+} from '../../gateway/telegramMenu.js';
 import { applicationLogger } from '../../lib/logger.js';
 import type { WalletRecordItem } from '../../wallet/types.js';
 
@@ -83,16 +88,28 @@ export class ReconciliationHandler {
     );
 
     const cachedAccounts = this.deps.walletCache.getAccounts();
-    const cachedCategories = this.deps.walletCache.getCategories();
 
     // 1. Resolve Target Account from user caption
     const accountHint = extractReconciliationAccountHint(rawCaption);
     if (!accountHint) {
-      const accountNames = cachedAccounts.map(a => a.name).join(', ');
+      if (cachedAccounts.length === 0) {
+        await this.deps.gateway.sendMessage(
+          event.channel,
+          event.chatIdentifier,
+          '⚠️ Belum ada akun terdaftar di Wallet.'
+        );
+        return true;
+      }
+
+      const replyMarkup = event.channel === 'telegram'
+        ? createTelegramReconciliationAccountSelectionKeyboard(cachedAccounts)
+        : undefined;
+
       await this.deps.gateway.sendMessage(
         event.channel,
         event.chatIdentifier,
-        `⚠️ <b>Sertakan nama wallet/akun</b>\nContoh: <code>/reconciliation jago</code> atau <code>/reconciliation blu</code>\n\nAkun yang tersedia: <i>${accountNames || 'Belum ada akun terdaftar'}</i>`
+        '🔍 <b>Pilih Akun Rekonsiliasi</b>\nPilih akun rekening atau dompet yang ingin direkonsiliasi:',
+        replyMarkup ? { replyMarkup } : undefined
       );
       return true;
     }
@@ -106,11 +123,15 @@ export class ReconciliationHandler {
       cachedAccounts.find(a => cleanHint.includes(a.name.toLowerCase()));
 
     if (!targetAccount) {
-      const accountNames = cachedAccounts.map(a => a.name).join(', ');
+      const replyMarkup = event.channel === 'telegram' && cachedAccounts.length > 0
+        ? createTelegramReconciliationAccountSelectionKeyboard(cachedAccounts)
+        : undefined;
+
       await this.deps.gateway.sendMessage(
         event.channel,
         event.chatIdentifier,
-        `⚠️ Akun "<b>${accountHint}</b>" tidak ditemukan di Wallet.\n\nAkun yang tersedia: <i>${accountNames || 'Tidak ada'}</i>`
+        `⚠️ Akun "<b>${accountHint}</b>" tidak ditemukan di Wallet.\n\nSilakan pilih salah satu akun berikut:`,
+        replyMarkup ? { replyMarkup } : undefined
       );
       return true;
     }
@@ -124,15 +145,174 @@ export class ReconciliationHandler {
         : [];
 
     if (imageBuffers.length === 0) {
-      await this.deps.gateway.sendMessage(
+      const promptText = `🔍 <b>Rekonsiliasi: ${targetAccount.name}</b>\n\nSilakan kirimkan foto atau screenshot riwayat mutasi rekening untuk akun ini.\n<i>(Kamu bisa langsung kirim foto atau swipe-reply pesan ini)</i>`;
+      const replyMarkup = event.channel === 'telegram'
+        ? createTelegramReconciliationCancelInlineKeyboard()
+        : undefined;
+
+      const receipt = await this.deps.gateway.sendMessage(
         event.channel,
         event.chatIdentifier,
-        `⚠️ Mohon lampirkan foto/screenshot riwayat mutasi rekening atau dompet bersama perintah <code>/reconciliation ${accountHint}</code>.`
+        promptText,
+        replyMarkup ? { replyMarkup } : undefined
+      );
+
+      reconciliationPromptStore.setPrompt(
+        event.chatIdentifier,
+        targetAccount,
+        receipt?.messageId
       );
       return true;
     }
 
+    return await this.executeReconciliation(event, targetAccount, imageBuffers, rawCaption);
+  }
+
+  /**
+   * Handles user tapping an account button in the reconciliation account selection keyboard.
+   */
+  public async handleSelectAccountPrompt(
+    event: IncomingUserMessageEvent,
+    accountId: string
+  ): Promise<boolean> {
+    const cachedAccounts = this.deps.walletCache.getAccounts();
+    const targetAccount = cachedAccounts.find(a => a.id === accountId);
+    if (!targetAccount) {
+      await this.deps.gateway.sendMessage(
+        event.channel,
+        event.chatIdentifier,
+        '⚠️ Akun tidak ditemukan atau sudah tidak aktif.'
+      );
+      return true;
+    }
+
+    const promptText = `🔍 <b>Rekonsiliasi: ${targetAccount.name}</b>\n\nSilakan kirimkan foto atau screenshot riwayat mutasi rekening untuk akun ini.\n<i>(Kamu bisa langsung kirim foto atau swipe-reply pesan ini)</i>`;
+    const replyMarkup = event.channel === 'telegram'
+      ? createTelegramReconciliationCancelInlineKeyboard()
+      : undefined;
+
+    let promptMessageId = event.replyToMessageId;
+    let edited = false;
+
+    if (promptMessageId) {
+      edited = await this.deps.gateway.editMessage(
+        event.channel,
+        event.chatIdentifier,
+        promptMessageId,
+        promptText,
+        replyMarkup ? { replyMarkup } : undefined
+      );
+    }
+
+    if (!edited) {
+      const receipt = await this.deps.gateway.sendMessage(
+        event.channel,
+        event.chatIdentifier,
+        promptText,
+        replyMarkup ? { replyMarkup } : undefined
+      );
+      if (receipt?.messageId) {
+        promptMessageId = receipt.messageId;
+      }
+    }
+
+    reconciliationPromptStore.setPrompt(
+      event.chatIdentifier,
+      targetAccount,
+      promptMessageId
+    );
+    return true;
+  }
+
+  /**
+   * Handles user cancelling an active reconciliation account selection or upload prompt.
+   */
+  public async handleCancelPrompt(event: IncomingUserMessageEvent): Promise<boolean> {
+    reconciliationPromptStore.deletePrompt(event.chatIdentifier);
+
+    if (event.replyToMessageId) {
+      await this.deps.gateway.editMessage(
+        event.channel,
+        event.chatIdentifier,
+        event.replyToMessageId,
+        '❌ <i>Rekonsiliasi dibatalkan.</i>'
+      );
+    } else {
+      await this.deps.gateway.sendMessage(
+        event.channel,
+        event.chatIdentifier,
+        '❌ <i>Rekonsiliasi dibatalkan.</i>'
+      );
+    }
+    return true;
+  }
+
+  /**
+   * Handles photo upload when there is an active reconciliation prompt waiting for mutation images.
+   */
+  public async handlePhotoUploadForActivePrompt(
+    event: IncomingUserMessageEvent
+  ): Promise<boolean> {
+    const activePrompt = reconciliationPromptStore.getPrompt(event.chatIdentifier);
+    if (!activePrompt) {
+      return false;
+    }
+
+    // Clean up active prompt session
+    reconciliationPromptStore.deletePrompt(event.chatIdentifier);
+
+    // If the prompt message exists and has inline markup, clear it
+    if (activePrompt.promptMessageId) {
+      if (typeof (this.deps.gateway as any).clearNotificationReplyMarkup === 'function') {
+        void (this.deps.gateway as any).clearNotificationReplyMarkup({
+          [event.channel]: activePrompt.promptMessageId,
+        });
+      }
+    }
+
+    const cachedAccounts = this.deps.walletCache.getAccounts();
+    const targetAccount =
+      cachedAccounts.find(a => a.id === activePrompt.accountId) || {
+        id: activePrompt.accountId,
+        name: activePrompt.accountName,
+      };
+
+    const imageBuffers: Buffer[] =
+      event.imageBuffers && event.imageBuffers.length > 0
+        ? event.imageBuffers
+        : event.imageBuffer
+        ? [event.imageBuffer]
+        : [];
+
+    if (imageBuffers.length === 0) {
+      return false;
+    }
+
+    applicationLogger.info(
+      `[Reconciliation] Discovered active upload prompt for account "${targetAccount.name}". Processing ${imageBuffers.length} photo(s)...`
+    );
+
+    return await this.executeReconciliation(
+      event,
+      targetAccount,
+      imageBuffers,
+      event.textPayload || ''
+    );
+  }
+
+  /**
+   * Executes AI Vision extraction and comparison against Wallet MCP records.
+   */
+  public async executeReconciliation(
+    event: IncomingUserMessageEvent,
+    targetAccount: { id: string; name: string; currency?: string },
+    imageBuffers: Buffer[],
+    rawCaption: string = ''
+  ): Promise<boolean> {
     await this.deps.gateway.sendTypingPresence(event.channel, event.chatIdentifier);
+
+    const cachedAccounts = this.deps.walletCache.getAccounts();
+    const cachedCategories = this.deps.walletCache.getCategories();
 
     // 3. Extract Mutations via Brain AI Vision
     if (typeof this.deps.brainProvider.processStatementImages !== 'function') {

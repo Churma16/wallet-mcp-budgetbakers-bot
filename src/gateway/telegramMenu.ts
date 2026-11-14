@@ -175,3 +175,30 @@ export function getTelegramGuideTopicContent(
       return null;
   }
 }
+
+/**
+ * Creates an inline keyboard displaying available accounts for /reconciliation,
+ * arranged 2 buttons per row, plus a cancel button at the bottom.
+ */
+export function createTelegramReconciliationAccountSelectionKeyboard(
+  accounts: ReadonlyArray<{ id: string; name: string }>
+): InlineKeyboard {
+  const keyboard = new InlineKeyboard();
+  for (let i = 0; i < accounts.length; i += 2) {
+    keyboard.text(accounts[i].name, `recon:select_acc:${accounts[i].id}`);
+    if (i + 1 < accounts.length) {
+      keyboard.text(accounts[i + 1].name, `recon:select_acc:${accounts[i + 1].id}`);
+    }
+    keyboard.row();
+  }
+  keyboard.text('❌ Batal', 'recon:cancel_prompt');
+  return keyboard;
+}
+
+/**
+ * Creates an inline keyboard with a cancel button for active reconciliation upload prompt.
+ */
+export function createTelegramReconciliationCancelInlineKeyboard(): InlineKeyboard {
+  return new InlineKeyboard().text('❌ Batalkan', 'recon:cancel_prompt');
+}
+
