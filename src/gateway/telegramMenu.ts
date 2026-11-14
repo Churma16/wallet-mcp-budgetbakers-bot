@@ -207,3 +207,31 @@ export function createTelegramReconciliationCancelInlineKeyboard(): InlineKeyboa
   return new InlineKeyboard().text('❌ Batalkan', 'recon:cancel_prompt');
 }
 
+export type SummaryRangeKey = '1w' | '1m' | '6m' | '1y';
+
+/**
+ * Creates a 2x2 inline keyboard for switching transaction summary time ranges.
+ * Layout:
+ * [ 1 Minggu ] [ 1 Bulan ]
+ * [ 6 Bulan  ] [ 1 Tahun ]
+ * The active range is highlighted with middle-dot bullets (e.g. `• 1 Bulan •`).
+ */
+export function createTelegramSummaryRangeKeyboard(
+  activeRange: SummaryRangeKey = '1m',
+  languageCode?: SupportedLanguage
+): InlineKeyboard {
+  const isEnglish = (languageCode || getActiveLanguage()) === 'en';
+
+  const formatButtonText = (key: SummaryRangeKey, labelEn: string, labelId: string): string => {
+    const baseLabel = isEnglish ? labelEn : labelId;
+    return activeRange === key ? `• ${baseLabel} •` : baseLabel;
+  };
+
+  return new InlineKeyboard()
+    .text(formatButtonText('1w', '1 Week', '1 Minggu'), 'sum:range:1w')
+    .text(formatButtonText('1m', '1 Month', '1 Bulan'), 'sum:range:1m')
+    .row()
+    .text(formatButtonText('6m', '6 Months', '6 Bulan'), 'sum:range:6m')
+    .text(formatButtonText('1y', '1 Year', '1 Tahun'), 'sum:range:1y');
+}
+

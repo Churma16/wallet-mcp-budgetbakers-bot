@@ -1,4 +1,4 @@
-import type { TransactionHistoryService } from '../wallet/index.js';
+import type { TransactionHistoryService, TransactionSummaryService } from '../wallet/index.js';
 
 export type SupportedMessengerChannel = 'whatsapp' | 'telegram' | 'console';
 
@@ -94,6 +94,7 @@ export interface TelegramSafeguardConfiguration {
   startupRetryMaxDelayMs?: number;
   maxMediaDownloadBytes?: number;
   transactionHistoryService?: TransactionHistoryService;
+  transactionSummaryService?: TransactionSummaryService;
 }
 
 export interface WhatsappSafeguardConfiguration {

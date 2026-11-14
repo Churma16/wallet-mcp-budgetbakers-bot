@@ -16,7 +16,8 @@ export type RelativeDatePeriod =
   | 'last_week'
   | 'this_month'
   | 'last_month'
-  | 'this_year';
+  | 'this_year'
+  | 'last_6_months';
 
 export interface TransactionHistoryFilters {
   accountId?: string | string[];

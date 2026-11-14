@@ -150,13 +150,7 @@ export function formatTransactionSummaryMessage(
     );
   }
 
-  if (summaryResult.excludedTransferCount > 0) {
-    messageParts.push(
-      isEnglish
-        ? `_Excluded ${summaryResult.excludedTransferCount} transfer record(s) from income/expense totals._`
-        : `_Mengabaikan ${summaryResult.excludedTransferCount} transaksi transfer dari total pemasukan/pengeluaran._`
-    );
-  } else if (summaryResult.transferCountUnknown) {
+  if (summaryResult.transferCountUnknown) {
     messageParts.push(
       isEnglish
         ? '_Transfer count could not be verified._'
@@ -165,45 +159,51 @@ export function formatTransactionSummaryMessage(
   }
 
   if (summaryResult.groupBy !== 'none' && summaryResult.breakdown.length > 0) {
-    messageParts.push('');
-    const breakdownTitle = summaryResult.groupBy === 'category'
-      ? (isEnglish ? '*By Category*' : '*Per Kategori*')
-      : (isEnglish ? '*By Account*' : '*Per Akun*');
-    messageParts.push(breakdownTitle);
+    const isIncomeOnly = filteredRecordType === 'income';
+    const isCategory = summaryResult.groupBy === 'category';
 
-    summaryResult.breakdown.forEach((breakdownItem, itemIndex) => {
-      const fallbackName = summaryResult.groupBy === 'category'
-        ? (isEnglish ? 'Uncategorized' : 'Tanpa Kategori')
-        : (isEnglish ? 'Unknown Account' : 'Akun Tidak Diketahui');
-      const displayName = breakdownItem.name || fallbackName;
-      messageParts.push(`${itemIndex + 1}. *${displayName}*`);
+    const relevantItems = isCategory
+      ? isIncomeOnly
+        ? summaryResult.breakdown.filter(item => (item.totals[0]?.income || 0) > 0).slice(0, 5)
+        : summaryResult.breakdown.filter(item => (item.totals[0]?.expense || 0) > 0).slice(0, 5)
+      : summaryResult.breakdown.slice(0, 5);
 
-      for (const currencyTotals of breakdownItem.totals) {
-        const currencyPrefix = summaryResult.isMultiCurrency ? `${currencyTotals.currency}: ` : '';
-        const expenseText = formatCurrencyAmount(currencyTotals.expense, currencyTotals.currency, activeLanguage);
-        const incomeText = formatCurrencyAmount(currencyTotals.income, currencyTotals.currency, activeLanguage);
+    if (relevantItems.length > 0) {
+      messageParts.push('');
+      const breakdownTitle = isCategory
+        ? isIncomeOnly
+          ? (isEnglish ? '*Top Income:*' : '*Top Pemasukan:*')
+          : (isEnglish ? '*Top Expenses:*' : '*Top Pengeluaran:*')
+        : (isEnglish ? '*By Account:*' : '*Per Akun:*');
+      messageParts.push(breakdownTitle);
 
-        if (filteredRecordType === 'expense') {
-          messageParts.push(
-            isEnglish
-              ? `   ${currencyPrefix}${expenseText} expenses`
-              : `   ${currencyPrefix}${expenseText} pengeluaran`
-          );
-        } else if (filteredRecordType === 'income') {
-          messageParts.push(
-            isEnglish
-              ? `   ${currencyPrefix}${incomeText} income`
-              : `   ${currencyPrefix}${incomeText} pemasukan`
-          );
-        } else {
-          messageParts.push(
-            isEnglish
-              ? `   ${currencyPrefix}${expenseText} expenses • ${incomeText} income`
-              : `   ${currencyPrefix}${expenseText} pengeluaran • ${incomeText} pemasukan`
-          );
+      relevantItems.forEach((breakdownItem, itemIndex) => {
+        const fallbackName = isCategory
+          ? (isEnglish ? 'Uncategorized' : 'Tanpa Kategori')
+          : (isEnglish ? 'Unknown Account' : 'Akun Tidak Diketahui');
+        const displayName = breakdownItem.name || fallbackName;
+
+        for (const currencyTotals of breakdownItem.totals) {
+          const currencyPrefix = summaryResult.isMultiCurrency ? `${currencyTotals.currency} ` : '';
+          const targetAmount = isIncomeOnly ? currencyTotals.income : currencyTotals.expense;
+          const formattedAmount = formatCurrencyAmount(targetAmount, currencyTotals.currency, activeLanguage);
+
+          if (isCategory) {
+            messageParts.push(`${itemIndex + 1}. ${displayName}: *${currencyPrefix}${formattedAmount}*`);
+          } else {
+            const expenseText = formatCurrencyAmount(currencyTotals.expense, currencyTotals.currency, activeLanguage);
+            const incomeText = formatCurrencyAmount(currencyTotals.income, currencyTotals.currency, activeLanguage);
+            if (filteredRecordType === 'expense') {
+              messageParts.push(`${itemIndex + 1}. ${displayName}: *${currencyPrefix}${expenseText}*`);
+            } else if (filteredRecordType === 'income') {
+              messageParts.push(`${itemIndex + 1}. ${displayName}: *${currencyPrefix}${incomeText}*`);
+            } else {
+              messageParts.push(`${itemIndex + 1}. ${displayName}: *${currencyPrefix}${expenseText}* • *${currencyPrefix}${incomeText}*`);
+            }
+          }
         }
-      }
-    });
+      });
+    }
   }
 
   if (!summaryResult.isComplete) {

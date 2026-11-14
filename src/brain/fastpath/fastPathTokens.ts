@@ -43,6 +43,11 @@ export const FAST_PATH_PERIOD_MAP: Readonly<Record<string, NonNullable<Transacti
   'last month': 'last_month',
   'tahun ini': 'this_year',
   'this year': 'this_year',
+  '6 bulan terakhir': 'last_6_months',
+  'last 6 months': 'last_6_months',
+  'last six months': 'last_6_months',
+  '6 bulan': 'last_6_months',
+  '6 months': 'last_6_months',
 });
 
 /**
@@ -157,6 +162,14 @@ export function extractHistoryQueryOptionsFromTokens(
       .trim();
   }
 
+  const datePeriodPattern = /\b(?:pada|di|on|in|untuk|for)?\s*(6\s+bulan\s+terakhir|last\s+6\s+months|last\s+six\s+months|6\s+bulan|6\s+months|hari\s+ini|today|kemarin|yesterday|semalam|minggu\s+ini|this\s+week|minggu\s+lalu|last\s+week|bulan\s+ini|this\s+month|bulan\s+lalu|last\s+month|tahun\s+ini|this\s+year)\b/i;
+  const datePeriodMatch = remainingTokens.match(datePeriodPattern);
+  if (datePeriodMatch) {
+    const rawPeriod = datePeriodMatch[1].toLowerCase().replace(/\s+/g, ' ');
+    resolvedDatePeriod = FAST_PATH_PERIOD_MAP[rawPeriod];
+    remainingTokens = remainingTokens.replace(datePeriodMatch[0], ' ').trim();
+  }
+
   if (!resolvedLimit) {
     const limitMatch = remainingTokens.match(/\b(\d+)\b/);
     if (limitMatch) {
@@ -179,14 +192,6 @@ export function extractHistoryQueryOptionsFromTokens(
       resolvedRecordType = 'income';
       remainingTokens = remainingTokens.replace(incomeMatch[0], ' ').trim();
     }
-  }
-
-  const datePeriodPattern = /\b(?:pada|di|on|in|untuk|for)?\s*(hari\s+ini|today|kemarin|yesterday|semalam|minggu\s+ini|this\s+week|minggu\s+lalu|last\s+week|bulan\s+ini|this\s+month|bulan\s+lalu|last\s+month|tahun\s+ini|this\s+year)\b/i;
-  const datePeriodMatch = remainingTokens.match(datePeriodPattern);
-  if (datePeriodMatch) {
-    const rawPeriod = datePeriodMatch[1].toLowerCase();
-    resolvedDatePeriod = FAST_PATH_PERIOD_MAP[rawPeriod];
-    remainingTokens = remainingTokens.replace(datePeriodMatch[0], ' ').trim();
   }
 
   const explicitAccountMatch = remainingTokens.match(/\b(?:dari|di|for|in|pada)?\s*(?:akun|account|rekening)\s+(?:"([^"]+)"|'([^']+)'|([a-zA-Z0-9_-]+)\b)/i);
