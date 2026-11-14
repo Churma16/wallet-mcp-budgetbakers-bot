@@ -10,6 +10,7 @@ import {
   WalletMcpClientService,
   WalletRecordItem,
   PatchRecordInputPayload,
+  isWalletMcpDefinitiveFailure,
 } from '../wallet/index.js';
 import {
   formatPendingEmailTransactionNotification,
@@ -329,25 +330,52 @@ export async function coordinateInboundTransactionCandidate(
         // Auto-dismiss matching dangling pending tickets
         const allPending = pendingTransactionManager.getAllPendingTransactions();
         const evidenceAmountAbs = Math.abs(incomingEvidence.amount);
+        const evidenceRefs = new Set(
+          (incomingEvidence.referenceNumbers || [])
+            .map(ref => ref.trim().toLowerCase())
+            .filter(Boolean)
+        );
+        const sourceDisplayLower = sourceDisplayName.trim().toLowerCase();
+        const previousMerchantLower = (currentMerchant || '').trim().toLowerCase();
+
         for (const pending of allPending) {
           if (Math.abs(pending.amount) === evidenceAmountAbs) {
             const timeDiff = Math.abs(new Date(pending.recordDate).getTime() - new Date(incomingEvidence.occurredAt).getTime());
-            const isTimeMatch = Number.isNaN(timeDiff) || timeDiff <= 48 * 60 * 60 * 1000;
+            const isTimeMatch = Number.isFinite(timeDiff) && timeDiff <= 48 * 60 * 60 * 1000;
+            const pendingRefs = [
+              ...(pending.referenceNumbers || []),
+              ...(pending.referenceNumber ? [pending.referenceNumber] : []),
+            ]
+              .map(ref => ref.trim().toLowerCase())
+              .filter(Boolean);
+            const hasMatchingRef = pendingRefs.some(ref => evidenceRefs.has(ref));
+            const isSameAccount =
+              !pending.matchedAccountId ||
+              !matchedRecord.accountId ||
+              pending.matchedAccountId === matchedRecord.accountId;
+
+            const pendingMerchantLower = (pending.counterParty || '').trim().toLowerCase();
+            const evidenceMerchantLower = (incomingEvidence.merchant || '').trim().toLowerCase();
+
             const isPlatformPending =
               isOnlinePlatformOrGateway(pending.counterParty) ||
               CommercePlatformRegistry.getInstance().isMarketplacePlatform(pending.counterParty);
-            const isPlatformEvidence =
-              isOnlinePlatformOrGateway(incomingEvidence.merchant) ||
-              CommercePlatformRegistry.getInstance().isMarketplacePlatform(incomingEvidence.merchant);
+            const pendingMatchesPlatformSource =
+              Boolean(pendingMerchantLower) &&
+              ((Boolean(sourceDisplayLower) &&
+                (pendingMerchantLower.includes(sourceDisplayLower) || sourceDisplayLower.includes(pendingMerchantLower))) ||
+                (Boolean(previousMerchantLower) &&
+                  (pendingMerchantLower.includes(previousMerchantLower) || previousMerchantLower.includes(pendingMerchantLower))));
+
             const isMerchantMatch =
+              hasMatchingRef ||
               !pending.counterParty ||
               !incomingEvidence.merchant ||
               isGenericMerchant(pending.counterParty) ||
-              pending.counterParty.toLowerCase() === incomingEvidence.merchant.toLowerCase() ||
-              incomingEvidence.merchant.toLowerCase().includes(pending.counterParty.toLowerCase()) ||
-              pending.counterParty.toLowerCase().includes(incomingEvidence.merchant.toLowerCase()) ||
-              isPlatformPending ||
-              isPlatformEvidence;
+              pendingMerchantLower === evidenceMerchantLower ||
+              evidenceMerchantLower.includes(pendingMerchantLower) ||
+              pendingMerchantLower.includes(evidenceMerchantLower) ||
+              (isPlatformPending && isSameAccount && pendingMatchesPlatformSource);
 
             if (isTimeMatch && isMerchantMatch) {
               applicationLogger.info(
@@ -553,6 +581,14 @@ export async function coordinateInboundTransactionCandidate(
         isTransferEligible;
 
       if (isEligibleForAutoRecord && walletMcpClient) {
+        const claimedItem = pendingTransactionManager.claimPendingTransaction(enrichedItem.ticketId);
+        if (!claimedItem) {
+          applicationLogger.info(
+            `[Auto-Record Enriched] Ticket #${enrichedItem.ticketId} is no longer claimable (already processing or resolved). Skipping auto-record.`
+          );
+          return;
+        }
+
         try {
           applicationLogger.mcp(
             `[Auto-Record Enriched] Ticket #${enrichedItem.ticketId} qualifies for immediate dispatch. Recording to Wallet MCP...`
@@ -685,11 +721,21 @@ export async function coordinateInboundTransactionCandidate(
 
           return;
         } catch (autoRecordError) {
-          applicationLogger.error(
-            `[Auto-Record Error] Ticket #${enrichedItem.ticketId} auto-record failed: ${
-              autoRecordError instanceof Error ? autoRecordError.message : String(autoRecordError)
-            }. Retaining in pending queue.`
-          );
+          if (isWalletMcpDefinitiveFailure(autoRecordError)) {
+            pendingTransactionManager.releaseProcessingTransaction(enrichedItem.ticketId);
+            applicationLogger.error(
+              `[Auto-Record Error] Ticket #${enrichedItem.ticketId} auto-record failed: ${
+                autoRecordError instanceof Error ? autoRecordError.message : String(autoRecordError)
+              }. Retaining in pending queue.`
+            );
+          } else {
+            pendingTransactionManager.markPendingTransactionUnknown(enrichedItem.ticketId);
+            applicationLogger.warn(
+              `[Auto-Record Error] Ticket #${enrichedItem.ticketId} dispatch outcome is unknown or unclassified: ${
+                autoRecordError instanceof Error ? autoRecordError.message : String(autoRecordError)
+              }. Marked UNKNOWN to prevent duplicate records.`
+            );
+          }
         }
       }
 
