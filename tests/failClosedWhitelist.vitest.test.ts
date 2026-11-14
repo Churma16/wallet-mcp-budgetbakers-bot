@@ -268,6 +268,79 @@ describe('fail-closed whitelist authorization and configuration validation', () 
         )
       ).toBe(true);
     });
+
+    it('fails closed when notification webhook is enabled without secret on non-loopback host or in production', () => {
+      // 1. Non-loopback host (0.0.0.0) without secret -> error (isValid: false)
+      const nonLoopbackMissingSecret = validateApplicationConfiguration(
+        createBaseConfiguration({
+          notificationWebhookEnabled: true,
+          notificationWebhookHost: '0.0.0.0',
+          notificationWebhookSecret: '',
+        })
+      );
+      expect(nonLoopbackMissingSecret.isValid).toBe(false);
+      expect(
+        nonLoopbackMissingSecret.errors.some(
+          errorItem => errorItem.variableName === 'NOTIFICATION_WEBHOOK_SECRET'
+        )
+      ).toBe(true);
+
+      // 2. Loopback host (127.0.0.1) in production without secret -> error (isValid: false)
+      const originalNodeEnv = process.env.NODE_ENV;
+      try {
+        process.env.NODE_ENV = 'production';
+        const productionMissingSecret = validateApplicationConfiguration(
+          createBaseConfiguration({
+            notificationWebhookEnabled: true,
+            notificationWebhookHost: '127.0.0.1',
+            notificationWebhookSecret: '',
+          })
+        );
+        expect(productionMissingSecret.isValid).toBe(false);
+        expect(
+          productionMissingSecret.errors.some(
+            errorItem => errorItem.variableName === 'NOTIFICATION_WEBHOOK_SECRET'
+          )
+        ).toBe(true);
+      } finally {
+        process.env.NODE_ENV = originalNodeEnv;
+      }
+
+      // 3. Loopback host (127.0.0.1) in dev/test without secret -> warning (isValid: true)
+      const loopbackDevMissingSecret = validateApplicationConfiguration(
+        createBaseConfiguration({
+          notificationWebhookEnabled: true,
+          notificationWebhookHost: '127.0.0.1',
+          notificationWebhookSecret: '',
+        })
+      );
+      expect(loopbackDevMissingSecret.isValid).toBe(true);
+      expect(
+        loopbackDevMissingSecret.warnings.some(
+          warnItem => warnItem.variableName === 'NOTIFICATION_WEBHOOK_SECRET'
+        )
+      ).toBe(true);
+
+      // 4. Valid secret configured on 0.0.0.0 -> valid (no error or warning)
+      const validWebhookConfig = validateApplicationConfiguration(
+        createBaseConfiguration({
+          notificationWebhookEnabled: true,
+          notificationWebhookHost: '0.0.0.0',
+          notificationWebhookSecret: 'secure-token-12345',
+        })
+      );
+      expect(validWebhookConfig.isValid).toBe(true);
+      expect(
+        validWebhookConfig.errors.some(
+          errorItem => errorItem.variableName === 'NOTIFICATION_WEBHOOK_SECRET'
+        )
+      ).toBe(false);
+      expect(
+        validWebhookConfig.warnings.some(
+          warnItem => warnItem.variableName === 'NOTIFICATION_WEBHOOK_SECRET'
+        )
+      ).toBe(false);
+    });
   });
 
   describe('TelegramMessagingAdapter fail-closed authorization gates', () => {

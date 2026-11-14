@@ -1,5 +1,7 @@
 import http, { IncomingMessage, ServerResponse, Server } from 'node:http';
+import crypto from 'node:crypto';
 import { applicationLogger } from '../lib/logger.js';
+import { isLoopbackHost } from '../config/environmentConfig.js';
 
 export interface PushNotificationPayload {
   packageName: string;
@@ -22,6 +24,21 @@ export interface NotificationWebhookServerOptions {
   secret?: string;
   onNotificationReceived: (payload: PushNotificationPayload) => Promise<void>;
   maxPayloadBytes?: number;
+  hardened?: boolean;
+  allowUnauthenticated?: boolean;
+}
+
+/**
+ * Constant-time string comparison using SHA-256 digests and crypto.timingSafeEqual.
+ * Protects against timing attacks and length leaks without throwing RangeError.
+ */
+export function timingSafeCompare(actual: string, expected: string): boolean {
+  if (typeof actual !== 'string' || typeof expected !== 'string' || !expected) {
+    return false;
+  }
+  const actualHash = crypto.createHash('sha256').update(actual).digest();
+  const expectedHash = crypto.createHash('sha256').update(expected).digest();
+  return crypto.timingSafeEqual(actualHash, expectedHash);
 }
 
 /**
@@ -34,6 +51,8 @@ export class NotificationWebhookServer {
   private readonly secret: string;
   private readonly onNotificationReceived: (payload: PushNotificationPayload) => Promise<void>;
   private readonly maxPayloadBytes: number;
+  private readonly hardened?: boolean;
+  private readonly allowUnauthenticated?: boolean;
   private isListening = false;
 
   constructor(options: NotificationWebhookServerOptions) {
@@ -42,6 +61,8 @@ export class NotificationWebhookServer {
     this.secret = (options.secret || '').trim();
     this.onNotificationReceived = options.onNotificationReceived;
     this.maxPayloadBytes = options.maxPayloadBytes ?? 64 * 1024; // 64 KB default limit
+    this.hardened = options.hardened;
+    this.allowUnauthenticated = options.allowUnauthenticated;
   }
 
   public async start(): Promise<void> {
@@ -90,6 +111,16 @@ export class NotificationWebhookServer {
     return this.isListening;
   }
 
+  public isHardenedMode(): boolean {
+    if (this.hardened !== undefined) {
+      return this.hardened;
+    }
+    if (this.allowUnauthenticated) {
+      return false;
+    }
+    return !isLoopbackHost(this.host) || process.env.NODE_ENV === 'production';
+  }
+
   private handleHttpRequest(req: IncomingMessage, res: ServerResponse): void {
     const method = req.method?.toUpperCase();
     const parsedUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
@@ -119,11 +150,16 @@ export class NotificationWebhookServer {
   }
 
   private handleNotificationIngestion(req: IncomingMessage, res: ServerResponse): void {
-    // 1. Authenticate if secret is configured
+    // 1. Authenticate
     if (this.secret) {
-      const authHeader = req.headers['authorization'] || '';
+      const rawAuthHeader = req.headers['authorization'];
+      const authHeader = typeof rawAuthHeader === 'string'
+        ? rawAuthHeader
+        : Array.isArray(rawAuthHeader)
+          ? rawAuthHeader[0] || ''
+          : '';
       const expectedBearer = `Bearer ${this.secret}`;
-      if (authHeader !== expectedBearer) {
+      if (!timingSafeCompare(authHeader, expectedBearer)) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
         res.end(
           JSON.stringify({
@@ -132,6 +168,14 @@ export class NotificationWebhookServer {
         );
         return;
       }
+    } else if (this.isHardenedMode()) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          error: 'Unauthorized: Webhook secret is not configured and server is running in hardened mode',
+        })
+      );
+      return;
     }
 
     // 2. Read request body with size bounds
