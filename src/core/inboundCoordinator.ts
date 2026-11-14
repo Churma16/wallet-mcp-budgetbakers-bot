@@ -369,8 +369,8 @@ export async function coordinateInboundTransactionCandidate(
 
             const isMerchantMatch =
               hasMatchingRef ||
-              !pending.counterParty ||
-              !incomingEvidence.merchant ||
+              !pendingMerchantLower ||
+              !evidenceMerchantLower ||
               isGenericMerchant(pending.counterParty) ||
               pendingMerchantLower === evidenceMerchantLower ||
               evidenceMerchantLower.includes(pendingMerchantLower) ||
@@ -589,6 +589,7 @@ export async function coordinateInboundTransactionCandidate(
           return;
         }
 
+        let createResult: Awaited<ReturnType<WalletMcpClientService['createRecords']>> | undefined;
         try {
           applicationLogger.mcp(
             `[Auto-Record Enriched] Ticket #${enrichedItem.ticketId} qualifies for immediate dispatch. Recording to Wallet MCP...`
@@ -599,7 +600,27 @@ export async function coordinateInboundTransactionCandidate(
           }
 
           const recordsToCreate = buildRecordsForPendingItem(enrichedItem, walletCacheService);
-          const createResult = await walletMcpClient.createRecords(recordsToCreate);
+          createResult = await walletMcpClient.createRecords(recordsToCreate);
+        } catch (autoRecordError) {
+          if (isWalletMcpDefinitiveFailure(autoRecordError)) {
+            pendingTransactionManager.releaseProcessingTransaction(enrichedItem.ticketId);
+            applicationLogger.error(
+              `[Auto-Record Error] Ticket #${enrichedItem.ticketId} auto-record failed: ${
+                autoRecordError instanceof Error ? autoRecordError.message : String(autoRecordError)
+              }. Retaining in pending queue.`
+            );
+          } else {
+            pendingTransactionManager.markPendingTransactionUnknown(enrichedItem.ticketId);
+            applicationLogger.warn(
+              `[Auto-Record Error] Ticket #${enrichedItem.ticketId} dispatch outcome is unknown or unclassified: ${
+                autoRecordError instanceof Error ? autoRecordError.message : String(autoRecordError)
+              }. Marked UNKNOWN to prevent duplicate records.`
+            );
+            return;
+          }
+        }
+
+        if (createResult) {
           const createdId = createResult?.results?.[0]?.id;
 
           if (deps.enrichmentPoolService && createdId) {
@@ -720,22 +741,6 @@ export async function coordinateInboundTransactionCandidate(
           }
 
           return;
-        } catch (autoRecordError) {
-          if (isWalletMcpDefinitiveFailure(autoRecordError)) {
-            pendingTransactionManager.releaseProcessingTransaction(enrichedItem.ticketId);
-            applicationLogger.error(
-              `[Auto-Record Error] Ticket #${enrichedItem.ticketId} auto-record failed: ${
-                autoRecordError instanceof Error ? autoRecordError.message : String(autoRecordError)
-              }. Retaining in pending queue.`
-            );
-          } else {
-            pendingTransactionManager.markPendingTransactionUnknown(enrichedItem.ticketId);
-            applicationLogger.warn(
-              `[Auto-Record Error] Ticket #${enrichedItem.ticketId} dispatch outcome is unknown or unclassified: ${
-                autoRecordError instanceof Error ? autoRecordError.message : String(autoRecordError)
-              }. Marked UNKNOWN to prevent duplicate records.`
-            );
-          }
         }
       }
 

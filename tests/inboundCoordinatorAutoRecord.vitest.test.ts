@@ -493,7 +493,9 @@ describe('Inbound Auto-Record Enriched Transactions Integration', () => {
     expect(reclaimed?.ticketId).toBe(1);
     pendingManager.releaseProcessingTransaction(1);
 
-    // Unknown outcome does NOT release back to PENDING
+    // Unknown outcome does NOT release back to PENDING and does NOT send a Confirm prompt
+    const broadcastCountBeforeUnknown = messaging.broadcastNotification.mock.calls.length;
+    const editCountBeforeUnknown = messaging.editBroadcastNotification.mock.calls.length;
     mockMcpClient.createRecords.mockRejectedValueOnce(
       new WalletMcpRequestError('Gateway timeout', 'UNKNOWN', 'TRANSIENT')
     );
@@ -511,5 +513,7 @@ describe('Inbound Auto-Record Enriched Transactions Integration', () => {
     expect(pendingManager.isTicketProcessing(1)).toBe(false);
     expect(pendingManager.claimPendingTransaction(1)).toBeUndefined();
     expect(pendingManager.getAllPendingTransactions()).toHaveLength(1);
+    expect(messaging.broadcastNotification).toHaveBeenCalledTimes(broadcastCountBeforeUnknown);
+    expect(messaging.editBroadcastNotification).toHaveBeenCalledTimes(editCountBeforeUnknown);
   });
 });
