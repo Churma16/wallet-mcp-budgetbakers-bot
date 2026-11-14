@@ -56,6 +56,23 @@ export function resolveSafeTimezone(timeZoneIdentifier?: string): string {
   return isValidIanaTimezone(trimmed) ? trimmed : DEFAULT_APP_TIMEZONE;
 }
 
+/**
+ * Checks whether a network host string represents a loopback interface.
+ */
+export function isLoopbackHost(host?: string): boolean {
+  if (!host || typeof host !== 'string') {
+    return false;
+  }
+  const normalized = host.trim().toLowerCase();
+  return (
+    normalized === 'localhost' ||
+    normalized === '127.0.0.1' ||
+    normalized === '::1' ||
+    normalized === '[::1]' ||
+    /^127(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)){3}$/.test(normalized)
+  );
+}
+
 export interface ApplicationEnvironmentConfiguration {
   aiProvider: SupportedAiProviderType;
   aiProviders: SupportedAiProviderType[];
@@ -609,11 +626,22 @@ export function validateApplicationConfiguration(
 
   // 5. Notification webhook validation
   if (config.notificationWebhookEnabled && !config.notificationWebhookSecret) {
-    validationWarningList.push({
-      variableName: 'NOTIFICATION_WEBHOOK_SECRET',
-      message: 'NOTIFICATION_WEBHOOK_ENABLED is true, but NOTIFICATION_WEBHOOK_SECRET is not set. Webhook will accept unauthenticated requests.',
-      hint: 'Set a secret Bearer token in NOTIFICATION_WEBHOOK_SECRET to protect the webhook endpoint.',
-    });
+    const isLoopback = isLoopbackHost(config.notificationWebhookHost);
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    if (!isLoopback || isProduction) {
+      validationErrorList.push({
+        variableName: 'NOTIFICATION_WEBHOOK_SECRET',
+        message: `NOTIFICATION_WEBHOOK_ENABLED is true, but NOTIFICATION_WEBHOOK_SECRET is empty while binding to ${!isLoopback ? `non-loopback host '${config.notificationWebhookHost || '0.0.0.0'}'` : 'production environment'}. The webhook must fail closed.`,
+        hint: 'Set a secret Bearer token in NOTIFICATION_WEBHOOK_SECRET to protect the webhook endpoint.',
+      });
+    } else {
+      validationWarningList.push({
+        variableName: 'NOTIFICATION_WEBHOOK_SECRET',
+        message: 'NOTIFICATION_WEBHOOK_ENABLED is true, but NOTIFICATION_WEBHOOK_SECRET is not set. Webhook will accept unauthenticated requests on loopback for local development.',
+        hint: 'Set a secret Bearer token in NOTIFICATION_WEBHOOK_SECRET to protect the webhook endpoint.',
+      });
+    }
   }
 
 
