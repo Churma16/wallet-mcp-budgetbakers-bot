@@ -1,7 +1,51 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import http from 'node:http';
-import { NotificationWebhookServer } from '../src/gateway/webhook.js';
-import { PushNotificationPayload } from '../src/gateway/webhook.js';
+import {
+  NotificationWebhookServer,
+  PushNotificationPayload,
+  timingSafeCompare,
+} from '../src/gateway/webhook.js';
+import { isLoopbackHost } from '../src/config/environmentConfig.js';
+
+describe('timingSafeCompare', () => {
+  it('returns true for identical strings', () => {
+    expect(timingSafeCompare('Bearer secret123', 'Bearer secret123')).toBe(true);
+  });
+
+  it('returns false for mismatched strings of identical length', () => {
+    expect(timingSafeCompare('Bearer secret123', 'Bearer secret124')).toBe(false);
+  });
+
+  it('returns false for mismatched strings of different lengths without throwing', () => {
+    expect(timingSafeCompare('Bearer short', 'Bearer very-long-secret-token-value')).toBe(false);
+    expect(timingSafeCompare('Bearer very-long-secret-token-value', 'Bearer short')).toBe(false);
+  });
+
+  it('returns false when actual or expected is empty', () => {
+    expect(timingSafeCompare('', 'Bearer secret')).toBe(false);
+    expect(timingSafeCompare('Bearer secret', '')).toBe(false);
+    expect(timingSafeCompare('', '')).toBe(false);
+  });
+});
+
+describe('isLoopbackHost', () => {
+  it('identifies loopback hosts correctly', () => {
+    expect(isLoopbackHost('127.0.0.1')).toBe(true);
+    expect(isLoopbackHost('localhost')).toBe(true);
+    expect(isLoopbackHost('::1')).toBe(true);
+    expect(isLoopbackHost('127.0.1.1')).toBe(true);
+    expect(isLoopbackHost('  127.0.0.1  ')).toBe(true);
+  });
+
+  it('identifies non-loopback hosts correctly', () => {
+    expect(isLoopbackHost('0.0.0.0')).toBe(false);
+    expect(isLoopbackHost('::')).toBe(false);
+    expect(isLoopbackHost('192.168.1.1')).toBe(false);
+    expect(isLoopbackHost('api.example.com')).toBe(false);
+    expect(isLoopbackHost('')).toBe(false);
+    expect(isLoopbackHost(undefined)).toBe(false);
+  });
+});
 
 describe('NotificationWebhookServer', () => {
   let server: NotificationWebhookServer;
@@ -258,5 +302,133 @@ describe('NotificationWebhookServer', () => {
 
     expect(response.status).toBe(500);
     expect(response.body.error).toContain('Internal server error');
+  });
+
+  it('rejects unauthorized requests with constant-time verification when token length differs', async () => {
+    server = new NotificationWebhookServer({
+      port: testPort,
+      host: '127.0.0.1',
+      secret: testSecret,
+      onNotificationReceived: async payload => {
+        receivedPayloads.push(payload);
+      },
+    });
+    await server.start();
+
+    // Mismatched token of different length
+    const shortTokenResponse = await makeRequest(
+      'POST',
+      '/api/webhook/notification',
+      { packageName: 'com.jago', title: 'Transfer', text: 'Rp 10.000' },
+      { Authorization: 'Bearer s' }
+    );
+    expect(shortTokenResponse.status).toBe(401);
+    expect(shortTokenResponse.body.error).toContain('Unauthorized');
+    expect(receivedPayloads.length).toBe(0);
+
+    // Basic auth instead of Bearer
+    const basicAuthResponse = await makeRequest(
+      'POST',
+      '/api/webhook/notification',
+      { packageName: 'com.jago', title: 'Transfer', text: 'Rp 10.000' },
+      { Authorization: `Basic ${testSecret}` }
+    );
+    expect(basicAuthResponse.status).toBe(401);
+    expect(receivedPayloads.length).toBe(0);
+  });
+
+  it('fails closed and rejects requests when secret is blank in hardened mode', async () => {
+    server = new NotificationWebhookServer({
+      port: testPort,
+      host: '127.0.0.1',
+      hardened: true,
+      onNotificationReceived: async payload => {
+        receivedPayloads.push(payload);
+      },
+    });
+    expect(server.isHardenedMode()).toBe(true);
+    await server.start();
+
+    const response = await makeRequest('POST', '/api/webhook/notification', {
+      packageName: 'com.jago',
+      title: 'Transfer',
+      text: 'Rp 10.000',
+    });
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toContain('hardened mode');
+    expect(receivedPayloads.length).toBe(0);
+  });
+
+  it('fails closed when host is 0.0.0.0 (non-loopback) without a secret', async () => {
+    server = new NotificationWebhookServer({
+      port: testPort,
+      host: '0.0.0.0',
+      onNotificationReceived: async payload => {
+        receivedPayloads.push(payload);
+      },
+    });
+    expect(server.isHardenedMode()).toBe(true);
+    await server.start();
+
+    const response = await makeRequest('POST', '/api/webhook/notification', {
+      packageName: 'com.jago',
+      title: 'Transfer',
+      text: 'Rp 10.000',
+    });
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toContain('hardened mode');
+    expect(receivedPayloads.length).toBe(0);
+  });
+
+  it('fails closed when NODE_ENV is production even on loopback host without a secret', async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    try {
+      process.env.NODE_ENV = 'production';
+      server = new NotificationWebhookServer({
+        port: testPort,
+        host: '127.0.0.1',
+        onNotificationReceived: async payload => {
+          receivedPayloads.push(payload);
+        },
+      });
+      expect(server.isHardenedMode()).toBe(true);
+      await server.start();
+
+      const response = await makeRequest('POST', '/api/webhook/notification', {
+        packageName: 'com.jago',
+        title: 'Transfer',
+        text: 'Rp 10.000',
+      });
+
+      expect(response.status).toBe(401);
+      expect(response.body.error).toContain('hardened mode');
+      expect(receivedPayloads.length).toBe(0);
+    } finally {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
+  });
+
+  it('allows unauthenticated requests on loopback when allowUnauthenticated is explicitly set', async () => {
+    server = new NotificationWebhookServer({
+      port: testPort,
+      host: '127.0.0.1',
+      allowUnauthenticated: true,
+      onNotificationReceived: async payload => {
+        receivedPayloads.push(payload);
+      },
+    });
+    expect(server.isHardenedMode()).toBe(false);
+    await server.start();
+
+    const response = await makeRequest('POST', '/api/webhook/notification', {
+      packageName: 'com.jago',
+      title: 'Dev Ping',
+      text: 'Dev notification',
+    });
+
+    expect(response.status).toBe(200);
+    expect(receivedPayloads.length).toBe(1);
   });
 });
