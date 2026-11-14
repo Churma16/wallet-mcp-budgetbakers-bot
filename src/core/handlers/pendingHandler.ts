@@ -112,13 +112,22 @@ export class PendingActionHandler {
     if (
       this.walletCacheService &&
       (isAutoCategoryRequested ||
+        confirmationIntent.customCategoryId ||
         confirmationIntent.customCategoryHint ||
         confirmationIntent.rawCustomInput ||
         confirmationIntent.customNote)
     ) {
       const categories = this.walletCacheService.getCategories();
 
-      if (isAutoCategoryRequested) {
+      if (confirmationIntent.customCategoryId) {
+        const directCat = categories.find(c => c.id === confirmationIntent.customCategoryId);
+        if (directCat) {
+          for (const item of itemsToRecord) {
+            item.matchedCategoryId = directCat.id;
+            item.matchedCategoryName = directCat.name;
+          }
+        }
+      } else if (isAutoCategoryRequested) {
         const textToClassify = [
           effectiveCustomNote || confirmationIntent.customNote,
           confirmationIntent.counterParty || itemsToRecord[0]?.counterParty,
@@ -474,6 +483,13 @@ export class PendingActionHandler {
       uncertainTickets.length === 0
     ) {
       const successfulItems = itemsToRecord.filter(item => successfulTickets.includes(item.ticketId));
+      for (const item of successfulItems) {
+        if (item.notificationMessageIds && Object.keys(item.notificationMessageIds).length > 0) {
+          if (typeof this.messagingGateway.clearNotificationReplyMarkup === 'function') {
+            void this.messagingGateway.clearNotificationReplyMarkup(item.notificationMessageIds);
+          }
+        }
+      }
       const replyMessage = successfulItems.length === 1
         ? formatPendingConfirmationSuccess(successfulItems[0])
         : formatBulkPendingConfirmationSuccess(successfulItems);

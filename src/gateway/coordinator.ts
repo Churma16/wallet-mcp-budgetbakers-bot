@@ -365,6 +365,35 @@ export class MessagingGatewayService {
   }
 
   /**
+   * Clears inline reply markup on existing notification bubbles across channels.
+   */
+  public async clearNotificationReplyMarkup(
+    messageIds?: Record<string, string>
+  ): Promise<void> {
+    if (!messageIds || Object.keys(messageIds).length === 0) {
+      return;
+    }
+
+    for (const [channel, messageId] of Object.entries(messageIds)) {
+      const adapter = this.adapterMap.get(channel as SupportedMessengerChannel);
+      if (adapter && typeof (adapter as any).clearMessageReplyMarkup === 'function') {
+        const targetChat = adapter.channelName === 'telegram'
+          ? (adapter as any).normalizedAllowedUserId
+          : undefined;
+        if (targetChat) {
+          try {
+            await (adapter as any).clearMessageReplyMarkup(targetChat, messageId);
+          } catch (clearError) {
+            applicationLogger.warn(
+              `[WARN] Failed to clear message reply markup on [${channel.toUpperCase()}]: ${clearError}`
+            );
+          }
+        }
+      }
+    }
+  }
+
+  /**
    * Attempts to edit an existing sent text message on a specific channel.
    * Returns true if the message was successfully edited.
    */
