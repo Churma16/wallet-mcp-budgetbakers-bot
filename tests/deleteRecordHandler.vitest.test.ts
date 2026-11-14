@@ -5,6 +5,7 @@ import {
 } from '../src/core/handlers/deleteRecordHandler.js';
 import { TransactionMessageStore } from '../src/wallet/records/transactionMessageStore.js';
 import { MessageDispatcher } from '../src/core/dispatcher.js';
+import { PendingTransactionService } from '../src/core/pending.js';
 import { createTestAppContext } from './fixtures/testContext.js';
 import { applicationLogger } from '../src/lib/logger.js';
 import { getDictionary } from '../src/i18n/index.js';
@@ -358,6 +359,155 @@ describe('DeleteRecordHandler', () => {
     expect(messageStore.hasMapping('msg-receipt-conv')).toBe(false);
   });
 
+  it('scopes conversational replies: tracks prompt messageId and ignores replies to unrelated messages', async () => {
+    messageStore.recordMessageMapping('msg-receipt-target', {
+      recordId: 'rec-scope-1',
+      accountId: 'acc-bca',
+      amount: -50000,
+      channel: 'whatsapp',
+    });
+
+    mockGateway.sendMessage = vi.fn().mockResolvedValue({ messageId: 'prompt-msg-123' } as any);
+
+    // 1. User replies "hapus" to recorded receipt
+    await handler.handleDeleteRecordReply({
+      channel: 'whatsapp',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-scope',
+      messageType: 'text',
+      textPayload: 'hapus',
+      replyToMessageId: 'msg-receipt-target',
+    }, Date.now());
+
+    // Verify prompt message ID is tracked alongside target messageId
+    const active = handler.getActiveConfirmation('chat-scope');
+    expect(active).toBeDefined();
+    expect(active?.messageId).toBe('msg-receipt-target');
+    expect(active?.promptMessageId).toBe('prompt-msg-123');
+
+    // 2. User swipe-replies "ya" to a different/unrelated message
+    const unrelatedReplyHandled = await handler.handleConversationalReply({
+      channel: 'whatsapp',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-scope',
+      messageType: 'text',
+      textPayload: 'ya',
+      replyToMessageId: 'unrelated-pending-card-msg',
+    });
+
+    expect(unrelatedReplyHandled).toBe(false);
+    expect(mockMcpClient.deleteRecords).not.toHaveBeenCalled();
+    // Active confirmation remains intact
+    expect(handler.hasActiveConfirmation('chat-scope')).toBe(true);
+
+    // 3. User swipe-replies "batal" to a different/unrelated message
+    const unrelatedCancelHandled = await handler.handleConversationalReply({
+      channel: 'whatsapp',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-scope',
+      messageType: 'text',
+      textPayload: 'batal',
+      replyToMessageId: 'another-unrelated-msg',
+    });
+
+    expect(unrelatedCancelHandled).toBe(false);
+    expect(handler.hasActiveConfirmation('chat-scope')).toBe(true);
+
+    // 4. User swipe-replies "ya" to the confirmation prompt itself
+    const promptReplyHandled = await handler.handleConversationalReply({
+      channel: 'whatsapp',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-scope',
+      messageType: 'text',
+      textPayload: 'ya',
+      replyToMessageId: 'prompt-msg-123',
+    });
+
+    expect(promptReplyHandled).toBe(true);
+    expect(mockMcpClient.deleteRecords).toHaveBeenCalledWith(['rec-scope-1']);
+    expect(handler.hasActiveConfirmation('chat-scope')).toBe(false);
+  });
+
+  it('allows conversational reply when replying directly to the target record message', async () => {
+    messageStore.recordMessageMapping('msg-receipt-direct', {
+      recordId: 'rec-scope-2',
+      accountId: 'acc-bca',
+      amount: -30000,
+      channel: 'whatsapp',
+    });
+
+    mockGateway.sendMessage = vi.fn().mockResolvedValue({ messageId: 'prompt-msg-456' } as any);
+
+    await handler.handleDeleteRecordReply({
+      channel: 'whatsapp',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-scope-2',
+      messageType: 'text',
+      textPayload: 'hapus',
+      replyToMessageId: 'msg-receipt-direct',
+    }, Date.now());
+
+    // Swipe-reply "ya" to the original receipt message
+    const confirmHandled = await handler.handleConversationalReply({
+      channel: 'whatsapp',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-scope-2',
+      messageType: 'text',
+      textPayload: 'ya',
+      replyToMessageId: 'msg-receipt-direct',
+    });
+
+    expect(confirmHandled).toBe(true);
+    expect(mockMcpClient.deleteRecords).toHaveBeenCalledWith(['rec-scope-2']);
+    expect(handler.hasActiveConfirmation('chat-scope-2')).toBe(false);
+  });
+
+  it('scopes conversational replies safely when messagingGateway returns void/no messageId', async () => {
+    messageStore.recordMessageMapping('msg-receipt-void', {
+      recordId: 'rec-scope-3',
+      accountId: 'acc-bca',
+      amount: -15000,
+      channel: 'telegram',
+    });
+
+    // sendMessage returns undefined
+    mockGateway.sendMessage = vi.fn().mockResolvedValue(undefined as any);
+
+    await handler.handleDeleteRecordReply({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-scope-3',
+      messageType: 'text',
+      textPayload: 'hapus',
+      replyToMessageId: 'msg-receipt-void',
+    }, Date.now());
+
+    const active = handler.getActiveConfirmation('chat-scope-3');
+    expect(active?.promptMessageId).toBeUndefined();
+
+    // Replying to an unrelated message returns false
+    const unrelatedHandled = await handler.handleConversationalReply({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-scope-3',
+      messageType: 'text',
+      textPayload: 'ya',
+      replyToMessageId: 'unrelated-msg-id',
+    });
+    expect(unrelatedHandled).toBe(false);
+
+    // Plain conversational "ya" still succeeds
+    const plainHandled = await handler.handleConversationalReply({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-scope-3',
+      messageType: 'text',
+      textPayload: 'ya',
+    });
+    expect(plainHandled).toBe(true);
+    expect(mockMcpClient.deleteRecords).toHaveBeenCalledWith(['rec-scope-3']);
+  });
+
   it('deletes paired transfer transaction deleting both legs atomically upon confirmation', async () => {
     messageStore.recordMessageMapping('msg-receipt-transfer', {
       recordId: 'rec-leg-1',
@@ -536,6 +686,119 @@ describe('MessageDispatcher delete routing integration', () => {
       'chat-1',
       expect.stringContaining('berhasil dihapus!')
     );
+  });
+
+  it('does not delete transaction when user swipe-replies "ya" to a pending transaction notification while delete confirmation is active', async () => {
+    const mockMcpClient = {
+      deleteRecords: vi.fn().mockResolvedValue({
+        summary: { total: 1, succeeded: 1 },
+        results: [{ id: 'rec-old', success: true }],
+      }),
+    };
+
+    const mockGateway = {
+      sendMessage: vi.fn().mockResolvedValue({ messageId: 'prompt-del-msg' } as any),
+      sendTypingPresence: vi.fn().mockResolvedValue(undefined),
+      clearTypingPresence: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const messageStore = new TransactionMessageStore();
+    messageStore.recordMessageMapping('receipt-msg-old', {
+      recordId: 'rec-old',
+      accountId: 'acc-1',
+      accountName: 'BCA',
+      amount: -75000,
+      note: 'Old dinner',
+      channel: 'whatsapp',
+    });
+
+    const pendingService = new PendingTransactionService();
+    const pendingItem = pendingService.addPendingTransaction({
+      sourceType: 'WHATSAPP',
+      bankDisplayName: 'BCA',
+      accountNameHint: 'Main',
+      counterParty: 'Indomaret',
+      amount: 25000,
+      transactionType: 'EXPENSE',
+      matchedAccountId: 'acc-1',
+      note: 'Groceries',
+      recordDate: '2026-11-14',
+      currency: 'IDR',
+    });
+    pendingItem.notificationMessageIds = { whatsapp: 'pending-card-bubble-1' };
+
+    const mockPendingActionHandler = {
+      handlePendingAction: vi.fn().mockResolvedValue(true),
+      handleReconciliationAction: vi.fn().mockResolvedValue(false),
+    };
+
+    const context = createTestAppContext({
+      gateway: mockGateway,
+      pending: pendingService,
+      wallet: {
+        client: mockMcpClient,
+        cache: {
+          getAccounts: () => [{ id: 'acc-1', name: 'BCA', currency: 'IDR' }],
+          getCategories: () => [{ id: 'cat-1', name: 'Makan' }],
+        },
+        transactionMessages: messageStore,
+      },
+    });
+
+    const dispatcher = new MessageDispatcher(context, {
+      pendingActionHandler: mockPendingActionHandler as any,
+    });
+
+    // 1. User triggers deletion prompt on old transaction receipt
+    await dispatcher.handleIncomingUserMessage({
+      channel: 'whatsapp',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: 'hapus',
+      replyToMessageId: 'receipt-msg-old',
+    });
+
+    expect(mockMcpClient.deleteRecords).not.toHaveBeenCalled();
+    expect(mockGateway.sendMessage).toHaveBeenCalledWith(
+      'whatsapp',
+      'chat-1',
+      expect.stringContaining('Hapus transaksi Old dinner?'),
+      expect.anything()
+    );
+
+    // 2. User swipe-replies "ya" directly to the new pending transaction card
+    await dispatcher.handleIncomingUserMessage({
+      channel: 'whatsapp',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: 'ya',
+      replyToMessageId: 'pending-card-bubble-1',
+    });
+
+    // CRITICAL: Deletion of the old transaction was NOT triggered!
+    expect(mockMcpClient.deleteRecords).not.toHaveBeenCalled();
+    expect(messageStore.hasMapping('receipt-msg-old')).toBe(true);
+
+    // CRITICAL: The pending transaction was routed and handled by pendingActionHandler
+    expect(mockPendingActionHandler.handlePendingAction).toHaveBeenCalledWith(
+      expect.anything(),
+      { actionType: 'CONFIRM', targetScope: pendingItem.ticketId },
+      expect.any(Number)
+    );
+
+    // 3. User now sends plain "ya" to confirm the old deletion prompt
+    await dispatcher.handleIncomingUserMessage({
+      channel: 'whatsapp',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: 'ya',
+    });
+
+    expect(mockMcpClient.deleteRecords).toHaveBeenCalledWith(['rec-old']);
+    expect(messageStore.hasMapping('receipt-msg-old')).toBe(false);
   });
   it('passes through edit commands like "c: Makan t: #jajan n: Kopi" to modifyRecordHandler', async () => {
     const mockModifyRecordHandler = {
