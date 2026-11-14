@@ -193,7 +193,7 @@ export class DeleteRecordHandler {
 
   public async handleDeleteConfirmationCommand(event: IncomingUserMessageEvent): Promise<boolean> {
     const match = event.textPayload?.trim().match(DELETE_CONFIRM_COMMAND_PATTERN);
-    const active = this.activeConfirmations.get(event.chatIdentifier);
+    const active = this.getActiveConfirmation(event.chatIdentifier);
     const targetMessageId = match?.[1] || active?.messageId;
 
     if (!targetMessageId) {
