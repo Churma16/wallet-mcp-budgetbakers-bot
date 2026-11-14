@@ -162,6 +162,8 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       chatId: string;
       senderIdentifier: string;
       captionText: string;
+      replyToMessageId?: string;
+      replyToMessageText?: string;
       buffers: Buffer[];
       timer: NodeJS.Timeout;
     }
@@ -920,6 +922,9 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       const chatId = String(ctx.chat.id);
       const senderIdentifier = ctx.from?.id ? String(ctx.from.id) : chatId;
       const captionText = ctx.message.caption || '';
+      const replyTo = ctx.message.reply_to_message;
+      const replyToMessageId = replyTo ? String(replyTo.message_id) : undefined;
+      const replyToMessageText = replyTo?.text || replyTo?.caption || undefined;
 
       try {
         // Pick the highest resolution photo variant (last in array)
@@ -988,6 +993,8 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
             imageBuffer,
             imageBuffers: [imageBuffer],
             imageMimeType: 'image/jpeg',
+            replyToMessageId,
+            replyToMessageText,
           });
           return;
         }
@@ -998,12 +1005,18 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
           if (!groupEntry.captionText && captionText) {
             groupEntry.captionText = captionText;
           }
+          if (!groupEntry.replyToMessageId && replyToMessageId) {
+            groupEntry.replyToMessageId = replyToMessageId;
+            groupEntry.replyToMessageText = replyToMessageText;
+          }
           groupEntry.buffers.push(imageBuffer);
         } else {
           groupEntry = {
             chatId,
             senderIdentifier,
             captionText,
+            replyToMessageId,
+            replyToMessageText,
             buffers: [imageBuffer],
             timer: setTimeout(() => {}, 0),
           };
@@ -1023,6 +1036,8 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
               imageBuffer: activeGroup.buffers[0],
               imageBuffers: activeGroup.buffers,
               imageMimeType: 'image/jpeg',
+              replyToMessageId: activeGroup.replyToMessageId,
+              replyToMessageText: activeGroup.replyToMessageText,
             });
           } catch (dispatchError: unknown) {
             applicationLogger.error(
