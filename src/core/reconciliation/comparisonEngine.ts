@@ -124,7 +124,7 @@ export function compareMutationsWithWalletRecords(
     // 3. Not found anywhere -> missing transaction
     missing.push({
       mutation,
-      suggestedCategoryName: mutation.direction === 'DEBIT' ? 'Transportasi' : undefined,
+      suggestedCategoryName: mutation.categoryHint,
       note: mutation.note || mutation.counterParty,
     });
   }
