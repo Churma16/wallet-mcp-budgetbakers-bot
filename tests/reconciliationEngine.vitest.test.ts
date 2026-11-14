@@ -1008,6 +1008,50 @@ describe('ReconciliationHandler Workflow Integration', () => {
     expect(sentMessages.length).toBeGreaterThan(0);
     expect(sentMessages[0].text).toContain('Hasil Rekonsiliasi: Bank Jago');
   });
+
+  it('handlePhotoUploadForActivePrompt handles multiple imageBuffers and account not in cached list', async () => {
+    const { deps, sentMessages } = createMockDependencies();
+    const { ReconciliationHandler } = await import('../src/core/handlers/reconciliationHandler.js');
+    const { reconciliationPromptStore } = await import('../src/core/reconciliation/reconciliationPromptStore.js');
+    const handler = new ReconciliationHandler(deps);
+
+    reconciliationPromptStore.setPrompt('chat-upload-2', { id: 'acc-custom', name: 'Custom Wallet' });
+
+    const handled = await handler.handlePhotoUploadForActivePrompt({
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-upload-2',
+      messageType: 'image',
+      imageBuffers: [Buffer.from('img-1'), Buffer.from('img-2')],
+    });
+
+    expect(handled).toBe(true);
+    expect(sentMessages.length).toBeGreaterThan(0);
+    expect(sentMessages[0].text).toContain('Custom Wallet');
+  });
+
+  it('handleSelectAccountPrompt falls back to sendMessage when editMessage returns false', async () => {
+    const { deps, sentMessages } = createMockDependencies();
+    deps.gateway.editMessage = async () => false;
+    const { ReconciliationHandler } = await import('../src/core/handlers/reconciliationHandler.js');
+    const handler = new ReconciliationHandler(deps);
+
+    const handled = await handler.handleSelectAccountPrompt(
+      {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-fallback-edit',
+        messageType: 'text',
+        textPayload: '/recon_select acc-jago',
+        replyToMessageId: 'msg-unreachable',
+      },
+      'acc-jago'
+    );
+
+    expect(handled).toBe(true);
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0].text).toContain('Rekonsiliasi: Bank Jago');
+  });
 });
 
 describe('ReconciliationPromptStore Lifecycle & Expiration', () => {
@@ -1041,7 +1085,7 @@ describe('ReconciliationPromptStore Lifecycle & Expiration', () => {
     // getPrompt checks expiry and returns undefined
     expect(store.getPrompt('chat-expire')).toBeUndefined();
 
-    // Re-set an expired entry manually
+    // Re-set an expired entry and an active entry manually
     (store as any).prompts.set('chat-stale', {
       chatId: 'chat-stale',
       accountId: 'acc-stale',
@@ -1049,9 +1093,17 @@ describe('ReconciliationPromptStore Lifecycle & Expiration', () => {
       createdAt: Date.now() - 50000,
       expiresAt: Date.now() - 10000,
     });
-    expect(store.size).toBe(1);
+    (store as any).prompts.set('chat-active', {
+      chatId: 'chat-active',
+      accountId: 'acc-active',
+      accountName: 'Active',
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60000,
+    });
+    expect(store.size).toBe(2);
     store.pruneExpired();
-    expect(store.size).toBe(0);
+    expect(store.size).toBe(1);
+    expect(store.getPrompt('chat-active')).toBeDefined();
   });
 });
 
