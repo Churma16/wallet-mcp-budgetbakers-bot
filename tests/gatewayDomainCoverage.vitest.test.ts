@@ -176,6 +176,86 @@ describe('Gateway Domain Coverage Gate', () => {
       vi.useRealTimers();
     });
 
+    it('forwards replyToMessageId and replyToMessageText on single and grouped photo messages', async () => {
+      vi.useFakeTimers();
+      const mockCallback = vi.fn();
+      const adapter = new TelegramMessagingAdapter('123:test-token', '12345', mockCallback);
+      const handlers = new Map<string, Function>();
+      const mockBot: any = {
+        use: vi.fn(),
+        on: vi.fn((event: string, fn: Function) => {
+          handlers.set(event, fn);
+        }),
+        catch: vi.fn(),
+      };
+      (adapter as any).setupBotHandlers(mockBot);
+      const photoHandler = handlers.get('message:photo');
+      expect(photoHandler).toBeDefined();
+
+      const mockAxios = (await import('axios')).default;
+      const getSpy = vi.spyOn(mockAxios, 'get').mockResolvedValue({
+        data: Buffer.from('photo-bytes'),
+      });
+
+      // 1. Single photo with reply_to_message
+      const singlePhotoCtx: any = {
+        chat: { id: 12345 },
+        from: { id: 12345 },
+        message: {
+          caption: 'struk makan siang',
+          photo: [{ file_id: 'p-single', file_size: 100 }],
+          reply_to_message: {
+            message_id: 1009,
+            text: '📩 Pembayaran Baru #9',
+          },
+        },
+        api: {
+          getFile: async () => ({ file_path: 'p-single.jpg', file_size: 100 }),
+        },
+      };
+
+      await photoHandler!(singlePhotoCtx);
+      expect(mockCallback).toHaveBeenCalledTimes(1);
+      const singleEvent = mockCallback.mock.calls[0][0];
+      expect(singleEvent.messageType).toBe('image');
+      expect(singleEvent.replyToMessageId).toBe('1009');
+      expect(singleEvent.replyToMessageText).toBe('📩 Pembayaran Baru #9');
+      expect(singleEvent.textPayload).toBe('struk makan siang');
+
+      mockCallback.mockClear();
+
+      // 2. Media group photo with reply_to_message
+      const groupCtx1: any = {
+        chat: { id: 12345 },
+        from: { id: 12345 },
+        message: {
+          media_group_id: 'mg-reply-1',
+          caption: 'struk part 1',
+          photo: [{ file_id: 'p-grp-1', file_size: 100 }],
+          reply_to_message: {
+            message_id: 1010,
+            caption: '📩 Pembayaran Baru #11',
+          },
+        },
+        api: {
+          getFile: async () => ({ file_path: 'p-grp-1.jpg', file_size: 100 }),
+        },
+      };
+
+      await photoHandler!(groupCtx1);
+      expect(mockCallback).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(2050);
+
+      expect(mockCallback).toHaveBeenCalledTimes(1);
+      const groupEvent = mockCallback.mock.calls[0][0];
+      expect(groupEvent.replyToMessageId).toBe('1010');
+      expect(groupEvent.replyToMessageText).toBe('📩 Pembayaran Baru #11');
+
+      getSpy.mockRestore();
+      vi.useRealTimers();
+    });
+
     it('exercises global error handler in setupBotHandlers', () => {
       const adapter = new TelegramMessagingAdapter('123:test-token', '12345', vi.fn());
       let catchHandler: ((err: any) => void) | undefined;
