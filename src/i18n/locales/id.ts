@@ -563,12 +563,15 @@ export const indonesianDictionary: ResponseDictionary = {
     savedAlert: '✅ Pengaturan berhasil diperbarui!',
     resetAlert: '🔄 Pengaturan dikembalikan ke nilai default!',
     unauthorizedAlert: '⛔ Akses ditolak. Hanya pemilik bot yang dapat mengubah pengaturan.',
+    closeMenuNotice: '<i>Menu pengaturan ditutup.</i>',
+    updateErrorAlert: 'Gagal memperbarui pengaturan',
 
     buttonCategoryMode: '🏷 Mode Kategori',
-    buttonAiModel: '🤖 Model & Provider AI',
-    buttonLanguage: '🌐 Bahasa Respon',
+    buttonAutoRecord: '⚡ Auto-Catat',
+    buttonAiModel: '🤖 Model AI',
+    buttonLanguage: '🌐 Bahasa',
     buttonCurrency: '💱 Mata Uang',
-    buttonAdvanced: '🛠 Pengaturan Lanjutan',
+    buttonAdvanced: '🛠 Lanjutan',
     buttonBackToMain: '🔙 Kembali ke Menu Pengaturan',
     buttonBackToAdvanced: '🔙 Kembali ke Lanjutan',
     buttonClose: '✖️ Tutup Menu',
@@ -578,11 +581,16 @@ export const indonesianDictionary: ResponseDictionary = {
     categoryOptionAsk: 'Tanya jika ragu (ask)',
     categoryOptionAuto: 'Otomatis pilih terbaik (auto)',
 
-    aiModelTitle: '<b>🤖 Model & Provider AI</b>',
+    autoRecordTitle: '<b>⚡ Pencatatan Otomatis (Auto-Catat)</b>',
+    autoRecordInfo: 'Fungsi: Menentukan apakah notifikasi/email transaksi yang akun, kategori, dan nominalnya sudah lengkap langsung dicatat ke Wallet atau tetap meminta konfirmasi.',
+    autoRecordOptionOn: '⚡ Otomatis catat jika lengkap',
+    autoRecordOptionOff: '✋ Selalu minta konfirmasi dulu',
+
+    aiModelTitle: '<b>🤖 Model AI</b>',
     aiModelInfo: 'Fungsi: Memilih model LLM utama untuk mengekstrak transaksi, struk, dan klasifikasi.',
     aiModelOptionFlashLite: 'Gemini 3.5 Flash Lite (Cepat)',
-    aiModelOptionFlash: 'Gemini 3.8 Flash (Akurasi Tinggi)',
-    aiModelOptionFallbackChain: 'Rantai Cadangan (3.6-flash, 3.8-flash)',
+    aiModelOptionFlash: 'Gemini 3.8 Flash (Akurat)',
+    aiFallbackToggleLabel: (enabled: boolean) => `🛡 Fallback Otomatis: ${enabled ? 'ON' : 'OFF'}`,
 
     languageTitle: '<b>🌐 Bahasa Respon</b>',
     languageInfo: 'Fungsi: Mengatur bahasa pesan balasan, laporan, dan konfirmasi transaksi.',
@@ -590,44 +598,71 @@ export const indonesianDictionary: ResponseDictionary = {
     languageOptionEn: '🇬🇧 English (en)',
 
     currencyTitle: '<b>💱 Mata Uang Default</b>',
-    currencyInfo: 'Fungsi: Menentukan mata uang dasar saat nominal dicatat tanpa simbol mata uang.',
+    currencyInfo: 'Fungsi: Menentukan mata uang dasar saat nominal dicatat tanpa simbol mata uang.\n<i>Tip: Untuk kode ISO lain, ketik</i> <code>/settings currency THB</code>',
 
     advancedTitle: '<b>🛠 Pengaturan Lanjutan</b>',
-    advancedInfo: 'Fungsi: Konfigurasi performa, antrean, retensi log, dan sinkronisasi sistem.',
+    advancedInfo: 'Fungsi: Konfigurasi zona waktu, sinkronisasi email, performa AI, dan log sistem.',
+    advancedPrompt: 'Pilih opsi lanjutan di bawah untuk menyesuaikan parameter teknis bot:',
     advancedButtonTimezone: '🌍 Zona Waktu',
-    advancedButtonAiTimeout: '⏱ Batas Waktu AI',
-    advancedButtonEmailLookback: '📬 Email Lookback',
-    advancedButtonQueueInterval: '⏳ Interval Antrean',
+    advancedButtonAiTimeout: '⏱ Timeout Respon AI',
+    advancedButtonEmailLookback: '📬 Rentang Cek Email',
+    advancedButtonQueueInterval: '⏳ Jeda Kirim Pesan',
     advancedButtonLogRetention: '🗄 Retensi Log',
-    advancedButtonReset: '🔄 Reset ke Default',
+    advancedButtonReset: '🔄 Reset Pengaturan Awal',
 
     timezoneTitle: '<b>🌍 Zona Waktu Operasional</b>',
-    timezoneInfo: 'Fungsi: Mengatur zona waktu operasional untuk pencatatan tanggal transaksi.',
+    timezoneInfo: 'Fungsi: Mengatur zona waktu operasional untuk pencatatan tanggal transaksi.\n<i>Tip: Untuk zona IANA lain, ketik</i> <code>/settings timezone Europe/London</code>',
 
-    aiTimeoutTitle: '<b>⏱ Batas Waktu Permintaan AI</b>',
+    aiTimeoutTitle: '<b>⏱ Timeout Respon AI</b>',
     aiTimeoutInfo: 'Fungsi: Batas maksimal durasi tunggu respon AI sebelum beralih ke model cadangan.',
 
-    emailLookbackTitle: '<b>📬 Email Sync Lookback</b>',
+    emailLookbackTitle: '<b>📬 Rentang Cek Email</b>',
     emailLookbackInfo: 'Fungsi: Rentang waktu penarikan email transaksi masuk dari server IMAP.',
 
-    queueIntervalTitle: '<b>⏳ Interval Antrean Pesan</b>',
+    queueIntervalTitle: '<b>⏳ Jeda Kirim Pesan</b>',
     queueIntervalInfo: 'Fungsi: Jeda waktu throttling pengiriman pesan keluar untuk mencegah rate limit.',
 
     logRetentionTitle: '<b>🗄 Retensi Berkas Log</b>',
     logRetentionInfo: 'Fungsi: Durasi penyimpanan file log aplikasi sebelum dibersihkan otomatis.',
 
-    resetConfirmTitle: '<b>🔄 Reset Pengaturan ke Default</b>',
+    resetConfirmTitle: '<b>🔄 Reset Pengaturan Awal</b>',
     resetConfirmInfo: 'Fungsi: Mengembalikan seluruh konfigurasi runtime ke pengaturan awal (.env / default).',
     resetConfirmPrompt: '⚠️ <b>Konfirmasi Reset:</b>\nApakah Anda yakin ingin menghapus konfigurasi runtime dan kembali ke pengaturan awal (.env)?',
     resetConfirmButton: '✅ Ya, Reset Sekarang',
     resetCancelButton: '❌ Batal',
 
-    autoRecordEnrichedToggleLabel: (enabled: boolean) => `⚡ Auto-Record Enriched: ${enabled ? 'AKTIF [ON]' : 'NONAKTIF [OFF]'}`,
-    debugToggleLabel: (enabled: boolean) => `🐞 Debug Logging: ${enabled ? 'AKTIF [ON]' : 'NONAKTIF [OFF]'}`,
-    debugTitle: '<b>🐞 Debug Payload Logging</b>',
-    debugInfo: 'Fungsi: Mengaktifkan pencatatan detail payload transaksi ke file log untuk debugging.',
-    debugOptionOn: 'Aktif (ON)',
-    debugOptionOff: 'Nonaktif (OFF)',
+    debugToggleLabel: (enabled: boolean) => `🐞 Debug Log: ${enabled ? 'ON' : 'OFF'}`,
+
+    summaryLabels: {
+      categoryMode: 'Mode Kategori',
+      autoRecord: 'Auto-Catat',
+      aiModel: 'Model AI',
+      aiFallback: 'Fallback Otomatis',
+      language: 'Bahasa Respon',
+      currency: 'Mata Uang Default',
+      timezone: 'Zona Waktu',
+      aiTimeout: 'Timeout Respon AI',
+      emailLookback: 'Rentang Cek Email',
+      queueInterval: 'Jeda Kirim Pesan',
+      logRetention: 'Retensi Log',
+      debugLogging: 'Debug Log',
+    },
+    statusDisabled: 'Nonaktif',
+    statusEnabled: 'Aktif',
+    statusFallbackNone: 'nonaktif',
+    unitDays: (days: number) => `${days} hari`,
+    unitMinutes: (minutes: number) => `${minutes} menit`,
+    currentStatusLine: (label: string, value: string) => `${label}: <code>${value}</code>`,
+    currentFallbackLine: (value: string) => `Fallback otomatis: <code>${value}</code>`,
+
+    commandInvalidTimezone: (value: string) =>
+      `❌ Zona waktu <code>${value}</code> tidak valid. Gunakan alias (WIB, WITA, WIT, UTC) atau format IANA seperti <code>Asia/Tokyo</code>.`,
+    commandInvalidCurrency: (value: string) =>
+      `❌ Kode mata uang <code>${value}</code> tidak valid. Gunakan kode ISO 3 huruf yang sah seperti <code>IDR</code>, <code>THB</code>, atau <code>GBP</code>.`,
+    commandUpdatedSetting: (label: string, value: string) =>
+      `✅ <b>${label}</b> diperbarui menjadi <code>${value}</code>.`,
+    commandUsageHint:
+      'ℹ️ Gunakan <code>/settings</code> untuk membuka menu, atau:\n• <code>/settings timezone &lt;IANA|WIB|WITA|WIT|UTC&gt;</code>\n• <code>/settings currency &lt;KODE_ISO&gt;</code>',
   },
 
   aiFallbackStatus: {

@@ -6,6 +6,7 @@ import {
   getTelegramSettingsMenuContent,
   createSettingsMainInlineKeyboard,
   createCategoryInlineKeyboard,
+  createAutoRecordInlineKeyboard,
   createAiModelInlineKeyboard,
   createLanguageInlineKeyboard,
   createCurrencyInlineKeyboard,
@@ -48,32 +49,31 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
   });
 
   describe('Menu Content and One-Line Function Overview Resolution', () => {
-    it('renders Main Hub (home) with active status summary and main categories', () => {
+    it('renders Main Hub (home) with active status summary and logically grouped 4-row menu', () => {
       const content = getTelegramSettingsMenuContent('home', 'id', settingsManager);
 
       expect(content.text).toContain('Pengaturan Bot');
       expect(content.text).toContain('Status Konfigurasi Aktif:');
       expect(content.text).toContain('Mode Kategori:');
+      expect(content.text).toContain('Auto-Catat:');
       expect(content.text).toContain('Model AI:');
       expect(content.text).toContain('Bahasa Respon:');
       expect(content.text).toContain('Mata Uang Default:');
       expect(content.text).toContain('Zona Waktu:');
-      expect(content.text).toContain('AI Timeout:');
-      expect(content.text).toContain('Antrean Pesan:');
+      expect(content.text).toContain('Timeout Respon AI:');
+      expect(content.text).toContain('Jeda Kirim Pesan:');
       expect(content.text).toContain('Retensi Log:');
-      expect(content.text).toContain('Auto-Record Enriched:');
-      expect(content.text).toContain('Debug Logging:');
+      expect(content.text).toContain('Debug Log:');
 
       const markup = content.replyMarkup.inline_keyboard;
-      expect(markup.length).toBe(6);
+      expect(markup.length).toBe(4);
       expect(markup[0][0].callback_data).toBe('settings:page:category');
-      expect(markup[0][1].callback_data).toBe('settings:page:ai_model');
+      expect(markup[0][1].callback_data).toBe('settings:page:auto_record');
       expect(markup[1][0].callback_data).toBe('settings:page:language');
       expect(markup[1][1].callback_data).toBe('settings:page:currency');
-      expect(markup[2][0].callback_data).toBe('settings:page:advanced');
-      expect(markup[3][0].callback_data).toBe('settings:toggle:auto_record_enriched');
-      expect(markup[4][0].callback_data).toBe('settings:toggle:debug');
-      expect(markup[5][0].callback_data).toBe('settings:action:close');
+      expect(markup[2][0].callback_data).toBe('settings:page:ai_model');
+      expect(markup[2][1].callback_data).toBe('settings:page:advanced');
+      expect(markup[3][0].callback_data).toBe('settings:action:close');
     });
 
     it('renders Category sub-menu with one-line function overview and checkmark on active option', () => {
@@ -96,6 +96,25 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
       expect(buttons[2][0].callback_data).toBe('settings:home');
     });
 
+    it('renders Auto-Record sub-menu with clear function overview and active checkmark', () => {
+      const content = getTelegramSettingsMenuContent('auto_record', 'id', settingsManager);
+
+      expect(content.text).toContain('Pencatatan Otomatis');
+      expect(content.text).toContain('Fungsi:');
+
+      const buttons = content.replyMarkup.inline_keyboard;
+      // Default is false -> 'off' is active
+      expect(buttons[0][0].text).not.toContain('✅');
+      expect(buttons[0][0].callback_data).toBe('settings:set:auto_record:on');
+      expect(buttons[1][0].text).toContain('✅');
+      expect(buttons[1][0].callback_data).toBe('settings:set:auto_record:off');
+      expect(buttons[2][0].callback_data).toBe('settings:home');
+
+      const enabledKb = createAutoRecordInlineKeyboard(true, 'id').inline_keyboard;
+      expect(enabledKb[0][0].text).toContain('✅');
+      expect(enabledKb[1][0].text).not.toContain('✅');
+    });
+
     it('renders AI Model sub-menu with one-line function overview and model choices', () => {
       const content = getTelegramSettingsMenuContent('ai_model', 'id', settingsManager);
 
@@ -111,7 +130,7 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
       expect(buttons[1][0].text).toContain('Gemini 3.8 Flash');
       expect(buttons[1][0].callback_data).toBe('settings:set:ai_model:gemini-3.8-flash');
 
-      expect(buttons[2][0].text).toContain('Rantai Cadangan');
+      expect(buttons[2][0].text).toContain('Fallback Otomatis: ON');
       expect(buttons[2][0].callback_data).toBe('settings:toggle:ai_fallback');
     });
 
@@ -119,6 +138,7 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
       const content = getTelegramSettingsMenuContent('language', 'en', settingsManager);
 
       expect(content.text).toContain('Function: Configures the language for bot replies, reports, and transaction confirmations.');
+      expect(content.text).toContain('Response Language:');
 
       const buttons = content.replyMarkup.inline_keyboard;
       expect(buttons[0][0].text).toContain('Bahasa Indonesia');
@@ -127,29 +147,59 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
       expect(buttons[1][0].callback_data).toBe('settings:set:language:en');
     });
 
-    it('renders Currency sub-menu with one-line function overview and supported currency buttons', () => {
+    it('renders Currency sub-menu with expanded presets and custom active value fallback', () => {
       const content = getTelegramSettingsMenuContent('currency', 'id', settingsManager);
 
       expect(content.text).toContain('Fungsi: Menentukan mata uang dasar saat nominal dicatat tanpa simbol mata uang.');
+      expect(content.text).toContain('/settings currency THB');
 
       const buttons = content.replyMarkup.inline_keyboard;
+      expect(buttons[0].map(b => b.callback_data)).toEqual([
+        'settings:set:currency:IDR',
+        'settings:set:currency:USD',
+        'settings:set:currency:SGD',
+        'settings:set:currency:MYR',
+      ]);
+      expect(buttons[1].map(b => b.callback_data)).toEqual([
+        'settings:set:currency:EUR',
+        'settings:set:currency:JPY',
+        'settings:set:currency:GBP',
+        'settings:set:currency:AUD',
+      ]);
       expect(buttons[0][0].text).toContain('✅ IDR');
-      expect(buttons[0][0].callback_data).toBe('settings:set:currency:IDR');
-      expect(buttons[0][1].text).toBe('USD');
-      expect(buttons[0][1].callback_data).toBe('settings:set:currency:USD');
-      expect(buttons[1][0].text).toBe('SGD');
-      expect(buttons[1][0].callback_data).toBe('settings:set:currency:SGD');
-      expect(buttons[1][1].text).toBe('EUR');
-      expect(buttons[1][1].callback_data).toBe('settings:set:currency:EUR');
+      expect(buttons[2][0].callback_data).toBe('settings:home');
+
+      const customCurrKb = createCurrencyInlineKeyboard('THB', 'id').inline_keyboard;
+      expect(customCurrKb[2][0].text).toBe('✅ THB');
+      expect(customCurrKb[2][0].callback_data).toBe('settings:set:currency:THB');
+      expect(customCurrKb[3][0].callback_data).toBe('settings:home');
     });
 
-    it('renders Advanced settings hub and each of its sub-pages with function overviews', () => {
+    it('renders Advanced settings hub with active technical summary and paired 2-column controls', () => {
       const advanced = getTelegramSettingsMenuContent('advanced', 'id', settingsManager);
-      expect(advanced.text).toContain('Fungsi: Konfigurasi performa, antrean, retensi log, dan sinkronisasi sistem.');
+      expect(advanced.text).toContain('Fungsi: Konfigurasi zona waktu, sinkronisasi email, performa AI, dan log sistem.');
+      expect(advanced.text).toContain('Zona Waktu:');
+      expect(advanced.text).toContain('Debug Log:');
+
+      const advButtons = advanced.replyMarkup.inline_keyboard;
+      expect(advButtons.length).toBe(5);
+      expect(advButtons[0][0].callback_data).toBe('settings:page:timezone');
+      expect(advButtons[0][1].callback_data).toBe('settings:page:email_lookback');
+      expect(advButtons[1][0].callback_data).toBe('settings:page:ai_timeout');
+      expect(advButtons[1][1].callback_data).toBe('settings:page:queue_interval');
+      expect(advButtons[2][0].callback_data).toBe('settings:page:log_retention');
+      expect(advButtons[2][1].callback_data).toBe('settings:toggle:debug');
+      expect(advButtons[3][0].callback_data).toBe('settings:page:reset_confirm');
+      expect(advButtons[4][0].callback_data).toBe('settings:home');
 
       const tz = getTelegramSettingsMenuContent('timezone', 'id', settingsManager);
       expect(tz.text).toContain('Fungsi: Mengatur zona waktu operasional untuk pencatatan tanggal transaksi.');
+      expect(tz.text).toContain('/settings timezone Europe/London');
       expect(tz.replyMarkup.inline_keyboard[0][0].text).toContain('✅ WIB');
+
+      const customTzKb = createTimezoneInlineKeyboard('Europe/London', 'id').inline_keyboard;
+      expect(customTzKb[3][0].text).toBe('✅ Europe/London');
+      expect(customTzKb[3][0].callback_data).toBe('settings:set:timezone:Europe/London');
 
       const timeout = getTelegramSettingsMenuContent('ai_timeout', 'id', settingsManager);
       expect(timeout.text).toContain('Fungsi: Batas maksimal durasi tunggu respon AI sebelum beralih ke model cadangan.');
@@ -169,6 +219,20 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
 
       const resetConfirm = getTelegramSettingsMenuContent('reset_confirm', 'id', settingsManager);
       expect(resetConfirm.text).toContain('Fungsi: Mengembalikan seluruh konfigurasi runtime ke pengaturan awal (.env / default).');
+    });
+
+    it('renders full English summary without leftover Indonesian labels when language is en', () => {
+      const homeEn = getTelegramSettingsMenuContent('home', 'en', settingsManager);
+      expect(homeEn.text).toContain('Bot Settings');
+      expect(homeEn.text).toContain('Category Mode:');
+      expect(homeEn.text).toContain('Auto-Record:');
+      expect(homeEn.text).not.toContain('Mode Kategori');
+      expect(homeEn.text).not.toContain('hari');
+
+      const advEn = getTelegramSettingsMenuContent('advanced', 'en', settingsManager);
+      expect(advEn.text).toContain('Advanced Settings');
+      expect(advEn.text).toContain('Select an option below');
+      expect(advEn.text).not.toContain('Pilih opsi lanjutan');
     });
   });
 
@@ -265,7 +329,7 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
       expect(toggledVal).toBe(true);
     });
 
-    it('toggles debug logging when settings:toggle:debug is received', async () => {
+    it('toggles debug logging and remains on Advanced settings page', async () => {
       const adapter = new TelegramMessagingAdapter(dummyToken, allowedUserId, vi.fn());
       const mockAnswerCallbackQuery = vi.fn().mockResolvedValue({});
       const mockEditMessageText = vi.fn().mockResolvedValue({});
@@ -285,6 +349,10 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
       const toggledDebug = RuntimeSettingsManager.getInstance().getSetting('debugLoggingEnabled');
       expect(toggledDebug).toBe(true);
       expect(process.env.DEBUG_FINANCIAL_PAYLOADS).toBe('true');
+
+      const [editedText, editOptions] = mockEditMessageText.mock.calls[0];
+      expect(editedText).toContain('Pengaturan Lanjutan');
+      expect(editOptions.reply_markup.inline_keyboard[2][1].text).toContain('Debug Log: ON');
     });
 
     it('resets settings to defaults when settings:action:reset is received', async () => {
@@ -403,10 +471,13 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
       const manager = RuntimeSettingsManager.getInstance();
 
       const testCases = [
+        { callback: 'settings:set:auto_record:on', check: () => expect(manager.getSetting('autoRecordEnriched')).toBe(true) },
+        { callback: 'settings:set:auto_record:off', check: () => expect(manager.getSetting('autoRecordEnriched')).toBe(false) },
         { callback: 'settings:set:ai_model:gemini-3.8-flash', check: () => expect(manager.getSetting('aiModel')).toBe('gemini-3.8-flash') },
         { callback: 'settings:set:language:en', check: () => expect(manager.getSetting('appLanguage')).toBe('en') },
         { callback: 'settings:set:currency:USD', check: () => expect(manager.getSetting('defaultCurrency')).toBe('USD') },
         { callback: 'settings:set:timezone:WITA', check: () => expect(manager.getSetting('appTimezone')).toBe('Asia/Makassar') },
+        { callback: 'settings:set:timezone:Asia/Tokyo', check: () => expect(manager.getSetting('appTimezone')).toBe('Asia/Tokyo') },
         { callback: 'settings:set:ai_timeout:45', check: () => expect(manager.getSetting('aiRequestTimeoutSeconds')).toBe(45) },
         { callback: 'settings:set:email_lookback:30', check: () => expect(manager.getSetting('emailLookbackMinutes')).toBe(30) },
         { callback: 'settings:set:queue_interval:3000', check: () => expect(manager.getSetting('whatsappMessageQueueIntervalMs')).toBe(3000) },
@@ -529,10 +600,10 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
       expect(langKb.inline_keyboard[1][0].text).toContain('✅');
 
       const currKb = createCurrencyInlineKeyboard('EUR', 'id');
-      expect(currKb.inline_keyboard[1][1].text).toContain('✅ EUR');
+      expect(currKb.inline_keyboard[1][0].text).toContain('✅ EUR');
 
       const tzKb = createTimezoneInlineKeyboard('UTC', 'id');
-      expect(tzKb.inline_keyboard[3][0].text).toContain('✅ UTC');
+      expect(tzKb.inline_keyboard[2][1].text).toContain('✅ UTC');
 
       const timeoutKb = createAiTimeoutInlineKeyboard(45, 'id');
       expect(timeoutKb.inline_keyboard[1][1].text).toContain('✅ 45s');
@@ -548,6 +619,58 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
 
       const fallbackHome = getTelegramSettingsMenuContent('unknown_page' as any, 'id', settingsManager);
       expect(fallbackHome.text).toContain('Pengaturan Bot');
+    });
+
+    it('supports /settings timezone and /settings currency command arguments with validation', async () => {
+      const adapter = new TelegramMessagingAdapter(dummyToken, allowedUserId, vi.fn());
+      const registeredCommands: Record<string, any> = {};
+      const registeredListeners: Record<string, any> = {};
+
+      const mockBot: any = {
+        use: vi.fn(),
+        command: vi.fn((cmd: string | string[], handler: any) => {
+          for (const c of Array.isArray(cmd) ? cmd : [cmd]) {
+            registeredCommands[c] = handler;
+          }
+        }),
+        on: vi.fn((evt: string, handler: any) => {
+          registeredListeners[evt] = handler;
+        }),
+        catch: vi.fn(),
+      };
+
+      adapter.setupBotHandlers(mockBot);
+      const manager = RuntimeSettingsManager.getInstance();
+
+      const validTzReply = vi.fn().mockResolvedValue({});
+      await registeredCommands['settings']({ match: 'timezone Europe/London', reply: validTzReply });
+      expect(manager.getSetting('appTimezone')).toBe('Europe/London');
+      expect(validTzReply.mock.calls[0][0]).toContain('Europe/London');
+
+      const invalidTzReply = vi.fn().mockResolvedValue({});
+      await registeredCommands['settings']({ match: 'timezone Mars/Olympus', reply: invalidTzReply });
+      expect(manager.getSetting('appTimezone')).toBe('Europe/London');
+      expect(invalidTzReply.mock.calls[0][0]).toContain('tidak valid');
+
+      const validCurrReply = vi.fn().mockResolvedValue({});
+      await registeredListeners['message:text']({
+        message: { text: '/settings currency thb' },
+        chat: { id: 12345 },
+        from: { id: Number(allowedUserId) },
+        reply: validCurrReply,
+      });
+      expect(manager.getSetting('defaultCurrency')).toBe('THB');
+      expect(validCurrReply.mock.calls[0][0]).toContain('THB');
+
+      const invalidCurrReply = vi.fn().mockResolvedValue({});
+      await registeredListeners['message:text']({
+        message: { text: '/settings currency 123' },
+        chat: { id: 12345 },
+        from: { id: Number(allowedUserId) },
+        reply: invalidCurrReply,
+      });
+      expect(manager.getSetting('defaultCurrency')).toBe('THB');
+      expect(invalidCurrReply.mock.calls[0][0]).toContain('tidak valid');
     });
   });
 });

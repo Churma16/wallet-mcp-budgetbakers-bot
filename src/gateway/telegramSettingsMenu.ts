@@ -9,6 +9,7 @@ import {
 export type TelegramSettingsMenuPage =
   | 'home'
   | 'category'
+  | 'auto_record'
   | 'ai_model'
   | 'language'
   | 'currency'
@@ -25,27 +26,32 @@ export interface TelegramSettingsMenuContent {
   readonly replyMarkup: InlineKeyboard;
 }
 
+const CURRENCY_PRESETS = ['IDR', 'USD', 'SGD', 'MYR', 'EUR', 'JPY', 'GBP', 'AUD'] as const;
+
+const TIMEZONE_PRESETS: ReadonlyArray<{ readonly label: string; readonly value: string }> = [
+  { label: 'WIB (Jakarta, +7)', value: 'WIB' },
+  { label: 'WITA (Makassar, +8)', value: 'WITA' },
+  { label: 'WIT (Jayapura, +9)', value: 'WIT' },
+  { label: 'SGT (Singapore, +8)', value: 'Asia/Singapore' },
+  { label: 'JST (Tokyo, +9)', value: 'Asia/Tokyo' },
+  { label: 'UTC (+0)', value: 'UTC' },
+];
+
 export function createSettingsMainInlineKeyboard(
-  settings: RuntimeSettings,
+  _settings: RuntimeSettings,
   languageCode?: SupportedLanguage
 ): InlineKeyboard {
   const dictionary = getDictionary(languageCode).telegramSettings;
 
   return new InlineKeyboard()
     .text(dictionary.buttonCategoryMode, 'settings:page:category')
-    .text(dictionary.buttonAiModel, 'settings:page:ai_model')
+    .text(dictionary.buttonAutoRecord, 'settings:page:auto_record')
     .row()
     .text(dictionary.buttonLanguage, 'settings:page:language')
     .text(dictionary.buttonCurrency, 'settings:page:currency')
     .row()
+    .text(dictionary.buttonAiModel, 'settings:page:ai_model')
     .text(dictionary.buttonAdvanced, 'settings:page:advanced')
-    .row()
-    .text(
-      dictionary.autoRecordEnrichedToggleLabel(settings.autoRecordEnriched),
-      'settings:toggle:auto_record_enriched'
-    )
-    .row()
-    .text(dictionary.debugToggleLabel(settings.debugLoggingEnabled), 'settings:toggle:debug')
     .row()
     .text(dictionary.buttonClose, 'settings:action:close');
 }
@@ -65,6 +71,26 @@ export function createCategoryInlineKeyboard(
     .text(
       `${activeMode === 'auto' ? '✅ ' : ''}${dictionary.categoryOptionAuto}`,
       'settings:set:category:auto'
+    )
+    .row()
+    .text(dictionary.buttonBackToMain, 'settings:home');
+}
+
+export function createAutoRecordInlineKeyboard(
+  autoRecordEnabled: boolean,
+  languageCode?: SupportedLanguage
+): InlineKeyboard {
+  const dictionary = getDictionary(languageCode).telegramSettings;
+
+  return new InlineKeyboard()
+    .text(
+      `${autoRecordEnabled ? '✅ ' : ''}${dictionary.autoRecordOptionOn}`,
+      'settings:set:auto_record:on'
+    )
+    .row()
+    .text(
+      `${!autoRecordEnabled ? '✅ ' : ''}${dictionary.autoRecordOptionOff}`,
+      'settings:set:auto_record:off'
     )
     .row()
     .text(dictionary.buttonBackToMain, 'settings:home');
@@ -91,10 +117,7 @@ export function createAiModelInlineKeyboard(
       'settings:set:ai_model:gemini-3.8-flash'
     )
     .row()
-    .text(
-      `${hasFallbackChain ? '✅ ' : ''}${dictionary.aiModelOptionFallbackChain}`,
-      'settings:toggle:ai_fallback'
-    )
+    .text(dictionary.aiFallbackToggleLabel(hasFallbackChain), 'settings:toggle:ai_fallback')
     .row()
     .text(dictionary.buttonBackToMain, 'settings:home');
 }
@@ -124,31 +147,41 @@ export function createCurrencyInlineKeyboard(
   languageCode?: SupportedLanguage
 ): InlineKeyboard {
   const dictionary = getDictionary(languageCode).telegramSettings;
-  const normalized = (activeCurrency || '').toUpperCase();
+  const normalized = (activeCurrency || '').trim().toUpperCase();
+  const keyboard = new InlineKeyboard();
 
-  return new InlineKeyboard()
-    .text(`${normalized === 'IDR' ? '✅ ' : ''}IDR`, 'settings:set:currency:IDR')
-    .text(`${normalized === 'USD' ? '✅ ' : ''}USD`, 'settings:set:currency:USD')
-    .row()
-    .text(`${normalized === 'SGD' ? '✅ ' : ''}SGD`, 'settings:set:currency:SGD')
-    .text(`${normalized === 'EUR' ? '✅ ' : ''}EUR`, 'settings:set:currency:EUR')
-    .row()
-    .text(dictionary.buttonBackToMain, 'settings:home');
+  CURRENCY_PRESETS.slice(0, 4).forEach(code => {
+    keyboard.text(`${normalized === code ? '✅ ' : ''}${code}`, `settings:set:currency:${code}`);
+  });
+  keyboard.row();
+
+  CURRENCY_PRESETS.slice(4, 8).forEach(code => {
+    keyboard.text(`${normalized === code ? '✅ ' : ''}${code}`, `settings:set:currency:${code}`);
+  });
+  keyboard.row();
+
+  if (normalized && !CURRENCY_PRESETS.includes(normalized as (typeof CURRENCY_PRESETS)[number])) {
+    keyboard.text(`✅ ${normalized}`, `settings:set:currency:${normalized}`).row();
+  }
+
+  return keyboard.text(dictionary.buttonBackToMain, 'settings:home');
 }
 
 export function createAdvancedInlineKeyboard(
+  debugLoggingEnabled: boolean = false,
   languageCode?: SupportedLanguage
 ): InlineKeyboard {
   const dictionary = getDictionary(languageCode).telegramSettings;
 
   return new InlineKeyboard()
     .text(dictionary.advancedButtonTimezone, 'settings:page:timezone')
-    .text(dictionary.advancedButtonAiTimeout, 'settings:page:ai_timeout')
-    .row()
     .text(dictionary.advancedButtonEmailLookback, 'settings:page:email_lookback')
+    .row()
+    .text(dictionary.advancedButtonAiTimeout, 'settings:page:ai_timeout')
     .text(dictionary.advancedButtonQueueInterval, 'settings:page:queue_interval')
     .row()
     .text(dictionary.advancedButtonLogRetention, 'settings:page:log_retention')
+    .text(dictionary.debugToggleLabel(debugLoggingEnabled), 'settings:toggle:debug')
     .row()
     .text(dictionary.advancedButtonReset, 'settings:page:reset_confirm')
     .row()
@@ -161,29 +194,29 @@ export function createTimezoneInlineKeyboard(
 ): InlineKeyboard {
   const dictionary = getDictionary(languageCode).telegramSettings;
   const alias = REVERSE_TIMEZONE_ALIAS_MAP[activeTimezone] || activeTimezone;
+  const keyboard = new InlineKeyboard();
+  let matchedPreset = false;
 
-  return new InlineKeyboard()
-    .text(
-      `${alias === 'WIB' ? '✅ ' : ''}WIB (Asia/Jakarta, UTC+7)`,
-      'settings:set:timezone:WIB'
-    )
-    .row()
-    .text(
-      `${alias === 'WITA' ? '✅ ' : ''}WITA (Asia/Makassar, UTC+8)`,
-      'settings:set:timezone:WITA'
-    )
-    .row()
-    .text(
-      `${alias === 'WIT' ? '✅ ' : ''}WIT (Asia/Jayapura, UTC+9)`,
-      'settings:set:timezone:WIT'
-    )
-    .row()
-    .text(
-      `${alias === 'UTC' ? '✅ ' : ''}UTC (UTC+0)`,
-      'settings:set:timezone:UTC'
-    )
-    .row()
-    .text(dictionary.buttonBackToAdvanced, 'settings:page:advanced');
+  for (let i = 0; i < TIMEZONE_PRESETS.length; i += 2) {
+    const pair = TIMEZONE_PRESETS.slice(i, i + 2);
+    for (const preset of pair) {
+      const isActive = alias === preset.value || activeTimezone === preset.value;
+      if (isActive) {
+        matchedPreset = true;
+      }
+      keyboard.text(
+        `${isActive ? '✅ ' : ''}${preset.label}`,
+        `settings:set:timezone:${preset.value}`
+      );
+    }
+    keyboard.row();
+  }
+
+  if (activeTimezone && !matchedPreset) {
+    keyboard.text(`✅ ${activeTimezone}`, `settings:set:timezone:${activeTimezone}`).row();
+  }
+
+  return keyboard.text(dictionary.buttonBackToAdvanced, 'settings:page:advanced');
 }
 
 export function createAiTimeoutInlineKeyboard(
@@ -275,27 +308,32 @@ export function getTelegramSettingsMenuContent(
   const manager = settingsManager || RuntimeSettingsManager.getInstance();
   const settings = manager.getSettings();
   const dictionary = getDictionary(languageCode).telegramSettings;
+  const labels = dictionary.summaryLabels;
+  const timezoneAlias = REVERSE_TIMEZONE_ALIAS_MAP[settings.appTimezone] || settings.appTimezone;
+  const timezoneDisplay =
+    timezoneAlias !== settings.appTimezone
+      ? `${settings.appTimezone} (${timezoneAlias})`
+      : settings.appTimezone;
 
   switch (page) {
     case 'home': {
-      const timezoneAlias = REVERSE_TIMEZONE_ALIAS_MAP[settings.appTimezone] || settings.appTimezone;
       const text = [
         dictionary.title,
         dictionary.subtitle,
         '',
         dictionary.activeSummaryHeader,
-        `• <b>Mode Kategori:</b> <code>${settings.categoryResolutionMode}</code>`,
-        `• <b>Auto-Record Enriched:</b> <code>${settings.autoRecordEnriched ? 'ON' : 'OFF'}</code>`,
-        `• <b>Model AI:</b> <code>${settings.aiModel}</code>`,
-        `• <b>Fallback AI:</b> <code>${settings.aiFallbackModels.join(', ') || 'none'}</code>`,
-        `• <b>Bahasa Respon:</b> <code>${settings.appLanguage === 'id' ? 'Indonesia (id)' : 'English (en)'}</code>`,
-        `• <b>Mata Uang Default:</b> <code>${settings.defaultCurrency}</code>`,
-        `• <b>Zona Waktu:</b> <code>${settings.appTimezone} (${timezoneAlias})</code>`,
-        `• <b>AI Timeout:</b> <code>${settings.aiRequestTimeoutSeconds}s</code>`,
-        `• <b>Email Lookback:</b> <code>${settings.emailLookbackMinutes}m</code>`,
-        `• <b>Antrean Pesan:</b> <code>${settings.whatsappMessageQueueIntervalMs}ms</code>`,
-        `• <b>Retensi Log:</b> <code>${settings.logRetentionDays} hari</code>`,
-        `• <b>Debug Logging:</b> <code>${settings.debugLoggingEnabled ? 'ON' : 'OFF'}</code>`,
+        `• <b>${labels.categoryMode}:</b> <code>${settings.categoryResolutionMode}</code>`,
+        `• <b>${labels.autoRecord}:</b> <code>${settings.autoRecordEnriched ? 'ON' : 'OFF'}</code>`,
+        `• <b>${labels.aiModel}:</b> <code>${settings.aiModel}</code>`,
+        `• <b>${labels.aiFallback}:</b> <code>${settings.aiFallbackModels.join(', ') || dictionary.statusFallbackNone}</code>`,
+        `• <b>${labels.language}:</b> <code>${settings.appLanguage === 'id' ? 'Indonesia (id)' : 'English (en)'}</code>`,
+        `• <b>${labels.currency}:</b> <code>${settings.defaultCurrency}</code>`,
+        `• <b>${labels.timezone}:</b> <code>${timezoneDisplay}</code>`,
+        `• <b>${labels.aiTimeout}:</b> <code>${settings.aiRequestTimeoutSeconds}s</code>`,
+        `• <b>${labels.emailLookback}:</b> <code>${dictionary.unitMinutes(settings.emailLookbackMinutes)}</code>`,
+        `• <b>${labels.queueInterval}:</b> <code>${settings.whatsappMessageQueueIntervalMs}ms</code>`,
+        `• <b>${labels.logRetention}:</b> <code>${dictionary.unitDays(settings.logRetentionDays)}</code>`,
+        `• <b>${labels.debugLogging}:</b> <code>${settings.debugLoggingEnabled ? 'ON' : 'OFF'}</code>`,
       ].join('\n');
 
       return {
@@ -309,7 +347,7 @@ export function getTelegramSettingsMenuContent(
         dictionary.categoryTitle,
         dictionary.categoryInfo,
         '',
-        `Status aktif saat ini: <code>${settings.categoryResolutionMode}</code>`,
+        dictionary.currentStatusLine(labels.categoryMode, settings.categoryResolutionMode),
       ].join('\n');
 
       return {
@@ -318,13 +356,32 @@ export function getTelegramSettingsMenuContent(
       };
     }
 
+    case 'auto_record': {
+      const statusText = settings.autoRecordEnriched
+        ? `${dictionary.statusEnabled} (ON)`
+        : `${dictionary.statusDisabled} (OFF)`;
+      const text = [
+        dictionary.autoRecordTitle,
+        dictionary.autoRecordInfo,
+        '',
+        dictionary.currentStatusLine(labels.autoRecord, statusText),
+      ].join('\n');
+
+      return {
+        text,
+        replyMarkup: createAutoRecordInlineKeyboard(settings.autoRecordEnriched, languageCode),
+      };
+    }
+
     case 'ai_model': {
       const text = [
         dictionary.aiModelTitle,
         dictionary.aiModelInfo,
         '',
-        `Model aktif saat ini: <code>${settings.aiModel}</code>`,
-        `Rantai cadangan (fallback): <code>${settings.aiFallbackModels.join(', ') || 'nonaktif'}</code>`,
+        dictionary.currentStatusLine(labels.aiModel, settings.aiModel),
+        dictionary.currentFallbackLine(
+          settings.aiFallbackModels.join(', ') || dictionary.statusFallbackNone
+        ),
       ].join('\n');
 
       return {
@@ -338,7 +395,10 @@ export function getTelegramSettingsMenuContent(
         dictionary.languageTitle,
         dictionary.languageInfo,
         '',
-        `Bahasa aktif saat ini: <code>${settings.appLanguage === 'id' ? 'Bahasa Indonesia (id)' : 'English (en)'}</code>`,
+        dictionary.currentStatusLine(
+          labels.language,
+          settings.appLanguage === 'id' ? 'Bahasa Indonesia (id)' : 'English (en)'
+        ),
       ].join('\n');
 
       return {
@@ -352,7 +412,7 @@ export function getTelegramSettingsMenuContent(
         dictionary.currencyTitle,
         dictionary.currencyInfo,
         '',
-        `Mata uang aktif saat ini: <code>${settings.defaultCurrency}</code>`,
+        dictionary.currentStatusLine(labels.currency, settings.defaultCurrency),
       ].join('\n');
 
       return {
@@ -366,22 +426,28 @@ export function getTelegramSettingsMenuContent(
         dictionary.advancedTitle,
         dictionary.advancedInfo,
         '',
-        'Pilih opsi lanjutan di bawah untuk menyesuaikan parameter teknis bot:',
+        `• <b>${labels.timezone}:</b> <code>${timezoneDisplay}</code>`,
+        `• <b>${labels.emailLookback}:</b> <code>${dictionary.unitMinutes(settings.emailLookbackMinutes)}</code>`,
+        `• <b>${labels.aiTimeout}:</b> <code>${settings.aiRequestTimeoutSeconds}s</code>`,
+        `• <b>${labels.queueInterval}:</b> <code>${settings.whatsappMessageQueueIntervalMs}ms</code>`,
+        `• <b>${labels.logRetention}:</b> <code>${dictionary.unitDays(settings.logRetentionDays)}</code>`,
+        `• <b>${labels.debugLogging}:</b> <code>${settings.debugLoggingEnabled ? 'ON' : 'OFF'}</code>`,
+        '',
+        dictionary.advancedPrompt,
       ].join('\n');
 
       return {
         text,
-        replyMarkup: createAdvancedInlineKeyboard(languageCode),
+        replyMarkup: createAdvancedInlineKeyboard(settings.debugLoggingEnabled, languageCode),
       };
     }
 
     case 'timezone': {
-      const tzAlias = REVERSE_TIMEZONE_ALIAS_MAP[settings.appTimezone] || settings.appTimezone;
       const text = [
         dictionary.timezoneTitle,
         dictionary.timezoneInfo,
         '',
-        `Zona waktu aktif: <code>${settings.appTimezone} (${tzAlias})</code>`,
+        dictionary.currentStatusLine(labels.timezone, timezoneDisplay),
       ].join('\n');
 
       return {
@@ -395,7 +461,10 @@ export function getTelegramSettingsMenuContent(
         dictionary.aiTimeoutTitle,
         dictionary.aiTimeoutInfo,
         '',
-        `Batas waktu aktif saat ini: <code>${settings.aiRequestTimeoutSeconds}s</code> (${settings.aiRequestTimeoutSeconds * 1000} ms)`,
+        dictionary.currentStatusLine(
+          labels.aiTimeout,
+          `${settings.aiRequestTimeoutSeconds}s (${settings.aiRequestTimeoutSeconds * 1000} ms)`
+        ),
       ].join('\n');
 
       return {
@@ -409,7 +478,10 @@ export function getTelegramSettingsMenuContent(
         dictionary.emailLookbackTitle,
         dictionary.emailLookbackInfo,
         '',
-        `Jendela lookback aktif saat ini: <code>${settings.emailLookbackMinutes} menit</code>`,
+        dictionary.currentStatusLine(
+          labels.emailLookback,
+          dictionary.unitMinutes(settings.emailLookbackMinutes)
+        ),
       ].join('\n');
 
       return {
@@ -423,12 +495,18 @@ export function getTelegramSettingsMenuContent(
         dictionary.queueIntervalTitle,
         dictionary.queueIntervalInfo,
         '',
-        `Interval antrean pesan saat ini: <code>${settings.whatsappMessageQueueIntervalMs} ms</code>`,
+        dictionary.currentStatusLine(
+          labels.queueInterval,
+          `${settings.whatsappMessageQueueIntervalMs} ms`
+        ),
       ].join('\n');
 
       return {
         text,
-        replyMarkup: createQueueIntervalInlineKeyboard(settings.whatsappMessageQueueIntervalMs, languageCode),
+        replyMarkup: createQueueIntervalInlineKeyboard(
+          settings.whatsappMessageQueueIntervalMs,
+          languageCode
+        ),
       };
     }
 
@@ -437,7 +515,10 @@ export function getTelegramSettingsMenuContent(
         dictionary.logRetentionTitle,
         dictionary.logRetentionInfo,
         '',
-        `Retensi log saat ini: <code>${settings.logRetentionDays} hari</code>`,
+        dictionary.currentStatusLine(
+          labels.logRetention,
+          dictionary.unitDays(settings.logRetentionDays)
+        ),
       ].join('\n');
 
       return {

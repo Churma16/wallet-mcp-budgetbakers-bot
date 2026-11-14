@@ -29,7 +29,11 @@ import {
   getTelegramSettingsMenuContent,
   TelegramSettingsMenuPage,
 } from './telegramSettingsMenu.js';
-import { RuntimeSettingsManager } from '../config/runtimeSettingsManager.js';
+import {
+  RuntimeSettingsManager,
+  TIMEZONE_ALIAS_MAP,
+} from '../config/runtimeSettingsManager.js';
+import { isValidIanaTimezone } from '../config/environmentConfig.js';
 import {
   escapeHtmlEntities,
   formatTelegramHtml,
@@ -45,12 +49,44 @@ export { escapeHtmlEntities, formatTelegramHtml };
 
 export const MEDIA_GROUP_DEBOUNCE_MS = 2000;
 
+function isValidCurrencyCode(rawCode: string): boolean {
+  const normalized = rawCode.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(normalized)) {
+    return false;
+  }
+  if (typeof Intl.supportedValuesOf === 'function') {
+    try {
+      return Intl.supportedValuesOf('currency').includes(normalized);
+    } catch {
+      // Fallback to 3-letter format check
+    }
+  }
+  return true;
+}
+
+function resolveValidTimezoneInput(rawInput: string): string | null {
+  const trimmed = rawInput.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const aliasMatch = TIMEZONE_ALIAS_MAP[trimmed.toUpperCase()];
+  if (aliasMatch) {
+    return aliasMatch;
+  }
+  return isValidIanaTimezone(trimmed) ? trimmed : null;
+}
+
 type SettingPropertyUpdater = (value: string, manager: RuntimeSettingsManager) => Promise<void>;
 
 const SETTING_PROPERTY_UPDATERS: Record<string, SettingPropertyUpdater> = {
   category: async (val, mgr) => {
     if (val === 'ask' || val === 'auto') {
       await mgr.updateSetting('categoryResolutionMode', val);
+    }
+  },
+  auto_record: async (val, mgr) => {
+    if (val === 'on' || val === 'off') {
+      await mgr.updateSetting('autoRecordEnriched', val === 'on');
     }
   },
   ai_model: async (val, mgr) => {
@@ -62,10 +98,16 @@ const SETTING_PROPERTY_UPDATERS: Record<string, SettingPropertyUpdater> = {
     }
   },
   currency: async (val, mgr) => {
-    await mgr.updateSetting('defaultCurrency', val.toUpperCase());
+    const normalized = val.trim().toUpperCase();
+    if (isValidCurrencyCode(normalized)) {
+      await mgr.updateSetting('defaultCurrency', normalized);
+    }
   },
   timezone: async (val, mgr) => {
-    await mgr.updateSetting('appTimezone', val);
+    const resolvedTimezone = resolveValidTimezoneInput(val);
+    if (resolvedTimezone) {
+      await mgr.updateSetting('appTimezone', resolvedTimezone);
+    }
   },
   ai_timeout: async (val, mgr) => {
     const seconds = Number.parseInt(val, 10);
@@ -107,11 +149,11 @@ type StaticSettingsActionHandler = (
 
 const STATIC_SETTINGS_ACTIONS: Record<string, StaticSettingsActionHandler> = {
   'settings:home': async () => ({ targetPage: 'home' }),
-  'settings:action:close': async (ctx) => {
+  'settings:action:close': async (ctx, _mgr, dict) => {
     try {
       await ctx.deleteMessage();
     } catch {
-      await ctx.editMessageText('<i>Menu pengaturan ditutup.</i>', { parse_mode: 'HTML' });
+      await ctx.editMessageText(dict.closeMenuNotice, { parse_mode: 'HTML' });
     }
     await ctx.answerCallbackQuery();
     return { handled: true };
@@ -128,7 +170,7 @@ const STATIC_SETTINGS_ACTIONS: Record<string, StaticSettingsActionHandler> = {
   'settings:toggle:debug': async (_ctx, mgr, dict) => {
     const currentDebug = mgr.getSetting('debugLoggingEnabled');
     await mgr.updateSetting('debugLoggingEnabled', !currentDebug);
-    return { targetPage: 'home', feedbackAlert: dict.savedAlert };
+    return { targetPage: 'advanced', feedbackAlert: dict.savedAlert };
   },
   'settings:toggle:ai_fallback': async (_ctx, mgr, dict) => {
     const currentFallbacks = mgr.getSetting('aiFallbackModels');
@@ -679,12 +721,8 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     // 2. Official Settings Bot Command
     if (typeof bot.command === 'function') {
       bot.command(['settings', 'pengaturan'], async ctx => {
-        const currentLanguage = getActiveLanguage();
-        const menuContent = getTelegramSettingsMenuContent('home', currentLanguage);
-        await ctx.reply(menuContent.text, {
-          parse_mode: 'HTML',
-          reply_markup: menuContent.replyMarkup,
-        });
+        const rawArgs = typeof ctx.match === 'string' ? ctx.match : '';
+        await this.handleSettingsCommand(ctx, rawArgs);
       });
     }
 
@@ -879,19 +917,9 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
         return;
       }
 
-      const lowerText = textContent.toLowerCase();
-      if (
-        lowerText === '/settings' ||
-        lowerText === 'settings' ||
-        lowerText === '/pengaturan' ||
-        lowerText === 'pengaturan'
-      ) {
-        const currentLanguage = getActiveLanguage();
-        const menuContent = getTelegramSettingsMenuContent('home', currentLanguage);
-        await ctx.reply(menuContent.text, {
-          parse_mode: 'HTML',
-          reply_markup: menuContent.replyMarkup,
-        });
+      const settingsCommandMatch = textContent.match(/^(?:\/)?(?:settings|pengaturan)(?:\s+(.*))?$/i);
+      if (settingsCommandMatch) {
+        await this.handleSettingsCommand(ctx, settingsCommandMatch[1] || '');
         return;
       }
 
@@ -1106,6 +1134,62 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       },
       additionalMetadata,
     });
+  }
+
+  public async handleSettingsCommand(ctx: Context, rawArguments: string = ''): Promise<void> {
+    const currentLanguage = getActiveLanguage();
+    const trimmedArgs = rawArguments.trim();
+
+    if (!trimmedArgs) {
+      const menuContent = getTelegramSettingsMenuContent('home', currentLanguage);
+      await ctx.reply(menuContent.text, {
+        parse_mode: 'HTML',
+        reply_markup: menuContent.replyMarkup,
+      });
+      return;
+    }
+
+    const dictionary = getDictionary(currentLanguage).telegramSettings;
+    const [rawSubcommand, ...valueTokens] = trimmedArgs.split(/\s+/);
+    const subcommand = (rawSubcommand || '').toLowerCase();
+    const rawValue = valueTokens.join(' ').trim();
+    const settingsManager = RuntimeSettingsManager.getInstance();
+
+    if ((subcommand === 'timezone' || subcommand === 'tz') && rawValue) {
+      const resolvedTimezone = resolveValidTimezoneInput(rawValue);
+      if (!resolvedTimezone) {
+        await ctx.reply(dictionary.commandInvalidTimezone(escapeHtmlEntities(rawValue)), {
+          parse_mode: 'HTML',
+        });
+        return;
+      }
+
+      await settingsManager.updateSetting('appTimezone', resolvedTimezone);
+      await ctx.reply(
+        dictionary.commandUpdatedSetting(dictionary.summaryLabels.timezone, resolvedTimezone),
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    if ((subcommand === 'currency' || subcommand === 'curr') && rawValue) {
+      const normalizedCurrency = rawValue.toUpperCase();
+      if (!isValidCurrencyCode(normalizedCurrency)) {
+        await ctx.reply(dictionary.commandInvalidCurrency(escapeHtmlEntities(rawValue)), {
+          parse_mode: 'HTML',
+        });
+        return;
+      }
+
+      await settingsManager.updateSetting('defaultCurrency', normalizedCurrency);
+      await ctx.reply(
+        dictionary.commandUpdatedSetting(dictionary.summaryLabels.currency, normalizedCurrency),
+        { parse_mode: 'HTML' }
+      );
+      return;
+    }
+
+    await ctx.reply(dictionary.commandUsageHint, { parse_mode: 'HTML' });
   }
 
   public async handleSettingsCallbackQuery(ctx: Context, callbackData: string): Promise<void> {
