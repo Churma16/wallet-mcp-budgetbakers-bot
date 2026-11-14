@@ -644,6 +644,30 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     }
   }
 
+  public async clearMessageReplyMarkup(
+    targetChatIdentifier: string,
+    messageId: string
+  ): Promise<boolean> {
+    if (!this.botInstance) {
+      return false;
+    }
+
+    const numericChatId = Number(targetChatIdentifier);
+    const numericMessageId = Number(messageId);
+    if (!Number.isFinite(numericChatId) || !Number.isFinite(numericMessageId)) {
+      return false;
+    }
+
+    try {
+      await this.botInstance.api.editMessageReplyMarkup(numericChatId, numericMessageId, {
+        reply_markup: undefined,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   public setupBotHandlers(bot: Bot): void {
     // 1. Security Whitelist Middleware
     bot.use(async (ctx, next) => {

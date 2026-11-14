@@ -8,6 +8,7 @@ import { createTelegramRescanInlineKeyboard } from '../gateway/telegramMenu.js';
 import { EmailTransactionDetectedEvent } from '../email/index.js';
 import {
   ExtractedFinancialIntent,
+  PendingConfirmationIntent,
   SemanticToolBoundary,
   SemanticToolAuthorizationContext,
   createSemanticToolProposalFromFinancialIntent,
@@ -420,6 +421,22 @@ export class MessageDispatcher {
           processingStartTimestamp
         );
         if (handledEdit) {
+          return;
+        }
+      }
+
+      // 0c. Reply-to-message with screenshot/image to enrich and auto-commit a pending transaction
+      if (
+        event.messageType === 'image' &&
+        event.imageBuffer &&
+        event.replyToMessageId
+      ) {
+        const handledPendingImageReply = await this.handlePendingScreenshotReply(
+          event,
+          processingStartTimestamp,
+          requestReferenceInstant
+        );
+        if (handledPendingImageReply) {
           return;
         }
       }
@@ -1105,6 +1122,143 @@ export class MessageDispatcher {
         transactionMessageStore: this.context.wallet?.transactionMessages,
         enrichmentPoolService: this.context.wallet?.enrichmentPool,
       }
+    );
+  }
+
+  /**
+   * Handles screenshot/image replies to pending payment notification bubbles.
+   * Extracts receipt details via AI Vision, enriches merchant/items/category,
+   * and auto-commits the transaction immediately to Wallet MCP.
+   */
+  private async handlePendingScreenshotReply(
+    event: IncomingUserMessageEvent,
+    processingStartTimestamp: number,
+    requestReferenceInstant: Date
+  ): Promise<boolean> {
+    if (!event.replyToMessageId || !event.imageBuffer) {
+      return false;
+    }
+
+    const pendingManager = this.context.pending as PendingTransactionService;
+    if (typeof pendingManager.getAllPendingTransactions !== 'function') {
+      return false;
+    }
+
+    const matchedPendingItem = pendingManager.getAllPendingTransactions().find(
+      item =>
+        item.notificationMessageIds &&
+        Object.values(item.notificationMessageIds).includes(event.replyToMessageId!)
+    );
+
+    if (!matchedPendingItem) {
+      if (typeof (pendingManager as any).getRecentlyResolvedTicketIdByMessageId === 'function') {
+        const resolvedTicketId = (pendingManager as any).getRecentlyResolvedTicketIdByMessageId(event.replyToMessageId);
+        if (resolvedTicketId !== undefined) {
+          const dictionary = getDictionary();
+          await this.context.gateway.sendMessage(
+            event.channel,
+            event.chatIdentifier,
+            dictionary.confirmation.itemAlreadyResolved(resolvedTicketId)
+          );
+          return true;
+        }
+      }
+      return false;
+    }
+
+    const ticketId = matchedPendingItem.ticketId;
+    const itemState = pendingManager.getPendingTransactionState(ticketId);
+    if (itemState !== 'PENDING') {
+      const dictionary = getDictionary();
+      const outcomeMsg = pendingManager.isTicketProcessing(ticketId)
+        ? dictionary.confirmation.itemProcessing(ticketId)
+        : dictionary.confirmation.itemAlreadyResolved(ticketId);
+      await this.context.gateway.sendMessage(event.channel, event.chatIdentifier, outcomeMsg);
+      return true;
+    }
+
+    await this.context.gateway.sendTypingPresence(event.channel, event.chatIdentifier);
+    applicationLogger.ai(
+      `[Screenshot Reply] Processing receipt screenshot for pending ticket #${ticketId} with Vision...`
+    );
+
+    const cachedAccounts = this.context.wallet.cache.getAccounts();
+    const cachedCategories = this.context.wallet.cache.getCategories();
+    const primaryModel = this.context.config.geminiModel || this.context.config.aiModel;
+
+    const fallbackTracker = new ModelFallbackProgressTracker({
+      gateway: this.context.gateway,
+      channel: event.channel,
+      chatIdentifier: event.chatIdentifier,
+      primaryModel,
+    });
+    fallbackTracker.start();
+
+    let rawExtractedIntent: ExtractedFinancialIntent;
+    try {
+      rawExtractedIntent = await this.context.brain.provider.processImageMessage(
+        event.imageBuffer,
+        event.imageMimeType || 'image/jpeg',
+        event.textPayload || '',
+        cachedAccounts,
+        cachedCategories,
+        requestReferenceInstant,
+        { onFallback: evt => fallbackTracker.handleFallback(evt) }
+      );
+    } catch (visionError) {
+      applicationLogger.error(
+        `[Screenshot Reply] Vision extraction failed for ticket #${ticketId}: ${visionError}`
+      );
+      await this.context.gateway.sendMessage(
+        event.channel,
+        event.chatIdentifier,
+        getDictionary().errors.receiptExtractionFailed(getHumanReadableTimestamp())
+      );
+      return true;
+    } finally {
+      await fallbackTracker.cleanup();
+    }
+
+    const extractedIntent = validateReceiptFinancialIntentEnvelope(rawExtractedIntent);
+    const receiptRecord = extractedIntent.records?.[0];
+
+    if (!receiptRecord || (!receiptRecord.counterParty && !receiptRecord.note)) {
+      applicationLogger.warn(
+        `[Screenshot Reply] Vision extraction returned no viable merchant or items for ticket #${ticketId}.`
+      );
+      await this.context.gateway.sendMessage(
+        event.channel,
+        event.chatIdentifier,
+        getDictionary().errors.receiptExtractionFailed(getHumanReadableTimestamp())
+      );
+      return true;
+    }
+
+    // Extract enriched properties
+    const enrichedMerchant = receiptRecord.counterParty || receiptRecord.note;
+    const enrichedNote = receiptRecord.note;
+    let enrichedCategoryHint: string | undefined = receiptRecord.categoryHint;
+    if (!enrichedCategoryHint && receiptRecord.categoryId) {
+      const cat = cachedCategories.find(c => c.id === receiptRecord.categoryId);
+      if (cat) enrichedCategoryHint = cat.name;
+    }
+    const enrichedTags = receiptRecord.labels;
+
+    const confirmationIntent: PendingConfirmationIntent = {
+      actionType: 'CONFIRM',
+      targetScope: ticketId,
+      counterParty: enrichedMerchant,
+      customNote: enrichedNote,
+      customCategoryHint: enrichedCategoryHint,
+      customCategoryId: receiptRecord.categoryId,
+      customTags: enrichedTags,
+      rawCustomInput: event.textPayload,
+    };
+
+    return await this.pendingActionHandler.handlePendingAction(
+      event,
+      confirmationIntent,
+      processingStartTimestamp
     );
   }
 

@@ -117,6 +117,7 @@ export class PendingTransactionService {
   private readonly pendingCategorySelectionDraftMap: Map<number, PendingCategorySelectionDraft> = new Map();
   private readonly dispatchStateMap: Map<number, PendingTransactionDispatchState> = new Map();
   private readonly recentlyResolvedTicketIds: Map<number, number> = new Map();
+  private readonly recentlyResolvedMessageIds: Map<string, number> = new Map();
   private readonly defaultTimeToLiveMilliseconds: number;
   private readonly recentResolvedTtlMilliseconds: number = 5 * 60 * 1000; // 5 minutes
 
@@ -760,6 +761,11 @@ export class PendingTransactionService {
     const item = this.pendingTransactionMap.get(ticketId);
     if (item) {
       this.recentlyResolvedTicketIds.set(ticketId, Date.now());
+      if (item.notificationMessageIds) {
+        for (const msgId of Object.values(item.notificationMessageIds)) {
+          this.recentlyResolvedMessageIds.set(msgId, ticketId);
+        }
+      }
       this.removeTicketMetadata(ticketId);
     }
     return item;
@@ -801,6 +807,12 @@ export class PendingTransactionService {
       return undefined;
     }
 
+    this.recentlyResolvedTicketIds.set(ticketId, Date.now());
+    if (item.notificationMessageIds) {
+      for (const msgId of Object.values(item.notificationMessageIds)) {
+        this.recentlyResolvedMessageIds.set(msgId, ticketId);
+      }
+    }
     this.removeTicketMetadata(ticketId);
     return item;
   }
@@ -876,6 +888,11 @@ export class PendingTransactionService {
     for (const [ticketId, timestamp] of this.recentlyResolvedTicketIds.entries()) {
       if (currentTime - timestamp > this.recentResolvedTtlMilliseconds) {
         this.recentlyResolvedTicketIds.delete(ticketId);
+        for (const [msgId, tid] of this.recentlyResolvedMessageIds.entries()) {
+          if (tid === ticketId) {
+            this.recentlyResolvedMessageIds.delete(msgId);
+          }
+        }
         hasChanges = true;
       }
     }
@@ -892,6 +909,11 @@ export class PendingTransactionService {
   public wasTicketRecentlyResolved(ticketId: number): boolean {
     this.purgeExpiredTransactions();
     return this.recentlyResolvedTicketIds.has(ticketId);
+  }
+
+  public getRecentlyResolvedTicketIdByMessageId(messageId: string): number | undefined {
+    this.purgeExpiredTransactions();
+    return this.recentlyResolvedMessageIds.get(messageId);
   }
 
   public getNextTicketSequentialId(): number {

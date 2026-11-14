@@ -58,6 +58,10 @@ export interface MessagingAdapter {
     targetChatIdentifier: string,
     messageId: string
   ): Promise<boolean>;
+  clearMessageReplyMarkup?(
+    targetChatIdentifier: string,
+    messageId: string
+  ): Promise<boolean>;
   getConnectionState?(): AdapterConnectionState;
 }
 
