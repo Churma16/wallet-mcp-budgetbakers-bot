@@ -342,7 +342,7 @@ describe('Unified Final Transaction Card Structure Parity', () => {
     expect(pushFirstCard).toContain('🏪 Bliblimart Sarana Jaya - Offline Store');
     expect(pushFirstCard).toContain('🏷️ Makan Nafsu • 4 Nov 2026, 09:34 WIB');
     expect(pushFirstCard).toContain('📝 Nasi Uduk + Telur, Bakwan Sayur');
-    expect(pushFirstCard).toContain('Balas *Ya* atau *Catat* (atau *Ya 3*)');
+    expect(pushFirstCard).toContain('Geser (swipe) untuk edit');
 
     // Fused: Email first, then Push
     const fusedEmailFirst: PendingTransactionItem = {

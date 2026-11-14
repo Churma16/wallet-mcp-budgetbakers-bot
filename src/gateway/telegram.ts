@@ -513,13 +513,18 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     // Telegram automatically clears typing presence after 5 seconds or upon sending a message
   }
 
-  public async sendBroadcastNotification(messageText: string): Promise<SentMessageReceipt | void> {
+  public async sendBroadcastNotification(
+    messageText: string,
+    options?: SendTextMessageOptions
+  ): Promise<SentMessageReceipt | void> {
     if (!this.normalizedAllowedUserId) {
       applicationLogger.warn('Cannot broadcast Telegram notification: TELEGRAM_ALLOWED_USER_ID is not configured.');
       return;
     }
 
-    return await this.sendTextMessage(this.normalizedAllowedUserId, messageText);
+    return options !== undefined
+      ? await this.sendTextMessage(this.normalizedAllowedUserId, messageText, options)
+      : await this.sendTextMessage(this.normalizedAllowedUserId, messageText);
   }
 
   public async editTextMessage(
@@ -597,12 +602,15 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
 
   public async editBroadcastNotification(
     messageId: string,
-    messageText: string
+    messageText: string,
+    options?: SendTextMessageOptions
   ): Promise<boolean> {
     if (!this.normalizedAllowedUserId) {
       return false;
     }
-    return this.editTextMessage(this.normalizedAllowedUserId, messageId, messageText);
+    return options !== undefined
+      ? this.editTextMessage(this.normalizedAllowedUserId, messageId, messageText, options)
+      : this.editTextMessage(this.normalizedAllowedUserId, messageId, messageText);
   }
 
   public async deleteTextMessage(

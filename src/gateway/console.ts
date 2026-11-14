@@ -5,6 +5,7 @@ import {
   AdapterConnectionState,
   ConsoleAdapterConfiguration,
   MessagingAdapter,
+  SendTextMessageOptions,
   SupportedMessengerChannel,
   UserMessageCallback,
 } from './types.js';
@@ -261,7 +262,10 @@ export class ConsoleMessagingAdapter implements MessagingAdapter {
     // Keep terminal clean
   }
 
-  public async sendBroadcastNotification(messageText: string): Promise<void> {
+  public async sendBroadcastNotification(
+    messageText: string,
+    _options?: SendTextMessageOptions
+  ): Promise<void> {
     await this.sendTextMessage(this.chatIdentifier, messageText);
   }
 

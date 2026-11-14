@@ -16,6 +16,7 @@ import { calculateExponentialBackoff } from '../lib/resilience.js';
 import {
   MediaRejectionStage,
   MessagingAdapter,
+  SendTextMessageOptions,
   SupportedMessengerChannel,
   UserMessageCallback,
   WhatsappSafeguardConfiguration,
@@ -749,7 +750,10 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
     return this.presenceManager.clearTyping(chatIdentifier);
   }
 
-  public async sendBroadcastNotification(messageText: string): Promise<void> {
+  public async sendBroadcastNotification(
+    messageText: string,
+    _options?: SendTextMessageOptions
+  ): Promise<void> {
     if (!this.normalizedAllowedPhoneNumber) {
       applicationLogger.warn('Cannot broadcast WhatsApp notification: ALLOWED_PHONE_NUMBER is not configured.');
       return;

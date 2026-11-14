@@ -1,7 +1,7 @@
 import { ExtractedEmailTransactionData } from '../brain/types.js';
 import { GateEvaluationResult } from '../email/index.js';
 import { PendingTransactionService, buildRecordsForPendingItem } from './pending.js';
-import { MessagingGatewayService } from '../gateway/index.js';
+import { MessagingGatewayService, createTelegramPendingConfirmInlineKeyboard } from '../gateway/index.js';
 import { TransactionCorrelationEngine, TransactionEvidence, TransactionEvidenceSource } from '../email/index.js';
 import { isGenericMerchant, isGenericCategory, isOnlinePlatformOrGateway } from '../email/index.js';
 import { CommercePlatformRegistry } from '../config/commercePlatforms.js';
@@ -701,6 +701,7 @@ export async function coordinateInboundTransactionCandidate(
       );
 
       let wasEdited = false;
+      const replyMarkup = createTelegramPendingConfirmInlineKeyboard(enrichedItem.ticketId);
       if (
         enrichedItem.notificationMessageIds &&
         Object.keys(enrichedItem.notificationMessageIds).length > 0 &&
@@ -708,12 +709,24 @@ export async function coordinateInboundTransactionCandidate(
       ) {
         wasEdited = await messagingGateway.editBroadcastNotification(
           enrichedItem.notificationMessageIds,
-          notificationText
+          notificationText,
+          { replyMarkup }
         );
       }
 
       if (!wasEdited) {
-        await messagingGateway.broadcastNotification(notificationText);
+        const receipts = await messagingGateway.broadcastNotification(
+          notificationText,
+          { replyMarkup }
+        );
+        if (
+          receipts &&
+          typeof receipts === 'object' &&
+          Object.keys(receipts).length > 0 &&
+          typeof pendingTransactionManager.updateNotificationMessageIds === 'function'
+        ) {
+          pendingTransactionManager.updateNotificationMessageIds(enrichedItem.ticketId, receipts);
+        }
         applicationLogger.success(
           `Dispatched enriched transaction notification (#${enrichedItem.ticketId}) to active messaging channels.`
         );
@@ -789,7 +802,13 @@ export async function coordinateInboundTransactionCandidate(
     notificationText = `⚠️ *Perlu Klarifikasi*\n${correlationResult.clarificationPrompt}\n\n${notificationText}`;
   }
 
-  const receipts = await messagingGateway.broadcastNotification(notificationText);
+  const replyMarkup = !isClarification
+    ? createTelegramPendingConfirmInlineKeyboard(pendingItem.ticketId)
+    : undefined;
+
+  const receipts = replyMarkup
+    ? await messagingGateway.broadcastNotification(notificationText, { replyMarkup })
+    : await messagingGateway.broadcastNotification(notificationText);
   if (
     receipts &&
     typeof receipts === 'object' &&

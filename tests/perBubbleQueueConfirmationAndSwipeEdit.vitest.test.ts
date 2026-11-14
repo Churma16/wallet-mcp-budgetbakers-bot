@@ -16,6 +16,8 @@ import { TelegramMessagingAdapter } from '../src/gateway/telegram.js';
 import { TransactionMessageStore } from '../src/wallet/records/transactionMessageStore.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { setActiveLanguage } from '../src/i18n/index.js';
+import { coordinateInboundTransactionCandidate } from '../src/core/inboundCoordinator.js';
+import { TransactionCorrelationEngine } from '../src/email/index.js';
 
 class MockMessagingGateway {
   public readonly messages: Array<{
@@ -191,17 +193,17 @@ describe('Per-Bubble Queue Confirmation & Swipe-Reply Edit', () => {
       expect(keyboard).toBeDefined();
       const rows = (keyboard as any).inline_keyboard;
       expect(rows).toHaveLength(1);
-      expect(rows[0][0].text).toBe('✅ Ya');
-      expect(rows[0][0].callback_data).toBe('pending:confirm:101');
-      expect(rows[0][1].text).toBe('❌ Batalkan');
-      expect(rows[0][1].callback_data).toBe('pending:reject:101');
+      expect(rows[0][0].text).toBe('❌ Batalkan');
+      expect(rows[0][0].callback_data).toBe('pending:reject:101');
+      expect(rows[0][1].text).toBe('✅ Ya');
+      expect(rows[0][1].callback_data).toBe('pending:confirm:101');
     });
 
     it('creates English buttons when language is en', () => {
       const keyboard = createTelegramPendingConfirmInlineKeyboard(101, 'en');
       const rows = (keyboard as any).inline_keyboard;
-      expect(rows[0][0].text).toBe('✅ Yes');
-      expect(rows[0][1].text).toBe('❌ Cancel');
+      expect(rows[0][0].text).toBe('❌ Cancel');
+      expect(rows[0][1].text).toBe('✅ Yes');
     });
   });
 
@@ -764,6 +766,145 @@ describe('Per-Bubble Queue Confirmation & Swipe-Reply Edit', () => {
           replyToMessageId: '777',
         })
       );
+    });
+  });
+
+  describe('Inbound Payment Notification Interactive Buttons', () => {
+    it('dispatches pending notification with inline keyboard [ ❌ Batalkan ] [ ✅ Ya ]', async () => {
+      const pendingManager = new PendingTransactionService();
+      const mockGateway = {
+        broadcastNotification: vi.fn().mockResolvedValue({ telegram: 'msg_notif_101' }),
+        editBroadcastNotification: vi.fn().mockResolvedValue(true),
+      };
+
+      const walletCache = {
+        getAccounts: () => [{ id: 'acc-1', name: 'BCA', isBankSynced: false } as any],
+        getCategories: () => [{ id: 'cat-1', name: 'Makanan & Minuman' } as any],
+      };
+
+      await coordinateInboundTransactionCandidate(
+        {
+          sourceType: 'EMAIL',
+          evidenceSourceType: 'EMAIL_BANK',
+          sourceId: 'msg-bank-101',
+          sourceDate: new Date('2026-11-13T12:00:00Z'),
+          sourceDisplayName: 'BCA Notification',
+          parsedData: {
+            amount: -50000,
+            currency: 'IDR',
+            counterParty: 'Kopi Kenangan',
+            transactionType: 'EXPENSE',
+            referenceNumbers: ['REF-BCA-101'],
+          },
+          extractedRefs: ['REF-BCA-101'],
+          gateResult: { matchedBankRule: { displayName: 'BCA' } } as any,
+          fallbackNote: 'Kopi Kenangan',
+        },
+        {
+          walletCacheService: walletCache as any,
+          pendingTransactionManager: pendingManager,
+          messagingGateway: mockGateway as any,
+          defaultCurrency: 'IDR',
+          correlationService: new TransactionCorrelationEngine(),
+        }
+      );
+
+      expect(mockGateway.broadcastNotification).toHaveBeenCalledTimes(1);
+      const [notificationText, options] = mockGateway.broadcastNotification.mock.calls[0];
+      expect(notificationText).toContain('Pembayaran Baru');
+      expect(notificationText).toContain('Geser (swipe) untuk edit');
+      expect(notificationText).not.toContain('Catat transaksi ini?');
+      expect(options).toBeDefined();
+      expect(options.replyMarkup).toBeDefined();
+      const rows = (options.replyMarkup as any).inline_keyboard;
+      expect(rows[0][0].text).toBe('❌ Batalkan');
+      expect(rows[0][0].callback_data).toMatch(/^pending:reject:\d+$/);
+      expect(rows[0][1].text).toBe('✅ Ya');
+      expect(rows[0][1].callback_data).toMatch(/^pending:confirm:\d+$/);
+    });
+
+    it('attaches inline keyboard when notification is enriched in-place', async () => {
+      const pendingManager = new PendingTransactionService();
+      const mockGateway = {
+        broadcastNotification: vi.fn().mockResolvedValue({ telegram: 'msg_notif_102' }),
+        editBroadcastNotification: vi.fn().mockResolvedValue(true),
+      };
+
+      const walletCache = {
+        getAccounts: () => [{ id: 'acc-1', name: 'BCA', isBankSynced: false } as any],
+        getCategories: () => [{ id: 'cat-1', name: 'Makanan & Minuman' } as any],
+      };
+
+      const correlationEngine = new TransactionCorrelationEngine();
+
+      // 1. Initial push notification
+      await coordinateInboundTransactionCandidate(
+        {
+          sourceType: 'PUSH_NOTIFICATION',
+          evidenceSourceType: 'PUSH_NOTIFICATION',
+          sourceId: 'msg-push-102',
+          sourceDate: new Date('2026-11-13T12:00:00Z'),
+          sourceDisplayName: 'BCA Mobile',
+          parsedData: {
+            amount: -65000,
+            currency: 'IDR',
+            counterParty: 'Merchant',
+            transactionType: 'EXPENSE',
+            referenceNumbers: ['REF-ORDER-102'],
+          },
+          extractedRefs: ['REF-ORDER-102'],
+          gateResult: { matchedBankRule: { displayName: 'BCA' } } as any,
+          fallbackNote: 'Merchant',
+        },
+        {
+          walletCacheService: walletCache as any,
+          pendingTransactionManager: pendingManager,
+          messagingGateway: mockGateway as any,
+          defaultCurrency: 'IDR',
+          correlationService: correlationEngine,
+        }
+      );
+
+      // 2. Receipt arrives and enriches in-place
+      await coordinateInboundTransactionCandidate(
+        {
+          sourceType: 'EMAIL',
+          evidenceSourceType: 'RECEIPT',
+          sourceId: 'msg-receipt-102',
+          sourceDate: new Date('2026-11-13T12:00:10Z'),
+          sourceDisplayName: 'GrabFood',
+          parsedData: {
+            amount: -65000,
+            currency: 'IDR',
+            counterParty: 'Ayam Geprek',
+            note: 'Paket Ayam Geprek Sambal Matah',
+            transactionType: 'EXPENSE',
+            matchedCategoryName: 'Makanan & Minuman',
+            referenceNumbers: ['REF-ORDER-102'],
+          },
+          extractedRefs: ['REF-ORDER-102'],
+          gateResult: { matchedBankRule: undefined } as any,
+          fallbackNote: 'GrabFood receipt',
+        },
+        {
+          walletCacheService: walletCache as any,
+          pendingTransactionManager: pendingManager,
+          messagingGateway: mockGateway as any,
+          defaultCurrency: 'IDR',
+          correlationService: correlationEngine,
+        }
+      );
+
+      expect(mockGateway.editBroadcastNotification).toHaveBeenCalledTimes(1);
+      const [messageIds, editedText, options] = mockGateway.editBroadcastNotification.mock.calls[0];
+      expect(messageIds).toEqual({ telegram: 'msg_notif_102' });
+      expect(editedText).toContain('Ayam Geprek');
+      expect(editedText).toContain('Geser (swipe) untuk edit');
+      expect(options).toBeDefined();
+      expect(options.replyMarkup).toBeDefined();
+      const rows = (options.replyMarkup as any).inline_keyboard;
+      expect(rows[0][0].text).toBe('❌ Batalkan');
+      expect(rows[0][1].text).toBe('✅ Ya');
     });
   });
 });

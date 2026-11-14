@@ -203,8 +203,8 @@ describe('response dictionaries and localized formatting', () => {
     const idFormatted = formatPendingEmailTransactionNotification(pending, 1);
     expect(idFormatted).toContain('Pembayaran Baru');
     expect(idFormatted).toContain('📝 Pembayaran QRIS Starbucks');
-    expect(formatPendingEmailTransactionNotification(pending, 2)).toContain('Ya 101');
-    expect(formatPendingEmailTransactionNotification(pending, 1)).toContain('Balas *Ya* atau *Catat*');
+    expect(formatPendingEmailTransactionNotification(pending, 2)).toContain('Geser (swipe) untuk edit');
+    expect(formatPendingEmailTransactionNotification(pending, 1)).toContain('Geser (swipe) untuk edit');
     expect(formatPendingConfirmationSuccess(pending)).toContain('berhasil dicatat!');
     expect(formatPendingCancellationMessage(pending)).toContain('Dibatalkan');
 
@@ -212,8 +212,8 @@ describe('response dictionaries and localized formatting', () => {
     const enFormatted = formatPendingEmailTransactionNotification(pending, 1);
     expect(enFormatted).toContain('New Payment');
     expect(enFormatted).toContain('📝 Pembayaran QRIS Starbucks');
-    expect(formatPendingEmailTransactionNotification(pending, 2)).toContain('Yes 101');
-    expect(formatPendingEmailTransactionNotification(pending, 1)).toContain('Reply *Yes* or *Record*');
+    expect(formatPendingEmailTransactionNotification(pending, 2)).toContain('Swipe reply to edit');
+    expect(formatPendingEmailTransactionNotification(pending, 1)).toContain('Swipe reply to edit');
     expect(formatPendingConfirmationSuccess(pending)).toContain('successfully recorded!');
     expect(formatPendingCancellationMessage(pending)).toContain('Cancelled');
   });
@@ -351,7 +351,7 @@ describe('response dictionaries and localized formatting', () => {
       expect(detailedSingle).toContain('Kopi Kenangan');
       expect(detailedSingle).toContain('BCA Utama');
       expect(detailedSingle).toContain('Food');
-      expect(detailedSingle).toContain('41');
+      expect(detailedSingle).toContain(dictionary.emailPending.formatConfirmationPrompt({ ticketId: 41 }));
 
       const categoryFallback = dictionary.emailPending.formatNotification(baseEmailParams({
         typeLabel: 'Payment',
@@ -376,8 +376,8 @@ describe('response dictionaries and localized formatting', () => {
         counterParty: 'Merchant',
         totalPendingCount: 3,
       }));
-      expect(multiple).toContain('77');
-      expect(multiple).toContain('2');
+      expect(multiple).toContain('Merchant');
+      expect(multiple).toContain(dictionary.emailPending.formatConfirmationPrompt({ ticketId: 77, totalPendingCount: 3 }));
     });
 
     it.each([
@@ -402,7 +402,7 @@ describe('response dictionaries and localized formatting', () => {
         destinationAccountNameHint: undefined,
         totalPendingCount: 2,
       }));
-      expect(fallbackTransfer).toContain('41');
+      expect(fallbackTransfer).toContain(dictionary.emailPending.formatConfirmationPrompt({ ticketId: 41, totalPendingCount: 2 }));
       expect(fallbackTransfer.length).toBeGreaterThan(0);
     });
   describe('Record edit receipts and errors localization', () => {
