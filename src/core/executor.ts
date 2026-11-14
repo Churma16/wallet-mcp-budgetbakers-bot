@@ -16,6 +16,10 @@ import { formatTransactionSummaryMessage } from '../wallet/formatters/transactio
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../lib/logger.js';
 import { historySessionStore, buildHistoryPaginationInlineKeyboard } from './history/index.js';
+import {
+  createTelegramSummaryRangeKeyboard,
+  type SummaryRangeKey,
+} from '../gateway/telegramMenu.js';
 
 export interface FinancialActionExecutionContext {
   readonly processingStartTimestamp?: number;
@@ -152,16 +156,46 @@ export class FinancialActionExecutor {
   ): Promise<void> {
     const processingStartTimestamp = executionContext?.processingStartTimestamp ?? Date.now();
 
+    const hasExplicitDate = Boolean(queryOptions?.datePeriod || queryOptions?.startDate || queryOptions?.endDate);
+    const effectiveQueryOptions: TransactionSummaryQueryOptions = {
+      groupBy: queryOptions?.groupBy && queryOptions.groupBy !== 'none' ? queryOptions.groupBy : 'category',
+      datePeriod: hasExplicitDate ? queryOptions?.datePeriod : 'this_month',
+      ...queryOptions,
+    };
+    if (!queryOptions?.groupBy || queryOptions.groupBy === 'none') {
+      effectiveQueryOptions.groupBy = 'category';
+    }
+    if (!hasExplicitDate) {
+      effectiveQueryOptions.datePeriod = 'this_month';
+    }
+
+    let activeRange: SummaryRangeKey = '1m';
+    if (effectiveQueryOptions.datePeriod === 'this_week') {
+      activeRange = '1w';
+    } else if (effectiveQueryOptions.datePeriod === 'this_month') {
+      activeRange = '1m';
+    } else if (effectiveQueryOptions.datePeriod === 'last_6_months') {
+      activeRange = '6m';
+    } else if (effectiveQueryOptions.datePeriod === 'this_year') {
+      activeRange = '1y';
+    }
+
     applicationLogger.mcp('Computing transaction summary aggregation...');
     const dictionary = getDictionary();
-    const summaryResult = await this.transactionSummaryService.getTransactionSummary(queryOptions, new Date(processingStartTimestamp));
+    const summaryResult = await this.transactionSummaryService.getTransactionSummary(effectiveQueryOptions, new Date(processingStartTimestamp));
 
     const summaryReplyMessage = formatTransactionSummaryMessage(
       summaryResult,
       dictionary.languageCode
     );
 
-    await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, summaryReplyMessage);
+    const replyMarkup = event.channel === 'telegram'
+      ? createTelegramSummaryRangeKeyboard(activeRange, dictionary.languageCode)
+      : undefined;
+
+    await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, summaryReplyMessage, {
+      replyMarkup,
+    });
 
     const executionDurationMilliseconds = Date.now() - processingStartTimestamp;
     const viaRoutingSuffix = executionContext?.routingSource === 'fast-path' ? ' via Fast-path' : '';

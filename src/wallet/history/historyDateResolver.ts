@@ -321,5 +321,26 @@ export function calculateRelativeDateRange(
         selector: 'tahun ini',
       };
     }
+
+    case 'last_6_months': {
+      const todayDateString = formatIsoDateParts(currentYear, currentMonth, currentDay);
+      let targetYear = currentYear;
+      let targetMonth = currentMonth - 6;
+      if (targetMonth < 1) {
+        targetMonth += 12;
+        targetYear -= 1;
+      }
+      const daysInTargetMonth = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate();
+      const targetDay = Math.min(currentDay, daysInTargetMonth);
+      const sixMonthsAgoString = formatIsoDateParts(targetYear, targetMonth, targetDay);
+
+      return {
+        recordDate: resolveLocalCalendarRange(sixMonthsAgoString, todayDateString, timezoneIdentifier),
+        from: sixMonthsAgoString,
+        to: todayDateString,
+        label: '6 Bulan Terakhir',
+        selector: '6 bulan terakhir',
+      };
+    }
   }
 }

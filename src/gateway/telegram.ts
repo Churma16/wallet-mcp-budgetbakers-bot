@@ -41,7 +41,8 @@ import {
 import { handleReconciliationPagination } from '../core/reconciliation/reconciliationCardFormatter.js';
 import { reconciliationSessionStore } from '../core/reconciliation/reconciliationSessionStore.js';
 import { handleHistoryPagination } from '../core/history/historyPaginationFormatter.js';
-import type { TransactionHistoryService } from '../wallet/index.js';
+import { handleSummaryRangeCallback } from '../core/summary/summaryRangeHandler.js';
+import type { TransactionHistoryService, TransactionSummaryService } from '../wallet/index.js';
 import { getActiveLanguage, getDictionary, SupportedLanguage } from '../i18n/index.js';
 
 export type { TelegramSafeguardConfiguration };
@@ -198,6 +199,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
   private readonly startupRetryMaxDelayMs: number;
   private readonly maxMediaDownloadBytes: number;
   private transactionHistoryService?: TransactionHistoryService;
+  private transactionSummaryService?: TransactionSummaryService;
   private readonly mediaGroupDebounceMap = new Map<
     string,
     {
@@ -224,10 +226,15 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     this.startupRetryMaxDelayMs = safeguardConfiguration?.startupRetryMaxDelayMs ?? 15000;
     this.maxMediaDownloadBytes = safeguardConfiguration?.maxMediaDownloadBytes ?? (10 * 1024 * 1024);
     this.transactionHistoryService = safeguardConfiguration?.transactionHistoryService;
+    this.transactionSummaryService = safeguardConfiguration?.transactionSummaryService;
   }
 
   public setTransactionHistoryService(service: TransactionHistoryService): void {
     this.transactionHistoryService = service;
+  }
+
+  public setTransactionSummaryService(service: TransactionSummaryService): void {
+    this.transactionSummaryService = service;
   }
 
   public isAuthorizedSender(senderUserId: string, _senderUsername?: string): boolean {
@@ -935,6 +942,29 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
               : 'Sesi riwayat telah berakhir. Silakan jalankan ulang /riwayat.',
             show_alert: true,
           });
+        }
+      } else if (callbackData.startsWith('sum:range:')) {
+        await ctx.answerCallbackQuery();
+        if (this.transactionSummaryService) {
+          const currentLanguage = getActiveLanguage();
+          const summaryResult = await handleSummaryRangeCallback(
+            callbackData,
+            this.transactionSummaryService,
+            currentLanguage
+          );
+
+          if (summaryResult) {
+            try {
+              await ctx.editMessageText(formatTelegramHtml(summaryResult.text), {
+                parse_mode: 'HTML',
+                reply_markup: summaryResult.replyMarkup,
+              });
+            } catch (editError: unknown) {
+              applicationLogger.fileDetail('telegram', 'Summary range message edit unchanged or ignored', {
+                error: editError instanceof Error ? editError.message : String(editError),
+              });
+            }
+          }
         }
       } else {
         await ctx.answerCallbackQuery();
