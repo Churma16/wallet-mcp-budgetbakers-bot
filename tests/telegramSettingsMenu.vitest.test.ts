@@ -714,5 +714,31 @@ describe('Telegram Settings Menu and Callback Gateway Integration', () => {
         description: 'Saldo semua rekening',
       });
     });
+
+    it('logs a warning without failing when setMyCommands rejects on language switch', async () => {
+      const adapter = new TelegramMessagingAdapter(dummyToken, allowedUserId, vi.fn());
+      const mockSetMyCommands = vi.fn().mockRejectedValue(new Error('Telegram API rate limit'));
+      (adapter as any).botInstance = {
+        api: {
+          setMyCommands: mockSetMyCommands,
+        },
+      };
+
+      await adapter.handleSettingsCallbackQuery(
+        {
+          from: { id: Number(allowedUserId) },
+          callbackQuery: { data: 'settings:set:language:en' },
+          answerCallbackQuery: vi.fn().mockResolvedValue({}),
+          editMessageText: vi.fn().mockResolvedValue({}),
+        } as any,
+        'settings:set:language:en'
+      );
+
+      // Flush microtask queue so the non-blocking Promise.resolve(...).catch(...) runs
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(mockSetMyCommands).toHaveBeenCalledTimes(1);
+    });
   });
 });
