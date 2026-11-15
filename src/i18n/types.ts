@@ -310,6 +310,7 @@ export interface ResponseDictionary {
     zeroSpentSummary(itemsText: string): string;
     dailyAllowance(formattedAmount: string): string;
     overDailyAllowance(formattedOver: string): string;
+    remainingSummary(formattedRemaining: string): string;
     remainingDays(days: number): string;
     timeElapsed(percent: number): string;
     periodLabels: {

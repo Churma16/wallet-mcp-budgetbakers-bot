@@ -4,6 +4,7 @@ import {
   evaluateBudgetPace,
   formatBudgetProgressBar,
   calculateBudgetMetrics,
+  sortBudgetItems,
   groupAndSortBudgets,
   sanitizeCategoryName,
 } from '../src/wallet/formatters/budgetFormatter.js';
@@ -136,18 +137,19 @@ describe('Mobile Budget Status Formatter', () => {
       },
     ];
 
-    it('pulls critical & over-budget categories to the top and groups 0-spent at bottom', () => {
+    it('pulls critical & over-budget categories to the top and groups 0-spent at bottom with uniform individual cards', () => {
       const metrics = sampleBudgets.map(b => calculateBudgetMetrics(b, referenceDate));
-      const { activeGroups, zeroItems } = groupAndSortBudgets(metrics, 'all');
+      const { activeItems, zeroItems } = sortBudgetItems(metrics, 'all');
 
-      // Top groups should be critical / over: Belanja Gadget (over) and Makan (critical 1w)
-      expect(activeGroups[0].hasCritical).toBe(true);
-      expect(activeGroups[1].hasCritical).toBe(true);
+      // Top items should be critical / over: Belanja Gadget (over) and Makan 1w (critical)
+      const topStatuses = [activeItems[0].paceStatus, activeItems[1].paceStatus];
+      expect(topStatuses).toContain('over');
+      expect(topStatuses).toContain('critical');
 
-      // Multi-period Makan (1w and 1m) grouped together
-      const makanGroup = activeGroups.find(g => g.cleanCategoryName.toLowerCase() === 'makan');
-      expect(makanGroup).toBeDefined();
-      expect(makanGroup!.items.length).toBe(2);
+      // Each period remains an individual card preserving pattern consistency (4 active items)
+      expect(activeItems.length).toBe(4);
+      expect(activeItems.some(i => i.budget.name === 'Makan' && i.periodKey === '1w')).toBe(true);
+      expect(activeItems.some(i => i.budget.name === 'Makan (1m)' && i.periodKey === '1m')).toBe(true);
 
       // Zero items
       expect(zeroItems.length).toBe(1);
@@ -156,10 +158,10 @@ describe('Mobile Budget Status Formatter', () => {
 
     it('filters by period correctly when specified', () => {
       const metrics = sampleBudgets.map(b => calculateBudgetMetrics(b, referenceDate));
-      const { activeGroups, zeroItems } = groupAndSortBudgets(metrics, '1w');
+      const { activeItems, zeroItems } = sortBudgetItems(metrics, '1w');
 
-      expect(activeGroups.length).toBe(1);
-      expect(activeGroups[0].cleanCategoryName.toLowerCase()).toBe('makan');
+      expect(activeItems.length).toBe(1);
+      expect(activeItems[0].cleanCategoryName.toLowerCase()).toBe('makan');
       expect(zeroItems.length).toBe(0);
     });
   });
@@ -196,7 +198,7 @@ describe('Mobile Budget Status Formatter', () => {
       },
     ];
 
-    it('formats Mode Ringkas with single visual anchor + single number anchor', () => {
+    it('formats Mode Ringkas with single visual anchor + single number anchor (sisa)', () => {
       const output = formatBudgetStatusMessage(mockBudgets, {
         mode: 'compact',
         period: 'all',
@@ -209,9 +211,10 @@ describe('Mobile Budget Status Formatter', () => {
       expect(output).toContain('🔴 *Liburan Weekend* [1m]');
       expect(output).toContain('▰▰▰▰▰▰▰▰ • ⚠️ *Lebih Rp 500.000*');
 
-      // Safe item with daily allowance
+      // Safe item with remaining amount (sisa)
       expect(output).toContain('🟢 *Makan & Minum* [1m]');
-      expect(output).toContain('/hari');
+      expect(output).toContain('sisa Rp 700.000');
+      expect(output).not.toContain('/hari');
 
       // Zero-spent summarized at bottom
       expect(output).toContain('⚪ _Belum terpakai: Investasi [1m]_');

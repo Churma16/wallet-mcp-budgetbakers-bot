@@ -169,6 +169,9 @@ export const indonesianDictionary: ResponseDictionary = {
     overDailyAllowance(formattedOver: string): string {
       return `⚠️ Lebih ${formattedOver}`;
     },
+    remainingSummary(formattedRemaining: string): string {
+      return `sisa ${formattedRemaining}`;
+    },
     remainingDays(days: number): string {
       return `sisa ${days} hari`;
     },

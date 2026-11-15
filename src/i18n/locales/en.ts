@@ -169,6 +169,9 @@ export const englishDictionary: ResponseDictionary = {
     overDailyAllowance(formattedOver: string): string {
       return `⚠️ Over ${formattedOver}`;
     },
+    remainingSummary(formattedRemaining: string): string {
+      return `${formattedRemaining} left`;
+    },
     remainingDays(days: number): string {
       return `${days} days left`;
     },

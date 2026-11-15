@@ -260,6 +260,7 @@ export function createTelegramBudgetInlineKeyboard(
 
   const keyboard = new InlineKeyboard()
     .text(formatButton('all', dictionary.periodLabels.all), `bgt:${modeKey}:all`)
+    .row()
     .text(formatButton('1w', dictionary.periodLabels['1w']), `bgt:${modeKey}:1w`)
     .text(formatButton('1m', dictionary.periodLabels['1m']), `bgt:${modeKey}:1m`)
     .text(formatButton('1y', dictionary.periodLabels['1y']), `bgt:${modeKey}:1y`)

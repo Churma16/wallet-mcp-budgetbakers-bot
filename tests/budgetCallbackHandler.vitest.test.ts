@@ -48,44 +48,49 @@ describe('Budget Interactive Callback Handler & Keyboard', () => {
   });
 
   describe('createTelegramBudgetInlineKeyboard', () => {
-    it('creates keyboard with period buttons and detail toggle by default', () => {
+    it('creates keyboard with period buttons and detail toggle in 3 rows', () => {
       const keyboard = createTelegramBudgetInlineKeyboard('compact', 'all', 'id');
       const rows = keyboard.inline_keyboard;
 
-      expect(rows.length).toBe(2);
+      expect(rows.length).toBe(3);
 
-      // Row 1: • Semua • | 1 Minggu | 1 Bulan | 1 Tahun
+      // Row 1: • Semua •
+      expect(rows[0].length).toBe(1);
       expect(rows[0][0].text).toBe('• Semua •');
       expect(rows[0][0].callback_data).toBe('bgt:r:all');
 
-      expect(rows[0][1].text).toBe('1 Minggu');
-      expect(rows[0][1].callback_data).toBe('bgt:r:1w');
+      // Row 2: 1 Minggu | 1 Bulan | 1 Tahun (3 buttons)
+      expect(rows[1].length).toBe(3);
+      expect(rows[1][0].text).toBe('1 Minggu');
+      expect(rows[1][0].callback_data).toBe('bgt:r:1w');
 
-      expect(rows[0][2].text).toBe('1 Bulan');
-      expect(rows[0][2].callback_data).toBe('bgt:r:1m');
+      expect(rows[1][1].text).toBe('1 Bulan');
+      expect(rows[1][1].callback_data).toBe('bgt:r:1m');
 
-      expect(rows[0][3].text).toBe('1 Tahun');
-      expect(rows[0][3].callback_data).toBe('bgt:r:1y');
+      expect(rows[1][2].text).toBe('1 Tahun');
+      expect(rows[1][2].callback_data).toBe('bgt:r:1y');
 
-      // Row 2: 🔍 Mode Detail toggle
-      expect(rows[1][0].text).toBe('🔍 Mode Detail');
-      expect(rows[1][0].callback_data).toBe('bgt:d:all');
+      // Row 3: 🔍 Mode Detail toggle
+      expect(rows[2].length).toBe(1);
+      expect(rows[2][0].text).toBe('🔍 Mode Detail');
+      expect(rows[2][0].callback_data).toBe('bgt:d:all');
     });
 
     it('creates keyboard with detail mode active, showing compact toggle and preserving period', () => {
       const keyboard = createTelegramBudgetInlineKeyboard('detail', '1m', 'id');
       const rows = keyboard.inline_keyboard;
 
-      // Row 1 highlights 1 Bulan and preserves 'd' mode
+      // Row 1: Semua
       expect(rows[0][0].text).toBe('Semua');
       expect(rows[0][0].callback_data).toBe('bgt:d:all');
 
-      expect(rows[0][2].text).toBe('• 1 Bulan •');
-      expect(rows[0][2].callback_data).toBe('bgt:d:1m');
+      // Row 2 highlights 1 Bulan and preserves 'd' mode
+      expect(rows[1][1].text).toBe('• 1 Bulan •');
+      expect(rows[1][1].callback_data).toBe('bgt:d:1m');
 
-      // Row 2 shows compact toggle
-      expect(rows[1][0].text).toBe('📱 Mode Ringkas');
-      expect(rows[1][0].callback_data).toBe('bgt:r:1m');
+      // Row 3 shows compact toggle
+      expect(rows[2][0].text).toBe('📱 Mode Ringkas');
+      expect(rows[2][0].callback_data).toBe('bgt:r:1m');
     });
 
     it('renders localized button labels in English', () => {
@@ -93,8 +98,8 @@ describe('Budget Interactive Callback Handler & Keyboard', () => {
       const rows = keyboard.inline_keyboard;
 
       expect(rows[0][0].text).toBe('All');
-      expect(rows[0][1].text).toBe('• 1 Week •');
-      expect(rows[1][0].text).toBe('🔍 Detail View');
+      expect(rows[1][0].text).toBe('• 1 Week •');
+      expect(rows[2][0].text).toBe('🔍 Detail View');
     });
   });
 
@@ -114,10 +119,10 @@ describe('Budget Interactive Callback Handler & Keyboard', () => {
       expect(result!.mode).toBe('detail');
       expect(result!.period).toBe('all');
       expect(result!.text).toContain('_(Detail)_');
-      // Toggle button should now offer Mode Ringkas
+      // Toggle button should now offer Mode Ringkas on row 3
       const rows = result!.replyMarkup.inline_keyboard;
-      expect(rows[1][0].text).toBe('📱 Mode Ringkas');
-      expect(rows[1][0].callback_data).toBe('bgt:r:all');
+      expect(rows[2][0].text).toBe('📱 Mode Ringkas');
+      expect(rows[2][0].callback_data).toBe('bgt:r:all');
     });
 
     it('toggles from detail to compact view while preserving period', async () => {
@@ -127,10 +132,10 @@ describe('Budget Interactive Callback Handler & Keyboard', () => {
       expect(result!.mode).toBe('compact');
       expect(result!.period).toBe('1w');
       expect(result!.text).not.toContain('_(Detail)_');
-      // Toggle button should offer Mode Detail
+      // Toggle button should offer Mode Detail on row 3
       const rows = result!.replyMarkup.inline_keyboard;
-      expect(rows[1][0].text).toBe('🔍 Mode Detail');
-      expect(rows[1][0].callback_data).toBe('bgt:d:1w');
+      expect(rows[2][0].text).toBe('🔍 Mode Detail');
+      expect(rows[2][0].callback_data).toBe('bgt:d:1w');
     });
 
     it('switches period while preserving detail mode', async () => {
@@ -143,8 +148,8 @@ describe('Budget Interactive Callback Handler & Keyboard', () => {
       expect(result!.text).toContain('1 Bulan');
 
       const rows = result!.replyMarkup.inline_keyboard;
-      expect(rows[0][2].text).toBe('• 1 Bulan •');
-      expect(rows[1][0].text).toBe('📱 Mode Ringkas');
+      expect(rows[1][1].text).toBe('• 1 Bulan •');
+      expect(rows[2][0].text).toBe('📱 Mode Ringkas');
     });
 
     it('switches period while preserving compact mode', async () => {
@@ -156,8 +161,8 @@ describe('Budget Interactive Callback Handler & Keyboard', () => {
       expect(result!.text).not.toContain('_(Detail)_');
 
       const rows = result!.replyMarkup.inline_keyboard;
-      expect(rows[0][1].text).toBe('• 1 Minggu •');
-      expect(rows[1][0].text).toBe('🔍 Mode Detail');
+      expect(rows[1][0].text).toBe('• 1 Minggu •');
+      expect(rows[2][0].text).toBe('🔍 Mode Detail');
     });
   });
 });
