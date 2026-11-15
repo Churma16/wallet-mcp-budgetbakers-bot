@@ -276,7 +276,9 @@ export function calculateBudgetMetrics(
   const periodKey = normalizeBudgetPeriod(budget);
   const currency = budget.currency || getDefaultCurrency();
 
-  const rawClean = budget.name.replace(/\s*\(?(?:1w|1m|6m|1y|mingguan|bulanan|tahunan)\)?/gi, '').trim();
+  const rawClean = budget.name
+    .replace(/\s*(?:[\(\[]\s*(?:1w|1m|6m|1y|mingguan|bulanan|tahunan)\s*[\)\]]|\b(?:1w|1m|6m|1y)$)/gi, '')
+    .trim();
   const cleanCategoryName = sanitizeCategoryName(rawClean || budget.name);
 
   return {
@@ -429,9 +431,9 @@ export function formatBudgetStatusMessage(
     // Mode Ringkas: tiap kategori 1 anchor visual + 1 anchor angka (Sisa)
     for (const item of activeItems) {
       const emoji = getBudgetStatusEmoji(item.paceStatus);
-      const sanitizedName = sanitizeCategoryName(item.budget.name);
+      const displayName = sanitizeCategoryName(item.cleanCategoryName || item.budget.name);
 
-      sections.push(`${emoji} *${sanitizedName}* [${item.periodKey}]`);
+      sections.push(`${emoji} *${displayName}* [${item.periodKey}]`);
       if (item.isOverspent) {
         const overAmount = Math.abs(item.remainingAmount);
         const formattedOver = formatCurrencyAmount(overAmount, item.currency, languageCode);
@@ -445,21 +447,21 @@ export function formatBudgetStatusMessage(
 
     // Zero spending items summarized in single line at bottom
     if (zeroItems.length > 0) {
-      const zeroSummaryList = zeroItems.map(item => `${sanitizeCategoryName(item.budget.name)} [${item.periodKey}]`);
+      const zeroSummaryList = zeroItems.map(item => `${sanitizeCategoryName(item.cleanCategoryName || item.budget.name)} [${item.periodKey}]`);
       sections.push(dictionary.budget.zeroSpentSummary(zeroSummaryList.join(', ')));
     }
   } else {
     // Mode Detail: rincian lengkap per kategori
     for (const item of activeItems) {
       const emoji = getBudgetStatusEmoji(item.paceStatus);
-      const sanitizedName = sanitizeCategoryName(item.budget.name);
+      const displayName = sanitizeCategoryName(item.cleanCategoryName || item.budget.name);
       const formattedSpent = formatCurrencyAmount(item.spentAmount, item.currency, languageCode);
       const formattedLimit = formatCurrencyAmount(item.limitAmount, item.currency, languageCode);
       const formattedDaily = formatCurrencyAmount(Math.round(item.dailyAllowance), item.currency, languageCode);
       const spentPercentDisplay = Math.round(item.spentPercent);
       const timeElapsedDisplay = Math.round(item.timeElapsedPercent);
 
-      sections.push(`${emoji} *${sanitizedName}* [${item.periodKey}]`);
+      sections.push(`${emoji} *${displayName}* [${item.periodKey}]`);
       sections.push(`${item.progressBar} ${spentPercentDisplay}% (${dictionary.budget.timeElapsed(timeElapsedDisplay)})`);
       sections.push(`• ${dictionary.budget.spentLabel}: ${formattedSpent} / ${formattedLimit}`);
 
@@ -479,11 +481,11 @@ export function formatBudgetStatusMessage(
     if (zeroItems.length > 0) {
       sections.push(`*${dictionary.budget.zeroSpentSummary('').replace(/[⚪_:]/g, '').trim()}*`);
       for (const item of zeroItems) {
-        const sanitizedName = sanitizeCategoryName(item.budget.name);
+        const displayName = sanitizeCategoryName(item.cleanCategoryName || item.budget.name);
         const formattedLimit = formatCurrencyAmount(item.limitAmount, item.currency, languageCode);
         const formattedDaily = formatCurrencyAmount(Math.round(item.dailyAllowance), item.currency, languageCode);
         sections.push(
-          `• ⚪ *${sanitizedName}* [${item.periodKey}]: Rp 0 / ${formattedLimit} • ${dictionary.budget.remainingDays(item.remainingDays)} • ${dictionary.budget.dailyAllowance(formattedDaily)}`
+          `• ⚪ *${displayName}* [${item.periodKey}]: Rp 0 / ${formattedLimit} • ${dictionary.budget.remainingDays(item.remainingDays)} • ${dictionary.budget.dailyAllowance(formattedDaily)}`
         );
       }
     }

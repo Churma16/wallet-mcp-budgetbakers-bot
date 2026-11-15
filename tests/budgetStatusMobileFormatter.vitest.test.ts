@@ -90,6 +90,51 @@ describe('Mobile Budget Status Formatter', () => {
     it('strips markdown formatting characters from names', () => {
       expect(sanitizeCategoryName('*Makan* _Siang_ ~Cemilan~ `Kopi`')).toBe('Makan Siang Cemilan Kopi');
     });
+
+    it('prevents double period label when raw name already contains (1w) or (1m)', () => {
+      const doubleLabelBudgets: WalletBudgetItem[] = [
+        {
+          id: 'w1',
+          name: 'Makan Nafsu Ngemil (1w)',
+          limitAmount: 500000,
+          spentAmount: 200000,
+          remainingAmount: 300000,
+          periodType: 'WEEK',
+          period: '2026-W37',
+        },
+        {
+          id: 'm1',
+          name: 'Makan Nafsu Ngemil (1m)',
+          limitAmount: 2000000,
+          spentAmount: 800000,
+          remainingAmount: 1200000,
+          periodType: 'MONTH',
+          period: '2026-M09',
+        },
+        {
+          id: 'm2',
+          name: 'Spending Bulanan',
+          limitAmount: 3000000,
+          spentAmount: 1000000,
+          remainingAmount: 2000000,
+          periodType: 'MONTH',
+          period: '2026-M09',
+        },
+      ];
+
+      const output = formatBudgetStatusMessage(doubleLabelBudgets, {
+        mode: 'compact',
+        period: 'all',
+        languageCode: 'id',
+        referenceDate,
+      });
+
+      expect(output).toContain('*Makan Nafsu Ngemil* [1w]');
+      expect(output).not.toContain('*Makan Nafsu Ngemil (1w)* [1w]');
+      expect(output).toContain('*Makan Nafsu Ngemil* [1m]');
+      expect(output).not.toContain('*Makan Nafsu Ngemil (1m)* [1m]');
+      expect(output).toContain('*Spending Bulanan* [1m]');
+    });
   });
 
   describe('groupAndSortBudgets', () => {
