@@ -145,16 +145,54 @@ export const englishDictionary: ResponseDictionary = {
   },
 
   budget: {
-    header(currentTimestamp: string): string {
-      return `📈 *Budget Status* (${currentTimestamp})`;
+    header(currentTimestamp: string, periodLabel?: string, isDetail?: boolean): string {
+      const modeSuffix = isDetail ? ' _(Detail)_' : '';
+      const periodSuffix = periodLabel ? `\n_Period: ${periodLabel}_` : '';
+      return `📈 *Budget Status*${modeSuffix} (${currentTimestamp})${periodSuffix}`;
     },
     emptyState: 'No active budgets found.',
+    emptyPeriodState(periodLabel: string): string {
+      return `No active budgets found for period ${periodLabel}.`;
+    },
     budgetItem(name: string, spent: string, limit: string, remaining: string): string {
       return `• *${name}*: ${spent} / ${limit} _(${remaining} left)_`;
     },
     budgetOverspentItem(name: string, spent: string, limit: string, overspent: string): string {
       return `• *${name}*: ${spent} / ${limit} ⚠️ _(${overspent} over)_`;
     },
+    zeroSpentSummary(itemsText: string): string {
+      return `⚪ _Zero spent: ${itemsText}_`;
+    },
+    zeroSpentTitle: 'Zero spent',
+    dailyAllowance(formattedAmount: string): string {
+      return `${formattedAmount}/day`;
+    },
+    overDailyAllowance(formattedOver: string): string {
+      return `⚠️ Over ${formattedOver}`;
+    },
+    remainingSummary(formattedRemaining: string): string {
+      return `${formattedRemaining} left`;
+    },
+    remainingDays(days: number): string {
+      return `${days} days left`;
+    },
+    timeElapsed(percent: number): string {
+      return `elapsed ${percent}%`;
+    },
+    periodLabels: {
+      all: 'All',
+      '1w': '1 Week',
+      '1m': '1 Month',
+      '6m': '6 Months',
+      '1y': '1 Year',
+    },
+    spentLabel: 'Spent',
+    limitLabel: 'Limit',
+    remainingLabel: 'Left',
+    overLabel: 'Over',
+    dailyAllowanceLabel: 'Daily',
+    buttonDetail: '🔍 Detail View',
+    buttonCompact: '📱 Compact View',
   },
 
   history: {

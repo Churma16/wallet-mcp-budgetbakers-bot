@@ -176,6 +176,8 @@ export interface RawBudgetSpendingCurrent {
   readonly remaining?: number | string;
   readonly overspent?: number | string;
   readonly period?: string;
+  readonly periodStart?: string;
+  readonly periodEnd?: string;
 }
 
 export interface RawBudgetItem {
@@ -198,6 +200,9 @@ export interface RawBudgetItem {
   readonly recurrence?: string;
   readonly frequency?: string;
   readonly periodType?: string;
+  readonly type?: string;
+  readonly startDate?: string;
+  readonly endDate?: string;
 }
 
 export interface RawBudgetsEnvelope {

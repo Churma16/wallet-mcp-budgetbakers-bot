@@ -193,7 +193,9 @@ export async function fetchBudgets(
       currency: item.currencyCode || item.currency || 'IDR',
       isClosed: Boolean(item.closed || item.isClosed),
       period: currentSpending?.period ?? item.period ?? item.recurrence ?? item.frequency,
-      periodType: item.periodType,
+      periodType: item.periodType ?? item.type,
+      periodStart: currentSpending?.periodStart ?? item.startDate,
+      periodEnd: currentSpending?.periodEnd ?? item.endDate,
       isOverspent,
     };
   });

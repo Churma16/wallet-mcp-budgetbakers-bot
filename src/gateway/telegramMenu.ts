@@ -235,3 +235,41 @@ export function createTelegramSummaryRangeKeyboard(
     .text(formatButtonText('1y', '1 Year', '1 Tahun'), 'sum:range:1y');
 }
 
+export type BudgetPeriodFilter = 'all' | '1w' | '1m' | '6m' | '1y';
+export type BudgetViewMode = 'compact' | 'detail';
+
+/**
+ * Creates an inline keyboard for Telegram mobile budget view with period filters
+ * and compact/detail toggle.
+ * Layout:
+ * [ • Semua • ] [ 1 Minggu ] [ 1 Bulan ] [ 1 Tahun ]
+ * [ 🔍 Mode Detail ] (or [ 📱 Mode Ringkas ])
+ * Preserves the active mode across period switches, and vice versa.
+ */
+export function createTelegramBudgetInlineKeyboard(
+  activeMode: BudgetViewMode = 'compact',
+  activePeriod: BudgetPeriodFilter = 'all',
+  languageCode?: SupportedLanguage
+): InlineKeyboard {
+  const dictionary = getDictionary(languageCode).budget;
+  const modeKey = activeMode === 'detail' ? 'd' : 'r';
+
+  const formatButton = (key: BudgetPeriodFilter, label: string): string => {
+    return activePeriod === key ? `• ${label} •` : label;
+  };
+
+  const keyboard = new InlineKeyboard()
+    .text(formatButton('all', dictionary.periodLabels.all), `bgt:${modeKey}:all`)
+    .row()
+    .text(formatButton('1w', dictionary.periodLabels['1w']), `bgt:${modeKey}:1w`)
+    .text(formatButton('1m', dictionary.periodLabels['1m']), `bgt:${modeKey}:1m`)
+    .text(formatButton('1y', dictionary.periodLabels['1y']), `bgt:${modeKey}:1y`)
+    .row();
+
+  const toggleButtonLabel = activeMode === 'compact' ? dictionary.buttonDetail : dictionary.buttonCompact;
+  const targetModeKey = activeMode === 'compact' ? 'd' : 'r';
+  keyboard.text(toggleButtonLabel, `bgt:${targetModeKey}:${activePeriod}`);
+
+  return keyboard;
+}
+

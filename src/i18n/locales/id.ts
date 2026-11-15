@@ -145,16 +145,54 @@ export const indonesianDictionary: ResponseDictionary = {
   },
 
   budget: {
-    header(currentTimestamp: string): string {
-      return `📈 *Status Anggaran* (${currentTimestamp})`;
+    header(currentTimestamp: string, periodLabel?: string, isDetail?: boolean): string {
+      const modeSuffix = isDetail ? ' _(Detail)_' : '';
+      const periodSuffix = periodLabel ? `\n_Periode: ${periodLabel}_` : '';
+      return `📈 *Status Anggaran*${modeSuffix} (${currentTimestamp})${periodSuffix}`;
     },
     emptyState: 'Belum ada anggaran aktif yang ditemukan.',
+    emptyPeriodState(periodLabel: string): string {
+      return `Belum ada anggaran aktif untuk periode ${periodLabel}.`;
+    },
     budgetItem(name: string, spent: string, limit: string, remaining: string): string {
       return `• *${name}*: ${spent} / ${limit} _(sisa ${remaining})_`;
     },
     budgetOverspentItem(name: string, spent: string, limit: string, overspent: string): string {
       return `• *${name}*: ${spent} / ${limit} ⚠️ _(lebih ${overspent})_`;
     },
+    zeroSpentSummary(itemsText: string): string {
+      return `⚪ _Belum terpakai: ${itemsText}_`;
+    },
+    zeroSpentTitle: 'Belum terpakai',
+    dailyAllowance(formattedAmount: string): string {
+      return `${formattedAmount}/hari`;
+    },
+    overDailyAllowance(formattedOver: string): string {
+      return `⚠️ Lebih ${formattedOver}`;
+    },
+    remainingSummary(formattedRemaining: string): string {
+      return `sisa ${formattedRemaining}`;
+    },
+    remainingDays(days: number): string {
+      return `sisa ${days} hari`;
+    },
+    timeElapsed(percent: number): string {
+      return `waktu ${percent}%`;
+    },
+    periodLabels: {
+      all: 'Semua',
+      '1w': '1 Minggu',
+      '1m': '1 Bulan',
+      '6m': '6 Bulan',
+      '1y': '1 Tahun',
+    },
+    spentLabel: 'Terpakai',
+    limitLabel: 'Limit',
+    remainingLabel: 'Sisa',
+    overLabel: 'Lebih',
+    dailyAllowanceLabel: 'Jatah',
+    buttonDetail: '🔍 Mode Detail',
+    buttonCompact: '📱 Mode Ringkas',
   },
 
   history: {

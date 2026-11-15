@@ -140,6 +140,7 @@ export class Application {
             maxMediaDownloadBytes: this.context.config.maxMediaDownloadMb * 1024 * 1024,
             transactionHistoryService: this.context.wallet.history,
             transactionSummaryService: this.context.wallet.summary,
+            walletMcpClient: this.context.wallet.client,
           }
         );
         this.context.gateway.registerAdapter(telegramAdapter);
