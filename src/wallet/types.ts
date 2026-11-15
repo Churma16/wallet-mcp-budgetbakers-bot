@@ -190,6 +190,8 @@ export interface WalletBudgetItem {
   isClosed?: boolean;
   period?: string;
   periodType?: string;
+  periodStart?: string;
+  periodEnd?: string;
   isOverspent?: boolean;
 }
 

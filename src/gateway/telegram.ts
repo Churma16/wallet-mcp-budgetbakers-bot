@@ -42,7 +42,8 @@ import { handleReconciliationPagination } from '../core/reconciliation/reconcili
 import { reconciliationSessionStore } from '../core/reconciliation/reconciliationSessionStore.js';
 import { handleHistoryPagination } from '../core/history/historyPaginationFormatter.js';
 import { handleSummaryRangeCallback } from '../core/summary/summaryRangeHandler.js';
-import type { TransactionHistoryService, TransactionSummaryService } from '../wallet/index.js';
+import { handleBudgetCallback } from '../core/budget/budgetCallbackHandler.js';
+import type { TransactionHistoryService, TransactionSummaryService, WalletMcpClientService } from '../wallet/index.js';
 import { getActiveLanguage, getDictionary, SupportedLanguage } from '../i18n/index.js';
 
 export type { TelegramSafeguardConfiguration };
@@ -200,6 +201,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
   private readonly maxMediaDownloadBytes: number;
   private transactionHistoryService?: TransactionHistoryService;
   private transactionSummaryService?: TransactionSummaryService;
+  private walletMcpClient?: WalletMcpClientService;
   private readonly mediaGroupDebounceMap = new Map<
     string,
     {
@@ -227,6 +229,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
     this.maxMediaDownloadBytes = safeguardConfiguration?.maxMediaDownloadBytes ?? (10 * 1024 * 1024);
     this.transactionHistoryService = safeguardConfiguration?.transactionHistoryService;
     this.transactionSummaryService = safeguardConfiguration?.transactionSummaryService;
+    this.walletMcpClient = safeguardConfiguration?.walletMcpClient;
   }
 
   public setTransactionHistoryService(service: TransactionHistoryService): void {
@@ -235,6 +238,10 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
 
   public setTransactionSummaryService(service: TransactionSummaryService): void {
     this.transactionSummaryService = service;
+  }
+
+  public setWalletMcpClient(client: WalletMcpClientService): void {
+    this.walletMcpClient = client;
   }
 
   public isAuthorizedSender(senderUserId: string, _senderUsername?: string): boolean {
@@ -961,6 +968,29 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
               });
             } catch (editError: unknown) {
               applicationLogger.fileDetail('telegram', 'Summary range message edit unchanged or ignored', {
+                error: editError instanceof Error ? editError.message : String(editError),
+              });
+            }
+          }
+        }
+      } else if (callbackData.startsWith('bgt:')) {
+        await ctx.answerCallbackQuery();
+        if (this.walletMcpClient) {
+          const currentLanguage = getActiveLanguage();
+          const budgetResult = await handleBudgetCallback(
+            callbackData,
+            this.walletMcpClient,
+            currentLanguage
+          );
+
+          if (budgetResult) {
+            try {
+              await ctx.editMessageText(formatTelegramHtml(budgetResult.text), {
+                parse_mode: 'HTML',
+                reply_markup: budgetResult.replyMarkup,
+              });
+            } catch (editError: unknown) {
+              applicationLogger.fileDetail('telegram', 'Budget status message edit unchanged or ignored', {
                 error: editError instanceof Error ? editError.message : String(editError),
               });
             }

@@ -302,10 +302,30 @@ export interface ResponseDictionary {
   };
 
   budget: {
-    header(currentTimestamp: string): string;
+    header(currentTimestamp: string, periodLabel?: string, isDetail?: boolean): string;
     emptyState: string;
+    emptyPeriodState(periodLabel: string): string;
     budgetItem(name: string, spent: string, limit: string, remaining: string): string;
     budgetOverspentItem(name: string, spent: string, limit: string, overspent: string): string;
+    zeroSpentSummary(itemsText: string): string;
+    dailyAllowance(formattedAmount: string): string;
+    overDailyAllowance(formattedOver: string): string;
+    remainingDays(days: number): string;
+    timeElapsed(percent: number): string;
+    periodLabels: {
+      all: string;
+      '1w': string;
+      '1m': string;
+      '6m': string;
+      '1y': string;
+    };
+    spentLabel: string;
+    limitLabel: string;
+    remainingLabel: string;
+    overLabel: string;
+    dailyAllowanceLabel: string;
+    buttonDetail: string;
+    buttonCompact: string;
   };
 
   history: {

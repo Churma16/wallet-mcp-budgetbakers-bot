@@ -12,12 +12,14 @@ import {
   formatBudgetSummaryMessage,
   formatTransactionHistoryMessage,
 } from '../wallet/formatters/humanResponseFormatter.js';
+import { formatBudgetStatusMessage } from '../wallet/formatters/budgetFormatter.js';
 import { formatTransactionSummaryMessage } from '../wallet/formatters/transactionSummaryFormatter.js';
 import { getDictionary } from '../i18n/index.js';
 import { applicationLogger } from '../lib/logger.js';
 import { historySessionStore, buildHistoryPaginationInlineKeyboard } from './history/index.js';
 import {
   createTelegramSummaryRangeKeyboard,
+  createTelegramBudgetInlineKeyboard,
   type SummaryRangeKey,
 } from '../gateway/telegramMenu.js';
 
@@ -89,9 +91,20 @@ export class FinancialActionExecutor {
     applicationLogger.mcp('Fetching current budgets...');
     const budgets = await this.walletMcpClient.fetchBudgets();
     const dictionary = getDictionary();
-    const budgetReplyMessage = formatBudgetSummaryMessage(budgets, dictionary.languageCode);
+    const budgetReplyMessage = formatBudgetStatusMessage(budgets, {
+      mode: 'compact',
+      period: 'all',
+      languageCode: dictionary.languageCode,
+      referenceDate: new Date(processingStartTimestamp),
+    });
 
-    await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, budgetReplyMessage);
+    const replyMarkup = event.channel === 'telegram'
+      ? createTelegramBudgetInlineKeyboard('compact', 'all', dictionary.languageCode)
+      : undefined;
+
+    await this.messagingGateway.sendMessage(event.channel, event.chatIdentifier, budgetReplyMessage, {
+      replyMarkup,
+    });
 
     const executionDurationMilliseconds = Date.now() - processingStartTimestamp;
     const viaRoutingSuffix = executionContext?.routingSource === 'fast-path' ? ' via Fast-path' : '';
