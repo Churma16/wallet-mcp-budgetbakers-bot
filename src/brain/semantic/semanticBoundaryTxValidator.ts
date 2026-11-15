@@ -166,6 +166,14 @@ export function validateAndCloneRecord(
     if (destinationReferenceRejection) {
       return destinationReferenceRejection;
     }
+    const destinationHintReferenceRejection = validateKnownExplicitIdentifier(
+      typeof rawRecord.transfer.accountHint === 'string' ? rawRecord.transfer.accountHint : undefined,
+      knownAccountIds,
+      'account'
+    );
+    if (destinationHintReferenceRejection) {
+      return destinationHintReferenceRejection;
+    }
   }
 
   const accountReferenceRejection = validateKnownExplicitIdentifier(
@@ -177,6 +185,15 @@ export function validateAndCloneRecord(
     return accountReferenceRejection;
   }
 
+  const accountHintReferenceRejection = validateKnownExplicitIdentifier(
+    typeof rawRecord.accountHint === 'string' ? rawRecord.accountHint : undefined,
+    knownAccountIds,
+    'account'
+  );
+  if (accountHintReferenceRejection) {
+    return accountHintReferenceRejection;
+  }
+
   const categoryReferenceRejection = validateKnownExplicitIdentifier(
     typeof rawRecord.categoryId === 'string' ? rawRecord.categoryId : undefined,
     knownCategoryIds,
@@ -184,6 +201,15 @@ export function validateAndCloneRecord(
   );
   if (categoryReferenceRejection) {
     return categoryReferenceRejection;
+  }
+
+  const categoryHintReferenceRejection = validateKnownExplicitIdentifier(
+    typeof rawRecord.categoryHint === 'string' ? rawRecord.categoryHint : undefined,
+    knownCategoryIds,
+    'category'
+  );
+  if (categoryHintReferenceRejection) {
+    return categoryHintReferenceRejection;
   }
 
   const clonedRecord = { ...rawRecord };
