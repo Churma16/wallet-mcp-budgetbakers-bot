@@ -255,7 +255,7 @@ export function calculateBudgetMetrics(
   const timeElapsedPercent = Math.min(100, Math.max(0, (elapsedDays / totalDays) * 100));
 
   const remainingMs = endDate.getTime() - referenceDate.getTime();
-  const remainingDays = remainingMs <= 0 ? 1 : Math.max(1, Math.ceil(remainingMs / msPerDay));
+  const remainingDays = remainingMs <= 0 ? 0 : Math.ceil(remainingMs / msPerDay);
 
   const spentAmount = Number(budget.spentAmount ?? 0);
   const limitAmount = Number(budget.limitAmount ?? 0);
@@ -271,7 +271,7 @@ export function calculateBudgetMetrics(
 
   const spentPercent = limitAmount > 0 ? (spentAmount / limitAmount) * 100 : 0;
   const paceStatus = evaluateBudgetPace(spentAmount, limitAmount, isOverspent, timeElapsedPercent);
-  const dailyAllowance = remainingAmount > 0 ? remainingAmount / remainingDays : 0;
+  const dailyAllowance = remainingAmount > 0 && remainingDays > 0 ? remainingAmount / remainingDays : 0;
   const progressBar = formatBudgetProgressBar(spentAmount, limitAmount, isOverspent);
   const periodKey = normalizeBudgetPeriod(budget);
   const currency = budget.currency || getDefaultCurrency();
@@ -315,13 +315,6 @@ export function getBudgetStatusEmoji(status: BudgetPaceStatus): string {
     case 'zero':
       return '⚪';
   }
-}
-
-export interface BudgetCategoryGroup {
-  readonly cleanCategoryName: string;
-  readonly items: BudgetCalculatedMetrics[];
-  readonly hasCritical: boolean;
-  readonly allZero: boolean;
 }
 
 /**
@@ -375,23 +368,6 @@ export function sortBudgetItems(
   zeroItems.sort((a, b) => a.cleanCategoryName.localeCompare(b.cleanCategoryName));
 
   return { activeItems, zeroItems };
-}
-
-/**
- * Legacy group helper for backward compatibility with existing tests
- */
-export function groupAndSortBudgets(
-  metricsList: BudgetCalculatedMetrics[],
-  periodFilter: BudgetPeriodFilter = 'all'
-): { activeGroups: BudgetCategoryGroup[]; zeroItems: BudgetCalculatedMetrics[] } {
-  const { activeItems, zeroItems } = sortBudgetItems(metricsList, periodFilter);
-  const groups: BudgetCategoryGroup[] = activeItems.map(item => ({
-    cleanCategoryName: item.cleanCategoryName,
-    items: [item],
-    hasCritical: item.paceStatus === 'critical' || item.paceStatus === 'over',
-    allZero: false,
-  }));
-  return { activeGroups: groups, zeroItems };
 }
 
 /**
@@ -479,13 +455,14 @@ export function formatBudgetStatusMessage(
     }
 
     if (zeroItems.length > 0) {
-      sections.push(`*${dictionary.budget.zeroSpentSummary('').replace(/[⚪_:]/g, '').trim()}*`);
+      sections.push(`*${dictionary.budget.zeroSpentTitle}*`);
       for (const item of zeroItems) {
         const displayName = sanitizeCategoryName(item.cleanCategoryName || item.budget.name);
+        const formattedSpentZero = formatCurrencyAmount(0, item.currency, languageCode);
         const formattedLimit = formatCurrencyAmount(item.limitAmount, item.currency, languageCode);
         const formattedDaily = formatCurrencyAmount(Math.round(item.dailyAllowance), item.currency, languageCode);
         sections.push(
-          `• ⚪ *${displayName}* [${item.periodKey}]: Rp 0 / ${formattedLimit} • ${dictionary.budget.remainingDays(item.remainingDays)} • ${dictionary.budget.dailyAllowance(formattedDaily)}`
+          `• ⚪ *${displayName}* [${item.periodKey}]: ${formattedSpentZero} / ${formattedLimit} • ${dictionary.budget.remainingDays(item.remainingDays)} • ${dictionary.budget.dailyAllowance(formattedDaily)}`
         );
       }
     }

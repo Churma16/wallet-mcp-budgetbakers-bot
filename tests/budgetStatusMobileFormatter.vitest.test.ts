@@ -5,7 +5,6 @@ import {
   formatBudgetProgressBar,
   calculateBudgetMetrics,
   sortBudgetItems,
-  groupAndSortBudgets,
   sanitizeCategoryName,
 } from '../src/wallet/formatters/budgetFormatter.js';
 import type { WalletBudgetItem } from '../src/wallet/types.js';
@@ -137,7 +136,7 @@ describe('Mobile Budget Status Formatter', () => {
     });
   });
 
-  describe('groupAndSortBudgets', () => {
+  describe('sortBudgetItems', () => {
     const sampleBudgets: WalletBudgetItem[] = [
       {
         id: '1',
@@ -279,6 +278,62 @@ describe('Mobile Budget Status Formatter', () => {
       expect(output).toContain('• Terpakai: Rp 300.000 / Rp 1.000.000');
       expect(output).toContain('• Sisa: Rp 700.000');
       expect(output).toContain('• Jatah:');
+      // Zero-spent title and item in detail mode
+      expect(output).toContain('*Belum terpakai*');
+      expect(output).toContain('• ⚪ *Investasi* [1m]: Rp 0 / Rp 5.000.000');
+    });
+
+    it('formats zero-spent items with non-IDR currency accurately without hardcoding Rp', () => {
+      const usdBudgets: WalletBudgetItem[] = [
+        {
+          id: 'usd-1',
+          name: 'Server Cloud',
+          limitAmount: 50,
+          spentAmount: 0,
+          remainingAmount: 50,
+          currency: 'USD',
+          periodType: 'MONTH',
+          period: '2026-M09',
+        },
+      ];
+
+      const output = formatBudgetStatusMessage(usdBudgets, {
+        mode: 'detail',
+        period: 'all',
+        languageCode: 'en',
+        referenceDate,
+      });
+
+      expect(output).toContain('*Zero spent*');
+      expect(output).not.toContain('Rp 0');
+      expect(output).toContain('$0.00 / $50.00');
+    });
+
+    it('handles expired budgets correctly with 0 remaining days', () => {
+      const expiredBudget: WalletBudgetItem = {
+        id: 'b-exp',
+        name: 'Weekly Snacks',
+        limitAmount: 200000,
+        spentAmount: 150000,
+        remainingAmount: 50000,
+        periodType: 'WEEK',
+        periodStart: '2026-09-01T00:00:00.000Z',
+        periodEnd: '2026-09-07T23:59:59.999Z', // already ended relative to referenceDate 2026-09-15
+      };
+
+      const metrics = calculateBudgetMetrics(expiredBudget, referenceDate);
+      expect(metrics.remainingDays).toBe(0);
+      expect(metrics.dailyAllowance).toBe(0);
+
+      const output = formatBudgetStatusMessage([expiredBudget], {
+        mode: 'detail',
+        period: 'all',
+        languageCode: 'id',
+        referenceDate,
+      });
+
+      expect(output).toContain('(sisa 0 hari)');
+      expect(output).toContain('Rp 0/hari');
     });
 
     it('handles empty budget list gracefully', () => {

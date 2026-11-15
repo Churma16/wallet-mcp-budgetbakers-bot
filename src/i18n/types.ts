@@ -308,6 +308,7 @@ export interface ResponseDictionary {
     budgetItem(name: string, spent: string, limit: string, remaining: string): string;
     budgetOverspentItem(name: string, spent: string, limit: string, overspent: string): string;
     zeroSpentSummary(itemsText: string): string;
+    zeroSpentTitle: string;
     dailyAllowance(formattedAmount: string): string;
     overDailyAllowance(formattedOver: string): string;
     remainingSummary(formattedRemaining: string): string;

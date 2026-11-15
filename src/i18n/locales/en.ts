@@ -163,6 +163,7 @@ export const englishDictionary: ResponseDictionary = {
     zeroSpentSummary(itemsText: string): string {
       return `⚪ _Zero spent: ${itemsText}_`;
     },
+    zeroSpentTitle: 'Zero spent',
     dailyAllowance(formattedAmount: string): string {
       return `${formattedAmount}/day`;
     },

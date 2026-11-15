@@ -163,6 +163,7 @@ export const indonesianDictionary: ResponseDictionary = {
     zeroSpentSummary(itemsText: string): string {
       return `⚪ _Belum terpakai: ${itemsText}_`;
     },
+    zeroSpentTitle: 'Belum terpakai',
     dailyAllowance(formattedAmount: string): string {
       return `${formattedAmount}/hari`;
     },
