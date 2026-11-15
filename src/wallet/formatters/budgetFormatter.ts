@@ -306,6 +306,7 @@ export function calculateBudgetMetrics(
 export function getBudgetStatusEmoji(status: BudgetPaceStatus): string {
   switch (status) {
     case 'over':
+      return '⛔';
     case 'critical':
       return '🔴';
     case 'warning':
@@ -354,8 +355,13 @@ export function sortBudgetItems(
   };
 
   activeItems.sort((a, b) => {
-    const aCrit = a.paceStatus === 'critical' || a.paceStatus === 'over';
-    const bCrit = b.paceStatus === 'critical' || b.paceStatus === 'over';
+    const aOver = a.paceStatus === 'over';
+    const bOver = b.paceStatus === 'over';
+    if (aOver && !bOver) return -1;
+    if (!aOver && bOver) return 1;
+
+    const aCrit = a.paceStatus === 'critical';
+    const bCrit = b.paceStatus === 'critical';
     if (aCrit && !bCrit) return -1;
     if (!aCrit && bCrit) return 1;
 
@@ -413,7 +419,7 @@ export function formatBudgetStatusMessage(
       if (item.isOverspent) {
         const overAmount = Math.abs(item.remainingAmount);
         const formattedOver = formatCurrencyAmount(overAmount, item.currency, languageCode);
-        sections.push(`${item.progressBar} • ⚠️ *${dictionary.budget.overLabel} ${formattedOver}*`);
+        sections.push(`${item.progressBar} • ${dictionary.budget.overLabel} ${formattedOver}`);
       } else {
         const formattedRemaining = formatCurrencyAmount(Math.max(0, item.remainingAmount), item.currency, languageCode);
         sections.push(`${item.progressBar} • ${dictionary.budget.remainingSummary(formattedRemaining)}`);
@@ -444,7 +450,7 @@ export function formatBudgetStatusMessage(
       if (item.isOverspent) {
         const overAmount = Math.abs(item.remainingAmount);
         const formattedOver = formatCurrencyAmount(overAmount, item.currency, languageCode);
-        sections.push(`• ⚠️ *${dictionary.budget.overLabel}: ${formattedOver}* (${dictionary.budget.remainingDays(item.remainingDays)})`);
+        sections.push(`• ${dictionary.budget.overLabel}: ${formattedOver} (${dictionary.budget.remainingDays(item.remainingDays)})`);
         sections.push(`• ${dictionary.budget.dailyAllowanceLabel}: *${dictionary.budget.dailyAllowance(formatCurrencyAmount(0, item.currency, languageCode))}*`);
       } else {
         const formattedRemaining = formatCurrencyAmount(Math.max(0, item.remainingAmount), item.currency, languageCode);

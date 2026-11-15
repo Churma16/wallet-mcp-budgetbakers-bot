@@ -251,9 +251,10 @@ describe('Mobile Budget Status Formatter', () => {
       });
 
       expect(output).toContain('📈 *Status Anggaran*');
-      // Over budget item sorted to top with ⚠️
-      expect(output).toContain('🔴 *Liburan Weekend* [1m]');
-      expect(output).toContain('▰▰▰▰▰▰▰▰ • ⚠️ *Lebih Rp 500.000*');
+      // Over budget item sorted to top with ⛔ and clean 'Lebih' without redundant warning icon
+      expect(output).toContain('⛔ *Liburan Weekend* [1m]');
+      expect(output).toContain('▰▰▰▰▰▰▰▰ • Lebih Rp 500.000');
+      expect(output).not.toContain('⚠️');
 
       // Safe item with remaining amount (sisa) in unbolded regular text to keep visual anchor clean
       expect(output).toContain('🟢 *Makan & Minum* [1m]');
@@ -274,8 +275,10 @@ describe('Mobile Budget Status Formatter', () => {
       });
 
       expect(output).toContain('📈 *Status Anggaran* _(Detail)_');
+      expect(output).toContain('⛔ *Liburan Weekend* [1m]');
       expect(output).toContain('• Terpakai: Rp 2.500.000 / Rp 2.000.000');
-      expect(output).toContain('• ⚠️ *Lebih: Rp 500.000*');
+      expect(output).toContain('• Lebih: Rp 500.000');
+      expect(output).not.toContain('⚠️');
       expect(output).toContain('• Terpakai: Rp 300.000 / Rp 1.000.000');
       expect(output).toContain('• Sisa: Rp 700.000');
       expect(output).toContain('• Jatah:');
