@@ -255,9 +255,10 @@ describe('Mobile Budget Status Formatter', () => {
       expect(output).toContain('🔴 *Liburan Weekend* [1m]');
       expect(output).toContain('▰▰▰▰▰▰▰▰ • ⚠️ *Lebih Rp 500.000*');
 
-      // Safe item with remaining amount (sisa)
+      // Safe item with remaining amount (sisa) in unbolded regular text to keep visual anchor clean
       expect(output).toContain('🟢 *Makan & Minum* [1m]');
       expect(output).toContain('sisa Rp 700.000');
+      expect(output).not.toContain('*sisa Rp 700.000*');
       expect(output).not.toContain('/hari');
 
       // Zero-spent summarized at bottom

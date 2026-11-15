@@ -416,7 +416,7 @@ export function formatBudgetStatusMessage(
         sections.push(`${item.progressBar} • ⚠️ *${dictionary.budget.overLabel} ${formattedOver}*`);
       } else {
         const formattedRemaining = formatCurrencyAmount(Math.max(0, item.remainingAmount), item.currency, languageCode);
-        sections.push(`${item.progressBar} • *${dictionary.budget.remainingSummary(formattedRemaining)}*`);
+        sections.push(`${item.progressBar} • ${dictionary.budget.remainingSummary(formattedRemaining)}`);
       }
       sections.push('');
     }
