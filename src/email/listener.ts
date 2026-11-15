@@ -85,6 +85,7 @@ export class EmailListenerService {
   private deadLetterQueue: DeadLetterQueueItem[] = [];
   private readonly cacheFilePath: string;
   private readonly maxCachedItemsCount: number = 2000;
+  private readonly scanWaiters: Array<() => void> = [];
 
   constructor(
     private readonly imapHost: string,
@@ -166,7 +167,19 @@ export class EmailListenerService {
         deadLetterQueue: trimmedDlq,
       };
 
-      fs.writeFileSync(this.cacheFilePath, JSON.stringify(cachePayload, null, 2), 'utf8');
+      const tempFilePath = `${this.cacheFilePath}.tmp.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
+      try {
+        fs.writeFileSync(tempFilePath, JSON.stringify(cachePayload, null, 2), 'utf8');
+        fs.renameSync(tempFilePath, this.cacheFilePath);
+      } finally {
+        if (fs.existsSync(tempFilePath)) {
+          try {
+            fs.unlinkSync(tempFilePath);
+          } catch {
+            // Ignore cleanup error
+          }
+        }
+      }
     } catch (saveError) {
       applicationLogger.warn(`Failed to save transaction cache: ${saveError}`);
     }
@@ -200,10 +213,58 @@ export class EmailListenerService {
       return { scannedUids: 0, detectedCount: 0 };
     }
 
-    return this.performMessagesScan({
-      lookbackMinutes,
-      bypassProcessedCache: options?.bypassProcessedCache ?? true,
-    });
+    while (this.isHandlingIncomingMail) {
+      if (!this.imapClient || !this.imapClient.usable) {
+        return { scannedUids: 0, detectedCount: 0 };
+      }
+      await new Promise<void>(resolve => {
+        let timer: NodeJS.Timeout | null = null;
+        const waiter = () => {
+          if (timer) {
+            clearTimeout(timer);
+          }
+          resolve();
+        };
+        timer = setTimeout(() => {
+          const index = this.scanWaiters.indexOf(waiter);
+          if (index !== -1) {
+            this.scanWaiters.splice(index, 1);
+          }
+          resolve();
+        }, 50);
+        timer.unref?.();
+        this.scanWaiters.push(waiter);
+      });
+    }
+
+    if (!this.imapClient || !this.imapClient.usable) {
+      return { scannedUids: 0, detectedCount: 0 };
+    }
+
+    this.isHandlingIncomingMail = true;
+    try {
+      return await this.performMessagesScan({
+        lookbackMinutes,
+        bypassProcessedCache: options?.bypassProcessedCache ?? true,
+      });
+    } finally {
+      this.isHandlingIncomingMail = false;
+      if (this.hasPendingScanRequest && this.imapClient?.usable) {
+        this.hasPendingScanRequest = false;
+        void this.scanRecentMessages();
+      }
+      this.notifyScanWaiters();
+    }
+  }
+
+  /**
+   * Wakes up the next queued scan request waiting on an active scan pass
+   */
+  private notifyScanWaiters(): void {
+    const nextWaiter = this.scanWaiters.shift();
+    if (nextWaiter) {
+      nextWaiter();
+    }
   }
 
   /**
@@ -550,6 +611,7 @@ export class EmailListenerService {
     } finally {
       this.isHandlingIncomingMail = false;
       this.hasPendingScanRequest = false;
+      this.notifyScanWaiters();
     }
   }
 
@@ -617,14 +679,12 @@ export class EmailListenerService {
           const envelopeMessageId = fetchResult.envelope?.messageId;
           if (envelopeMessageId) {
             currentMessageId = envelopeMessageId;
-          }
-          const isEnvelopeAlreadyProcessed = Boolean(
-            envelopeMessageId &&
-              (this.isMessageAlreadyProcessed(envelopeMessageId) || this.isMessageInFlight(envelopeMessageId))
-          );
-
-          if (isEnvelopeAlreadyProcessed && !bypassProcessedCache) {
-            continue;
+            if (this.isMessageInFlight(envelopeMessageId)) {
+              continue;
+            }
+            if (!bypassProcessedCache && this.isMessageAlreadyProcessed(envelopeMessageId)) {
+              continue;
+            }
           }
 
           // Parse raw RFC822 MIME source
@@ -649,7 +709,10 @@ export class EmailListenerService {
           currentDate = emailDate;
 
           // Fast deduplication check: Has this email message ID already been processed or claimed by another scan?
-          if (!bypassProcessedCache && (this.isMessageAlreadyProcessed(rawMessageId) || this.isMessageInFlight(rawMessageId))) {
+          if (this.isMessageInFlight(rawMessageId)) {
+            continue;
+          }
+          if (!bypassProcessedCache && this.isMessageAlreadyProcessed(rawMessageId)) {
             continue;
           }
 
@@ -782,6 +845,10 @@ export class EmailListenerService {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
+    }
+    while (this.scanWaiters.length > 0) {
+      const waiter = this.scanWaiters.shift();
+      waiter?.();
     }
     if (this.imapClient) {
       try {
