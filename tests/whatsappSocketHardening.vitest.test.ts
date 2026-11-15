@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { WhatsappMessagingAdapter } from '../src/gateway/whatsapp.js';
 
 describe('WhatsappMessagingAdapter socket hardening and typing presence', () => {
@@ -205,6 +205,76 @@ describe('WhatsappMessagingAdapter socket hardening and typing presence', () => 
       await adapter.clearTypingPresence('   ');
 
       expect(socketCalled).toBe(false);
+    });
+  });
+
+  describe('socket reconnect cleanup and leak prevention', () => {
+    it('invokes end(undefined) on existing socket instance before clearing socketInstance during cleanup', () => {
+      const removeAllListenersSpy = vi.fn();
+      const endSpy = vi.fn();
+
+      const mockSocket = {
+        ev: {
+          removeAllListeners: removeAllListenersSpy,
+        },
+        end: endSpy,
+      };
+
+      const adapter = new WhatsappMessagingAdapter(
+        dummySessionDirectory,
+        dummyPhoneNumber,
+        dummyCallback
+      );
+
+      (adapter as unknown as { socketInstance: typeof mockSocket }).socketInstance = mockSocket;
+
+      (adapter as unknown as { removeSocketListeners: () => void }).removeSocketListeners();
+
+      expect(removeAllListenersSpy).toHaveBeenCalledWith('creds.update');
+      expect(removeAllListenersSpy).toHaveBeenCalledWith('connection.update');
+      expect(removeAllListenersSpy).toHaveBeenCalledWith('messages.upsert');
+      expect(endSpy).toHaveBeenCalledTimes(1);
+      expect(endSpy).toHaveBeenCalledWith(undefined);
+      expect((adapter as unknown as { socketInstance: unknown }).socketInstance).toBeNull();
+    });
+
+    it('gracefully swallows errors thrown by socket.end without throwing uncaught exceptions', () => {
+      const mockSocket = {
+        ev: {
+          removeAllListeners: vi.fn(),
+        },
+        end: vi.fn(() => {
+          throw new Error('Socket already closed');
+        }),
+      };
+
+      const adapter = new WhatsappMessagingAdapter(
+        dummySessionDirectory,
+        dummyPhoneNumber,
+        dummyCallback
+      );
+
+      (adapter as unknown as { socketInstance: typeof mockSocket }).socketInstance = mockSocket;
+
+      expect(() => {
+        (adapter as unknown as { removeSocketListeners: () => void }).removeSocketListeners();
+      }).not.toThrow();
+
+      expect((adapter as unknown as { socketInstance: unknown }).socketInstance).toBeNull();
+    });
+
+    it('does nothing when no socketInstance exists', () => {
+      const adapter = new WhatsappMessagingAdapter(
+        dummySessionDirectory,
+        dummyPhoneNumber,
+        dummyCallback
+      );
+
+      expect(() => {
+        (adapter as unknown as { removeSocketListeners: () => void }).removeSocketListeners();
+      }).not.toThrow();
+
+      expect((adapter as unknown as { socketInstance: unknown }).socketInstance).toBeNull();
     });
   });
 });

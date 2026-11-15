@@ -812,6 +812,9 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
     this.socketInstance.ev.removeAllListeners('creds.update');
     this.socketInstance.ev.removeAllListeners('connection.update');
     this.socketInstance.ev.removeAllListeners('messages.upsert');
+    try {
+      this.socketInstance.end(undefined);
+    } catch {}
     this.socketInstance = null;
   }
 }
