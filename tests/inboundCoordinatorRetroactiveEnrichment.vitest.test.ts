@@ -4,6 +4,7 @@ import { PendingTransactionService } from '../src/core/pending.js';
 import { TransactionCorrelationEngine } from '../src/email/index.js';
 import { EnrichmentPoolService } from '../src/wallet/records/enrichmentPool.js';
 import { TransactionMessageStore } from '../src/wallet/records/transactionMessageStore.js';
+import type { WalletRecordItem } from '../src/wallet/types.js';
 
 describe('InboundCoordinator Retroactive Record Enrichment', () => {
   let pendingManager: PendingTransactionService;
@@ -629,5 +630,81 @@ describe('InboundCoordinator Retroactive Record Enrichment', () => {
     expect(remainingIds).toContain(unrelatedTicket.ticketId);
     expect(remainingIds).toContain(malformedDateTicket.ticketId);
     expect(remainingIds).not.toContain(matchingPlatformTicket.ticketId);
+  });
+
+  it('handles PAIR_TRANSFER_EXISTING in coordinateInboundTransactionCandidate and preserves adminFee on pending item', async () => {
+    const existingJagoCredit: WalletRecordItem = {
+      id: 'rec-jago-credit-100',
+      accountId: 'acc-jago',
+      accountName: 'Jago Expense',
+      amount: 1000000,
+      currency: 'IDR',
+      recordDate: '2026-11-16T10:00:00.000Z',
+      recordType: 'income',
+      counterParty: 'Transfer Masuk Fathan',
+      source: 'bank_sync',
+    };
+
+    const mockMcpClient = {
+      fetchRecords: vi.fn().mockResolvedValue({ records: [existingJagoCredit] }),
+    };
+
+    const mockMessaging = {
+      broadcastNotification: vi.fn().mockResolvedValue({ telegram: { messageId: 'msg-transfer-1' } }),
+      editBroadcastNotification: vi.fn().mockResolvedValue(false),
+      sendMessage: vi.fn(),
+    };
+
+    await coordinateInboundTransactionCandidate(
+      {
+        parsedData: {
+          isTransaction: true,
+          transactionType: 'TRANSFER',
+          amount: -1002500, // Debit 1jt + 2.500 fee
+          counterParty: 'FATHAN MUHAMMAD FAQIH',
+          accountNameHint: 'Mandiri Debit Card',
+          matchedAccountId: 'acc-mandiri',
+          destinationAccountNameHint: 'Jago Expense',
+          matchedDestinationAccountId: 'acc-jago',
+          note: 'Transfer Mandiri ke Jago',
+          recordDate: '2026-11-16T10:05:00.000Z',
+          explanation: 'BI-FAST transfer',
+        },
+        gateResult: {
+          isCandidate: true,
+          matchedBankRule: { bankKey: 'mandiri', displayName: 'Bank Mandiri (Livin)' } as any,
+          ruleCategory: 'BANK_NOTIFICATION' as any,
+        },
+        sourceType: 'EMAIL',
+        evidenceSourceType: 'EMAIL_BANK',
+        sourceId: 'email-mandiri-transfer-1',
+        sourceDate: new Date('2026-11-16T10:05:00.000Z'),
+        sourceDisplayName: 'Bank Mandiri (Livin)',
+        fallbackNote: 'Transfer Mandiri ke Jago',
+      },
+      {
+        walletCacheService: {
+          ...mockWalletCache,
+          getAccounts: vi.fn().mockReturnValue([
+            { id: 'acc-jago', name: 'Jago Expense', currency: 'IDR' },
+            { id: 'acc-mandiri', name: 'Mandiri Debit Card', currency: 'IDR' },
+          ]),
+        } as any,
+        pendingTransactionManager: pendingManager,
+        messagingGateway: mockMessaging as any,
+        defaultCurrency: 'IDR',
+        correlationService,
+        walletMcpClient: mockMcpClient as any,
+        enrichmentPoolService: enrichmentPool,
+      }
+    );
+
+    const pendingItems = pendingManager.getAllPendingTransactions();
+    const createdTransferTicket = pendingItems.find(p => p.transactionType === 'TRANSFER');
+    expect(createdTransferTicket).toBeDefined();
+    expect(createdTransferTicket?.amount).toBe(-1000000);
+    expect(createdTransferTicket?.adminFee).toBe(2500);
+    expect(createdTransferTicket?.transfer?.pairingMode).toBe('existing');
+    expect(createdTransferTicket?.transfer?.recordId).toBe('rec-jago-credit-100');
   });
 });
