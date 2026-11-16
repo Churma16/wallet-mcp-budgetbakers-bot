@@ -1685,7 +1685,7 @@ describe('TransactionCorrelationEngine', () => {
       const records = buildRecordsForPendingItem(existingPairingTransferWithFee, mockWalletCache);
       expect(records).toHaveLength(2);
       expect(records[0].transfer?.pairingMode).toBe('existing');
-      expect(records[0].amount).toBe(1000000);
+      expect(records[0].amount).toBe(-1000000);
       expect(records[1].amount).toBe(-2500);
       expect(records[1].categoryId).toBe('cat-fin-exp');
       expect(records[1].counterParty).toBe('Bank Mandiri (Livin)'); // Falls back to bankDisplayName, never payee name
@@ -1704,6 +1704,27 @@ describe('TransactionCorrelationEngine', () => {
 
       const notif = formatEnrichedPendingEmailTransactionNotification(transferWithFee, 1, 'Bank Mandiri', 'id');
       expect(notif).toContain('Rp 1.000.000 (+ Admin Rp 2.500)');
+    });
+
+    it('skips unassignable or system_categories when resolving admin fee category', () => {
+      const mockUnassignableCache = {
+        getCategories: () => [
+          { id: 'cat-parent-fin', name: 'Financial expenses', isAssignable: false },
+          { id: 'cat-sys-fin', name: 'Biaya Admin', group: { id: 'system_categories' } },
+        ],
+      } as unknown as WalletCacheService;
+
+      const transferWithFee = createPendingItem({
+        transactionType: 'TRANSFER',
+        matchedAccountId: 'acc-mandiri-debit',
+        matchedDestinationAccountId: 'acc-jago-expense',
+        amount: 1000000,
+        adminFee: 2500,
+      });
+
+      const records = buildRecordsForPendingItem(transferWithFee, mockUnassignableCache);
+      expect(records).toHaveLength(2);
+      expect(records[1].categoryId).toBeUndefined();
     });
   });
 });

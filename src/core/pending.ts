@@ -1136,6 +1136,7 @@ export function buildRecordsForPendingItem(
       let feeCategoryId: string | undefined;
       if (walletCacheService) {
         const cat = walletCacheService.getCategories().find(c => {
+          if (c.isAssignable === false || c.group?.id === 'system_categories') return false;
           const name = c.name.toLowerCase();
           return name === 'financial expenses' || name === 'biaya admin' || name.includes('admin') || name.includes('bank fee');
         });
@@ -1156,7 +1157,7 @@ export function buildRecordsForPendingItem(
       return [
         {
           accountId: item.matchedAccountId,
-          amount: item.amount < 0 ? -Math.abs(item.amount) : Math.abs(item.amount),
+          amount: -Math.abs(item.amount),
           recordDate: item.recordDate,
           note: item.note || `Transfer ke ${item.destinationAccountNameHint || 'akun lain'}`,
           counterParty: item.destinationAccountNameHint || '',
