@@ -20,17 +20,16 @@ export function getTelegramBotCommands(languageCode?: SupportedLanguage): Array<
 }
 
 /**
- * Creates the persistent 6-button (3x2) main menu reply keyboard for Telegram.
+ * Creates the persistent 6-button (3-column x 2-row) main menu reply keyboard for Telegram.
  */
 export function createTelegramMainReplyKeyboard(languageCode?: SupportedLanguage): Keyboard {
   const dictionary = getDictionary(languageCode).telegramMenu;
   return new Keyboard()
     .text(dictionary.buttonBalance)
     .text(dictionary.buttonSummary)
-    .row()
     .text(dictionary.buttonBudget)
-    .text(dictionary.buttonHistory)
     .row()
+    .text(dictionary.buttonHistory)
     .text(dictionary.buttonQueue)
     .text(dictionary.buttonGuide)
     .resized()

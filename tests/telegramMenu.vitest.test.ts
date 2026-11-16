@@ -51,19 +51,17 @@ describe('Telegram Menu and Keyboard Components', () => {
 
       expect(keyboard.is_persistent).toBe(true);
       expect(keyboard.resize_keyboard).toBe(true);
-      expect(keyboard.keyboard.length).toBe(3);
+      expect(keyboard.keyboard.length).toBe(2);
 
-      // Row 1: Saldo & Rekap
+      // Row 1: Saldo, Rekap & Budget
       expect(keyboard.keyboard[0][0].text).toContain('Saldo');
       expect(keyboard.keyboard[0][1].text).toContain('Rekap');
+      expect(keyboard.keyboard[0][2].text).toContain('Budget');
 
-      // Row 2: Budget & Riwayat
-      expect(keyboard.keyboard[1][0].text).toContain('Budget');
-      expect(keyboard.keyboard[1][1].text).toContain('Riwayat');
-
-      // Row 3: Antrean & Panduan
-      expect(keyboard.keyboard[2][0].text).toContain('Antrean');
-      expect(keyboard.keyboard[2][1].text).toContain('Panduan');
+      // Row 2: Riwayat, Antrean & Panduan
+      expect(keyboard.keyboard[1][0].text).toContain('Riwayat');
+      expect(keyboard.keyboard[1][1].text).toContain('Antrean');
+      expect(keyboard.keyboard[1][2].text).toContain('Panduan');
     });
 
     it('creates persistent, resized 6-button (3x2) keyboard in English', () => {
@@ -71,14 +69,17 @@ describe('Telegram Menu and Keyboard Components', () => {
 
       expect(keyboard.is_persistent).toBe(true);
       expect(keyboard.resize_keyboard).toBe(true);
-      expect(keyboard.keyboard.length).toBe(3);
+      expect(keyboard.keyboard.length).toBe(2);
 
+      // Row 1: Balance, Summary & Budget
       expect(keyboard.keyboard[0][0].text).toContain('Balance');
       expect(keyboard.keyboard[0][1].text).toContain('Summary');
-      expect(keyboard.keyboard[1][0].text).toContain('Budget');
-      expect(keyboard.keyboard[1][1].text).toContain('History');
-      expect(keyboard.keyboard[2][0].text).toContain('Queue');
-      expect(keyboard.keyboard[2][1].text).toContain('Guide');
+      expect(keyboard.keyboard[0][2].text).toContain('Budget');
+
+      // Row 2: History, Queue & Guide
+      expect(keyboard.keyboard[1][0].text).toContain('History');
+      expect(keyboard.keyboard[1][1].text).toContain('Queue');
+      expect(keyboard.keyboard[1][2].text).toContain('Guide');
     });
   });
 
