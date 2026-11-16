@@ -73,6 +73,7 @@ export function buildEmailEvaluationPrompt(
     `Candidate Amount (from Gate 1): ${gateResult.candidateAmount ?? 'Unknown'}`,
     `Candidate Reference ID (from Gate 1): ${gateResult.referenceNumber || 'Unknown'}`,
     `Is Top-Up/Transfer Candidate: ${Boolean(gateResult.isTransferCandidate)}`,
+    `Is Direct Debit Gateway Payment: ${Boolean(gateResult.isDirectDebitGateway)}`,
     'Email Body:',
     emailBodyText,
   ].join('\n');
@@ -97,6 +98,58 @@ export function resolveEmailExtractedEntities(
   availableAccountList: WalletAccountItem[],
   availableCategoryList: WalletCategoryItem[]
 ): ExtractedEmailTransactionData {
+  // 0. Direct Debit Gateway guardrail (e.g. Bank Jago via GoPay, BCA OneKlik via OVO/DANA):
+  // Direct debit payments/purchases via e-wallet gateways must be EXPENSE, not internal TRANSFER.
+  const combinedContextText = `${_emailSubject} ${parsedData.note || ''} ${parsedData.explanation || ''}`.toLowerCase();
+  const isDirectDebitGatewayPayment =
+    Boolean(gateResult.isDirectDebitGateway) ||
+    /(?:transaksi|transaction(?:\s+of)?|pembayaran|payment|debit)\s+(?:via|melalui|menggunakan|di)\s+(?:gopay|ovo|dana|shopeepay|linkaja)/i.test(
+      combinedContextText
+    ) ||
+    (/\bvia\s+(?:gopay|ovo|dana|shopeepay|linkaja)\b/i.test(combinedContextText) &&
+      !/(?:top\s*up|transfer\s+ke|isi\s+saldo|kirim\s+uang|pindah\s+kantong)/i.test(combinedContextText));
+
+  if (isDirectDebitGatewayPayment && parsedData.isTransaction) {
+    if (parsedData.transactionType === 'TRANSFER') {
+      parsedData.transactionType = 'EXPENSE';
+      parsedData.destinationAccountNameHint = undefined;
+      parsedData.matchedDestinationAccountId = undefined;
+    }
+
+    if (!parsedData.counterParty || /^(?:gopay|ovo|dana|shopeepay|linkaja)$/i.test(parsedData.counterParty.trim())) {
+      const bankKey = gateResult.matchedBankRule?.bankKey;
+      if (bankKey === 'jago') {
+        parsedData.counterParty = 'Gojek via Jago';
+      } else {
+        parsedData.counterParty = 'Gojek / GoPay';
+      }
+    }
+
+    if (parsedData.note && /^(?:top\s*up|transfer\s+ke)\s+(?:gopay|ovo|dana|shopeepay|linkaja)/i.test(parsedData.note.trim())) {
+      parsedData.note = 'Transaksi via GoPay';
+    }
+
+    // Default category to Transportasi if category is unset or incorrectly marked as Savings (due to mistaken top-up)
+    const isSavingsCategory =
+      parsedData.matchedCategoryName?.toLowerCase() === 'savings' ||
+      parsedData.matchedCategoryId === '5c5c232b-005a-8000-8000-000000000000';
+    if (!parsedData.matchedCategoryId || isSavingsCategory) {
+      const transportCat = availableCategoryList.find(
+        cat =>
+          /^(?:transportasi|transportation|public transport)$/i.test(cat.name) &&
+          cat.isAssignable !== false &&
+          cat.group?.id !== 'system_categories'
+      );
+      if (transportCat) {
+        parsedData.matchedCategoryId = transportCat.id;
+        parsedData.matchedCategoryName = transportCat.name;
+      } else if (isSavingsCategory) {
+        parsedData.matchedCategoryId = undefined;
+        parsedData.matchedCategoryName = undefined;
+      }
+    }
+  }
+
   const isGenericCard = isGenericCardAccountOrMethod(parsedData.accountNameHint);
   if (!parsedData.matchedAccountId && !isGenericCard && (parsedData.accountNameHint || gateResult.matchedBankRule?.accountNameHint)) {
     const targetSearch = (parsedData.accountNameHint || gateResult.matchedBankRule?.accountNameHint || '').toLowerCase();

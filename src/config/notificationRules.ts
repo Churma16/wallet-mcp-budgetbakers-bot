@@ -253,12 +253,30 @@ export function evaluateNotificationThroughGate(
     }
   }
 
+  // 5. Evaluate Direct Debit Gateway vs Transfer/Top-Up indicators
+  const isDirectDebitGateway =
+    /(?:transaksi|transaction(?:\s+of)?|pembayaran|payment|debit)\s+(?:via|melalui|menggunakan|di)\s+(?:gopay|ovo|dana|shopeepay|linkaja)/i.test(
+      fullContent
+    ) || /\bvia\s+(?:gopay|ovo|dana|shopeepay|linkaja)\b/i.test(fullContent);
+
+  const isTransferCandidate =
+    !isDirectDebitGateway &&
+    Boolean(
+      matchedBankRule?.transferOrTopupKeywords?.some(keyword => {
+        const escapedKeyword = keyword.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const wordBoundaryPattern = new RegExp(`(^|[^a-z0-9])${escapedKeyword}([^a-z0-9]|$)`, 'i');
+        return wordBoundaryPattern.test(fullContent);
+      })
+    );
+
   const originalDate = payload.timestamp ? new Date(payload.timestamp) : new Date();
 
   return {
     passed: true,
     matchedBankRule,
     candidateAmount,
+    isTransferCandidate,
+    isDirectDebitGateway,
     originalDate,
   };
 }

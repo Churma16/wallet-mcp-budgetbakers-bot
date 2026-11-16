@@ -16,11 +16,10 @@ export const COMMON_BANK_BLACKLIST_KEYWORDS = [
 
 export const COMMON_TRANSFER_TOPUP_KEYWORDS = [
   'top up',
-  'gopay',
-  'ovo',
-  'dana',
-  'shopeepay',
+  'topup',
+  'isi saldo',
   'transfer',
+  'kirim uang',
 ];
 
 export const BANK_DEBIT_AND_GATEWAY_RULES: BankEmailRuleDefinition[] = [
@@ -119,12 +118,10 @@ export const BANK_DEBIT_AND_GATEWAY_RULES: BankEmailRuleDefinition[] = [
     transferOrTopupKeywords: [
       'top up',
       'topup',
-      'gopay',
-      'ovo',
-      'dana',
-      'shopeepay',
+      'isi saldo',
       'pindah kantong',
       'kirim uang',
+      'transfer',
     ],
   },
 
@@ -646,12 +643,20 @@ export function evaluateEmailThroughGateOne(
     };
   }
 
-  // 7. Check for Transfer or Top-Up Candidate indicators (using word boundary check to avoid false positives like Danamon matching dana)
-  const isTransferCandidate = matchedRule.transferOrTopupKeywords.some(keyword => {
-    const escapedKeyword = keyword.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const wordBoundaryPattern = new RegExp(`(^|[^a-z0-9])${escapedKeyword}([^a-z0-9]|$)`, 'i');
-    return wordBoundaryPattern.test(normalizedCombinedContent);
-  });
+  // 7. Check for Direct Debit Gateway indicators vs. Transfer or Top-Up Candidate indicators
+  // Phrases like "transaction ... via GoPay" or "pembayaran via OVO" represent direct debit expenses, not internal transfers.
+  const isDirectDebitGateway =
+    /(?:transaksi|transaction(?:\s+of)?|pembayaran|payment|debit)\s+(?:via|melalui|menggunakan|di)\s+(?:gopay|ovo|dana|shopeepay|linkaja)/i.test(
+      normalizedCombinedContent
+    ) || /\bvia\s+(?:gopay|ovo|dana|shopeepay|linkaja)\b/i.test(normalizedCombinedContent);
+
+  const isTransferCandidate =
+    !isDirectDebitGateway &&
+    matchedRule.transferOrTopupKeywords.some(keyword => {
+      const escapedKeyword = keyword.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const wordBoundaryPattern = new RegExp(`(^|[^a-z0-9])${escapedKeyword}([^a-z0-9]|$)`, 'i');
+      return wordBoundaryPattern.test(normalizedCombinedContent);
+    });
 
   return {
     passed: true,
@@ -659,6 +664,7 @@ export function evaluateEmailThroughGateOne(
     candidateAmount,
     referenceNumber: extractedReferenceNumber,
     isTransferCandidate,
+    isDirectDebitGateway,
     originalDate: emailDate,
   };
 }

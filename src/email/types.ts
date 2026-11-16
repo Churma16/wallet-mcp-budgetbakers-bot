@@ -36,6 +36,7 @@ export interface GateEvaluationResult {
   candidateAmount?: number;
   referenceNumber?: string;
   isTransferCandidate?: boolean;
+  isDirectDebitGateway?: boolean;
   originalDate?: Date;
   reason?: string;
 }

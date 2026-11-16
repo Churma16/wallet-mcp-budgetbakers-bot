@@ -292,6 +292,34 @@ describe('bank email Gate 1 rules', () => {
       // "Bank Danamon" must not falsely trigger "dana" transfer/topup keyword
       expect(result.isTransferCandidate).toBe(false);
     });
+
+    it('identifies Bank Jago direct debit via GoPay as direct debit and not transfer candidate', () => {
+      const result = evaluateEmail(
+        'Notifikasi Transaksi Jago',
+        'noreply@jago.com',
+        `You've made a transaction of Rp54.000 via GoPay.
+         Need help? Contact Tanya Jago at 1500 746.`
+      );
+
+      expect(result.passed).toBe(true);
+      expect(result.matchedBankRule?.bankKey).toBe('jago');
+      expect(result.candidateAmount).toBe(54000);
+      expect(result.isDirectDebitGateway).toBe(true);
+      expect(result.isTransferCandidate).toBe(false);
+    });
+
+    it('identifies an explicit Bank Jago top-up or transfer to GoPay as transfer candidate', () => {
+      const result = evaluateEmail(
+        'Top up GoPay Berhasil',
+        'noreply@jago.com',
+        `Kamu telah berhasil melakukan transfer / top up ke GoPay sebesar Rp 50.000 dari Kantong Utama.`
+      );
+
+      expect(result.passed).toBe(true);
+      expect(result.matchedBankRule?.bankKey).toBe('jago');
+      expect(result.candidateAmount).toBe(50000);
+      expect(result.isTransferCandidate).toBe(true);
+    });
   });
 
   describe('security, blacklist, and edge-case filtering', () => {

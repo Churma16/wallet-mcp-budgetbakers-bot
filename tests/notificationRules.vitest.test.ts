@@ -60,6 +60,20 @@ describe('notificationRules', () => {
       expect(result.originalDate?.getTime()).toBe(1730335000000);
     });
 
+    it('accepts Bank Jago transaction via GoPay push notification as direct debit without false transfer candidate flag', () => {
+      const result = evaluateNotificationThroughGate({
+        packageName: 'com.jago.digitalbanking',
+        title: 'Jago',
+        text: "You've made a transaction of Rp54.000 via GoPay. Need help? Contact Tanya Jago at 1500 746.",
+        timestamp: 1794798748808,
+      });
+      expect(result.passed).toBe(true);
+      expect(result.matchedBankRule?.displayName).toBe('Bank Jago');
+      expect(result.candidateAmount).toBe(54000);
+      expect(result.isDirectDebitGateway).toBe(true);
+      expect(result.isTransferCandidate).toBe(false);
+    });
+
     it('accepts and correctly maps BCA notification', () => {
       const result = evaluateNotificationThroughGate({
         packageName: 'com.bca',
