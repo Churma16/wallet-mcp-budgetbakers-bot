@@ -818,6 +818,14 @@ export async function coordinateInboundTransactionCandidate(
       resolvedDestinationAccountName
     : resolvedDestinationAccountName;
 
+  const resolvedPendingAmount = matchedTransferRecord && correlationResult.fusedPendingItem?.amount
+    ? (parsedData.amount < 0 ? -Math.abs(correlationResult.fusedPendingItem.amount) : Math.abs(correlationResult.fusedPendingItem.amount))
+    : parsedData.amount;
+
+  const resolvedPendingAdminFee = matchedTransferRecord
+    ? (correlationResult.inferredAdminFee || correlationResult.fusedPendingItem?.adminFee)
+    : undefined;
+
   const pendingItem = pendingTransactionManager.addPendingTransaction({
     sourceType,
     bankDisplayName: gateResult.matchedBankRule?.displayName || sourceDisplayName,
@@ -825,7 +833,8 @@ export async function coordinateInboundTransactionCandidate(
     matchedAccountId: resolvedAccountId,
     destinationAccountNameHint: resolvedTransferDestinationAccountName,
     counterParty: parsedData.counterParty || '',
-    amount: parsedData.amount,
+    amount: resolvedPendingAmount,
+    adminFee: resolvedPendingAdminFee,
     currency: resolvedCurrency,
     transactionType: matchedTransferRecord ? 'TRANSFER' : parsedData.transactionType,
     matchedDestinationAccountId: matchedTransferRecord

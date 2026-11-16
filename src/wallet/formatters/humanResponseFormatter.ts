@@ -908,7 +908,10 @@ export function formatPendingEmailTransactionNotification(
   const typeLabel = isTransfer ? dictionary.labels.transfer : isExpense ? dictionary.labels.expense : dictionary.labels.income;
   const typeIcon = isTransfer ? '🔄' : isExpense ? '💸' : '💰';
   const itemCurrency = pendingItem.currency || getDefaultCurrency();
-  const formattedAmount = formatCurrencyAmount(pendingItem.amount, itemCurrency, languageCode);
+  const formattedBaseAmount = formatCurrencyAmount(pendingItem.amount, itemCurrency, languageCode);
+  const formattedAmount = pendingItem.adminFee && pendingItem.adminFee > 0
+    ? `${formattedBaseAmount} (+ Admin ${formatCurrencyAmount(pendingItem.adminFee, itemCurrency, languageCode)})`
+    : formattedBaseAmount;
   const formattedTime = formatTransactionDate(pendingItem.recordDate, languageCode);
   const sourceIcon = resolveEvidenceSourceIcons(pendingItem.sourceType, pendingItem.evidenceSources);
 
@@ -947,7 +950,10 @@ export function formatEnrichedPendingEmailTransactionNotification(
 
   const isTransfer = pendingItem.transactionType === 'TRANSFER';
   const itemCurrency = pendingItem.currency || getDefaultCurrency();
-  const formattedAmount = formatCurrencyAmount(pendingItem.amount, itemCurrency, languageCode);
+  const formattedBaseAmount = formatCurrencyAmount(pendingItem.amount, itemCurrency, languageCode);
+  const formattedAmount = pendingItem.adminFee && pendingItem.adminFee > 0
+    ? `${formattedBaseAmount} (+ Admin ${formatCurrencyAmount(pendingItem.adminFee, itemCurrency, languageCode)})`
+    : formattedBaseAmount;
   const sourceIcons = resolveEvidenceSourceIcons(pendingItem.sourceType, pendingItem.evidenceSources);
   const formattedTime = formatTransactionDate(pendingItem.recordDate, languageCode);
 

@@ -15,6 +15,7 @@ export interface PendingTransactionItem {
   accountNameHint: string;
   counterParty: string;
   amount: number; // negative for expense, positive for income
+  adminFee?: number;
   transactionType: InternalTransactionTypeValue;
   destinationAccountNameHint?: string;
   matchedAccountId: string;
@@ -1130,15 +1131,40 @@ export function buildRecordsForPendingItem(
   walletCacheService?: WalletCacheService
 ): CreateRecordInputPayload[] {
   if (item.transactionType === 'TRANSFER') {
-    if (item.transfer?.pairingMode === 'existing') {
-      return [{
+    const feeRecords: CreateRecordInputPayload[] = [];
+    if (item.adminFee && item.adminFee > 0) {
+      let feeCategoryId: string | undefined;
+      if (walletCacheService) {
+        const cat = walletCacheService.getCategories().find(c => {
+          if (c.isAssignable === false || c.group?.id === 'system_categories') return false;
+          const name = c.name.toLowerCase();
+          return name === 'financial expenses' || name === 'biaya admin' || name.includes('admin') || name.includes('bank fee');
+        });
+        if (cat) feeCategoryId = cat.id;
+      }
+
+      feeRecords.push({
         accountId: item.matchedAccountId,
-        amount: item.amount < 0 ? -Math.abs(item.amount) : Math.abs(item.amount),
+        amount: -Math.abs(item.adminFee),
         recordDate: item.recordDate,
-        note: item.note || `Transfer ke ${item.destinationAccountNameHint || 'akun lain'}`,
-        counterParty: item.destinationAccountNameHint || '',
-        transfer: item.transfer,
-      }];
+        categoryId: feeCategoryId,
+        note: `Biaya admin transfer ke ${item.destinationAccountNameHint || 'akun lain'}`,
+        counterParty: item.bankDisplayName || 'Biaya Admin Bank',
+      });
+    }
+
+    if (item.transfer?.pairingMode === 'existing') {
+      return [
+        {
+          accountId: item.matchedAccountId,
+          amount: -Math.abs(item.amount),
+          recordDate: item.recordDate,
+          note: item.note || `Transfer ke ${item.destinationAccountNameHint || 'akun lain'}`,
+          counterParty: item.destinationAccountNameHint || '',
+          transfer: item.transfer,
+        },
+        ...feeRecords,
+      ];
     }
 
     if (!item.matchedDestinationAccountId) {
@@ -1147,17 +1173,20 @@ export function buildRecordsForPendingItem(
         'DEFINITIVE_FAILURE'
       );
     }
-    return [{
-      accountId: item.matchedAccountId,
-      amount: -Math.abs(item.amount),
-      recordDate: item.recordDate,
-      note: item.note || `Transfer ke ${item.destinationAccountNameHint || 'akun lain'}`,
-      counterParty: item.destinationAccountNameHint || '',
-      transfer: {
-        pairingMode: 'new',
-        accountId: item.matchedDestinationAccountId,
+    return [
+      {
+        accountId: item.matchedAccountId,
+        amount: -Math.abs(item.amount),
+        recordDate: item.recordDate,
+        note: item.note || `Transfer ke ${item.destinationAccountNameHint || 'akun lain'}`,
+        counterParty: item.destinationAccountNameHint || '',
+        transfer: {
+          pairingMode: 'new',
+          accountId: item.matchedDestinationAccountId,
+        },
       },
-    }];
+      ...feeRecords,
+    ];
   }
 
   const finalAmount = item.transactionType === 'EXPENSE'

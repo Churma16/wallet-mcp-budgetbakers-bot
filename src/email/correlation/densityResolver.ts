@@ -7,6 +7,7 @@ import {
   isGenericCategory,
 } from './predicates.js';
 import { CommercePlatformRegistry } from '../../config/commercePlatforms.js';
+import { KNOWN_INDONESIAN_TRANSFER_FEES } from './types.js';
 
 export interface ResolvedTransactionFields {
   merchant?: string;
@@ -329,11 +330,61 @@ export class InformationDensityResolver {
       candidate.isBankSyncedAccount || evidence.isBankSyncedAccount
     );
 
+    const isEvidTransfer = evidence.transactionType === 'TRANSFER';
+    const isCandTransfer = candidate.transactionType === 'TRANSFER';
+
+    let resolvedTransactionType = candidate.transactionType;
+    let resolvedAccountId = resolved.accountId || candidate.matchedAccountId;
+    let resolvedAccountHint = resolved.accountHint || candidate.accountNameHint;
+    let resolvedDestinationAccountId = candidate.matchedDestinationAccountId;
+    let resolvedDestinationAccountHint = candidate.destinationAccountNameHint;
+    let resolvedAmount = candidate.amount;
+    let resolvedAdminFee = candidate.adminFee;
+
+    if (isEvidTransfer) {
+      resolvedTransactionType = 'TRANSFER';
+      if (candidate.transactionType === 'INCOME') {
+        resolvedAccountId = evidence.accountId || '';
+        resolvedAccountHint = evidence.accountHint || 'Bank';
+        resolvedDestinationAccountId = evidence.destinationAccountId || candidate.matchedAccountId;
+        resolvedDestinationAccountHint = evidence.destinationAccountHint || candidate.accountNameHint;
+      } else {
+        resolvedAccountId = evidence.accountId || candidate.matchedAccountId;
+        resolvedAccountHint = evidence.accountHint || candidate.accountNameHint;
+        resolvedDestinationAccountId = evidence.destinationAccountId || candidate.matchedDestinationAccountId;
+        resolvedDestinationAccountHint = evidence.destinationAccountHint || candidate.destinationAccountNameHint;
+      }
+
+      // Net principal is the minimum positive amount between sending leg and receiving leg
+      resolvedAmount = Math.min(Math.abs(candidate.amount), Math.abs(evidence.amount));
+      const diff = Math.abs(Math.abs(evidence.amount) - Math.abs(candidate.amount));
+      if (diff > 0 && KNOWN_INDONESIAN_TRANSFER_FEES.has(diff)) {
+        resolvedAdminFee = diff;
+      }
+    } else if (isCandTransfer) {
+      resolvedTransactionType = 'TRANSFER';
+      resolvedAccountId = candidate.matchedAccountId;
+      resolvedAccountHint = candidate.accountNameHint;
+      resolvedDestinationAccountId = candidate.matchedDestinationAccountId || (evidence.transactionType === 'INCOME' ? evidence.accountId : undefined);
+      resolvedDestinationAccountHint = candidate.destinationAccountNameHint || (evidence.transactionType === 'INCOME' ? evidence.accountHint : undefined);
+
+      resolvedAmount = Math.min(Math.abs(candidate.amount), Math.abs(evidence.amount));
+      const diff = Math.abs(Math.abs(candidate.amount) - Math.abs(evidence.amount));
+      if (diff > 0 && KNOWN_INDONESIAN_TRANSFER_FEES.has(diff)) {
+        resolvedAdminFee = diff;
+      }
+    }
+
     return {
       ...candidate,
       counterParty: resolved.merchant || candidate.counterParty,
-      matchedAccountId: resolved.accountId || candidate.matchedAccountId,
-      accountNameHint: resolved.accountHint || candidate.accountNameHint,
+      matchedAccountId: resolvedAccountId,
+      accountNameHint: resolvedAccountHint,
+      matchedDestinationAccountId: resolvedDestinationAccountId,
+      destinationAccountNameHint: resolvedDestinationAccountHint,
+      transactionType: resolvedTransactionType,
+      amount: resolvedAmount,
+      adminFee: resolvedAdminFee,
       matchedCategoryId: resolved.categoryId || candidate.matchedCategoryId,
       matchedCategoryName: resolved.categoryName || candidate.matchedCategoryName,
       note: resolved.note || candidate.note,

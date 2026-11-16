@@ -278,7 +278,10 @@ export function formatPendingQueueItemCard(
   const isExpense = pendingItem.amount < 0 || pendingItem.transactionType === 'EXPENSE';
   const typeIcon = isTransfer ? '🔄' : isExpense ? '💸' : '💰';
   const itemCurrency = pendingItem.currency || getDefaultCurrency();
-  const formattedAmount = formatCurrencyAmount(pendingItem.amount, itemCurrency, languageCode);
+  const formattedBaseAmount = formatCurrencyAmount(pendingItem.amount, itemCurrency, languageCode);
+  const formattedAmount = pendingItem.adminFee && pendingItem.adminFee > 0
+    ? `${formattedBaseAmount} (+ Admin ${formatCurrencyAmount(pendingItem.adminFee, itemCurrency, languageCode)})`
+    : formattedBaseAmount;
   const formattedTime = formatTransactionDate(pendingItem.recordDate, languageCode);
   const defaultAccount = dictionary.languageCode === 'en' ? 'Account' : 'Akun';
   const route = pendingItem.destinationAccountNameHint
