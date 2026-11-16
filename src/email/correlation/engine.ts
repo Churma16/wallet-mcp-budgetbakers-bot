@@ -1025,12 +1025,17 @@ export class TransactionCorrelationEngine {
       const matchesDestinationAccount =
         Boolean(evidence.destinationAccountId) && record.accountId === evidence.destinationAccountId;
 
-      if (hasRefMatch || matchesDestinationAccount || timeDiffMs <= tightWindowMs) {
+      const isHighConfidence = hasRefMatch || matchesDestinationAccount || timeDiffMs <= tightWindowMs;
+      const isEligible = isHighConfidence || timeDiffMs <= this.maxWindowMs;
+
+      if (isEligible) {
         return {
-          confidence: 'HIGH',
+          confidence: isHighConfidence ? 'HIGH' : 'MEDIUM',
           matchTarget: { type: 'WALLET_RECORD', record },
           reasons: [
-            `Existing unlinked Wallet record (${record.id}) on account (${record.accountId}) matches transfer counterpart (${record.amount}) within window. Proposing pairingMode: 'existing'.`,
+            isHighConfidence
+              ? `Existing unlinked Wallet record (${record.id}) on account (${record.accountId}) matches transfer counterpart (${record.amount}) within window. Proposing pairingMode: 'existing'.`
+              : `Existing unlinked Wallet record (${record.id}) on account (${record.accountId}) has matching transfer amount and opposite sign, but outside tight window. Proposing pairingMode: 'existing'.`,
           ],
           suggestedAction: 'PAIR_TRANSFER_EXISTING',
           inferredAdminFee: isFeeMatch ? feeDiff : undefined,
@@ -1045,29 +1050,6 @@ export class TransactionCorrelationEngine {
             destinationAccountNameHint: record.accountName,
             amount: recordAmount,
             ...(isFeeMatch ? { adminFee: feeDiff } : {}),
-            transfer: {
-              pairingMode: 'existing',
-              recordId: record.id,
-              accountId: record.accountId,
-            },
-          },
-        };
-      } else if (timeDiffMs <= this.maxWindowMs) {
-        return {
-          confidence: 'MEDIUM',
-          matchTarget: { type: 'WALLET_RECORD', record },
-          reasons: [
-            `Existing unlinked Wallet record (${record.id}) on account (${record.accountId}) has matching transfer amount and opposite sign, but outside tight window. Proposing pairingMode: 'existing'.`,
-          ],
-          suggestedAction: 'PAIR_TRANSFER_EXISTING',
-          proposedTransfer: {
-            pairingMode: 'existing',
-            recordId: record.id,
-            accountId: record.accountId,
-          },
-          fusedPendingItem: {
-            transactionType: INTERNAL_TRANSACTION_TYPES.TRANSFER,
-            matchedDestinationAccountId: record.accountId,
             transfer: {
               pairingMode: 'existing',
               recordId: record.id,

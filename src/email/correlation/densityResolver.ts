@@ -343,10 +343,17 @@ export class InformationDensityResolver {
 
     if (isEvidTransfer) {
       resolvedTransactionType = 'TRANSFER';
-      resolvedAccountId = evidence.accountId || candidate.matchedAccountId;
-      resolvedAccountHint = evidence.accountHint || candidate.accountNameHint;
-      resolvedDestinationAccountId = evidence.destinationAccountId || candidate.matchedAccountId;
-      resolvedDestinationAccountHint = evidence.destinationAccountHint || candidate.accountNameHint;
+      if (candidate.transactionType === 'INCOME') {
+        resolvedAccountId = evidence.accountId || '';
+        resolvedAccountHint = evidence.accountHint || 'Bank';
+        resolvedDestinationAccountId = evidence.destinationAccountId || candidate.matchedAccountId;
+        resolvedDestinationAccountHint = evidence.destinationAccountHint || candidate.accountNameHint;
+      } else {
+        resolvedAccountId = evidence.accountId || candidate.matchedAccountId;
+        resolvedAccountHint = evidence.accountHint || candidate.accountNameHint;
+        resolvedDestinationAccountId = evidence.destinationAccountId || candidate.matchedDestinationAccountId;
+        resolvedDestinationAccountHint = evidence.destinationAccountHint || candidate.destinationAccountNameHint;
+      }
 
       // Net principal is the minimum positive amount between sending leg and receiving leg
       resolvedAmount = Math.min(Math.abs(candidate.amount), Math.abs(evidence.amount));
@@ -356,10 +363,11 @@ export class InformationDensityResolver {
       }
     } else if (isCandTransfer) {
       resolvedTransactionType = 'TRANSFER';
-      if (!resolvedDestinationAccountId && evidence.accountId) {
-        resolvedDestinationAccountId = evidence.accountId;
-        resolvedDestinationAccountHint = evidence.accountHint;
-      }
+      resolvedAccountId = candidate.matchedAccountId;
+      resolvedAccountHint = candidate.accountNameHint;
+      resolvedDestinationAccountId = candidate.matchedDestinationAccountId || (evidence.transactionType === 'INCOME' ? evidence.accountId : undefined);
+      resolvedDestinationAccountHint = candidate.destinationAccountNameHint || (evidence.transactionType === 'INCOME' ? evidence.accountHint : undefined);
+
       resolvedAmount = Math.min(Math.abs(candidate.amount), Math.abs(evidence.amount));
       const diff = Math.abs(Math.abs(candidate.amount) - Math.abs(evidence.amount));
       if (diff > 0 && KNOWN_INDONESIAN_TRANSFER_FEES.has(diff)) {

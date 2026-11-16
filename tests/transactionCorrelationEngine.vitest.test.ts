@@ -1572,6 +1572,139 @@ describe('TransactionCorrelationEngine', () => {
       expect(card).toContain('Rp 1.000.000 (+ Admin Rp 2.500)');
       expect(card).toContain('Mandiri Debit Card ➔ Jago Expense');
     });
+
+    it('correlates reverse arrival order: candidate is pending TRANSFER and evidence is incoming INCOME', () => {
+      const mandiriPendingTransfer = createPendingItem({
+        ticketId: 10,
+        sourceType: 'EMAIL',
+        bankDisplayName: 'Bank Mandiri (Livin)',
+        accountNameHint: 'Mandiri Debit Card',
+        matchedAccountId: 'acc-mandiri-debit',
+        destinationAccountNameHint: 'Jago Expense',
+        matchedDestinationAccountId: 'acc-jago-expense',
+        counterParty: 'FATHAN MUHAMMAD FAQIH',
+        amount: 1002500,
+        currency: 'IDR',
+        transactionType: 'TRANSFER',
+        note: 'Transfer dari Mandiri ke Bank Jago',
+        recordDate: '2026-11-16T03:50:50.000Z',
+        evidenceSources: ['EMAIL_BANK'],
+      });
+
+      const jagoIncomeEvidence = createEvidence({
+        sourceType: 'PUSH_NOTIFICATION',
+        sourceId: 'notif-jago-incoming-123',
+        merchant: 'FATHAN MUHAMMAD FAQI',
+        accountHint: 'Jago Expense',
+        accountId: 'acc-jago-expense',
+        counterParty: 'FATHAN MUHAMMAD FAQI',
+        amount: 1000000,
+        currency: 'IDR',
+        transactionType: 'INCOME',
+        note: 'Penerimaan transfer dari FATHAN MUHAMMAD FAQI',
+        occurredAt: '2026-11-16T03:50:55.000Z',
+      });
+
+      const result = service.correlateEvidence(jagoIncomeEvidence, [mandiriPendingTransfer]);
+
+      expect(result.confidence).toBe('HIGH');
+      expect(result.suggestedAction).toBe('MERGE_PENDING');
+      expect(result.matchTarget.type).toBe('PENDING_TRANSACTION');
+
+      const fused = result.fusedPendingItem;
+      expect(fused).toBeDefined();
+      expect(fused?.transactionType).toBe('TRANSFER');
+      expect(fused?.matchedAccountId).toBe('acc-mandiri-debit');
+      expect(fused?.accountNameHint).toBe('Mandiri Debit Card');
+      expect(fused?.matchedDestinationAccountId).toBe('acc-jago-expense');
+      expect(fused?.destinationAccountNameHint).toBe('Jago Expense');
+      expect(fused?.amount).toBe(1000000);
+      expect(fused?.adminFee).toBe(2500);
+      expect(fused?.evidenceSources).toContain('EMAIL_BANK');
+      expect(fused?.evidenceSources).toContain('PUSH_NOTIFICATION');
+    });
+
+    it('proposes PAIR_TRANSFER_EXISTING with inferredAdminFee when pairing against existing record with fee delta', () => {
+      const existingJagoCreditRecord: WalletRecordItem = {
+        id: 'rec-jago-credit-99',
+        accountId: 'acc-jago-expense',
+        amount: 1000000,
+        currency: 'IDR',
+        recordDate: '2026-11-16T03:50:00.000Z',
+        recordType: 'income',
+        counterParty: 'Transfer Masuk Fathan',
+        source: 'bank_sync',
+      };
+
+      const transferDebitEvidence = createEvidence({
+        transactionType: 'TRANSFER',
+        amount: -1002500, // Debit 1jt + 2.500 fee
+        currency: 'IDR',
+        accountId: 'acc-mandiri-debit',
+        destinationAccountId: 'acc-jago-expense',
+        occurredAt: '2026-11-16T03:52:00.000Z',
+        referenceNumbers: ['TRF-MANDIRI-JAGO-BIFAST'],
+      });
+
+      const result = service.correlateEvidence(transferDebitEvidence, [], [existingJagoCreditRecord]);
+
+      expect(result.suggestedAction).toBe('PAIR_TRANSFER_EXISTING');
+      expect(result.confidence).toBe('HIGH');
+      expect(result.inferredAdminFee).toBe(2500);
+      expect(result.fusedPendingItem?.amount).toBe(1000000);
+      expect(result.fusedPendingItem?.adminFee).toBe(2500);
+      expect(result.proposedTransfer).toEqual({
+        pairingMode: 'existing',
+        recordId: 'rec-jago-credit-99',
+        accountId: 'acc-jago-expense',
+      });
+    });
+
+    it('builds two records when pairingMode is existing and adminFee is present', () => {
+      const mockWalletCache = {
+        getCategories: () => [
+          { id: 'cat-fin-exp', name: 'Financial expenses', isAssignable: true },
+        ],
+      } as unknown as WalletCacheService;
+
+      const existingPairingTransferWithFee: PendingTransactionItem = createPendingItem({
+        ticketId: 4,
+        transactionType: 'TRANSFER',
+        matchedAccountId: 'acc-mandiri-debit',
+        amount: 1000000,
+        adminFee: 2500,
+        destinationAccountNameHint: 'Jago Expense',
+        recordDate: '2026-11-16T03:50:55.000Z',
+        transfer: {
+          pairingMode: 'existing',
+          recordId: 'rec-jago-credit-99',
+          accountId: 'acc-jago-expense',
+        },
+      });
+
+      const records = buildRecordsForPendingItem(existingPairingTransferWithFee, mockWalletCache);
+      expect(records).toHaveLength(2);
+      expect(records[0].transfer?.pairingMode).toBe('existing');
+      expect(records[0].amount).toBe(1000000);
+      expect(records[1].amount).toBe(-2500);
+      expect(records[1].categoryId).toBe('cat-fin-exp');
+      expect(records[1].counterParty).toBe('Bank Mandiri (Livin)'); // Falls back to bankDisplayName, never payee name
+    });
+
+    it('formats enriched pending email transaction notification with admin fee annotation', () => {
+      const transferWithFee: PendingTransactionItem = createPendingItem({
+        ticketId: 5,
+        transactionType: 'TRANSFER',
+        accountNameHint: 'Mandiri Debit Card',
+        destinationAccountNameHint: 'Jago Expense',
+        amount: 1000000,
+        adminFee: 2500,
+        recordDate: '2026-11-16T03:50:55.000Z',
+      });
+
+      const notif = formatEnrichedPendingEmailTransactionNotification(transferWithFee, 1, 'Bank Mandiri', 'id');
+      expect(notif).toContain('Rp 1.000.000 (+ Admin Rp 2.500)');
+    });
   });
 });
 

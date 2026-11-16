@@ -1148,7 +1148,7 @@ export function buildRecordsForPendingItem(
         recordDate: item.recordDate,
         categoryId: feeCategoryId,
         note: `Biaya admin transfer ke ${item.destinationAccountNameHint || 'akun lain'}`,
-        counterParty: item.bankDisplayName || item.counterParty || 'Biaya Admin Bank',
+        counterParty: item.bankDisplayName || 'Biaya Admin Bank',
       });
     }
 
