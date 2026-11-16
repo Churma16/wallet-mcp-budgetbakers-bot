@@ -14,6 +14,7 @@ import {
   DEFAULT_HIGH_CONFIDENCE_THRESHOLD,
   DEFAULT_MEDIUM_CONFIDENCE_THRESHOLD,
   DEFAULT_DISAMBIGUATION_DELTA,
+  KNOWN_INDONESIAN_TRANSFER_FEES,
   ScoringWeights,
   CorrelationDimensionScores,
   Gate1Result,
@@ -215,14 +216,6 @@ export class TransactionCorrelationEngine {
       return { passed: false, reason: `Currency mismatch (${candCurrency} vs ${evidCurrency})` };
     }
 
-    // 2. Amount absolute equality
-    const candAmount = Math.abs(candidate.amount);
-    const evidAmount = Math.abs(evidence.amount);
-    if (candAmount !== evidAmount) {
-      return { passed: false, reason: `Amount mismatch (${candAmount} vs ${evidAmount})` };
-    }
-
-    // 3. Direction / Sign compatibility
     const isPending = 'ticketId' in candidate;
     const isEvidTransfer = evidence.transactionType === INTERNAL_TRANSACTION_TYPES.TRANSFER;
     const isCandTransfer =
@@ -230,16 +223,66 @@ export class TransactionCorrelationEngine {
       ('recordType' in candidate && candidate.recordType === WALLET_MCP_RECORD_TYPES.TRANSFER) ||
       Boolean(candidate.transfer);
 
+    // 2. Amount equality with discrete transfer fee tolerance
+    const candAmount = Math.abs(candidate.amount);
+    const evidAmount = Math.abs(evidence.amount);
+    let isAmountMatch = candAmount === evidAmount;
+    let inferredAdminFee: number | undefined;
+
+    const isTransferContext =
+      isEvidTransfer ||
+      isCandTransfer ||
+      Boolean(evidence.destinationAccountId) ||
+      Boolean(evidence.destinationAccountHint);
+
+    if (!isAmountMatch && isTransferContext) {
+      // The sending (transfer/debit) leg must strictly exceed the receiving (credit) leg by a known fee
+      const feeDiff = isEvidTransfer
+        ? evidAmount - candAmount
+        : isCandTransfer
+          ? candAmount - evidAmount
+          : Math.abs(evidAmount - candAmount);
+
+      if (feeDiff > 0 && KNOWN_INDONESIAN_TRANSFER_FEES.has(feeDiff)) {
+        isAmountMatch = true;
+        inferredAdminFee = feeDiff;
+      }
+    }
+
+    if (!isAmountMatch) {
+      return { passed: false, reason: `Amount mismatch (${candAmount} vs ${evidAmount})` };
+    }
+
+    // 3. Direction / Sign compatibility
     if (isEvidTransfer !== isCandTransfer) {
-      // Transfer vs non-transfer counterpart pairing only applies to existing Wallet records with opposite sign
+      // Case 1: Transfer vs non-transfer counterpart pairing with an existing Wallet record (opposite sign)
       const isRecord = 'id' in candidate && !isPending;
-      const isPotentialCounterpart =
+      const isPotentialRecordCounterpart =
         isRecord &&
         isEvidTransfer &&
         (Boolean(evidence.destinationAccountId) || Boolean(evidence.destinationAccountHint)) &&
         Math.sign(candidate.amount) === -Math.sign(evidence.amount);
 
-      if (!isPotentialCounterpart) {
+      // Case 2: Pending-to-Pending transfer counterpart pairing
+      const candAccountHintLower = (('accountNameHint' in candidate ? candidate.accountNameHint : (candidate as any).accountName) || '').toLowerCase();
+      const evidDestHintLower = (evidence.destinationAccountHint || '').toLowerCase();
+      const isPendingCounterpartEvidTransfer =
+        isPending &&
+        isEvidTransfer &&
+        candidate.transactionType === INTERNAL_TRANSACTION_TYPES.INCOME &&
+        ((Boolean(evidence.destinationAccountId) && candidate.matchedAccountId === evidence.destinationAccountId) ||
+          (Boolean(evidDestHintLower) && (candAccountHintLower.includes(evidDestHintLower) || evidDestHintLower.includes(candAccountHintLower))));
+
+      const candDestHintLower = (('destinationAccountNameHint' in candidate ? candidate.destinationAccountNameHint : '') || '').toLowerCase();
+      const evidAccountHintLower = (evidence.accountHint || '').toLowerCase();
+      const isPendingCounterpartCandTransfer =
+        isPending &&
+        isCandTransfer &&
+        evidence.transactionType === INTERNAL_TRANSACTION_TYPES.INCOME &&
+        ((Boolean('matchedDestinationAccountId' in candidate && candidate.matchedDestinationAccountId) && evidence.accountId === (candidate as any).matchedDestinationAccountId) ||
+          (Boolean(candDestHintLower) && (evidAccountHintLower.includes(candDestHintLower) || candDestHintLower.includes(evidAccountHintLower))));
+
+      if (!isPotentialRecordCounterpart && !isPendingCounterpartEvidTransfer && !isPendingCounterpartCandTransfer) {
         return { passed: false, reason: 'Transaction direction mismatch (transfer vs non-transfer)' };
       }
     } else if (!isEvidTransfer) {
@@ -270,7 +313,7 @@ export class TransactionCorrelationEngine {
       return { passed: false, reason: `Exceeded maximum correlation window (${Math.round(timeDeltaMs / 60000)}m > ${Math.round(this.maxWindowMs / 60000)}m)` };
     }
 
-    return { passed: true };
+    return { passed: true, inferredAdminFee };
   }
 
   /**
@@ -384,9 +427,23 @@ export class TransactionCorrelationEngine {
     const isCandCashOrPlatform = !candAccountId || candAccountId === 'acc-cash' || this.platformRegistry.isPlatformWallet(candAccountHint);
 
     let sAccount = 0.5;
+    const candAccountHintLower = (candAccountHint || '').toLowerCase();
+    const evidDestHintLower = (evidence.destinationAccountHint || '').toLowerCase();
+    const candDestHintLower = (('destinationAccountNameHint' in candidate ? candidate.destinationAccountNameHint : '') || '').toLowerCase();
+    const evidAccountHintLower = (evidence.accountHint || '').toLowerCase();
+
+    const isTransferDestinationMatch =
+      Boolean(evidence.destinationAccountId && candAccountId === evidence.destinationAccountId) ||
+      Boolean('matchedDestinationAccountId' in candidate && candidate.matchedDestinationAccountId && candidate.matchedDestinationAccountId === evidence.accountId) ||
+      Boolean(evidDestHintLower && (candAccountHintLower.includes(evidDestHintLower) || evidDestHintLower.includes(candAccountHintLower))) ||
+      Boolean(candDestHintLower && (evidAccountHintLower.includes(candDestHintLower) || candDestHintLower.includes(evidAccountHintLower)));
+
     if (candAccountId && evidence.accountId && candAccountId === evidence.accountId) {
       sAccount = 1.0;
       reasons.push('Exact account ID match');
+    } else if (isTransferDestinationMatch) {
+      sAccount = 1.0;
+      reasons.push('Transfer destination account match');
     } else if (
       isGenericCardAccountOrMethod(evidence.accountHint) ||
       (evidence.note || '').toLowerCase().includes('visa') ||
@@ -938,9 +995,12 @@ export class TransactionCorrelationEngine {
         continue;
       }
 
-      // Must have opposite sign and same absolute amount
+      // Must have opposite sign and same absolute amount (or valid discrete fee difference)
       const recordAmount = Math.abs(record.amount);
-      if (recordAmount !== evidenceAmount) {
+      const isExactAmount = recordAmount === evidenceAmount;
+      const feeDiff = evidenceAmount - recordAmount;
+      const isFeeMatch = feeDiff > 0 && KNOWN_INDONESIAN_TRANSFER_FEES.has(feeDiff);
+      if (!isExactAmount && !isFeeMatch) {
         continue;
       }
 
@@ -973,6 +1033,7 @@ export class TransactionCorrelationEngine {
             `Existing unlinked Wallet record (${record.id}) on account (${record.accountId}) matches transfer counterpart (${record.amount}) within window. Proposing pairingMode: 'existing'.`,
           ],
           suggestedAction: 'PAIR_TRANSFER_EXISTING',
+          inferredAdminFee: isFeeMatch ? feeDiff : undefined,
           proposedTransfer: {
             pairingMode: 'existing',
             recordId: record.id,
@@ -981,6 +1042,9 @@ export class TransactionCorrelationEngine {
           fusedPendingItem: {
             transactionType: INTERNAL_TRANSACTION_TYPES.TRANSFER,
             matchedDestinationAccountId: record.accountId,
+            destinationAccountNameHint: record.accountName,
+            amount: recordAmount,
+            ...(isFeeMatch ? { adminFee: feeDiff } : {}),
             transfer: {
               pairingMode: 'existing',
               recordId: record.id,

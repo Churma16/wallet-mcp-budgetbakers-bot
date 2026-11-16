@@ -2,17 +2,19 @@ import { describe, expect, it } from 'vitest';
 import {
   TransactionCorrelationEngine,
   InformationDensityResolver,
+  KNOWN_INDONESIAN_TRANSFER_FEES,
   isGenericMerchant,
   isGenericNote,
 } from '../src/email/index.js';
 import { CommercePlatformRegistry } from '../src/config/commercePlatforms.js';
-import { PendingTransactionItem } from '../src/core/pending.js';
+import { PendingTransactionItem, buildRecordsForPendingItem } from '../src/core/pending.js';
 import { TransactionEvidence } from '../src/email/index.js';
-import { WalletRecordItem } from '../src/wallet/index.js';
+import { WalletRecordItem, WalletCacheService } from '../src/wallet/index.js';
 import {
   formatEnrichedPendingEmailTransactionNotification,
   formatCorrelatedWalletRecordNotification,
 } from '../src/wallet/formatters/humanResponseFormatter.js';
+import { formatPendingQueueItemCard } from '../src/wallet/formatters/transactionStatusFormatter.js';
 
 describe('TransactionCorrelationEngine', () => {
   const service = new TransactionCorrelationEngine();
@@ -1340,6 +1342,235 @@ describe('TransactionCorrelationEngine', () => {
       }
       expect(result.fusedPendingItem?.counterParty).toBe('Toko Buku & Stationary Berkah');
       expect(result.fusedPendingItem?.note).toBe('1x Kertas HVS A4 80gsm, 2x Pulpen Gel 0.5');
+    });
+  });
+
+  describe('Indonesian inter-account transfer fee tolerance & pending fusion', () => {
+    it('defines standard Indonesian transfer fee tiers', () => {
+      expect(KNOWN_INDONESIAN_TRANSFER_FEES.has(2500)).toBe(true); // BI-FAST
+      expect(KNOWN_INDONESIAN_TRANSFER_FEES.has(6500)).toBe(true); // Online interbank
+      expect(KNOWN_INDONESIAN_TRANSFER_FEES.has(1000)).toBe(true); // E-wallet
+      expect(KNOWN_INDONESIAN_TRANSFER_FEES.has(1500)).toBe(true);
+      expect(KNOWN_INDONESIAN_TRANSFER_FEES.has(2000)).toBe(true);
+      expect(KNOWN_INDONESIAN_TRANSFER_FEES.has(500)).toBe(true);
+      expect(KNOWN_INDONESIAN_TRANSFER_FEES.has(3000)).toBe(false);
+      expect(KNOWN_INDONESIAN_TRANSFER_FEES.has(10000)).toBe(false);
+    });
+
+    it('passes Gate 1 when evidence transfer has BI-FAST fee (Rp 2.500) exceeding candidate income', () => {
+      const jagoIncomePending = createPendingItem({
+        ticketId: 2,
+        sourceType: 'PUSH_NOTIFICATION',
+        bankDisplayName: 'Bank Jago',
+        accountNameHint: 'Jago Expense',
+        matchedAccountId: 'acc-jago-expense',
+        counterParty: 'FATHAN MUHAMMAD FAQI',
+        amount: 1000000,
+        currency: 'IDR',
+        transactionType: 'INCOME',
+        recordDate: '2026-11-16T03:50:51.000Z',
+      });
+
+      const mandiriTransferEvidence = createEvidence({
+        sourceType: 'EMAIL_BANK',
+        sourceId: 'Transfer dengan BI Fast Berhasil',
+        merchant: 'FATHAN MUHAMMAD FAQIH',
+        accountHint: 'Mandiri Debit Card',
+        accountId: 'acc-mandiri-debit',
+        destinationAccountHint: 'Jago Expense',
+        destinationAccountId: 'acc-jago-expense',
+        amount: 1002500,
+        currency: 'IDR',
+        transactionType: 'TRANSFER',
+        occurredAt: '2026-11-16T03:50:55.000Z', // 4 seconds later
+        referenceNumbers: ['20261116BMRIIDJA010O0225799012'],
+      });
+
+      const gate1 = service.evaluateGate1(jagoIncomePending, mandiriTransferEvidence);
+      expect(gate1.passed).toBe(true);
+      expect(gate1.inferredAdminFee).toBe(2500);
+    });
+
+    it('passes Gate 1 when candidate transfer has Real-time Online fee (Rp 6.500) and evidence is income', () => {
+      const mandiriTransferPending = createPendingItem({
+        ticketId: 3,
+        sourceType: 'EMAIL',
+        bankDisplayName: 'Bank Mandiri (Livin)',
+        accountNameHint: 'Mandiri Debit Card',
+        matchedAccountId: 'acc-mandiri-debit',
+        destinationAccountNameHint: 'Jago Expense',
+        matchedDestinationAccountId: 'acc-jago-expense',
+        amount: 506500,
+        currency: 'IDR',
+        transactionType: 'TRANSFER',
+        recordDate: '2026-11-16T03:50:50.000Z',
+      });
+
+      const jagoIncomeEvidence = createEvidence({
+        sourceType: 'PUSH_NOTIFICATION',
+        accountHint: 'Jago Expense',
+        accountId: 'acc-jago-expense',
+        amount: 500000,
+        currency: 'IDR',
+        transactionType: 'INCOME',
+        occurredAt: '2026-11-16T03:50:55.000Z',
+      });
+
+      const gate1 = service.evaluateGate1(mandiriTransferPending, jagoIncomeEvidence);
+      expect(gate1.passed).toBe(true);
+      expect(gate1.inferredAdminFee).toBe(6500);
+    });
+
+    it('rejects Gate 1 fee tolerance if diff is not in known fee tiers or direction is reversed', () => {
+      const jagoIncomePending = createPendingItem({
+        amount: 1000000,
+        transactionType: 'INCOME',
+        matchedAccountId: 'acc-jago-expense',
+        accountNameHint: 'Jago Expense',
+        recordDate: '2026-11-16T03:50:51.000Z',
+      });
+
+      // Arbitrary difference: 1.003.000 (diff 3.000)
+      const nonStandardEvidence = createEvidence({
+        amount: 1003000,
+        transactionType: 'TRANSFER',
+        destinationAccountId: 'acc-jago-expense',
+        occurredAt: '2026-11-16T03:50:55.000Z',
+      });
+      const gate1NonStandard = service.evaluateGate1(jagoIncomePending, nonStandardEvidence);
+      expect(gate1NonStandard.passed).toBe(false);
+      expect(gate1NonStandard.reason).toContain('Amount mismatch');
+
+      // Reversed direction: sending account transfer is LESS than received amount
+      const reversedEvidence = createEvidence({
+        amount: 997500,
+        transactionType: 'TRANSFER',
+        destinationAccountId: 'acc-jago-expense',
+        occurredAt: '2026-11-16T03:50:55.000Z',
+      });
+      const gate1Reversed = service.evaluateGate1(jagoIncomePending, reversedEvidence);
+      expect(gate1Reversed.passed).toBe(false);
+
+      // Non-transfer regular expense with Rp 2.500 diff: MUST NOT match
+      const coffeeExpense = createPendingItem({
+        amount: -25000,
+        transactionType: 'EXPENSE',
+      });
+      const coffeeReceipt = createEvidence({
+        amount: -27500,
+        transactionType: 'EXPENSE',
+      });
+      const gate1Expense = service.evaluateGate1(coffeeExpense, coffeeReceipt);
+      expect(gate1Expense.passed).toBe(false);
+    });
+
+    it('correlates and fuses pending Jago Income with Mandiri BI-FAST Transfer into single pending transfer ticket', () => {
+      const jagoPendingTicket = createPendingItem({
+        ticketId: 2,
+        sourceType: 'PUSH_NOTIFICATION',
+        bankDisplayName: 'Bank Jago',
+        accountNameHint: 'Jago Expense',
+        matchedAccountId: 'acc-jago-expense',
+        counterParty: 'FATHAN MUHAMMAD FAQI',
+        amount: 1000000,
+        currency: 'IDR',
+        transactionType: 'INCOME',
+        matchedCategoryId: 'cat-income',
+        matchedCategoryName: 'Income',
+        note: 'Penerimaan transfer dari FATHAN MUHAMMAD FAQI',
+        recordDate: '2026-11-16T03:50:51.192Z',
+        evidenceSources: ['PUSH_NOTIFICATION'],
+      });
+
+      const mandiriEvidence = createEvidence({
+        sourceType: 'EMAIL_BANK',
+        sourceId: 'Transfer dengan BI Fast Berhasil',
+        merchant: 'FATHAN MUHAMMAD FAQIH',
+        accountHint: 'Mandiri Debit Card',
+        accountId: 'acc-mandiri-debit',
+        destinationAccountHint: 'Jago Expense',
+        destinationAccountId: 'acc-jago-expense',
+        counterParty: 'FATHAN MUHAMMAD FAQIH',
+        amount: 1002500,
+        currency: 'IDR',
+        transactionType: 'TRANSFER',
+        note: 'Transfer dari Mandiri ke Bank Jago',
+        occurredAt: '2026-11-16T03:50:55.000Z',
+        referenceNumbers: ['20261116BMRIIDJA010O0225799012'],
+      });
+
+      const result = service.correlateEvidence(mandiriEvidence, [jagoPendingTicket]);
+
+      expect(result.confidence).toBe('HIGH');
+      expect(result.suggestedAction).toBe('MERGE_PENDING');
+      expect(result.matchTarget.type).toBe('PENDING_TRANSACTION');
+
+      const fused = result.fusedPendingItem;
+      expect(fused).toBeDefined();
+      expect(fused?.transactionType).toBe('TRANSFER');
+      expect(fused?.matchedAccountId).toBe('acc-mandiri-debit'); // Source is Mandiri
+      expect(fused?.accountNameHint).toBe('Mandiri Debit Card');
+      expect(fused?.matchedDestinationAccountId).toBe('acc-jago-expense'); // Destination is Jago
+      expect(fused?.destinationAccountNameHint).toBe('Jago Expense');
+      expect(fused?.amount).toBe(1000000); // Net transfer principal
+      expect(fused?.adminFee).toBe(2500); // Admin fee isolated
+      expect(fused?.evidenceSources).toContain('PUSH_NOTIFICATION');
+      expect(fused?.evidenceSources).toContain('EMAIL_BANK');
+    });
+
+    it('builds two records (Transfer + Admin Expense) when pending item has adminFee', () => {
+      const mockWalletCache = {
+        getCategories: () => [
+          { id: 'cat-fin-exp', name: 'Financial expenses', isAssignable: true },
+          { id: 'cat-income', name: 'Income', isAssignable: true },
+        ],
+      } as unknown as WalletCacheService;
+
+      const transferWithFee: PendingTransactionItem = createPendingItem({
+        ticketId: 2,
+        transactionType: 'TRANSFER',
+        matchedAccountId: 'acc-mandiri-debit',
+        matchedDestinationAccountId: 'acc-jago-expense',
+        destinationAccountNameHint: 'Jago Expense',
+        amount: 1000000,
+        adminFee: 2500,
+        recordDate: '2026-11-16T03:50:55.000Z',
+        note: 'Transfer dari Mandiri ke Bank Jago',
+      });
+
+      const records = buildRecordsForPendingItem(transferWithFee, mockWalletCache);
+      expect(records).toHaveLength(2);
+
+      // Record 1: Transfer of 1.000.000
+      expect(records[0].accountId).toBe('acc-mandiri-debit');
+      expect(records[0].amount).toBe(-1000000);
+      expect(records[0].transfer).toEqual({
+        pairingMode: 'new',
+        accountId: 'acc-jago-expense',
+      });
+
+      // Record 2: Admin fee expense of 2.500
+      expect(records[1].accountId).toBe('acc-mandiri-debit');
+      expect(records[1].amount).toBe(-2500);
+      expect(records[1].categoryId).toBe('cat-fin-exp');
+      expect(records[1].note).toContain('Biaya admin transfer ke Jago Expense');
+    });
+
+    it('formats pending queue item card with admin fee annotation', () => {
+      const transferWithFee: PendingTransactionItem = createPendingItem({
+        ticketId: 3,
+        transactionType: 'TRANSFER',
+        accountNameHint: 'Mandiri Debit Card',
+        destinationAccountNameHint: 'Jago Expense',
+        amount: 1000000,
+        adminFee: 2500,
+        recordDate: '2026-11-16T03:50:55.000Z',
+        note: 'Transfer dari Mandiri ke Bank Jago',
+      });
+
+      const card = formatPendingQueueItemCard(transferWithFee, 'id');
+      expect(card).toContain('Rp 1.000.000 (+ Admin Rp 2.500)');
+      expect(card).toContain('Mandiri Debit Card ➔ Jago Expense');
     });
   });
 });

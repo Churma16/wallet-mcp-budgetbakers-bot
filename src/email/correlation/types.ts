@@ -25,6 +25,15 @@ export const DEFAULT_HIGH_CONFIDENCE_THRESHOLD = 0.80;
 export const DEFAULT_MEDIUM_CONFIDENCE_THRESHOLD = 0.55;
 export const DEFAULT_DISAMBIGUATION_DELTA = 0.08;
 
+export const KNOWN_INDONESIAN_TRANSFER_FEES = new Set<number>([
+  500,  // DANA / small e-wallet top-up
+  1000, // E-Wallet top-up (GoPay, ShopeePay, OVO)
+  1500, // E-Wallet top-up tier 2
+  2000, // E-Wallet top-up tier 3
+  2500, // BI-FAST standard fee
+  6500, // Real-time Online interbank transfer (Bersama / Prima / Alto)
+]);
+
 export interface CorrelationDimensionScores {
   readonly account: number;
   readonly time: number;
@@ -36,6 +45,7 @@ export interface CorrelationDimensionScores {
 export interface Gate1Result {
   readonly passed: boolean;
   readonly reason?: string;
+  readonly inferredAdminFee?: number;
 }
 
 export interface Gate2Result {
@@ -60,6 +70,7 @@ export interface EngineCorrelationResult {
   readonly fusedPendingItem?: Partial<PendingTransactionItem>;
   readonly clarificationPrompt?: string;
   readonly scores?: CorrelationDimensionScores;
+  readonly inferredAdminFee?: number;
   readonly proposedTransfer?: {
     pairingMode: 'existing';
     recordId: string;
