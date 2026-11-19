@@ -245,4 +245,17 @@ describe('PrometheusMetricsRegistry', () => {
     expect(output).toContain('wallet_transactions_by_account_total{account="BCA Checking"} 2');
     expect(output).toContain('wallet_transactions_by_account_total{account="Jago Pocket"} 1');
   });
+
+  it('safely escapes backslashes and double quotes in Prometheus label values', () => {
+    const registry = PrometheusMetricsRegistry.getInstance();
+    registry.setEnabled(true);
+
+    registry.recordFallbackTransition('gemini-1', 'gemini-2', 'error with "quotes" and \\backslashes\\');
+    registry.recordTransaction('telegram', 'expense', 'synced', 'Food \\ "Snack"', 'BCA \\ "Main"');
+
+    const output = registry.formatPrometheusMetrics();
+    expect(output).toContain('reason="error with \\"quotes\\" and \\\\backslashes\\\\"');
+    expect(output).toContain('category="Food \\\\ \\"Snack\\""');
+    expect(output).toContain('account="BCA \\\\ \\"Main\\""');
+  });
 });

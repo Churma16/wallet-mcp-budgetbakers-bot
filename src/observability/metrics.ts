@@ -12,6 +12,14 @@ export interface HistogramBucketState {
   count: number;
 }
 
+function escapePrometheusLabel(value: string, maxLength: number = 60): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .slice(0, maxLength);
+}
+
 export class PrometheusMetricsRegistry {
   private static instance: PrometheusMetricsRegistry | null = null;
   private enabled: boolean = false;
@@ -117,7 +125,7 @@ export class PrometheusMetricsRegistry {
    */
   public recordFallbackTransition(fromModel: string, toModel: string, reason: string): void {
     if (!this.enabled) return;
-    const cleanReason = reason.replace(/"/g, '\\"').slice(0, 60);
+    const cleanReason = escapePrometheusLabel(reason, 60);
     const key = `from_model="${fromModel}",reason="${cleanReason}",to_model="${toModel}"`;
     this.fallbackTransitionCounters.set(key, (this.fallbackTransitionCounters.get(key) || 0) + 1);
   }
@@ -137,11 +145,11 @@ export class PrometheusMetricsRegistry {
     this.transactionCounters.set(key, (this.transactionCounters.get(key) || 0) + 1);
 
     if (category && status === 'synced') {
-      const safeCat = category.replace(/"/g, '\\"').slice(0, 40);
+      const safeCat = escapePrometheusLabel(category, 40);
       this.categoryCounters.set(safeCat, (this.categoryCounters.get(safeCat) || 0) + 1);
     }
     if (account && status === 'synced') {
-      const safeAcc = account.replace(/"/g, '\\"').slice(0, 40);
+      const safeAcc = escapePrometheusLabel(account, 40);
       this.accountCounters.set(safeAcc, (this.accountCounters.get(safeAcc) || 0) + 1);
     }
   }
