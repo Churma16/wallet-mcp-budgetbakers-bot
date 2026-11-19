@@ -463,15 +463,22 @@ export interface RecordTransactionMetricsOptions {
   status: 'synced' | 'failed' | 'rejected';
   categories?: Array<{ id: string; name: string }>;
   accounts?: Array<{ id: string; name: string }>;
+  cache?: {
+    getCategories?(): Array<{ id: string; name: string }>;
+    getAccounts?(): Array<{ id: string; name: string }>;
+  };
 }
 
 /**
  * Convenient batch helper to record transaction domain metrics from dispatched records.
  */
 export function recordTransactionMetrics(options: RecordTransactionMetricsOptions): void {
-  const { channel, records, status, categories = [], accounts = [] } = options;
+  const { channel, records, status, cache } = options;
   const registry = PrometheusMetricsRegistry.getInstance();
   if (!registry.isEnabled()) return;
+
+  const categories = options.categories ?? cache?.getCategories?.() ?? [];
+  const accounts = options.accounts ?? cache?.getAccounts?.() ?? [];
 
   for (const record of records) {
     const catName = categories.find(c => c.id === record.categoryId)?.name || 'Uncategorized';

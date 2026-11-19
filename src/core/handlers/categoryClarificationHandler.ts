@@ -484,25 +484,21 @@ export class CategoryClarificationHandler {
       return true;
     }
 
+    const recordCategoryDispatchMetrics = (status: 'synced' | 'failed') =>
+      recordTransactionMetrics({
+        channel: event.channel,
+        records: validationResult.sanitizedRecords,
+        status,
+        cache: this.walletCacheService,
+      });
+
     this.dispatchLockedTicketIds.add(claimedDraft.ticketId);
     try {
       await this.recordPreparationService.prepareRecordsForDispatch(validationResult.sanitizedRecords);
       await this.walletMcpClient.createRecords(validationResult.sanitizedRecords);
-      recordTransactionMetrics({
-        channel: event.channel,
-        records: validationResult.sanitizedRecords,
-        status: 'synced',
-        categories: this.walletCacheService.getCategories(),
-        accounts: this.walletCacheService.getAccounts(),
-      });
+      recordCategoryDispatchMetrics('synced');
     } catch (error) {
-      recordTransactionMetrics({
-        channel: event.channel,
-        records: validationResult.sanitizedRecords,
-        status: 'failed',
-        categories: this.walletCacheService.getCategories(),
-        accounts: this.walletCacheService.getAccounts(),
-      });
+      recordCategoryDispatchMetrics('failed');
       if (isWalletMcpDefinitiveFailure(error)) {
         this.pendingTransactionManager.releaseProcessingCategorySelectionDraft(claimedDraft.ticketId);
         await this.messagingGateway.sendMessage(

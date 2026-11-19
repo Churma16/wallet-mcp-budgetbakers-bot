@@ -267,23 +267,20 @@ export class CreateRecordActionHandler implements FinancialActionHandler<typeof 
     });
 
     let creationResponse;
+    const recordBatchOutcome = (status: 'synced' | 'failed') =>
+      recordTransactionMetrics({
+        channel: event.channel,
+        records: validRecordsToCreate,
+        status,
+        categories: cachedCategories,
+        accounts: cachedAccounts,
+      });
+
     try {
       creationResponse = await this.walletMcpClient.createRecords(validRecordsToCreate);
-      recordTransactionMetrics({
-        channel: event.channel,
-        records: validRecordsToCreate,
-        status: 'synced',
-        categories: cachedCategories,
-        accounts: cachedAccounts,
-      });
+      recordBatchOutcome('synced');
     } catch (createError) {
-      recordTransactionMetrics({
-        channel: event.channel,
-        records: validRecordsToCreate,
-        status: 'failed',
-        categories: cachedCategories,
-        accounts: cachedAccounts,
-      });
+      recordBatchOutcome('failed');
       throw createError;
     }
 
