@@ -27,6 +27,7 @@ import {
 import { InboundReferenceRegistry } from './referenceRegistry.js';
 import { RuntimeSettingsManager } from '../config/runtimeSettingsManager.js';
 import { applicationLogger } from '../lib/logger.js';
+import { recordTransactionMetrics } from '../observability/index.js';
 
 export interface InboundTransactionCandidateContext {
   parsedData: ExtractedEmailTransactionData;
@@ -601,7 +602,22 @@ export async function coordinateInboundTransactionCandidate(
 
           const recordsToCreate = buildRecordsForPendingItem(enrichedItem, walletCacheService);
           createResult = await walletMcpClient.createRecords(recordsToCreate);
+          recordTransactionMetrics({
+            channel: 'email',
+            records: recordsToCreate,
+            status: 'synced',
+            categories: walletCacheService.getCategories(),
+            accounts: walletCacheService.getAccounts(),
+          });
         } catch (autoRecordError) {
+          const recordsToCreate = buildRecordsForPendingItem(enrichedItem, walletCacheService);
+          recordTransactionMetrics({
+            channel: 'email',
+            records: recordsToCreate,
+            status: 'failed',
+            categories: walletCacheService.getCategories(),
+            accounts: walletCacheService.getAccounts(),
+          });
           if (isWalletMcpDefinitiveFailure(autoRecordError)) {
             pendingTransactionManager.releaseProcessingTransaction(enrichedItem.ticketId);
             applicationLogger.error(

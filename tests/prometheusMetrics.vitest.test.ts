@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { PrometheusMetricsRegistry } from '../src/observability/metrics.js';
+import { PrometheusMetricsRegistry, recordTransactionMetrics } from '../src/observability/metrics.js';
 import { NotificationWebhookServer } from '../src/gateway/webhook.js';
 import http from 'node:http';
 
@@ -28,7 +28,9 @@ describe('PrometheusMetricsRegistry', () => {
     const output = registry.formatPrometheusMetrics();
     expect(output).toContain('wallet_ai_tokens_total{modality="text",provider="gemini",type="input"} 0');
     expect(output).toContain('wallet_ai_requests_total{provider="gemini",status="success"} 0');
-    expect(output).not.toContain('wallet_transactions_total{');
+    expect(output).toContain('wallet_transactions_total{channel="telegram",status="synced",type="expense"} 0');
+    expect(output).not.toContain('wallet_transactions_total{channel="telegram",status="synced",type="expense"} 1');
+    expect(output).not.toContain('wallet_transactions_by_category_total{');
   });
 
   it('records tokens, requests, durations, cache events, and fallbacks when enabled', () => {
@@ -194,5 +196,53 @@ describe('PrometheusMetricsRegistry', () => {
     } finally {
       await server.stop();
     }
+  });
+
+  it('records batch transactions via recordTransactionMetrics helper', () => {
+    const registry = PrometheusMetricsRegistry.getInstance();
+    registry.setEnabled(true);
+
+    const categories = [
+      { id: 'cat-1', name: 'Food & Beverage' },
+      { id: 'cat-2', name: 'Salary' },
+    ];
+    const accounts = [
+      { id: 'acc-1', name: 'BCA Checking' },
+      { id: 'acc-2', name: 'Jago Pocket' },
+    ];
+
+    recordTransactionMetrics({
+      channel: 'telegram',
+      records: [
+        { amount: -50000, categoryId: 'cat-1', accountId: 'acc-1' },
+        { amount: 5000000, categoryId: 'cat-2', accountId: 'acc-2' },
+        { amount: -100000, transfer: true, accountId: 'acc-1' },
+      ],
+      status: 'synced',
+      categories,
+      accounts,
+    });
+
+    recordTransactionMetrics({
+      channel: 'email',
+      records: [{ amount: -25000, categoryId: 'cat-1', accountId: 'acc-1' }],
+      status: 'failed',
+      categories,
+      accounts,
+    });
+
+    const output = registry.formatPrometheusMetrics();
+
+    // Verify channel, type, status counters
+    expect(output).toContain('wallet_transactions_total{channel="telegram",status="synced",type="expense"} 1');
+    expect(output).toContain('wallet_transactions_total{channel="telegram",status="synced",type="income"} 1');
+    expect(output).toContain('wallet_transactions_total{channel="telegram",status="synced",type="transfer"} 1');
+    expect(output).toContain('wallet_transactions_total{channel="email",status="failed",type="expense"} 1');
+
+    // Verify categories & accounts counters
+    expect(output).toContain('wallet_transactions_by_category_total{category="Food & Beverage"} 1');
+    expect(output).toContain('wallet_transactions_by_category_total{category="Salary"} 1');
+    expect(output).toContain('wallet_transactions_by_account_total{account="BCA Checking"} 2');
+    expect(output).toContain('wallet_transactions_by_account_total{account="Jago Pocket"} 1');
   });
 });

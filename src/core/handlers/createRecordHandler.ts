@@ -25,7 +25,7 @@ import { applicationLogger } from '../../lib/logger.js';
 import { CategoryContextService } from '../../brain/category/categoryContext.js';
 import { FINANCIAL_ACTION_TYPES } from '../../brain/constants.js';
 import { RuntimeSettingsManager } from '../../config/index.js';
-import { PrometheusMetricsRegistry } from '../../observability/index.js';
+import { recordTransactionMetrics } from '../../observability/index.js';
 
 function formatAccountResolutionIssueMessage(issue: AccountResolutionIssue): string {
   const dictionary = getDictionary();
@@ -269,27 +269,21 @@ export class CreateRecordActionHandler implements FinancialActionHandler<typeof 
     let creationResponse;
     try {
       creationResponse = await this.walletMcpClient.createRecords(validRecordsToCreate);
-      for (const record of validRecordsToCreate) {
-        const catName = cachedCategories.find(c => c.id === record.categoryId)?.name || 'Uncategorized';
-        const accName = cachedAccounts.find(a => a.id === record.accountId)?.name || 'Unknown';
-        const recordType = record.transfer ? 'transfer' : record.amount < 0 ? 'expense' : 'income';
-        PrometheusMetricsRegistry.getInstance().recordTransaction(
-          event.channel,
-          recordType,
-          'synced',
-          catName,
-          accName
-        );
-      }
+      recordTransactionMetrics({
+        channel: event.channel,
+        records: validRecordsToCreate,
+        status: 'synced',
+        categories: cachedCategories,
+        accounts: cachedAccounts,
+      });
     } catch (createError) {
-      for (const record of validRecordsToCreate) {
-        const recordType = record.transfer ? 'transfer' : record.amount < 0 ? 'expense' : 'income';
-        PrometheusMetricsRegistry.getInstance().recordTransaction(
-          event.channel,
-          recordType,
-          'failed'
-        );
-      }
+      recordTransactionMetrics({
+        channel: event.channel,
+        records: validRecordsToCreate,
+        status: 'failed',
+        categories: cachedCategories,
+        accounts: cachedAccounts,
+      });
       throw createError;
     }
 

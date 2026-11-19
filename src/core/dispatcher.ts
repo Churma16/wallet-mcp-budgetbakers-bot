@@ -843,7 +843,6 @@ export class MessageDispatcher {
             { onFallback: (evt) => fallbackTracker.handleFallback(evt) }
           );
           extractedIntent = validateReceiptFinancialIntentEnvelope(rawExtractedIntent);
-          PrometheusMetricsRegistry.getInstance().recordReceiptScan('parsed');
         } else {
           applicationLogger.ai(
             `Analyzing message intent with ${this.context.brain.provider.providerName.toUpperCase()}...`
@@ -880,6 +879,10 @@ export class MessageDispatcher {
           getDictionary().errors.receiptExtractionFailed(getHumanReadableTimestamp())
         );
         return;
+      }
+
+      if (event.messageType === 'image') {
+        PrometheusMetricsRegistry.getInstance().recordReceiptScan('parsed');
       }
 
       // 7. Semantic Tool Boundary
@@ -1056,6 +1059,9 @@ export class MessageDispatcher {
         `[${event.channel.toUpperCase()}] Sent guidance / general reply (${processingDurationMs}ms).`
       );
     } catch (processingError: unknown) {
+      if (event.messageType === 'image') {
+        PrometheusMetricsRegistry.getInstance().recordReceiptScan('ocr_failed');
+      }
       const errorName = processingError instanceof Error ? processingError.name : 'UnknownError';
       applicationLogger.error(`Error while processing user message (${errorName}).`);
 

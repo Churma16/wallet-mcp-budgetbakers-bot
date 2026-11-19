@@ -34,6 +34,7 @@ import { getDictionary } from '../../i18n/index.js';
 import { applicationLogger, formatConciseErrorMessage } from '../../lib/logger.js';
 import { CategoryContextService } from '../../brain/category/categoryContext.js';
 import { CategoryClarificationConversationService } from '../../brain/index.js';
+import { recordTransactionMetrics } from '../../observability/index.js';
 
 /**
  * Manages conversational category selection dialogues and clarification states
@@ -487,7 +488,21 @@ export class CategoryClarificationHandler {
     try {
       await this.recordPreparationService.prepareRecordsForDispatch(validationResult.sanitizedRecords);
       await this.walletMcpClient.createRecords(validationResult.sanitizedRecords);
+      recordTransactionMetrics({
+        channel: event.channel,
+        records: validationResult.sanitizedRecords,
+        status: 'synced',
+        categories: this.walletCacheService.getCategories(),
+        accounts: this.walletCacheService.getAccounts(),
+      });
     } catch (error) {
+      recordTransactionMetrics({
+        channel: event.channel,
+        records: validationResult.sanitizedRecords,
+        status: 'failed',
+        categories: this.walletCacheService.getCategories(),
+        accounts: this.walletCacheService.getAccounts(),
+      });
       if (isWalletMcpDefinitiveFailure(error)) {
         this.pendingTransactionManager.releaseProcessingCategorySelectionDraft(claimedDraft.ticketId);
         await this.messagingGateway.sendMessage(

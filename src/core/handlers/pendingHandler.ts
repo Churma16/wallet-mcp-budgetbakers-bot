@@ -41,6 +41,7 @@ import { inferCategoryFromText, FinancialAiProvider } from '../../brain/index.js
 import { isAutoCategoryToken } from '../../wallet/records/recordEditParser.js';
 import type { CategoryContextService } from '../../brain/category/categoryContext.js';
 import { applicationLogger } from '../../lib/logger.js';
+import { recordTransactionMetrics } from '../../observability/index.js';
 
 /**
  * Processes confirmation, rejection, and explicit reconciliation commands
@@ -290,10 +291,17 @@ export class PendingActionHandler {
     const createdRecordIds = new Map<number, string>();
 
     for (const item of itemsToRecord) {
+      const recordsForThisTransaction = buildRecordsForPendingItem(item, this.walletCacheService);
       try {
-        const recordsForThisTransaction = buildRecordsForPendingItem(item, this.walletCacheService);
         applicationLogger.mcp(`[Ticket #${item.ticketId}] Submitting transaction...`);
         const createResult = await this.walletMcpClient.createRecords(recordsForThisTransaction);
+        recordTransactionMetrics({
+          channel: event.channel,
+          records: recordsForThisTransaction,
+          status: 'synced',
+          categories: this.walletCacheService?.getCategories(),
+          accounts: this.walletCacheService?.getAccounts(),
+        });
         const createdId = createResult?.results?.[0]?.id;
         if (createdId) {
           createdRecordIds.set(item.ticketId, createdId);
@@ -359,6 +367,13 @@ export class PendingActionHandler {
         successfulTickets.push(item.ticketId);
         applicationLogger.success(`[Ticket #${item.ticketId}] Successfully recorded.`);
       } catch (error) {
+        recordTransactionMetrics({
+          channel: event.channel,
+          records: recordsForThisTransaction,
+          status: 'failed',
+          categories: this.walletCacheService?.getCategories(),
+          accounts: this.walletCacheService?.getAccounts(),
+        });
         const errorName = error instanceof Error ? error.name : 'UnknownError';
         const dispatchOutcome = isWalletMcpDefinitiveFailure(error)
           ? 'DEFINITIVE_FAILURE'

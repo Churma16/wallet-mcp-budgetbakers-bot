@@ -276,8 +276,12 @@ export class PrometheusMetricsRegistry {
     // 4. AI Resolution Funnel Counters
     lines.push('# HELP wallet_ai_resolutions_total Cumulative AI requests resolved by candidate model layer');
     lines.push('# TYPE wallet_ai_resolutions_total counter');
-    for (const [labels, value] of this.resolutionCounters.entries()) {
-      lines.push(`wallet_ai_resolutions_total{${labels}} ${value}`);
+    if (this.resolutionCounters.size === 0) {
+      lines.push('wallet_ai_resolutions_total{fallback_depth="0",resolved_by="primary"} 0');
+    } else {
+      for (const [labels, value] of this.resolutionCounters.entries()) {
+        lines.push(`wallet_ai_resolutions_total{${labels}} ${value}`);
+      }
     }
     lines.push('');
 
@@ -300,8 +304,12 @@ export class PrometheusMetricsRegistry {
     // 7. Bookkeeping Transactions
     lines.push('# HELP wallet_transactions_total Cumulative transactions processed by channel and type');
     lines.push('# TYPE wallet_transactions_total counter');
-    for (const [labels, value] of this.transactionCounters.entries()) {
-      lines.push(`wallet_transactions_total{${labels}} ${value}`);
+    if (this.transactionCounters.size === 0) {
+      lines.push('wallet_transactions_total{channel="telegram",status="synced",type="expense"} 0');
+    } else {
+      for (const [labels, value] of this.transactionCounters.entries()) {
+        lines.push(`wallet_transactions_total{${labels}} ${value}`);
+      }
     }
     lines.push('');
 
@@ -324,16 +332,25 @@ export class PrometheusMetricsRegistry {
     // 10. Receipt Scans
     lines.push('# HELP wallet_receipt_scans_total Cumulative receipt OCR vision extractions');
     lines.push('# TYPE wallet_receipt_scans_total counter');
-    for (const [status, value] of this.receiptScanCounters.entries()) {
-      lines.push(`wallet_receipt_scans_total{status="${status}"} ${value}`);
+    if (this.receiptScanCounters.size === 0) {
+      lines.push('wallet_receipt_scans_total{status="parsed"} 0');
+      lines.push('wallet_receipt_scans_total{status="ocr_failed"} 0');
+    } else {
+      for (const [status, value] of this.receiptScanCounters.entries()) {
+        lines.push(`wallet_receipt_scans_total{status="${status}"} ${value}`);
+      }
     }
     lines.push('');
 
     // 11. Bank Emails
     lines.push('# HELP wallet_bank_emails_total Cumulative bank notification emails evaluated');
     lines.push('# TYPE wallet_bank_emails_total counter');
-    for (const [labels, value] of this.bankEmailCounters.entries()) {
-      lines.push(`wallet_bank_emails_total{${labels}} ${value}`);
+    if (this.bankEmailCounters.size === 0) {
+      lines.push('wallet_bank_emails_total{bank="bca",status="matched"} 0');
+    } else {
+      for (const [labels, value] of this.bankEmailCounters.entries()) {
+        lines.push(`wallet_bank_emails_total{${labels}} ${value}`);
+      }
     }
     lines.push('');
 
@@ -426,3 +443,39 @@ export function tryHandleMetricsEndpoint(req: IncomingMessage, res: ServerRespon
 
   return false;
 }
+
+export interface RecordTransactionMetricsOptions {
+  channel: string;
+  records: Array<{
+    amount: number;
+    transfer?: unknown;
+    categoryId?: string;
+    accountId?: string;
+  }>;
+  status: 'synced' | 'failed' | 'rejected';
+  categories?: Array<{ id: string; name: string }>;
+  accounts?: Array<{ id: string; name: string }>;
+}
+
+/**
+ * Convenient batch helper to record transaction domain metrics from dispatched records.
+ */
+export function recordTransactionMetrics(options: RecordTransactionMetricsOptions): void {
+  const { channel, records, status, categories = [], accounts = [] } = options;
+  const registry = PrometheusMetricsRegistry.getInstance();
+  if (!registry.isEnabled()) return;
+
+  for (const record of records) {
+    const catName = categories.find(c => c.id === record.categoryId)?.name || 'Uncategorized';
+    const accName = accounts.find(a => a.id === record.accountId)?.name || 'Unknown';
+    const recordType = Boolean(record.transfer) ? 'transfer' : record.amount < 0 ? 'expense' : 'income';
+    registry.recordTransaction(
+      channel,
+      recordType,
+      status,
+      catName,
+      accName
+    );
+  }
+}
+
