@@ -3,6 +3,7 @@ import { CategoryContextService } from '../category/categoryContext.js';
 import { ModelFallbackProgressCallback, TokenUsageStatistics } from '../types.js';
 import { applicationLogger, formatConciseErrorMessage } from '../../lib/logger.js';
 import { isRecoverableModelExecutionError } from './providerWorkflow.js';
+import { PrometheusMetricsRegistry } from '../../observability/index.js';
 
 export interface OpenAiCompatibleProviderConfiguration {
   providerName?: string;
@@ -157,6 +158,13 @@ export async function executeChatCompletionWithFallback(
 
       const tokenUsage: TokenUsageStatistics = { promptTokens, candidatesTokens, totalTokens };
 
+      const metrics = PrometheusMetricsRegistry.getInstance();
+      const normalizedProvider = (providerName || 'openai').toLowerCase();
+      metrics.recordRequest(normalizedProvider, 'success');
+      metrics.recordDuration(normalizedProvider, executionDurationMilliseconds / 1000);
+      if (promptTokens > 0) metrics.recordTokens(normalizedProvider, 'input', promptTokens);
+      if (candidatesTokens > 0) metrics.recordTokens(normalizedProvider, 'output', candidatesTokens);
+
       applicationLogger.fileDetail('ai', `Received ${providerName} Response [${currentCandidateModel}] (${executionDurationMilliseconds}ms)`, {
         model: currentCandidateModel,
         latencyMilliseconds: executionDurationMilliseconds,
@@ -183,6 +191,10 @@ export async function executeChatCompletionWithFallback(
       if (isRecoverableModelError && hasNextFallbackModel) {
         const nextCandidateModel = candidateModelList[modelIndex + 1];
         const conciseErrorSummary = formatConciseErrorMessage(errorMessage);
+        const metrics = PrometheusMetricsRegistry.getInstance();
+        const normalizedProvider = (providerName || 'openai').toLowerCase();
+        metrics.recordRequest(normalizedProvider, 'fallback');
+        metrics.recordFallback(currentCandidateModel, nextCandidateModel);
         applicationLogger.warn(
           `Model '${currentCandidateModel}' failed (${conciseErrorSummary}). Retrying with fallback model '${nextCandidateModel}'...`
         );
@@ -205,6 +217,7 @@ export async function executeChatCompletionWithFallback(
         continue;
       }
 
+      PrometheusMetricsRegistry.getInstance().recordRequest((providerName || 'openai').toLowerCase(), 'error');
       throw new Error(`${providerName} error (${currentCandidateModel}): ${errorMessage}`);
     } finally {
       clearInterval(heartbeatTimer);

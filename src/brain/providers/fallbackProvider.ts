@@ -13,6 +13,7 @@ import { WalletAccountItem, WalletCategoryItem } from '../../wallet/index.js';
 import { GateEvaluationResult } from '../../email/index.js';
 import { applicationLogger, formatConciseErrorMessage } from '../../lib/logger.js';
 import { isAiResponseParseError } from './jsonExtraction.js';
+import { PrometheusMetricsRegistry } from '../../observability/index.js';
 import type { BankMutationItem } from '../../core/reconciliation/types.js';
 
 /**
@@ -259,6 +260,10 @@ export class FallbackAiProvider implements FinancialAiProvider {
 
         if (hasNextProvider && isRecoverable) {
           const nextProvider = this.orderedProviderList[providerIndex + 1];
+          PrometheusMetricsRegistry.getInstance().recordFallback(
+            currentProvider.providerName,
+            nextProvider.providerName
+          );
           applicationLogger.warn(
             `Provider '${currentProvider.providerName}' failed during '${operationName}' (${conciseErrorMessage}). Failing over to '${nextProvider.providerName}'...`
           );

@@ -2,6 +2,7 @@ import http, { IncomingMessage, ServerResponse, Server } from 'node:http';
 import crypto from 'node:crypto';
 import { applicationLogger } from '../lib/logger.js';
 import { isLoopbackHost } from '../config/environmentConfig.js';
+import { PrometheusMetricsRegistry } from '../observability/index.js';
 
 export interface PushNotificationPayload {
   packageName: string;
@@ -131,6 +132,16 @@ export class NotificationWebhookServer {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
       return;
+    }
+
+    // 2. Prometheus Metrics endpoint (if enabled)
+    if (method === 'GET' && (pathname === '/metrics' || pathname === '/api/metrics')) {
+      const metrics = PrometheusMetricsRegistry.getInstance();
+      if (metrics.isEnabled()) {
+        res.writeHead(200, { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' });
+        res.end(metrics.formatPrometheusMetrics());
+        return;
+      }
     }
 
     // 2. Notification webhook endpoint
