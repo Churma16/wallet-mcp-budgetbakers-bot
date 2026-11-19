@@ -175,7 +175,6 @@ export class PrometheusMetricsRegistry {
    * Sets current BudgetBakers MCP authentication session health (1=valid, 0=expired).
    */
   public setBudgetBakersSessionStatus(isValid: boolean): void {
-    if (!this.enabled) return;
     this.budgetbakersSessionStatus = isValid ? 1 : 0;
   }
 
@@ -183,7 +182,6 @@ export class PrometheusMetricsRegistry {
    * Sets connection state for an ingestion channel (1=connected, 0=disconnected).
    */
   public setChannelStatus(channel: 'whatsapp' | 'telegram' | 'email', isConnected: boolean): void {
-    if (!this.enabled) return;
     this.channelStatuses.set(channel, isConnected ? 1 : 0);
   }
 

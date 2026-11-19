@@ -95,6 +95,9 @@ export class Application {
     // Validate critical configuration variables
     this.validateConfiguration();
 
+    // Initialize Prometheus Metrics Registry early to capture adapter and context startup states
+    PrometheusMetricsRegistry.getInstance().setEnabled(this.context.config.prometheusMetricsEnabled);
+
     // 1. Initialize Wallet MCP Client & Pre-cache accounts & categories
     await initializeAppContext(this.context);
 
@@ -223,9 +226,7 @@ export class Application {
       });
     }
 
-    // 6. Initialize Prometheus AI Metrics
-    PrometheusMetricsRegistry.getInstance().setEnabled(this.context.config.prometheusMetricsEnabled);
-
+    // 6. Initialize Dedicated Prometheus AI Metrics Exporter (if separate port from webhook)
     const needsDedicatedMetricsServer =
       this.context.config.prometheusMetricsEnabled &&
       (!this.context.config.notificationWebhookEnabled ||
