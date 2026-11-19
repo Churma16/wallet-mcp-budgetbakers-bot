@@ -1,6 +1,7 @@
 import {
   type CallToolResult,
 } from '@modelcontextprotocol/client';
+import { PrometheusMetricsRegistry } from '../../observability/index.js';
 import {
   WALLET_MCP_ALLOWED_TOOL_NAMES,
   WALLET_MCP_TOOL_NAMES,
@@ -191,12 +192,18 @@ export class WalletMcpClient {
         lowerMessage.includes('401') ||
         lowerMessage.includes('403');
 
+      if (isPermissionError) {
+        PrometheusMetricsRegistry.getInstance().setBudgetBakersSessionStatus(false);
+      }
+
       throw new WalletMcpRequestError(
         `[error] MCP Tool '${toolName}' failed: ${sanitized}`,
         'DEFINITIVE_FAILURE',
         isPermissionError ? 'AUTHORIZATION' : 'REQUEST_INVALID'
       );
     }
+
+    PrometheusMetricsRegistry.getInstance().setBudgetBakersSessionStatus(true);
 
     if (toolCallResult.structuredContent !== undefined) {
       return toolCallResult.structuredContent as TToolOutput;

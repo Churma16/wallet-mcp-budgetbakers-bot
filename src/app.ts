@@ -226,7 +226,12 @@ export class Application {
     // 6. Initialize Prometheus AI Metrics
     PrometheusMetricsRegistry.getInstance().setEnabled(this.context.config.prometheusMetricsEnabled);
 
-    if (this.context.config.prometheusMetricsEnabled && !this.context.config.notificationWebhookEnabled) {
+    const needsDedicatedMetricsServer =
+      this.context.config.prometheusMetricsEnabled &&
+      (!this.context.config.notificationWebhookEnabled ||
+        this.context.config.prometheusMetricsPort !== this.context.config.notificationWebhookPort);
+
+    if (needsDedicatedMetricsServer) {
       const server = http.createServer((req, res) => {
         if (tryHandleMetricsEndpoint(req, res)) {
           return;

@@ -115,6 +115,7 @@ export class GeminiAiProvider implements FinancialAiProvider {
     systemInstruction: string;
     requestContextDescription?: string;
     onFallbackAttempt?: ModelFallbackProgressCallback;
+    modality?: 'text' | 'receipt';
   }) {
     return executeGeminiGenerationWithFallback({
       googleGenAiClient: this.googleGenAiClient,
@@ -124,6 +125,7 @@ export class GeminiAiProvider implements FinancialAiProvider {
       systemInstruction: options.systemInstruction,
       requestContextDescription: options.requestContextDescription || 'Gemini financial processing',
       onFallbackAttempt: options.onFallbackAttempt,
+      modality: options.modality,
     });
   }
 
@@ -154,6 +156,7 @@ export class GeminiAiProvider implements FinancialAiProvider {
           systemInstruction: prepared.systemInstruction,
           requestContextDescription: prepared.requestContextDescription,
           onFallbackAttempt: options?.onFallback,
+          modality: 'receipt',
         })
     );
   }
@@ -197,6 +200,7 @@ export class GeminiAiProvider implements FinancialAiProvider {
           systemInstruction: prepared.systemInstruction,
           requestContextDescription: prepared.requestContextDescription,
           onFallbackAttempt: options?.onFallback,
+          modality: 'receipt',
         })
     );
   }

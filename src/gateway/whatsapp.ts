@@ -13,6 +13,7 @@ import qrcodeTerminal from 'qrcode-terminal';
 import { applicationLogger } from '../lib/logger.js';
 import { digitsOnly } from '../lib/digits.js';
 import { calculateExponentialBackoff } from '../lib/resilience.js';
+import { PrometheusMetricsRegistry } from '../observability/index.js';
 import {
   MediaRejectionStage,
   MessagingAdapter,
@@ -792,9 +793,11 @@ export class WhatsappMessagingAdapter implements MessagingAdapter {
       console.log('[hint] Open WhatsApp -> Linked Devices -> Link a Device and scan the QR code above.\n');
     }
     if (connection === 'close') {
+      PrometheusMetricsRegistry.getInstance().setChannelStatus('whatsapp', false);
       const statusCode = (lastDisconnect?.error as { output?: { statusCode?: number } })?.output?.statusCode;
       this.connectionResilience.handleClose(statusCode, lastDisconnect?.error);
     } else if (connection === 'open') {
+      PrometheusMetricsRegistry.getInstance().setChannelStatus('whatsapp', true);
       this.connectionResilience.markConnected();
       applicationLogger.success('WhatsApp connection successfully established and ready!');
       if (this.normalizedAllowedPhoneNumber) {

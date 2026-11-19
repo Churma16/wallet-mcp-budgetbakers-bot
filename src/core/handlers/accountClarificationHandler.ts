@@ -34,6 +34,7 @@ import { getDictionary } from '../../i18n/index.js';
 import { applicationLogger, formatConciseErrorMessage } from '../../lib/logger.js';
 import { CategoryContextService } from '../../brain/category/categoryContext.js';
 import { AccountClarificationConversationService } from '../../brain/index.js';
+import { recordTransactionMetrics } from '../../observability/index.js';
 
 /**
  * Manages conversational account selection dialogues and clarification states
@@ -515,13 +516,23 @@ export class AccountClarificationHandler {
       return true;
     }
 
+    const recordClarificationDispatchMetrics = (status: 'synced' | 'failed') =>
+      recordTransactionMetrics({
+        channel: event.channel,
+        records: validationResult.sanitizedRecords,
+        status,
+        cache: this.walletCacheService,
+      });
+
     // Enter non-cancellable dispatch-locked phase immediately before the first operation that
     // can mutate Wallet-side state (prepareRecordsForDispatch creates missing labels via Wallet MCP).
     this.dispatchLockedTicketIds.add(claimedDraft.ticketId);
     try {
       await this.recordPreparationService.prepareRecordsForDispatch(validationResult.sanitizedRecords);
       await this.walletMcpClient.createRecords(validationResult.sanitizedRecords);
+      recordClarificationDispatchMetrics('synced');
     } catch (error) {
+      recordClarificationDispatchMetrics('failed');
       if (isWalletMcpDefinitiveFailure(error)) {
         this.pendingTransactionManager.releaseProcessingAccountSelectionDraft(claimedDraft.ticketId);
         await this.messagingGateway.sendMessage(

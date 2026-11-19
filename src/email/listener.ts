@@ -15,6 +15,7 @@ import type {
 import { calculateExponentialBackoff } from '../lib/resilience.js';
 import { applicationLogger } from '../lib/logger.js';
 import { InboundReferenceRegistry } from '../core/referenceRegistry.js';
+import { PrometheusMetricsRegistry } from '../observability/index.js';
 
 export type {
   GateEvaluationResult,
@@ -387,6 +388,7 @@ export class EmailListenerService {
     });
 
     client.on('close', () => {
+      PrometheusMetricsRegistry.getInstance().setChannelStatus('email', false);
       applicationLogger.warn('Gmail IMAP socket connection closed.');
       if (this.isServiceRunning) {
         this.scheduleReconnect();
@@ -408,6 +410,7 @@ export class EmailListenerService {
     }
 
     applicationLogger.success('Connected to Gmail IMAP successfully.');
+    PrometheusMetricsRegistry.getInstance().setChannelStatus('email', true);
     this.reconnectAttempt = 0;
 
     // Run mailbox idle cycle in the background
@@ -667,6 +670,8 @@ export class EmailListenerService {
           );
 
           if (!gateResult.passed) {
+            const bankName = gateResult.matchedBankRule?.displayName || 'unknown';
+            PrometheusMetricsRegistry.getInstance().recordBankEmail(bankName, 'unmatched');
             if (!bypassProcessedCache) {
               // Gate 1 rejection is terminal for this message, so cache immediately to avoid redundant evaluation.
               this.markMessageAsProcessed(rawMessageId);
@@ -682,8 +687,10 @@ export class EmailListenerService {
             continue;
           }
 
+          const matchedBankName = gateResult.matchedBankRule?.displayName || 'unknown';
+          PrometheusMetricsRegistry.getInstance().recordBankEmail(matchedBankName, 'matched');
           applicationLogger.info(
-            `[Gate 1 Passed] Matched bank rule: ${gateResult.matchedBankRule?.displayName || 'unknown'}.`
+            `[Gate 1 Passed] Matched bank rule: ${matchedBankName}.`
           );
           applicationLogger.fileDetail('email', 'Gate 1 Accepted Email Candidate', {
             emailSubject,

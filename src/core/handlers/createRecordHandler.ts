@@ -25,6 +25,7 @@ import { applicationLogger } from '../../lib/logger.js';
 import { CategoryContextService } from '../../brain/category/categoryContext.js';
 import { FINANCIAL_ACTION_TYPES } from '../../brain/constants.js';
 import { RuntimeSettingsManager } from '../../config/index.js';
+import { recordTransactionMetrics } from '../../observability/index.js';
 
 function formatAccountResolutionIssueMessage(issue: AccountResolutionIssue): string {
   const dictionary = getDictionary();
@@ -265,7 +266,23 @@ export class CreateRecordActionHandler implements FinancialActionHandler<typeof 
       records: validRecordsToCreate,
     });
 
-    const creationResponse = await this.walletMcpClient.createRecords(validRecordsToCreate);
+    let creationResponse;
+    const recordBatchOutcome = (status: 'synced' | 'failed') =>
+      recordTransactionMetrics({
+        channel: event.channel,
+        records: validRecordsToCreate,
+        status,
+        categories: cachedCategories,
+        accounts: cachedAccounts,
+      });
+
+    try {
+      creationResponse = await this.walletMcpClient.createRecords(validRecordsToCreate);
+      recordBatchOutcome('synced');
+    } catch (createError) {
+      recordBatchOutcome('failed');
+      throw createError;
+    }
 
     const replyMessage = formatRecordSuccessMessage(
       validRecordsToCreate,

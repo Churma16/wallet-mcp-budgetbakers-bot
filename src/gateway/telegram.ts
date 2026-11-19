@@ -2,6 +2,7 @@ import { Bot, Context, GrammyError, HttpError } from 'grammy';
 import axios from 'axios';
 import { applicationLogger } from '../lib/logger.js';
 import { calculateExponentialBackoff } from '../lib/resilience.js';
+import { PrometheusMetricsRegistry } from '../observability/index.js';
 import {
   AdapterConnectionState,
   MediaRejectionStage,
@@ -328,6 +329,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       }
 
       this.isRunning = true;
+      PrometheusMetricsRegistry.getInstance().setChannelStatus('telegram', true);
       const onPollingStarted = (): void => {
         applicationLogger.info('Telegram Bot polling loop is running and listening for messages.');
       };
@@ -342,6 +344,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
         });
     } catch (startError: unknown) {
       this.isRunning = false;
+      PrometheusMetricsRegistry.getInstance().setChannelStatus('telegram', false);
       const rawStartErrorMessage = startError instanceof Error ? startError.message : String(startError);
       const sanitizedStartError = this.botToken
         ? rawStartErrorMessage.replaceAll(this.botToken, '[REDACTED_TELEGRAM_TOKEN]')
@@ -1386,6 +1389,7 @@ export class TelegramMessagingAdapter implements MessagingAdapter {
       }
       this.isRunning = false;
       this.botInstance = null;
+      PrometheusMetricsRegistry.getInstance().setChannelStatus('telegram', false);
     }
   }
 }
