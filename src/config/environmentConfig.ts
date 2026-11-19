@@ -125,6 +125,9 @@ export interface ApplicationEnvironmentConfiguration {
   notificationWebhookPort: number;
   notificationWebhookHost: string;
   notificationWebhookSecret: string;
+  prometheusMetricsEnabled: boolean;
+  prometheusMetricsPort: number;
+  prometheusMetricsHost: string;
   notifyOnStartup: boolean;
 }
 
@@ -268,6 +271,9 @@ export const APPLICATION_CONFIG_ENV_KEYS: readonly string[] = [
   'NOTIFICATION_WEBHOOK_PORT',
   'NOTIFICATION_WEBHOOK_HOST',
   'NOTIFICATION_WEBHOOK_SECRET',
+  'PROMETHEUS_METRICS_ENABLED',
+  'PROMETHEUS_METRICS_PORT',
+  'PROMETHEUS_METRICS_HOST',
   'NOTIFY_ON_STARTUP',
 ];
 
@@ -454,6 +460,13 @@ export function loadEnvironmentConfiguration(
   const notificationWebhookHost = (process.env.NOTIFICATION_WEBHOOK_HOST || '0.0.0.0').trim();
   const notificationWebhookSecret = (process.env.NOTIFICATION_WEBHOOK_SECRET || '').trim();
 
+  const prometheusMetricsEnabled = process.env.PROMETHEUS_METRICS_ENABLED === 'true';
+  const parsedMetricsPort = Number.parseInt(process.env.PROMETHEUS_METRICS_PORT || '', 10);
+  const prometheusMetricsPort = Number.isNaN(parsedMetricsPort) || parsedMetricsPort <= 0
+    ? notificationWebhookPort
+    : parsedMetricsPort;
+  const prometheusMetricsHost = (process.env.PROMETHEUS_METRICS_HOST || notificationWebhookHost || '0.0.0.0').trim();
+
   const notifyOnStartup = process.env.NODE_ENV === 'test'
     ? process.env.NOTIFY_ON_STARTUP === 'true'
     : process.env.NOTIFY_ON_STARTUP !== 'false';
@@ -508,6 +521,9 @@ export function loadEnvironmentConfiguration(
     notificationWebhookPort,
     notificationWebhookHost,
     notificationWebhookSecret,
+    prometheusMetricsEnabled,
+    prometheusMetricsPort,
+    prometheusMetricsHost,
     notifyOnStartup,
   };
 }

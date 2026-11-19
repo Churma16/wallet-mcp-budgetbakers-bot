@@ -1,3 +1,4 @@
+import type { Server as HttpServer } from 'node:http';
 import {
   loadEnvironmentConfiguration,
   setRuntimeApplicationConfig,
@@ -63,6 +64,7 @@ export interface AppContext {
     listener: EmailListenerService | null;
   };
   webhook: NotificationWebhookServer | null;
+  metricsServer: HttpServer | null;
   readonly notificationStore: InboundNotificationStore;
 }
 
@@ -133,6 +135,7 @@ export function createAppContext(customConfig?: ApplicationEnvironmentConfigurat
       listener: null,
     },
     webhook: null,
+    metricsServer: null,
     notificationStore,
   };
 }
@@ -173,6 +176,13 @@ export async function closeAppContext(context: AppContext): Promise<void> {
   if (context.webhook) {
     await context.webhook.stop();
     context.webhook = null;
+  }
+
+  if (context.metricsServer) {
+    await new Promise<void>(resolve => {
+      context.metricsServer?.close(() => resolve());
+    });
+    context.metricsServer = null;
   }
 
   await context.gateway.stopAll();
