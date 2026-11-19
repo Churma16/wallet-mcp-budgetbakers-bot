@@ -22,7 +22,7 @@ import {
   CategoryContextValidationResult,
 } from './brain/index.js';
 import { WalletMcpCapabilityService } from './wallet/index.js';
-import { PrometheusMetricsRegistry } from './observability/index.js';
+import { PrometheusMetricsRegistry, tryHandleMetricsEndpoint } from './observability/index.js';
 import {
   applicationLogger,
   installConsoleInterceptors,
@@ -228,13 +228,11 @@ export class Application {
 
     if (this.context.config.prometheusMetricsEnabled && !this.context.config.notificationWebhookEnabled) {
       const server = http.createServer((req, res) => {
-        const method = req.method?.toUpperCase();
-        const parsedUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-        if (method === 'GET' && (parsedUrl.pathname === '/metrics' || parsedUrl.pathname === '/api/metrics')) {
-          res.writeHead(200, { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' });
-          res.end(PrometheusMetricsRegistry.getInstance().formatPrometheusMetrics());
+        if (tryHandleMetricsEndpoint(req, res)) {
           return;
         }
+        const method = req.method?.toUpperCase();
+        const parsedUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
         if (method === 'GET' && parsedUrl.pathname === '/health') {
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
@@ -242,6 +240,12 @@ export class Application {
         }
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Endpoint not found' }));
+      });
+
+      server.on('error', (serverError: unknown) => {
+        applicationLogger.error(
+          `[PrometheusMetrics] Standalone server error: ${serverError instanceof Error ? serverError.message : String(serverError)}`
+        );
       });
 
       this.context.metricsServer = server;

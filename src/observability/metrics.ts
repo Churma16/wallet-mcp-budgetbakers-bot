@@ -1,3 +1,5 @@
+import type { IncomingMessage, ServerResponse } from 'node:http';
+
 /**
  * Zero-dependency Prometheus Metrics Registry for Wallet MCP.
  * Implements standard Prometheus text exposition format (version 0.0.4).
@@ -214,4 +216,29 @@ export class PrometheusMetricsRegistry {
 
     return lines.join('\n');
   }
+}
+
+/**
+ * Handles incoming HTTP requests for the /metrics or /api/metrics endpoint.
+ * Returns true if the request was handled, false otherwise.
+ */
+export function tryHandleMetricsEndpoint(req: IncomingMessage, res: ServerResponse): boolean {
+  const method = req.method?.toUpperCase();
+  if (method !== 'GET') {
+    return false;
+  }
+
+  const parsedUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+  const pathname = parsedUrl.pathname;
+
+  if (pathname === '/metrics' || pathname === '/api/metrics') {
+    const metrics = PrometheusMetricsRegistry.getInstance();
+    if (metrics.isEnabled()) {
+      res.writeHead(200, { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' });
+      res.end(metrics.formatPrometheusMetrics());
+      return true;
+    }
+  }
+
+  return false;
 }
