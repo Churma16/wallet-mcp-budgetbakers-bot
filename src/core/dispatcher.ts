@@ -38,6 +38,7 @@ import {
 } from './handlers/financialActionRegistry.js';
 import { coordinateInboundTransactionCandidate } from './inboundCoordinator.js';
 import { NotificationTransactionHandler } from './handlers/inboundHandlers.js';
+import { PrometheusMetricsRegistry } from '../observability/index.js';
 import { InboundRescanService, parseRescanDurationMinutes, type InboundRescanStage } from './inboundRescanService.js';
 import { formatInboundRescanResponse } from '../wallet/formatters/inboundRescanFormatter.js';
 import { TransactionCorrelationEngine } from '../email/index.js';
@@ -842,6 +843,7 @@ export class MessageDispatcher {
             { onFallback: (evt) => fallbackTracker.handleFallback(evt) }
           );
           extractedIntent = validateReceiptFinancialIntentEnvelope(rawExtractedIntent);
+          PrometheusMetricsRegistry.getInstance().recordReceiptScan('parsed');
         } else {
           applicationLogger.ai(
             `Analyzing message intent with ${this.context.brain.provider.providerName.toUpperCase()}...`
@@ -870,6 +872,7 @@ export class MessageDispatcher {
         extractedIntent.action === FINANCIAL_ACTION_TYPES.CREATE_RECORD &&
         (!extractedIntent.records || extractedIntent.records.length === 0)
       ) {
+        PrometheusMetricsRegistry.getInstance().recordReceiptScan('ocr_failed');
         applicationLogger.warn('Receipt extraction returned CREATE_RECORD with 0 records.');
         await this.context.gateway.sendMessage(
           event.channel,
@@ -1242,6 +1245,7 @@ export class MessageDispatcher {
         { onFallback: evt => fallbackTracker.handleFallback(evt) }
       );
     } catch (visionError) {
+      PrometheusMetricsRegistry.getInstance().recordReceiptScan('ocr_failed');
       applicationLogger.error(
         `[Screenshot Reply] Vision extraction failed for ticket #${ticketId}: ${visionError}`
       );
@@ -1259,6 +1263,7 @@ export class MessageDispatcher {
     const receiptRecord = extractedIntent.records?.[0];
 
     if (!receiptRecord || (!receiptRecord.counterParty && !receiptRecord.note)) {
+      PrometheusMetricsRegistry.getInstance().recordReceiptScan('ocr_failed');
       applicationLogger.warn(
         `[Screenshot Reply] Vision extraction returned no viable merchant or items for ticket #${ticketId}.`
       );
@@ -1269,6 +1274,8 @@ export class MessageDispatcher {
       );
       return true;
     }
+
+    PrometheusMetricsRegistry.getInstance().recordReceiptScan('parsed');
 
     // Extract enriched properties
     const enrichedMerchant = receiptRecord.counterParty || receiptRecord.note;

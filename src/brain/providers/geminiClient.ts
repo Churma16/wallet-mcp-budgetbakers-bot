@@ -17,6 +17,7 @@ export interface GeminiFallbackExecutionOptions {
   systemInstruction: string;
   requestContextDescription: string;
   onFallbackAttempt?: ModelFallbackProgressCallback;
+  modality?: 'text' | 'receipt';
 }
 
 export function sanitizeContentsForLogging(contents: any): any {
@@ -53,6 +54,7 @@ export async function executeGeminiGenerationWithFallback(
     systemInstruction,
     requestContextDescription,
     onFallbackAttempt,
+    modality = 'text',
   } = options;
 
   let lastEncounteredError: unknown = null;
@@ -60,6 +62,7 @@ export async function executeGeminiGenerationWithFallback(
   for (let index = 0; index < candidateModelList.length; index++) {
     const activeModelName = candidateModelList[index];
     const isInitialAttempt = index === 0;
+    const role: 'primary' | 'fallback' = isInitialAttempt ? 'primary' : 'fallback';
     const requestStartMs = Date.now();
 
     try {
@@ -114,13 +117,15 @@ export async function executeGeminiGenerationWithFallback(
       const durationSeconds = (Date.now() - requestStartMs) / 1000;
       const metrics = PrometheusMetricsRegistry.getInstance();
       metrics.recordRequest('gemini', 'success');
+      metrics.recordModelAttempt(activeModelName, role, 'success');
+      metrics.recordResolution(activeModelName, index);
       metrics.recordDuration('gemini', durationSeconds);
       if (tokenUsage) {
-        if (tokenUsage.promptTokens > 0) metrics.recordTokens('gemini', 'input', tokenUsage.promptTokens);
-        if (tokenUsage.candidatesTokens > 0) metrics.recordTokens('gemini', 'output', tokenUsage.candidatesTokens);
-        if (tokenUsage.thoughtsTokens && tokenUsage.thoughtsTokens > 0) metrics.recordTokens('gemini', 'thinking', tokenUsage.thoughtsTokens);
+        if (tokenUsage.promptTokens > 0) metrics.recordTokens('gemini', 'input', tokenUsage.promptTokens, modality);
+        if (tokenUsage.candidatesTokens > 0) metrics.recordTokens('gemini', 'output', tokenUsage.candidatesTokens, modality);
+        if (tokenUsage.thoughtsTokens && tokenUsage.thoughtsTokens > 0) metrics.recordTokens('gemini', 'thinking', tokenUsage.thoughtsTokens, modality);
         if (tokenUsage.cachedContentTokens && tokenUsage.cachedContentTokens > 0) {
-          metrics.recordTokens('gemini', 'cached', tokenUsage.cachedContentTokens);
+          metrics.recordTokens('gemini', 'cached', tokenUsage.cachedContentTokens, modality);
           metrics.recordCacheEvent('gemini', 'hit');
         } else {
           metrics.recordCacheEvent('gemini', 'miss');
@@ -143,6 +148,8 @@ export async function executeGeminiGenerationWithFallback(
         const metrics = PrometheusMetricsRegistry.getInstance();
         metrics.recordRequest('gemini', 'fallback');
         metrics.recordFallback(activeModelName, nextModelName);
+        metrics.recordModelAttempt(activeModelName, role, 'error');
+        metrics.recordFallbackTransition(activeModelName, nextModelName, conciseMessage);
         applicationLogger.warn(
           `[Gemini Fallback] Model '${activeModelName}' failed for ${requestContextDescription}: ${conciseMessage}. Trying next model '${nextModelName}'...`
         );
@@ -165,7 +172,10 @@ export async function executeGeminiGenerationWithFallback(
         continue;
       }
 
-      PrometheusMetricsRegistry.getInstance().recordRequest('gemini', 'error');
+      const metrics = PrometheusMetricsRegistry.getInstance();
+      metrics.recordRequest('gemini', 'error');
+      metrics.recordModelAttempt(activeModelName, role, 'error');
+      metrics.recordResolution('none', 'exhausted');
       applicationLogger.error(
         `[Gemini Error] Model execution failed permanently for ${requestContextDescription} on '${activeModelName}': ${conciseMessage}`
       );
@@ -173,5 +183,6 @@ export async function executeGeminiGenerationWithFallback(
     }
   }
 
+  PrometheusMetricsRegistry.getInstance().recordResolution('none', 'exhausted');
   throw lastEncounteredError;
 }

@@ -16,11 +16,31 @@ export class PrometheusMetricsRegistry {
   private static instance: PrometheusMetricsRegistry | null = null;
   private enabled: boolean = false;
 
-  // Counter maps: key -> cumulative value
+  // AI & Token Counters: key -> cumulative value
   private readonly tokenCounters: Map<string, number> = new Map();
   private readonly requestCounters: Map<string, number> = new Map();
   private readonly cacheCounters: Map<string, number> = new Map();
   private readonly fallbackCounters: Map<string, number> = new Map();
+
+  // AI Resolution & Fallback Funnel
+  private readonly resolutionCounters: Map<string, number> = new Map();
+  private readonly modelAttemptCounters: Map<string, number> = new Map();
+  private readonly fallbackTransitionCounters: Map<string, number> = new Map();
+
+  // Bookkeeping & Ingestion Domain Counters
+  private readonly transactionCounters: Map<string, number> = new Map();
+  private readonly categoryCounters: Map<string, number> = new Map();
+  private readonly accountCounters: Map<string, number> = new Map();
+  private readonly receiptScanCounters: Map<string, number> = new Map();
+  private readonly bankEmailCounters: Map<string, number> = new Map();
+
+  // Gauges: Session Health & Ingestion Channel State
+  private budgetbakersSessionStatus: number = 1;
+  private readonly channelStatuses: Map<string, number> = new Map([
+    ['telegram', 0],
+    ['whatsapp', 0],
+    ['email', 0],
+  ]);
 
   // Histograms: key -> HistogramBucketState
   private readonly durationBuckets: readonly number[] = [0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0];
@@ -51,15 +71,16 @@ export class PrometheusMetricsRegistry {
   }
 
   /**
-   * Records token usage for an AI model/provider interaction.
+   * Records token usage for an AI model/provider interaction with optional modality tag.
    */
   public recordTokens(
     provider: string,
     type: 'input' | 'output' | 'cached' | 'thinking',
-    count: number
+    count: number,
+    modality: 'text' | 'receipt' = 'text'
   ): void {
     if (!this.enabled || count <= 0) return;
-    const key = `provider="${provider}",type="${type}"`;
+    const key = `modality="${modality}",provider="${provider}",type="${type}"`;
     this.tokenCounters.set(key, (this.tokenCounters.get(key) || 0) + count);
   }
 
@@ -70,6 +91,92 @@ export class PrometheusMetricsRegistry {
     if (!this.enabled) return;
     const key = `provider="${provider}",status="${status}"`;
     this.requestCounters.set(key, (this.requestCounters.get(key) || 0) + 1);
+  }
+
+  /**
+   * Records resolution depth for an end-to-end user request.
+   * fallbackDepth: 0 = primary hit, 1 = rescued by fallback 1, etc., or 'exhausted' = all models failed.
+   */
+  public recordResolution(resolvedBy: string, fallbackDepth: number | 'exhausted'): void {
+    if (!this.enabled) return;
+    const key = `fallback_depth="${fallbackDepth}",resolved_by="${resolvedBy}"`;
+    this.resolutionCounters.set(key, (this.resolutionCounters.get(key) || 0) + 1);
+  }
+
+  /**
+   * Records individual candidate model attempts (initial vs fallback).
+   */
+  public recordModelAttempt(model: string, role: 'primary' | 'fallback', status: 'success' | 'error'): void {
+    if (!this.enabled) return;
+    const key = `model="${model}",role="${role}",status="${status}"`;
+    this.modelAttemptCounters.set(key, (this.modelAttemptCounters.get(key) || 0) + 1);
+  }
+
+  /**
+   * Records fallback transition between models with concise reason.
+   */
+  public recordFallbackTransition(fromModel: string, toModel: string, reason: string): void {
+    if (!this.enabled) return;
+    const cleanReason = reason.replace(/"/g, '\\"').slice(0, 60);
+    const key = `from_model="${fromModel}",reason="${cleanReason}",to_model="${toModel}"`;
+    this.fallbackTransitionCounters.set(key, (this.fallbackTransitionCounters.get(key) || 0) + 1);
+  }
+
+  /**
+   * Records bookkeeping transactions by channel, type, status, and optional category/account.
+   */
+  public recordTransaction(
+    channel: string,
+    type: string,
+    status: 'synced' | 'failed' | 'rejected',
+    category?: string,
+    account?: string
+  ): void {
+    if (!this.enabled) return;
+    const key = `channel="${channel}",status="${status}",type="${type}"`;
+    this.transactionCounters.set(key, (this.transactionCounters.get(key) || 0) + 1);
+
+    if (category && status === 'synced') {
+      const safeCat = category.replace(/"/g, '\\"').slice(0, 40);
+      this.categoryCounters.set(safeCat, (this.categoryCounters.get(safeCat) || 0) + 1);
+    }
+    if (account && status === 'synced') {
+      const safeAcc = account.replace(/"/g, '\\"').slice(0, 40);
+      this.accountCounters.set(safeAcc, (this.accountCounters.get(safeAcc) || 0) + 1);
+    }
+  }
+
+  /**
+   * Records receipt OCR parsing outcomes.
+   */
+  public recordReceiptScan(status: 'parsed' | 'ocr_failed'): void {
+    if (!this.enabled) return;
+    this.receiptScanCounters.set(status, (this.receiptScanCounters.get(status) || 0) + 1);
+  }
+
+  /**
+   * Records bank notification email evaluation.
+   */
+  public recordBankEmail(bank: string, status: 'matched' | 'unmatched' | 'ignored'): void {
+    if (!this.enabled) return;
+    const key = `bank="${bank}",status="${status}"`;
+    this.bankEmailCounters.set(key, (this.bankEmailCounters.get(key) || 0) + 1);
+  }
+
+  /**
+   * Sets current BudgetBakers MCP authentication session health (1=valid, 0=expired).
+   */
+  public setBudgetBakersSessionStatus(isValid: boolean): void {
+    if (!this.enabled) return;
+    this.budgetbakersSessionStatus = isValid ? 1 : 0;
+  }
+
+  /**
+   * Sets connection state for an ingestion channel (1=connected, 0=disconnected).
+   */
+  public setChannelStatus(channel: 'whatsapp' | 'telegram' | 'email', isConnected: boolean): void {
+    if (!this.enabled) return;
+    this.channelStatuses.set(channel, isConnected ? 1 : 0);
   }
 
   /**
@@ -141,10 +248,10 @@ export class PrometheusMetricsRegistry {
     lines.push('# HELP wallet_ai_tokens_total Cumulative AI tokens consumed by Wallet MCP');
     lines.push('# TYPE wallet_ai_tokens_total counter');
     if (this.tokenCounters.size === 0) {
-      lines.push('wallet_ai_tokens_total{provider="gemini",type="input"} 0');
-      lines.push('wallet_ai_tokens_total{provider="gemini",type="output"} 0');
-      lines.push('wallet_ai_tokens_total{provider="gemini",type="cached"} 0');
-      lines.push('wallet_ai_tokens_total{provider="gemini",type="thinking"} 0');
+      lines.push('wallet_ai_tokens_total{modality="text",provider="gemini",type="input"} 0');
+      lines.push('wallet_ai_tokens_total{modality="text",provider="gemini",type="output"} 0');
+      lines.push('wallet_ai_tokens_total{modality="text",provider="gemini",type="cached"} 0');
+      lines.push('wallet_ai_tokens_total{modality="text",provider="gemini",type="thinking"} 0');
     } else {
       for (const [labels, value] of this.tokenCounters.entries()) {
         lines.push(`wallet_ai_tokens_total{${labels}} ${value}`);
@@ -166,7 +273,84 @@ export class PrometheusMetricsRegistry {
     }
     lines.push('');
 
-    // 4. Request duration histogram
+    // 4. AI Resolution Funnel Counters
+    lines.push('# HELP wallet_ai_resolutions_total Cumulative AI requests resolved by candidate model layer');
+    lines.push('# TYPE wallet_ai_resolutions_total counter');
+    for (const [labels, value] of this.resolutionCounters.entries()) {
+      lines.push(`wallet_ai_resolutions_total{${labels}} ${value}`);
+    }
+    lines.push('');
+
+    // 5. Model Attempt Counters
+    lines.push('# HELP wallet_ai_model_attempts_total Cumulative attempts per candidate model');
+    lines.push('# TYPE wallet_ai_model_attempts_total counter');
+    for (const [labels, value] of this.modelAttemptCounters.entries()) {
+      lines.push(`wallet_ai_model_attempts_total{${labels}} ${value}`);
+    }
+    lines.push('');
+
+    // 6. Fallback Transition Counters
+    lines.push('# HELP wallet_ai_fallback_transitions_total Fallback transitions between models with error reasons');
+    lines.push('# TYPE wallet_ai_fallback_transitions_total counter');
+    for (const [labels, value] of this.fallbackTransitionCounters.entries()) {
+      lines.push(`wallet_ai_fallback_transitions_total{${labels}} ${value}`);
+    }
+    lines.push('');
+
+    // 7. Bookkeeping Transactions
+    lines.push('# HELP wallet_transactions_total Cumulative transactions processed by channel and type');
+    lines.push('# TYPE wallet_transactions_total counter');
+    for (const [labels, value] of this.transactionCounters.entries()) {
+      lines.push(`wallet_transactions_total{${labels}} ${value}`);
+    }
+    lines.push('');
+
+    // 8. Categories
+    lines.push('# HELP wallet_transactions_by_category_total Cumulative transactions by category');
+    lines.push('# TYPE wallet_transactions_by_category_total counter');
+    for (const [cat, value] of this.categoryCounters.entries()) {
+      lines.push(`wallet_transactions_by_category_total{category="${cat}"} ${value}`);
+    }
+    lines.push('');
+
+    // 9. Accounts
+    lines.push('# HELP wallet_transactions_by_account_total Cumulative transactions by target account');
+    lines.push('# TYPE wallet_transactions_by_account_total counter');
+    for (const [acc, value] of this.accountCounters.entries()) {
+      lines.push(`wallet_transactions_by_account_total{account="${acc}"} ${value}`);
+    }
+    lines.push('');
+
+    // 10. Receipt Scans
+    lines.push('# HELP wallet_receipt_scans_total Cumulative receipt OCR vision extractions');
+    lines.push('# TYPE wallet_receipt_scans_total counter');
+    for (const [status, value] of this.receiptScanCounters.entries()) {
+      lines.push(`wallet_receipt_scans_total{status="${status}"} ${value}`);
+    }
+    lines.push('');
+
+    // 11. Bank Emails
+    lines.push('# HELP wallet_bank_emails_total Cumulative bank notification emails evaluated');
+    lines.push('# TYPE wallet_bank_emails_total counter');
+    for (const [labels, value] of this.bankEmailCounters.entries()) {
+      lines.push(`wallet_bank_emails_total{${labels}} ${value}`);
+    }
+    lines.push('');
+
+    // 12. Gauges: BudgetBakers Session & Ingestion Channels
+    lines.push('# HELP wallet_budgetbakers_session_status Current BudgetBakers MCP authentication session health (1=valid, 0=expired)');
+    lines.push('# TYPE wallet_budgetbakers_session_status gauge');
+    lines.push(`wallet_budgetbakers_session_status ${this.budgetbakersSessionStatus}`);
+    lines.push('');
+
+    lines.push('# HELP wallet_channel_status Ingestion channel connection state (1=connected, 0=disconnected)');
+    lines.push('# TYPE wallet_channel_status gauge');
+    for (const [channel, status] of this.channelStatuses.entries()) {
+      lines.push(`wallet_channel_status{channel="${channel}"} ${status}`);
+    }
+    lines.push('');
+
+    // 13. Request duration histogram
     lines.push('# HELP wallet_ai_duration_seconds Latency of AI requests in seconds');
     lines.push('# TYPE wallet_ai_duration_seconds histogram');
     if (this.durationHistograms.size === 0) {
@@ -189,7 +373,7 @@ export class PrometheusMetricsRegistry {
     }
     lines.push('');
 
-    // 5. Context cache event counters
+    // 14. Context cache event counters
     lines.push('# HELP wallet_ai_cache_events_total Context cache hit and miss events');
     lines.push('# TYPE wallet_ai_cache_events_total counter');
     if (this.cacheCounters.size === 0) {
@@ -202,7 +386,7 @@ export class PrometheusMetricsRegistry {
     }
     lines.push('');
 
-    // 6. Fallback events counter
+    // 15. Fallback events counter
     lines.push('# HELP wallet_ai_fallback_events_total Fallback events between AI providers or models');
     lines.push('# TYPE wallet_ai_fallback_events_total counter');
     if (this.fallbackCounters.size === 0) {
