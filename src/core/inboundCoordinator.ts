@@ -9,6 +9,7 @@ import {
   WalletCacheService,
   WalletMcpClientService,
   WalletRecordItem,
+  CreateRecordInputPayload,
   PatchRecordInputPayload,
   isWalletMcpDefinitiveFailure,
 } from '../wallet/index.js';
@@ -591,6 +592,7 @@ export async function coordinateInboundTransactionCandidate(
         }
 
         let createResult: Awaited<ReturnType<WalletMcpClientService['createRecords']>> | undefined;
+        let recordsToCreate: CreateRecordInputPayload[] = [];
         try {
           applicationLogger.mcp(
             `[Auto-Record Enriched] Ticket #${enrichedItem.ticketId} qualifies for immediate dispatch. Recording to Wallet MCP...`
@@ -600,7 +602,7 @@ export async function coordinateInboundTransactionCandidate(
             enrichedItem.matchedCategoryId = resolvedCategory.id;
           }
 
-          const recordsToCreate = buildRecordsForPendingItem(enrichedItem, walletCacheService);
+          recordsToCreate = buildRecordsForPendingItem(enrichedItem, walletCacheService);
           createResult = await walletMcpClient.createRecords(recordsToCreate);
           recordTransactionMetrics({
             channel: 'email',
@@ -610,14 +612,15 @@ export async function coordinateInboundTransactionCandidate(
             accounts: walletCacheService.getAccounts(),
           });
         } catch (autoRecordError) {
-          const recordsToCreate = buildRecordsForPendingItem(enrichedItem, walletCacheService);
-          recordTransactionMetrics({
-            channel: 'email',
-            records: recordsToCreate,
-            status: 'failed',
-            categories: walletCacheService.getCategories(),
-            accounts: walletCacheService.getAccounts(),
-          });
+          if (recordsToCreate.length > 0) {
+            recordTransactionMetrics({
+              channel: 'email',
+              records: recordsToCreate,
+              status: 'failed',
+              categories: walletCacheService.getCategories(),
+              accounts: walletCacheService.getAccounts(),
+            });
+          }
           if (isWalletMcpDefinitiveFailure(autoRecordError)) {
             pendingTransactionManager.releaseProcessingTransaction(enrichedItem.ticketId);
             applicationLogger.error(

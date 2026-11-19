@@ -291,8 +291,9 @@ export class PendingActionHandler {
     const createdRecordIds = new Map<number, string>();
 
     for (const item of itemsToRecord) {
-      const recordsForThisTransaction = buildRecordsForPendingItem(item, this.walletCacheService);
+      let recordsForThisTransaction: CreateRecordInputPayload[] = [];
       try {
+        recordsForThisTransaction = buildRecordsForPendingItem(item, this.walletCacheService);
         applicationLogger.mcp(`[Ticket #${item.ticketId}] Submitting transaction...`);
         const createResult = await this.walletMcpClient.createRecords(recordsForThisTransaction);
         recordTransactionMetrics({
@@ -367,13 +368,15 @@ export class PendingActionHandler {
         successfulTickets.push(item.ticketId);
         applicationLogger.success(`[Ticket #${item.ticketId}] Successfully recorded.`);
       } catch (error) {
-        recordTransactionMetrics({
-          channel: event.channel,
-          records: recordsForThisTransaction,
-          status: 'failed',
-          categories: this.walletCacheService?.getCategories(),
-          accounts: this.walletCacheService?.getAccounts(),
-        });
+        if (recordsForThisTransaction.length > 0) {
+          recordTransactionMetrics({
+            channel: event.channel,
+            records: recordsForThisTransaction,
+            status: 'failed',
+            categories: this.walletCacheService?.getCategories(),
+            accounts: this.walletCacheService?.getAccounts(),
+          });
+        }
         const errorName = error instanceof Error ? error.name : 'UnknownError';
         const dispatchOutcome = isWalletMcpDefinitiveFailure(error)
           ? 'DEFINITIVE_FAILURE'
