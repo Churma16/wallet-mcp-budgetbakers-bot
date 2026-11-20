@@ -26,7 +26,7 @@ describe('PrometheusMetricsRegistry', () => {
     registry.recordBankEmail('BCA', 'matched');
 
     const output = registry.formatPrometheusMetrics();
-    expect(output).toContain('wallet_ai_tokens_total{modality="text",provider="gemini",type="input"} 0');
+    expect(output).toContain('wallet_ai_tokens_total{modality="text",operation="unknown",provider="gemini",type="input"} 0');
     expect(output).toContain('wallet_ai_requests_total{provider="gemini",status="success"} 0');
     expect(output).toContain('wallet_transactions_total{channel="telegram",status="synced",type="expense"} 0');
     expect(output).not.toContain('wallet_transactions_total{channel="telegram",status="synced",type="expense"} 1');
@@ -80,12 +80,12 @@ describe('PrometheusMetricsRegistry', () => {
 
     const output = registry.formatPrometheusMetrics();
 
-    // Verify token exposition with modality
-    expect(output).toContain('wallet_ai_tokens_total{modality="text",provider="gemini",type="input"} 1200');
-    expect(output).toContain('wallet_ai_tokens_total{modality="text",provider="gemini",type="output"} 300');
-    expect(output).toContain('wallet_ai_tokens_total{modality="text",provider="gemini",type="thinking"} 150');
-    expect(output).toContain('wallet_ai_tokens_total{modality="text",provider="gemini",type="cached"} 800');
-    expect(output).toContain('wallet_ai_tokens_total{modality="receipt",provider="gemini",type="input"} 1500');
+    // Verify token exposition with modality and operation
+    expect(output).toContain('wallet_ai_tokens_total{modality="text",operation="unknown",provider="gemini",type="input"} 1200');
+    expect(output).toContain('wallet_ai_tokens_total{modality="text",operation="unknown",provider="gemini",type="output"} 300');
+    expect(output).toContain('wallet_ai_tokens_total{modality="text",operation="unknown",provider="gemini",type="thinking"} 150');
+    expect(output).toContain('wallet_ai_tokens_total{modality="text",operation="unknown",provider="gemini",type="cached"} 800');
+    expect(output).toContain('wallet_ai_tokens_total{modality="receipt",operation="unknown",provider="gemini",type="input"} 1500');
 
     // Verify requests exposition
     expect(output).toContain('wallet_ai_requests_total{provider="gemini",status="success"} 1');
@@ -125,12 +125,31 @@ describe('PrometheusMetricsRegistry', () => {
     expect(output).toContain('wallet_ai_fallback_events_total{from_provider="gemini-2.5-flash",to_provider="gemini-2.5-pro"} 1');
 
     // Verify histogram duration
-    expect(output).toContain('wallet_ai_duration_seconds_bucket{le="2.50",provider="gemini"} 1');
-    expect(output).toContain('wallet_ai_duration_seconds_count{provider="gemini"} 1');
+    expect(output).toContain('wallet_ai_duration_seconds_bucket{le="2.50",operation="unknown",provider="gemini"} 1');
+    expect(output).toContain('wallet_ai_duration_seconds_count{operation="unknown",provider="gemini"} 1');
 
     // Verify default process metrics
     expect(output).toContain('process_resident_memory_bytes');
     expect(output).toContain('process_uptime_seconds');
+  });
+
+  it('records tokens and latency with explicit operation dimension', () => {
+    const registry = PrometheusMetricsRegistry.getInstance();
+    registry.setEnabled(true);
+
+    registry.recordTokens('gemini', 'input', 350, 'text', 'intent_text');
+    registry.recordTokens('gemini', 'output', 80, 'text', 'intent_text');
+    registry.recordDuration('gemini', 0.42, 'intent_text');
+
+    registry.recordTokens('gemini', 'input', 1200, 'receipt', 'receipt_ocr');
+    registry.recordDuration('gemini', 1.85, 'receipt_ocr');
+
+    const output = registry.formatPrometheusMetrics();
+    expect(output).toContain('wallet_ai_tokens_total{modality="text",operation="intent_text",provider="gemini",type="input"} 350');
+    expect(output).toContain('wallet_ai_tokens_total{modality="text",operation="intent_text",provider="gemini",type="output"} 80');
+    expect(output).toContain('wallet_ai_tokens_total{modality="receipt",operation="receipt_ocr",provider="gemini",type="input"} 1200');
+    expect(output).toContain('wallet_ai_duration_seconds_bucket{le="0.50",operation="intent_text",provider="gemini"} 1');
+    expect(output).toContain('wallet_ai_duration_seconds_bucket{le="2.50",operation="receipt_ocr",provider="gemini"} 1');
   });
 
   it('serves /metrics via NotificationWebhookServer when enabled', async () => {
@@ -166,7 +185,7 @@ describe('PrometheusMetricsRegistry', () => {
 
       expect(response.statusCode).toBe(200);
       expect(response.contentType).toContain('text/plain');
-      expect(response.data).toContain('wallet_ai_tokens_total{modality="text",provider="gemini",type="input"} 42');
+      expect(response.data).toContain('wallet_ai_tokens_total{modality="text",operation="unknown",provider="gemini",type="input"} 42');
     } finally {
       await server.stop();
     }

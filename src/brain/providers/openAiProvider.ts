@@ -104,7 +104,8 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     messages: Array<Record<string, unknown>>,
     requestContextDescription?: string,
     enforceJsonResponseFormat: boolean = true,
-    onFallbackAttempt?: ModelFallbackProgressCallback
+    onFallbackAttempt?: ModelFallbackProgressCallback,
+    operation?: string
   ) {
     return executeChatCompletionWithFallback(
       this.httpClient,
@@ -114,7 +115,8 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
       messages,
       requestContextDescription,
       enforceJsonResponseFormat,
-      onFallbackAttempt
+      onFallbackAttempt,
+      operation
     );
   }
 
@@ -143,7 +145,8 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
           messages,
           prepared.requestContextDescription,
           true,
-          options?.onFallback
+          options?.onFallback,
+          'intent_text'
         );
       }
     );
@@ -189,7 +192,8 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
             messages,
             prepared.requestContextDescription,
             true,
-            options?.onFallback
+            options?.onFallback,
+            'receipt_ocr'
           );
         }
       );
@@ -242,7 +246,13 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
           { role: 'system', content: prepared.systemInstruction },
           { role: 'user', content: prepared.promptText },
         ];
-        return this.executeChatCompletion(messages, prepared.requestContextDescription, true);
+        return this.executeChatCompletion(
+          messages,
+          prepared.requestContextDescription,
+          true,
+          undefined,
+          'email_transaction'
+        );
       }
     );
   }
@@ -257,7 +267,10 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     ];
     const result = await this.executeChatCompletion(
       messages,
-      `Account clarification question for draft #${context.ticketId}`
+      `Account clarification question for draft #${context.ticketId}`,
+      true,
+      undefined,
+      'clarification_question'
     );
 
     return parseClarificationQuestionResponse(result.responseText, result.tokenUsage);
@@ -279,7 +292,10 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     ];
     const result = await this.executeChatCompletion(
       messages,
-      `Account clarification interpretation for draft #${context?.ticketId ?? 'unknown'}`
+      `Account clarification interpretation for draft #${context?.ticketId ?? 'unknown'}`,
+      true,
+      undefined,
+      'clarification_reply'
     );
 
     return parseClarificationProposalResponse(result.responseText, result.tokenUsage);
@@ -296,7 +312,10 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     ];
     const result = await this.executeChatCompletion(
       messages,
-      `Category classification for "${text.slice(0, 30)}"`
+      `Category classification for "${text.slice(0, 30)}"`,
+      true,
+      undefined,
+      'category_classify'
     );
 
     return parseCategoryClassificationResponse(result.responseText, result.tokenUsage);
