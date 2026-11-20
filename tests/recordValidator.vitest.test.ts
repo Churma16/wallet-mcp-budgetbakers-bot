@@ -222,4 +222,43 @@ describe('record validator account resolution', () => {
       }
     }
   });
+
+  it('rejects dummy amount (-1 or 1) when contextual user message lacks any numbers', () => {
+    const dummyRecord: CreateRecordInputPayload = {
+      accountId: 'acc-cash',
+      amount: -1,
+      recordDate: '2026-11-20T10:57:00Z',
+    };
+
+    const result = validateAndSanitizeFinancialRecords(
+      [dummyRecord],
+      accounts,
+      [],
+      'Gojek dari rumah ke kantor blibli'
+    );
+
+    expect(result.isValid).toBe(false);
+    expect(result.sanitizedRecords).toHaveLength(0);
+    expect(result.validationErrors).toHaveLength(1);
+    expect(result.validationErrors[0]).toContain('Nominal transaksi tidak ditemukan dalam pesan teks');
+  });
+
+  it('accepts legitimate nominal 1 when contextual user message explicitly contains number 1', () => {
+    const validSmallRecord: CreateRecordInputPayload = {
+      accountId: 'acc-cash',
+      amount: -1,
+      recordDate: '2026-11-20T10:57:00Z',
+    };
+
+    const result = validateAndSanitizeFinancialRecords(
+      [validSmallRecord],
+      accounts,
+      [],
+      'Tes transfer 1 rupiah'
+    );
+
+    expect(result.isValid).toBe(true);
+    expect(result.sanitizedRecords).toHaveLength(1);
+    expect(result.sanitizedRecords[0].amount).toBe(-1);
+  });
 });

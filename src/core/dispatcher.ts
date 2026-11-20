@@ -116,6 +116,18 @@ export function shouldDeferHistoryCategoryToSemanticResolver(
 }
 
 /**
+ * Detects whether a casual reply to a pending transaction card is an inquiry/question
+ * rather than an intent to provide a note or transaction description.
+ */
+export function isConversationalInquiry(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.endsWith('?') || trimmed.includes('?')) {
+    return true;
+  }
+  return /^(?:apa|kenapa|mengapa|gimana|bagaimana|siapa|kapan|mana|kok|bisa|tolong|help|bantuan|cek|info|apakah)\b/i.test(trimmed);
+}
+
+/**
  * Optional handler and service overrides for MessageDispatcher dependency injection.
  */
 export interface DispatcherOverrides {
@@ -759,6 +771,10 @@ export class MessageDispatcher {
                 if (isStructuredEdit) {
                   confirmationIntent = detectPendingConfirmationAction(
                     `Ya ${matchedPendingItem.ticketId} ${cleanedReplyText}`
+                  );
+                } else if (!isConversationalInquiry(cleanedReplyText) && cleanedReplyText.length > 0) {
+                  confirmationIntent = detectPendingConfirmationAction(
+                    `Ya ${matchedPendingItem.ticketId} n: ${cleanedReplyText}`
                   );
                 }
               } else if (confirmationIntent.targetScope === 'LATEST') {

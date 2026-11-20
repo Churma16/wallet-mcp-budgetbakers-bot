@@ -21,6 +21,13 @@ describe('recordEditParser', () => {
       expect(parsed?.note).toBe('Makan siang tim');
       expect(parsed?.hasModifications).toBe(true);
     });
+
+    it('parses freeform note when prefixed with `e` without explicit field key', () => {
+      const parsed = parseRecordEditCommand('e Gojek dari rumah ke kantor blibli');
+      expect(parsed).not.toBeNull();
+      expect(parsed?.note).toBe('Gojek dari rumah ke kantor blibli');
+      expect(parsed?.hasModifications).toBe(true);
+    });
   });
 
   describe('Direct Parsing Without Prefix (Shorthand & Full Names)', () => {

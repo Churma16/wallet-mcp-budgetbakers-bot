@@ -532,6 +532,130 @@ describe('Per-Bubble Queue Confirmation & Swipe-Reply Edit', () => {
       expect(mockMcpClient.createRecords).toHaveBeenCalledTimes(1);
     });
 
+    it('applies plain text note and commits transaction immediately on swipe-reply without structured keys', async () => {
+      const gateway = new MockMessagingGateway();
+      const pendingService = new PendingTransactionService();
+      let capturedRecords: any[] = [];
+      const mockMcpClient = {
+        createRecords: vi.fn().mockImplementation(async (records) => {
+          capturedRecords = records;
+          return {
+            summary: { total: 1, succeeded: 1, failed: 0 },
+            results: [{ id: 'rec-gojek-1', success: true }],
+          };
+        }),
+      };
+      const mockCache = {
+        getAccounts: () => [{ id: 'acc-jago', name: 'Jago Expense', currency: 'IDR' }],
+        getCategories: () => [{ id: 'cat-ojol', name: 'Ojol' }],
+      };
+
+      const context = createTestAppContext({
+        gateway: gateway as any,
+        pending: pendingService,
+        wallet: {
+          client: mockMcpClient as any,
+          cache: mockCache as any,
+          recordPreparation: {
+            prepareRecordsForDispatch: async (records: any) => records,
+          } as any,
+        },
+      });
+
+      const dispatcher = new MessageDispatcher(context);
+
+      const item = pendingService.addPendingTransaction({
+        sourceType: 'NOTIFICATION',
+        bankDisplayName: 'Bank Jago',
+        amount: -54000,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        accountNameHint: 'Jago Expense',
+        matchedAccountId: 'acc-jago',
+        matchedCategoryName: 'Ojol',
+        note: 'Transaksi ojek online via GoPay',
+        recordDate: new Date().toISOString(),
+      });
+
+      pendingService.updateNotificationMessageIds(item.ticketId, { telegram: 'msg_bubble_gojek' });
+
+      // Simulate user swiping the notification card and typing a plain text note without n: prefix
+      await dispatcher.handleIncomingUserMessage({
+        channel: 'telegram',
+        chatIdentifier: '1189814947',
+        senderIdentifier: 'user_1',
+        messageType: 'text',
+        textPayload: 'Gojek dari rumah ke kantor blibli',
+        replyToMessageId: 'msg_bubble_gojek',
+      });
+
+      // Verify transaction was resolved/submitted with overridden note
+      expect(pendingService.getPendingTransaction(item.ticketId)).toBeUndefined();
+      expect(mockMcpClient.createRecords).toHaveBeenCalledTimes(1);
+      expect(capturedRecords[0]?.note).toBe('Gojek dari Rumah ke Kantor Blibli');
+    });
+
+    it('applies plain text note when swipe-reply starts with "e " without structured keys', async () => {
+      const gateway = new MockMessagingGateway();
+      const pendingService = new PendingTransactionService();
+      let capturedRecords: any[] = [];
+      const mockMcpClient = {
+        createRecords: vi.fn().mockImplementation(async (records) => {
+          capturedRecords = records;
+          return {
+            summary: { total: 1, succeeded: 1, failed: 0 },
+            results: [{ id: 'rec-gojek-2', success: true }],
+          };
+        }),
+      };
+      const mockCache = {
+        getAccounts: () => [{ id: 'acc-jago', name: 'Jago Expense', currency: 'IDR' }],
+        getCategories: () => [{ id: 'cat-ojol', name: 'Ojol' }],
+      };
+
+      const context = createTestAppContext({
+        gateway: gateway as any,
+        pending: pendingService,
+        wallet: {
+          client: mockMcpClient as any,
+          cache: mockCache as any,
+          recordPreparation: {
+            prepareRecordsForDispatch: async (records: any) => records,
+          } as any,
+        },
+      });
+
+      const dispatcher = new MessageDispatcher(context);
+
+      const item = pendingService.addPendingTransaction({
+        sourceType: 'NOTIFICATION',
+        bankDisplayName: 'Bank Jago',
+        amount: -54000,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        accountNameHint: 'Jago Expense',
+        matchedAccountId: 'acc-jago',
+        matchedCategoryName: 'Ojol',
+        note: 'Transaksi ojek online via GoPay',
+        recordDate: new Date().toISOString(),
+      });
+
+      pendingService.updateNotificationMessageIds(item.ticketId, { telegram: 'msg_bubble_gojek_2' });
+
+      await dispatcher.handleIncomingUserMessage({
+        channel: 'telegram',
+        chatIdentifier: '1189814947',
+        senderIdentifier: 'user_1',
+        messageType: 'text',
+        textPayload: 'e Gojek dari rumah ke kantor blibli',
+        replyToMessageId: 'msg_bubble_gojek_2',
+      });
+
+      expect(pendingService.getPendingTransaction(item.ticketId)).toBeUndefined();
+      expect(mockMcpClient.createRecords).toHaveBeenCalledTimes(1);
+      expect(capturedRecords[0]?.note).toBe('Gojek dari Rumah ke Kantor Blibli');
+    });
+
     it('confirms transaction when swipe-reply says "ya"', async () => {
       const gateway = new MockMessagingGateway();
       const pendingService = new PendingTransactionService();

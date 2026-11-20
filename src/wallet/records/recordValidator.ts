@@ -260,6 +260,15 @@ export function validateAndSanitizeFinancialRecords(
       continue;
     }
 
+    if (Math.abs(parsedAmount) === 1 && typeof contextualUserMessage === 'string') {
+      const hasNumberInText = /\d/.test(contextualUserMessage) ||
+        /\b(?:satu|one|1)\b/i.test(contextualUserMessage);
+      if (!hasNumberInText) {
+        validationErrors.push(`${recordLabel}: Nominal transaksi tidak ditemukan dalam pesan teks.`);
+        continue;
+      }
+    }
+
     if (Math.abs(parsedAmount) > MAXIMUM_SINGLE_TRANSACTION_AMOUNT) {
       validationErrors.push(
         `${recordLabel}: Nominal (${Math.abs(parsedAmount).toLocaleString('id-ID')}) melebihi batas wajar keamanan sistem.`
