@@ -260,7 +260,11 @@ export function validateAndSanitizeFinancialRecords(
       continue;
     }
 
-    if (Math.abs(parsedAmount) === 1 && typeof contextualUserMessage === 'string') {
+    if (
+      Math.abs(parsedAmount) === 1 &&
+      typeof contextualUserMessage === 'string' &&
+      contextualUserMessage.trim().length > 0
+    ) {
       const hasNumberInText = /\d/.test(contextualUserMessage) ||
         /\b(?:satu|one|1)\b/i.test(contextualUserMessage);
       if (!hasNumberInText) {

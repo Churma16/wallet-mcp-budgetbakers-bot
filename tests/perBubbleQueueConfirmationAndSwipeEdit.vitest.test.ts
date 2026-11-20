@@ -656,6 +656,172 @@ describe('Per-Bubble Queue Confirmation & Swipe-Reply Edit', () => {
       expect(capturedRecords[0]?.note).toBe('Gojek dari Rumah ke Kantor Blibli');
     });
 
+    it('applies plain text note containing 4-digit number (e.g. "Tiket Konser 2024") and commits immediately', async () => {
+      const gateway = new MockMessagingGateway();
+      const pendingService = new PendingTransactionService();
+      let capturedRecords: any[] = [];
+      const mockMcpClient = {
+        createRecords: vi.fn().mockImplementation(async (records) => {
+          capturedRecords = records;
+          return {
+            summary: { total: 1, succeeded: 1, failed: 0 },
+            results: [{ id: 'rec-coldplay', success: true }],
+          };
+        }),
+      };
+      const mockCache = {
+        getAccounts: () => [{ id: 'acc-jago', name: 'Jago Expense', currency: 'IDR' }],
+        getCategories: () => [{ id: 'cat-hiburan', name: 'Hiburan' }],
+      };
+
+      const context = createTestAppContext({
+        gateway: gateway as any,
+        pending: pendingService,
+        wallet: {
+          client: mockMcpClient as any,
+          cache: mockCache as any,
+          recordPreparation: {
+            prepareRecordsForDispatch: async (records: any) => records,
+          } as any,
+        },
+      });
+
+      const dispatcher = new MessageDispatcher(context);
+
+      const item = pendingService.addPendingTransaction({
+        sourceType: 'NOTIFICATION',
+        bankDisplayName: 'Bank Jago',
+        amount: -500000,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        accountNameHint: 'Jago Expense',
+        matchedAccountId: 'acc-jago',
+        matchedCategoryName: 'Hiburan',
+        note: 'Coldplay',
+        recordDate: new Date().toISOString(),
+      });
+
+      pendingService.updateNotificationMessageIds(item.ticketId, { telegram: 'msg_bubble_coldplay' });
+
+      await dispatcher.handleIncomingUserMessage({
+        channel: 'telegram',
+        chatIdentifier: '1189814947',
+        senderIdentifier: 'user_1',
+        messageType: 'text',
+        textPayload: 'Tiket Coldplay 2024',
+        replyToMessageId: 'msg_bubble_coldplay',
+      });
+
+      expect(pendingService.getPendingTransaction(item.ticketId)).toBeUndefined();
+      expect(mockMcpClient.createRecords).toHaveBeenCalledTimes(1);
+      expect(capturedRecords[0]?.note).toBe('Tiket Coldplay 2024');
+    });
+
+    it('applies explicit prefix "e " even when note starts with question/inquiry keyword (e.g. "e cek dokter di RS")', async () => {
+      const gateway = new MockMessagingGateway();
+      const pendingService = new PendingTransactionService();
+      let capturedRecords: any[] = [];
+      const mockMcpClient = {
+        createRecords: vi.fn().mockImplementation(async (records) => {
+          capturedRecords = records;
+          return {
+            summary: { total: 1, succeeded: 1, failed: 0 },
+            results: [{ id: 'rec-medis', success: true }],
+          };
+        }),
+      };
+      const mockCache = {
+        getAccounts: () => [{ id: 'acc-jago', name: 'Jago Expense', currency: 'IDR' }],
+        getCategories: () => [{ id: 'cat-medis', name: 'Kesehatan' }],
+      };
+
+      const context = createTestAppContext({
+        gateway: gateway as any,
+        pending: pendingService,
+        wallet: {
+          client: mockMcpClient as any,
+          cache: mockCache as any,
+          recordPreparation: {
+            prepareRecordsForDispatch: async (records: any) => records,
+          } as any,
+        },
+      });
+
+      const dispatcher = new MessageDispatcher(context);
+
+      const item = pendingService.addPendingTransaction({
+        sourceType: 'NOTIFICATION',
+        bankDisplayName: 'Bank Jago',
+        amount: -150000,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        accountNameHint: 'Jago Expense',
+        matchedAccountId: 'acc-jago',
+        matchedCategoryName: 'Kesehatan',
+        note: 'RS',
+        recordDate: new Date().toISOString(),
+      });
+
+      pendingService.updateNotificationMessageIds(item.ticketId, { telegram: 'msg_bubble_medis' });
+
+      await dispatcher.handleIncomingUserMessage({
+        channel: 'telegram',
+        chatIdentifier: '1189814947',
+        senderIdentifier: 'user_1',
+        messageType: 'text',
+        textPayload: 'e cek dokter di RS',
+        replyToMessageId: 'msg_bubble_medis',
+      });
+
+      expect(pendingService.getPendingTransaction(item.ticketId)).toBeUndefined();
+      expect(mockMcpClient.createRecords).toHaveBeenCalledTimes(1);
+      expect(capturedRecords[0]?.note).toBe('Cek Dokter di Rs');
+    });
+
+    it('cancels pending transaction when swipe-reply uses conversational negation (e.g. "bukan transaksi saya")', async () => {
+      const gateway = new MockMessagingGateway();
+      const pendingService = new PendingTransactionService();
+      const mockMcpClient = {
+        createRecords: vi.fn(),
+      };
+
+      const context = createTestAppContext({
+        gateway: gateway as any,
+        pending: pendingService,
+        wallet: {
+          client: mockMcpClient as any,
+          cache: { getAccounts: () => [], getCategories: () => [] } as any,
+        },
+      });
+
+      const dispatcher = new MessageDispatcher(context);
+
+      const item = pendingService.addPendingTransaction({
+        sourceType: 'NOTIFICATION',
+        bankDisplayName: 'Bank Jago',
+        amount: -54000,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        accountNameHint: 'Jago Expense',
+        note: 'Transaksi Aneh',
+        recordDate: new Date().toISOString(),
+      });
+
+      pendingService.updateNotificationMessageIds(item.ticketId, { telegram: 'msg_bubble_cancel' });
+
+      await dispatcher.handleIncomingUserMessage({
+        channel: 'telegram',
+        chatIdentifier: '1189814947',
+        senderIdentifier: 'user_1',
+        messageType: 'text',
+        textPayload: 'bukan transaksi saya',
+        replyToMessageId: 'msg_bubble_cancel',
+      });
+
+      expect(pendingService.getPendingTransaction(item.ticketId)).toBeUndefined();
+      expect(mockMcpClient.createRecords).not.toHaveBeenCalled();
+    });
+
     it('confirms transaction when swipe-reply says "ya"', async () => {
       const gateway = new MockMessagingGateway();
       const pendingService = new PendingTransactionService();

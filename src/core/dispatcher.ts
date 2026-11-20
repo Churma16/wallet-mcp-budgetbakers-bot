@@ -121,10 +121,19 @@ export function shouldDeferHistoryCategoryToSemanticResolver(
  */
 export function isConversationalInquiry(text: string): boolean {
   const trimmed = text.trim();
-  if (trimmed.endsWith('?') || trimmed.includes('?')) {
+  if (trimmed.includes('?')) {
     return true;
   }
   return /^(?:apa|kenapa|mengapa|gimana|bagaimana|siapa|kapan|mana|kok|bisa|tolong|help|bantuan|cek|info|apakah)\b/i.test(trimmed);
+}
+
+/**
+ * Detects whether a casual reply to a pending transaction card is an explicit rejection/negation
+ * (e.g. "bukan transaksi saya", "jangan dicatat", "ga usah").
+ */
+export function isConversationalRejection(text: string): boolean {
+  const trimmed = text.trim();
+  return /^(?:bukan|jangan|tidak|skip|salah|ga usah|gak usah)\b/i.test(trimmed);
 }
 
 /**
@@ -764,17 +773,22 @@ export class MessageDispatcher {
             if (matchedPendingItem) {
               const cleanedReplyText = event.textPayload.replace(/^(?:e|edit)\s+/i, '').trim();
               if (!confirmationIntent) {
-                const editCmd = parseRecordEditCommand(cleanedReplyText);
+                const editCmd = parseRecordEditCommand(event.textPayload);
                 const isStructuredEdit = Boolean(
                   (editCmd && editCmd.hasModifications) || cleanedReplyText.includes('#')
                 );
                 if (isStructuredEdit) {
                   confirmationIntent = detectPendingConfirmationAction(
-                    `Ya ${matchedPendingItem.ticketId} ${cleanedReplyText}`
+                    `Ya ${matchedPendingItem.ticketId}: ${cleanedReplyText}`
                   );
+                } else if (isConversationalRejection(cleanedReplyText)) {
+                  confirmationIntent = {
+                    actionType: 'REJECT',
+                    targetScope: matchedPendingItem.ticketId,
+                  };
                 } else if (!isConversationalInquiry(cleanedReplyText) && cleanedReplyText.length > 0) {
                   confirmationIntent = detectPendingConfirmationAction(
-                    `Ya ${matchedPendingItem.ticketId} n: ${cleanedReplyText}`
+                    `Ya ${matchedPendingItem.ticketId}: n: ${cleanedReplyText}`
                   );
                 }
               } else if (confirmationIntent.targetScope === 'LATEST') {

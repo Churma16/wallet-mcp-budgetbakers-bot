@@ -261,4 +261,23 @@ describe('record validator account resolution', () => {
     expect(result.sanitizedRecords).toHaveLength(1);
     expect(result.sanitizedRecords[0].amount).toBe(-1);
   });
+
+  it('does not reject legitimate nominal 1 when contextual user message is empty string (e.g. image without caption)', () => {
+    const validReceiptRecord: CreateRecordInputPayload = {
+      accountId: 'acc-cash',
+      amount: -1,
+      recordDate: '2026-11-20T10:57:00Z',
+    };
+
+    const result = validateAndSanitizeFinancialRecords(
+      [validReceiptRecord],
+      accounts,
+      [],
+      ''
+    );
+
+    expect(result.isValid).toBe(true);
+    expect(result.sanitizedRecords).toHaveLength(1);
+    expect(result.sanitizedRecords[0].amount).toBe(-1);
+  });
 });
