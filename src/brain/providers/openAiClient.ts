@@ -38,8 +38,17 @@ export function extractInputSampleFromMessages(messages: Array<Record<string, un
   if (!Array.isArray(messages)) return undefined;
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
-    if (msg && msg.role === 'user' && typeof msg.content === 'string') {
-      return msg.content;
+    if (msg && msg.role === 'user') {
+      if (typeof msg.content === 'string') {
+        return msg.content;
+      }
+      if (Array.isArray(msg.content)) {
+        for (const part of msg.content) {
+          if (part && typeof part === 'object' && typeof (part as any).text === 'string' && (part as any).text.trim().length > 0) {
+            return (part as any).text;
+          }
+        }
+      }
     }
   }
   return undefined;

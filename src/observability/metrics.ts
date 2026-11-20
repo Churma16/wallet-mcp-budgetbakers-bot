@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import crypto from 'node:crypto';
 import { AiTraceBuffer } from './traceBuffer.js';
 
 /**
@@ -14,11 +15,20 @@ export interface HistogramBucketState {
 }
 
 function escapePrometheusLabel(value: string, maxLength: number = 60): string {
-  return value
+  const truncated = value.slice(0, maxLength);
+  return truncated
     .replace(/\\/g, '\\\\')
     .replace(/"/g, '\\"')
-    .replace(/\n/g, '\\n')
-    .slice(0, maxLength);
+    .replace(/\n/g, '\\n');
+}
+
+export function timingSafeEqualStrings(actual: string, expected: string): boolean {
+  if (typeof actual !== 'string' || typeof expected !== 'string' || !expected) {
+    return false;
+  }
+  const actualHash = crypto.createHash('sha256').update(actual).digest();
+  const expectedHash = crypto.createHash('sha256').update(expected).digest();
+  return crypto.timingSafeEqual(actualHash, expectedHash);
 }
 
 export class PrometheusMetricsRegistry {
@@ -452,6 +462,39 @@ export function tryHandleMetricsEndpoint(req: IncomingMessage, res: ServerRespon
   }
 
   if (pathname === '/api/traces' || pathname === '/traces') {
+    const metrics = PrometheusMetricsRegistry.getInstance();
+    if (!metrics.isEnabled()) {
+      return false;
+    }
+
+    const secret = (process.env.NOTIFICATION_WEBHOOK_SECRET || process.env.OBSERVABILITY_API_KEY || '').trim();
+    if (secret) {
+      const rawAuthHeader = req.headers['authorization'];
+      const authHeader = typeof rawAuthHeader === 'string'
+        ? rawAuthHeader
+        : Array.isArray(rawAuthHeader)
+          ? rawAuthHeader[0] || ''
+          : '';
+      const expectedBearer = `Bearer ${secret}`;
+      if (!timingSafeEqualStrings(authHeader, expectedBearer)) {
+        res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(
+          JSON.stringify({
+            error: 'Unauthorized: Invalid or missing Bearer token in Authorization header',
+          })
+        );
+        return true;
+      }
+    } else if (process.env.NODE_ENV === 'production') {
+      res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(
+        JSON.stringify({
+          error: 'Unauthorized: Secret is not configured in production environment',
+        })
+      );
+      return true;
+    }
+
     const limitParam = parsedUrl.searchParams.get('limit');
     const parsedLimit = limitParam ? Number.parseInt(limitParam, 10) : 50;
     const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 50;

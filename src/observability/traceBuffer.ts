@@ -3,6 +3,8 @@
  * Keeps the last N execution traces in memory for rapid prompt tuning inspection.
  */
 
+import { PrometheusMetricsRegistry } from './metrics.js';
+
 export interface AiCallTraceEntry {
   id: string;
   timestamp: string;
@@ -30,8 +32,14 @@ export interface TraceQueryOptions {
 
 export function sanitizeInputSample(input: string, maxLength: number = 150): string {
   if (!input) return '';
+  let cleaned = input;
+  // If wrapped in <untrusted_user_text>...</untrusted_user_text>, extract actual user text
+  const userTextMatch = cleaned.match(/<untrusted_user_text>([\s\S]*?)<\/untrusted_user_text>/i);
+  if (userTextMatch && userTextMatch[1] && userTextMatch[1].trim().length > 0) {
+    cleaned = userTextMatch[1];
+  }
   // Collapse excessive whitespaces and newlines
-  const collapsed = input.replace(/\s+/g, ' ').trim();
+  const collapsed = cleaned.replace(/\s+/g, ' ').trim();
   // Mask obvious bearer tokens or credentials if present
   const masked = collapsed.replace(/bearer\s+[a-zA-Z0-9_\-\.]{15,}/gi, 'Bearer [REDACTED]');
   return masked.length > maxLength ? `${masked.slice(0, maxLength)}...` : masked;
@@ -79,7 +87,11 @@ export class AiTraceBuffer {
 
   public record(
     entry: Omit<AiCallTraceEntry, 'id' | 'timestamp'> & { id?: string; timestamp?: string }
-  ): AiCallTraceEntry {
+  ): AiCallTraceEntry | null {
+    if (!PrometheusMetricsRegistry.getInstance().isEnabled()) {
+      return null;
+    }
+
     const fullEntry: AiCallTraceEntry = {
       ...entry,
       id: entry.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
