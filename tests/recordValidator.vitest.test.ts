@@ -262,6 +262,26 @@ describe('record validator account resolution', () => {
     expect(result.sanitizedRecords[0].amount).toBe(-1);
   });
 
+  it('rejects dummy nominal 1 when message contains numbers other than 1 (e.g. quantity or time)', () => {
+    const dummyRecord: CreateRecordInputPayload = {
+      accountId: 'acc-cash',
+      amount: -1,
+      recordDate: '2026-11-20T10:57:00Z',
+    };
+
+    const result = validateAndSanitizeFinancialRecords(
+      [dummyRecord],
+      accounts,
+      [],
+      'Beli bensin 2 liter'
+    );
+
+    expect(result.isValid).toBe(false);
+    expect(result.sanitizedRecords).toHaveLength(0);
+    expect(result.validationErrors).toHaveLength(1);
+    expect(result.validationErrors[0]).toContain('Nominal transaksi tidak ditemukan dalam pesan teks');
+  });
+
   it('does not reject legitimate nominal 1 when contextual user message is empty string (e.g. image without caption)', () => {
     const validReceiptRecord: CreateRecordInputPayload = {
       accountId: 'acc-cash',

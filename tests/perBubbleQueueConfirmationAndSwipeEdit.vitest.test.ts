@@ -822,6 +822,54 @@ describe('Per-Bubble Queue Confirmation & Swipe-Reply Edit', () => {
       expect(mockMcpClient.createRecords).not.toHaveBeenCalled();
     });
 
+    it('does not auto-commit when swipe-reply is a casual inquiry without question mark (e.g. "ini apa", "ini transaksi apa")', async () => {
+      const gateway = new MockMessagingGateway();
+      const pendingService = new PendingTransactionService();
+      const mockMcpClient = {
+        createRecords: vi.fn(),
+      };
+
+      const context = createTestAppContext({
+        gateway: gateway as any,
+        pending: pendingService,
+        wallet: {
+          client: mockMcpClient as any,
+          cache: { getAccounts: () => [], getCategories: () => [] } as any,
+        },
+      });
+
+      const dispatcher = new MessageDispatcher(context);
+
+      const item = pendingService.addPendingTransaction({
+        sourceType: 'NOTIFICATION',
+        bankDisplayName: 'Bank Jago',
+        amount: -54000,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        accountNameHint: 'Jago Expense',
+        matchedAccountId: 'acc-jago',
+        matchedCategoryName: 'Ojol',
+        note: 'Transaksi ojek online via GoPay',
+        recordDate: new Date().toISOString(),
+      });
+
+      pendingService.updateNotificationMessageIds(item.ticketId, { telegram: 'msg_bubble_inquiry' });
+
+      await dispatcher.handleIncomingUserMessage({
+        channel: 'telegram',
+        chatIdentifier: '1189814947',
+        senderIdentifier: 'user_1',
+        messageType: 'text',
+        textPayload: 'ini transaksi apa',
+        replyToMessageId: 'msg_bubble_inquiry',
+      });
+
+      // Transaction must NOT be auto-committed as note
+      expect(mockMcpClient.createRecords).not.toHaveBeenCalled();
+      // Pending item remains in queue for user clarification
+      expect(pendingService.getPendingTransaction(item.ticketId)).toBeDefined();
+    });
+
     it('confirms transaction when swipe-reply says "ya"', async () => {
       const gateway = new MockMessagingGateway();
       const pendingService = new PendingTransactionService();

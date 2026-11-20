@@ -124,7 +124,9 @@ export function isConversationalInquiry(text: string): boolean {
   if (trimmed.includes('?')) {
     return true;
   }
-  return /^(?:apa|kenapa|mengapa|gimana|bagaimana|siapa|kapan|mana|kok|bisa|tolong|help|bantuan|cek|info|apakah)\b/i.test(trimmed);
+  return /^(?:(?:ini(?:\s+(?:transaksi|buat))?|maksudnya)\s+)?(?:apa|kenapa|mengapa|gimana|bagaimana|siapa|kapan|mana|kok|bisa|tolong|help|bantuan|cek|info|apakah)\b/i.test(
+    trimmed
+  );
 }
 
 /**

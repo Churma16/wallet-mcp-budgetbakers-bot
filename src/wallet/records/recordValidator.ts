@@ -265,8 +265,8 @@ export function validateAndSanitizeFinancialRecords(
       typeof contextualUserMessage === 'string' &&
       contextualUserMessage.trim().length > 0
     ) {
-      const hasNumberInText = /\d/.test(contextualUserMessage) ||
-        /\b(?:satu|one|1)\b/i.test(contextualUserMessage);
+      const hasNumberInText =
+        /(?:^|\D)1(?:\D|$)|(?:\b(?:satu|one)\b)/i.test(contextualUserMessage);
       if (!hasNumberInText) {
         validationErrors.push(`${recordLabel}: Nominal transaksi tidak ditemukan dalam pesan teks.`);
         continue;
