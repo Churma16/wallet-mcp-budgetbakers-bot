@@ -3,7 +3,7 @@ import { CategoryContextService } from '../category/categoryContext.js';
 import { ModelFallbackProgressCallback, TokenUsageStatistics } from '../types.js';
 import { applicationLogger, formatConciseErrorMessage } from '../../lib/logger.js';
 import { isRecoverableModelExecutionError } from './providerWorkflow.js';
-import { PrometheusMetricsRegistry } from '../../observability/index.js';
+import { PrometheusMetricsRegistry, AiTraceBuffer, extractDecisionSummary } from '../../observability/index.js';
 
 export interface OpenAiCompatibleProviderConfiguration {
   providerName?: string;
@@ -32,6 +32,17 @@ export interface ChatCompletionResponsePayload {
 export interface GenerationExecutionResult {
   responseText: string;
   tokenUsage?: TokenUsageStatistics;
+}
+
+export function extractInputSampleFromMessages(messages: Array<Record<string, unknown>>): string | undefined {
+  if (!Array.isArray(messages)) return undefined;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg && msg.role === 'user' && typeof msg.content === 'string') {
+      return msg.content;
+    }
+  }
+  return undefined;
 }
 
 export function trimTrailingSlashes(inputUrl: string): string {
@@ -72,7 +83,8 @@ export async function executeChatCompletionWithFallback(
   messages: Array<Record<string, unknown>>,
   requestContextDescription?: string,
   enforceJsonResponseFormat: boolean = true,
-  onFallbackAttempt?: ModelFallbackProgressCallback
+  onFallbackAttempt?: ModelFallbackProgressCallback,
+  operation: string = 'unknown'
 ): Promise<GenerationExecutionResult> {
   let lastEncounteredError: unknown = null;
 
@@ -137,7 +149,8 @@ export async function executeChatCompletionWithFallback(
             messages,
             requestContextDescription,
             false,
-            onFallbackAttempt
+            onFallbackAttempt,
+            operation
           );
         }
         throw postError;
@@ -161,9 +174,25 @@ export async function executeChatCompletionWithFallback(
       const metrics = PrometheusMetricsRegistry.getInstance();
       const normalizedProvider = (providerName || 'openai').toLowerCase();
       metrics.recordRequest(normalizedProvider, 'success');
-      metrics.recordDuration(normalizedProvider, executionDurationMilliseconds / 1000);
-      if (promptTokens > 0) metrics.recordTokens(normalizedProvider, 'input', promptTokens);
-      if (candidatesTokens > 0) metrics.recordTokens(normalizedProvider, 'output', candidatesTokens);
+      metrics.recordDuration(normalizedProvider, executionDurationMilliseconds / 1000, operation);
+      if (promptTokens > 0) metrics.recordTokens(normalizedProvider, 'input', promptTokens, 'text', operation);
+      if (candidatesTokens > 0) metrics.recordTokens(normalizedProvider, 'output', candidatesTokens, 'text', operation);
+
+      AiTraceBuffer.getInstance().record({
+        operation,
+        provider: normalizedProvider,
+        model: currentCandidateModel,
+        role: modelIndex === 0 ? 'primary' : 'fallback',
+        durationMs: executionDurationMilliseconds,
+        inputTokens: promptTokens,
+        outputTokens: candidatesTokens,
+        thinkingTokens: 0,
+        cachedTokens: 0,
+        totalTokens,
+        status: 'success',
+        inputSample: extractInputSampleFromMessages(messages),
+        decision: extractDecisionSummary(rawContent),
+      });
 
       applicationLogger.fileDetail('ai', `Received ${providerName} Response [${currentCandidateModel}] (${executionDurationMilliseconds}ms)`, {
         model: currentCandidateModel,
@@ -179,6 +208,22 @@ export async function executeChatCompletionWithFallback(
       const errorMessage = error?.response?.data?.error?.message || error?.message || String(error);
       const isRecoverableModelError = isRecoverableModelExecutionError(error);
       const hasNextFallbackModel = modelIndex + 1 < candidateModelList.length;
+
+      AiTraceBuffer.getInstance().record({
+        operation,
+        provider: (providerName || 'openai').toLowerCase(),
+        model: currentCandidateModel,
+        role: modelIndex === 0 ? 'primary' : 'fallback',
+        durationMs: executionDurationMilliseconds,
+        inputTokens: 0,
+        outputTokens: 0,
+        thinkingTokens: 0,
+        cachedTokens: 0,
+        totalTokens: 0,
+        status: 'error',
+        errorMessage,
+        inputSample: extractInputSampleFromMessages(messages),
+      });
 
       applicationLogger.fileDetail('error', `${providerName} Model Execution Failed [${currentCandidateModel}] (${executionDurationMilliseconds}ms)`, {
         model: currentCandidateModel,

@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { AiTraceBuffer } from './traceBuffer.js';
 
 /**
  * Zero-dependency Prometheus Metrics Registry for Wallet MCP.
@@ -79,16 +80,18 @@ export class PrometheusMetricsRegistry {
   }
 
   /**
-   * Records token usage for an AI model/provider interaction with optional modality tag.
+   * Records token usage for an AI model/provider interaction with optional modality and operation tag.
    */
   public recordTokens(
     provider: string,
     type: 'input' | 'output' | 'cached' | 'thinking',
     count: number,
-    modality: 'text' | 'receipt' = 'text'
+    modality: 'text' | 'receipt' = 'text',
+    operation: string = 'unknown'
   ): void {
     if (!this.enabled || count <= 0) return;
-    const key = `modality="${modality}",provider="${provider}",type="${type}"`;
+    const cleanOp = escapePrometheusLabel(operation, 40);
+    const key = `modality="${modality}",operation="${cleanOp}",provider="${provider}",type="${type}"`;
     this.tokenCounters.set(key, (this.tokenCounters.get(key) || 0) + count);
   }
 
@@ -186,11 +189,12 @@ export class PrometheusMetricsRegistry {
   }
 
   /**
-   * Records execution latency for an AI generation request in seconds.
+   * Records execution latency for an AI generation request in seconds with optional operation tag.
    */
-  public recordDuration(provider: string, seconds: number): void {
+  public recordDuration(provider: string, seconds: number, operation: string = 'unknown'): void {
     if (!this.enabled || seconds < 0) return;
-    const key = `provider="${provider}"`;
+    const cleanOp = escapePrometheusLabel(operation, 40);
+    const key = `operation="${cleanOp}",provider="${provider}"`;
     let hist = this.durationHistograms.get(key);
     if (!hist) {
       hist = {
@@ -254,10 +258,10 @@ export class PrometheusMetricsRegistry {
     lines.push('# HELP wallet_ai_tokens_total Cumulative AI tokens consumed by Wallet MCP');
     lines.push('# TYPE wallet_ai_tokens_total counter');
     if (this.tokenCounters.size === 0) {
-      lines.push('wallet_ai_tokens_total{modality="text",provider="gemini",type="input"} 0');
-      lines.push('wallet_ai_tokens_total{modality="text",provider="gemini",type="output"} 0');
-      lines.push('wallet_ai_tokens_total{modality="text",provider="gemini",type="cached"} 0');
-      lines.push('wallet_ai_tokens_total{modality="text",provider="gemini",type="thinking"} 0');
+      lines.push('wallet_ai_tokens_total{modality="text",operation="unknown",provider="gemini",type="input"} 0');
+      lines.push('wallet_ai_tokens_total{modality="text",operation="unknown",provider="gemini",type="output"} 0');
+      lines.push('wallet_ai_tokens_total{modality="text",operation="unknown",provider="gemini",type="cached"} 0');
+      lines.push('wallet_ai_tokens_total{modality="text",operation="unknown",provider="gemini",type="thinking"} 0');
     } else {
       for (const [labels, value] of this.tokenCounters.entries()) {
         lines.push(`wallet_ai_tokens_total{${labels}} ${value}`);
@@ -378,11 +382,11 @@ export class PrometheusMetricsRegistry {
     lines.push('# TYPE wallet_ai_duration_seconds histogram');
     if (this.durationHistograms.size === 0) {
       for (const le of this.durationBuckets) {
-        lines.push(`wallet_ai_duration_seconds_bucket{le="${le.toFixed(2)}",provider="gemini"} 0`);
+        lines.push(`wallet_ai_duration_seconds_bucket{le="${le.toFixed(2)}",operation="unknown",provider="gemini"} 0`);
       }
-      lines.push('wallet_ai_duration_seconds_bucket{le="+Inf",provider="gemini"} 0');
-      lines.push('wallet_ai_duration_seconds_sum{provider="gemini"} 0.0');
-      lines.push('wallet_ai_duration_seconds_count{provider="gemini"} 0');
+      lines.push('wallet_ai_duration_seconds_bucket{le="+Inf",operation="unknown",provider="gemini"} 0');
+      lines.push('wallet_ai_duration_seconds_sum{operation="unknown",provider="gemini"} 0.0');
+      lines.push('wallet_ai_duration_seconds_count{operation="unknown",provider="gemini"} 0');
     } else {
       for (const [labels, hist] of this.durationHistograms.entries()) {
         for (let i = 0; i < this.durationBuckets.length; i++) {
@@ -426,7 +430,7 @@ export class PrometheusMetricsRegistry {
 }
 
 /**
- * Handles incoming HTTP requests for the /metrics or /api/metrics endpoint.
+ * Handles incoming HTTP requests for observability endpoints (/metrics, /api/metrics, /api/traces, /traces).
  * Returns true if the request was handled, false otherwise.
  */
 export function tryHandleMetricsEndpoint(req: IncomingMessage, res: ServerResponse): boolean {
@@ -445,6 +449,34 @@ export function tryHandleMetricsEndpoint(req: IncomingMessage, res: ServerRespon
       res.end(metrics.formatPrometheusMetrics());
       return true;
     }
+  }
+
+  if (pathname === '/api/traces' || pathname === '/traces') {
+    const limitParam = parsedUrl.searchParams.get('limit');
+    const parsedLimit = limitParam ? Number.parseInt(limitParam, 10) : 50;
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 50;
+    const operation = parsedUrl.searchParams.get('operation') || undefined;
+    const provider = parsedUrl.searchParams.get('provider') || undefined;
+
+    const buffer = AiTraceBuffer.getInstance();
+    const traces = buffer.getTraces({ limit, operation, provider });
+
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+    });
+    res.end(
+      JSON.stringify(
+        {
+          count: traces.length,
+          capacity: 100,
+          traces,
+        },
+        null,
+        2
+      )
+    );
+    return true;
   }
 
   return false;

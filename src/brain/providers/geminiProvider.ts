@@ -116,6 +116,7 @@ export class GeminiAiProvider implements FinancialAiProvider {
     requestContextDescription?: string;
     onFallbackAttempt?: ModelFallbackProgressCallback;
     modality?: 'text' | 'receipt';
+    operation?: string;
   }) {
     return executeGeminiGenerationWithFallback({
       googleGenAiClient: this.googleGenAiClient,
@@ -126,6 +127,7 @@ export class GeminiAiProvider implements FinancialAiProvider {
       requestContextDescription: options.requestContextDescription || 'Gemini financial processing',
       onFallbackAttempt: options.onFallbackAttempt,
       modality: options.modality,
+      operation: options.operation,
     });
   }
 
@@ -156,7 +158,8 @@ export class GeminiAiProvider implements FinancialAiProvider {
           systemInstruction: prepared.systemInstruction,
           requestContextDescription: prepared.requestContextDescription,
           onFallbackAttempt: options?.onFallback,
-          modality: 'receipt',
+          modality: 'text',
+          operation: 'intent_text',
         })
     );
   }
@@ -201,6 +204,7 @@ export class GeminiAiProvider implements FinancialAiProvider {
           requestContextDescription: prepared.requestContextDescription,
           onFallbackAttempt: options?.onFallback,
           modality: 'receipt',
+          operation: 'receipt_ocr',
         })
     );
   }
@@ -235,6 +239,8 @@ export class GeminiAiProvider implements FinancialAiProvider {
       ],
       systemInstruction,
       requestContextDescription: `Statement extraction (${imageBuffers.length} images, caption: "${optionalCaption}")`,
+      modality: 'receipt',
+      operation: 'statement_ocr',
     });
 
     return parseStatementExtractionResponse(result.responseText);
@@ -266,6 +272,8 @@ export class GeminiAiProvider implements FinancialAiProvider {
           contents: [{ role: 'user', parts: [{ text: prepared.promptText }] }],
           systemInstruction: prepared.systemInstruction,
           requestContextDescription: prepared.requestContextDescription,
+          modality: 'text',
+          operation: 'email_transaction',
         })
     );
   }
@@ -278,6 +286,8 @@ export class GeminiAiProvider implements FinancialAiProvider {
       contents: [{ role: 'user', parts: [{ text: promptText }] }],
       systemInstruction,
       requestContextDescription: `Account clarification question for draft #${context.ticketId}`,
+      modality: 'text',
+      operation: 'clarification_question',
     });
 
     return parseClarificationQuestionResponse(result.responseText, result.tokenUsage);
@@ -297,6 +307,8 @@ export class GeminiAiProvider implements FinancialAiProvider {
       contents: [{ role: 'user', parts: [{ text: promptText }] }],
       systemInstruction,
       requestContextDescription: `Account clarification interpretation for draft #${context?.ticketId ?? 'unknown'}`,
+      modality: 'text',
+      operation: 'clarification_reply',
     });
 
     return parseClarificationProposalResponse(result.responseText, result.tokenUsage);
@@ -311,6 +323,8 @@ export class GeminiAiProvider implements FinancialAiProvider {
       contents: [{ role: 'user', parts: [{ text: promptText }] }],
       systemInstruction,
       requestContextDescription: `Category classification for "${text.slice(0, 30)}"`,
+      modality: 'text',
+      operation: 'category_classify',
     });
 
     return parseCategoryClassificationResponse(result.responseText, result.tokenUsage);

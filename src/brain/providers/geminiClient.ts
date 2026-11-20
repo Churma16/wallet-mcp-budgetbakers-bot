@@ -2,7 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import { applicationLogger, formatConciseErrorMessage } from '../../lib/logger.js';
 import { ModelFallbackProgressCallback, TokenUsageStatistics } from '../types.js';
 import { isRecoverableModelExecutionError } from './providerWorkflow.js';
-import { PrometheusMetricsRegistry } from '../../observability/index.js';
+import { PrometheusMetricsRegistry, AiTraceBuffer, extractDecisionSummary } from '../../observability/index.js';
 
 export interface GenerationExecutionResult {
   responseText: string;
@@ -18,6 +18,24 @@ export interface GeminiFallbackExecutionOptions {
   requestContextDescription: string;
   onFallbackAttempt?: ModelFallbackProgressCallback;
   modality?: 'text' | 'receipt';
+  operation?: string;
+}
+
+export function extractInputSampleFromContents(contents: any): string | undefined {
+  if (!contents) return undefined;
+  if (typeof contents === 'string') return contents;
+  if (Array.isArray(contents)) {
+    for (const item of contents) {
+      if (item && Array.isArray(item.parts)) {
+        for (const part of item.parts) {
+          if (part && typeof part.text === 'string' && part.text.trim().length > 0) {
+            return part.text;
+          }
+        }
+      }
+    }
+  }
+  return undefined;
 }
 
 export function sanitizeContentsForLogging(contents: any): any {
@@ -55,6 +73,7 @@ export async function executeGeminiGenerationWithFallback(
     requestContextDescription,
     onFallbackAttempt,
     modality = 'text',
+    operation = 'unknown',
   } = options;
 
   let lastEncounteredError: unknown = null;
@@ -119,18 +138,34 @@ export async function executeGeminiGenerationWithFallback(
       metrics.recordRequest('gemini', 'success');
       metrics.recordModelAttempt(activeModelName, role, 'success');
       metrics.recordResolution(activeModelName, index);
-      metrics.recordDuration('gemini', durationSeconds);
+      metrics.recordDuration('gemini', durationSeconds, operation);
       if (tokenUsage) {
-        if (tokenUsage.promptTokens > 0) metrics.recordTokens('gemini', 'input', tokenUsage.promptTokens, modality);
-        if (tokenUsage.candidatesTokens > 0) metrics.recordTokens('gemini', 'output', tokenUsage.candidatesTokens, modality);
-        if (tokenUsage.thoughtsTokens && tokenUsage.thoughtsTokens > 0) metrics.recordTokens('gemini', 'thinking', tokenUsage.thoughtsTokens, modality);
+        if (tokenUsage.promptTokens > 0) metrics.recordTokens('gemini', 'input', tokenUsage.promptTokens, modality, operation);
+        if (tokenUsage.candidatesTokens > 0) metrics.recordTokens('gemini', 'output', tokenUsage.candidatesTokens, modality, operation);
+        if (tokenUsage.thoughtsTokens && tokenUsage.thoughtsTokens > 0) metrics.recordTokens('gemini', 'thinking', tokenUsage.thoughtsTokens, modality, operation);
         if (tokenUsage.cachedContentTokens && tokenUsage.cachedContentTokens > 0) {
-          metrics.recordTokens('gemini', 'cached', tokenUsage.cachedContentTokens, modality);
+          metrics.recordTokens('gemini', 'cached', tokenUsage.cachedContentTokens, modality, operation);
           metrics.recordCacheEvent('gemini', 'hit');
         } else {
           metrics.recordCacheEvent('gemini', 'miss');
         }
       }
+
+      AiTraceBuffer.getInstance().record({
+        operation,
+        provider: 'gemini',
+        model: activeModelName,
+        role,
+        durationMs: Math.round(durationSeconds * 1000),
+        inputTokens: tokenUsage?.promptTokens ?? 0,
+        outputTokens: tokenUsage?.candidatesTokens ?? 0,
+        thinkingTokens: tokenUsage?.thoughtsTokens ?? 0,
+        cachedTokens: tokenUsage?.cachedContentTokens ?? 0,
+        totalTokens: tokenUsage?.totalTokens ?? 0,
+        status: 'success',
+        inputSample: extractInputSampleFromContents(contents),
+        decision: extractDecisionSummary(rawResponseText),
+      });
 
       applicationLogger.fileDetail('ai', `Gemini response received [${activeModelName}]`, {
         responseText: rawResponseText,
@@ -141,6 +176,21 @@ export async function executeGeminiGenerationWithFallback(
     } catch (error: unknown) {
       lastEncounteredError = error;
       const conciseMessage = formatConciseErrorMessage(error);
+      AiTraceBuffer.getInstance().record({
+        operation,
+        provider: 'gemini',
+        model: activeModelName,
+        role,
+        durationMs: Date.now() - requestStartMs,
+        inputTokens: 0,
+        outputTokens: 0,
+        thinkingTokens: 0,
+        cachedTokens: 0,
+        totalTokens: 0,
+        status: 'error',
+        errorMessage: conciseMessage,
+        inputSample: extractInputSampleFromContents(contents),
+      });
       const hasNextCandidate = index < candidateModelList.length - 1;
 
       if (hasNextCandidate && isRecoverableModelExecutionError(error)) {
