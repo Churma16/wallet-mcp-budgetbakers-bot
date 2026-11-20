@@ -166,6 +166,12 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
   }
 
   if (tokens.length === 0) {
+    if (hasExplicitPrefix && text.length > 0) {
+      return {
+        note: text,
+        hasModifications: true,
+      };
+    }
     return null;
   }
 
