@@ -26,9 +26,12 @@ export function timingSafeEqualStrings(actual: string, expected: string): boolea
   if (typeof actual !== 'string' || typeof expected !== 'string' || !expected) {
     return false;
   }
-  const actualHash = crypto.createHash('sha256').update(actual).digest();
-  const expectedHash = crypto.createHash('sha256').update(expected).digest();
-  return crypto.timingSafeEqual(actualHash, expectedHash);
+  const actualBuffer = Buffer.from(actual, 'utf8');
+  const expectedBuffer = Buffer.from(expected, 'utf8');
+  if (actualBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(actualBuffer, expectedBuffer);
 }
 
 export class PrometheusMetricsRegistry {
@@ -467,7 +470,7 @@ export function tryHandleMetricsEndpoint(req: IncomingMessage, res: ServerRespon
       return false;
     }
 
-    const secret = (process.env.NOTIFICATION_WEBHOOK_SECRET || process.env.OBSERVABILITY_API_KEY || '').trim();
+    const secret = (process.env.NOTIFICATION_WEBHOOK_SECRET || process.env.OBSERVABILITY_AUTH_SECRET || '').trim();
     if (secret) {
       const rawAuthHeader = req.headers['authorization'];
       const authHeader = typeof rawAuthHeader === 'string'
