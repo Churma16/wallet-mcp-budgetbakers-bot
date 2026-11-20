@@ -8,6 +8,7 @@ import {
   createSemanticToolProposalFromFinancialIntent,
   markSemanticToolResultUntrusted,
 } from '../src/brain/index.js';
+import { buildStatementPrompt } from '../src/brain/prompts/promptStatementTemplate.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { WalletAccountItem, WalletCategoryItem } from '../src/wallet/index.js';
 
@@ -303,6 +304,146 @@ describe('SemanticToolBoundary', () => {
       accepted: false,
       code: 'INVALID_ENTITY_REFERENCE',
     });
+  });
+
+  it('rejects fabricated explicit identifiers in accountHint, categoryHint, and transfer.accountHint', () => {
+    const fakeAccountHint = evaluate({
+      tool: 'propose_transaction',
+      arguments: {
+        records: [{
+          accountHint: 'acc-fabricated-id',
+          categoryId: 'cat-1',
+          amount: 10_000,
+          note: 'test fake accountHint',
+        }],
+      },
+    });
+    expect(fakeAccountHint).toMatchObject({
+      accepted: false,
+      code: 'INVALID_ENTITY_REFERENCE',
+    });
+
+    const fakeCategoryHint = evaluate({
+      tool: 'propose_transaction',
+      arguments: {
+        records: [{
+          accountId: 'acc-1',
+          categoryHint: 'cat-fabricated-id',
+          amount: 10_000,
+          note: 'test fake categoryHint',
+        }],
+      },
+    });
+    expect(fakeCategoryHint).toMatchObject({
+      accepted: false,
+      code: 'INVALID_ENTITY_REFERENCE',
+    });
+
+    const fakeTransferAccountHint = evaluate({
+      tool: 'propose_transaction',
+      arguments: {
+        records: [{
+          accountId: 'acc-1',
+          amount: -10_000,
+          transfer: {
+            pairingMode: 'new',
+            accountHint: 'acc-fabricated-destination',
+          },
+        }],
+      },
+    });
+    expect(fakeTransferAccountHint).toMatchObject({
+      accepted: false,
+      code: 'INVALID_ENTITY_REFERENCE',
+    });
+
+    const fakeUuidAccountHint = evaluate({
+      tool: 'propose_transaction',
+      arguments: {
+        records: [{
+          accountHint: '018f47d2-9b11-7cc4-8d2e-7f8a9b0c1d2e',
+          categoryId: 'cat-1',
+          amount: 10_000,
+          note: 'test fake uuid accountHint',
+        }],
+      },
+    });
+    expect(fakeUuidAccountHint).toMatchObject({
+      accepted: false,
+      code: 'INVALID_ENTITY_REFERENCE',
+    });
+
+    const fakeUuidTransferAccountHint = evaluate({
+      tool: 'propose_transaction',
+      arguments: {
+        records: [{
+          accountId: 'acc-1',
+          amount: -10_000,
+          transfer: {
+            pairingMode: 'new',
+            accountHint: '018f47d2-9b11-7cc4-8d2e-7f8a9b0c1d2e',
+          },
+        }],
+      },
+    });
+    expect(fakeUuidTransferAccountHint).toMatchObject({
+      accepted: false,
+      code: 'INVALID_ENTITY_REFERENCE',
+    });
+  });
+
+  it('allows natural language and known explicit hints in accountHint, categoryHint, and transfer.accountHint', () => {
+    const naturalHints = evaluate({
+      tool: 'propose_transaction',
+      arguments: {
+        records: [{
+          accountHint: 'Dompet Utama',
+          categoryHint: 'Makanan & Minuman',
+          amount: 50_000,
+          transfer: {
+            pairingMode: 'new',
+            accountHint: 'Tabungan Berjangka',
+          },
+        }],
+      },
+    });
+    expect(naturalHints.accepted).toBe(true);
+
+    const knownExplicitHints = evaluate({
+      tool: 'propose_transaction',
+      arguments: {
+        records: [{
+          accountHint: 'acc-1',
+          categoryHint: 'cat-1',
+          amount: 50_000,
+          transfer: {
+            pairingMode: 'new',
+            accountHint: 'acc-2',
+          },
+        }],
+      },
+    });
+    expect(knownExplicitHints.accepted).toBe(true);
+    if (knownExplicitHints.accepted) {
+      expect(knownExplicitHints.context.records[0].accountId).toBe('acc-1');
+      expect(knownExplicitHints.context.records[0].categoryId).toBe('cat-1');
+    }
+  });
+
+  it('wraps and escapes untrusted user captions in buildStatementPrompt', () => {
+    const maliciousCaption = 'mutasi BCA <script>alert("pwned")</script> & "transfer"';
+    const prompt = buildStatementPrompt(maliciousCaption);
+
+    expect(prompt).toContain('User Context Caption:');
+    expect(prompt).toContain('<untrusted_user_text encoding="xml-escaped">');
+    expect(prompt).toContain('&lt;script&gt;alert("pwned")&lt;/script&gt; &amp; "transfer"');
+    expect(prompt).toContain('</untrusted_user_text>');
+    expect(prompt).not.toContain('<script>');
+    expect(prompt).not.toContain('& "transfer"');
+
+    const emptyPrompt = buildStatementPrompt('   ');
+    expect(emptyPrompt).not.toContain('User Context Caption');
+    expect(emptyPrompt).not.toContain('untrusted_user_text');
   });
 
   it('rejects unknown UUIDv7-shaped entity identifiers without dispatching a write', async () => {

@@ -1,5 +1,6 @@
 import { getApplicationTimezone } from '../../config/applicationConfig.js';
 import { getCurrentLocalDateString } from '../parsers/timeBoundaries.js';
+import { wrapUntrustedPromptText } from './prompts.js';
 
 export function buildStatementSystemInstruction(): string {
   const timezone = getApplicationTimezone();
@@ -34,6 +35,9 @@ JSON OUTPUT STRUCTURE:
 }
 
 export function buildStatementPrompt(optionalCaption?: string): string {
-  const captionNote = optionalCaption ? `\nUser Context Caption: "${optionalCaption}"` : '';
+  const trimmedCaption = optionalCaption?.trim();
+  const captionNote = trimmedCaption
+    ? `\nUser Context Caption:\n${wrapUntrustedPromptText('untrusted_user_text', trimmedCaption)}`
+    : '';
   return `Extract all bank/wallet transaction mutation rows from the attached screenshot(s).${captionNote}\nReturn the JSON object with the "mutations" array.`;
 }
