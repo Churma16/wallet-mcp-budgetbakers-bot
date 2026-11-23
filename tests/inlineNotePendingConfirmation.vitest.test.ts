@@ -143,9 +143,9 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
       expect(intent?.customTags).toEqual(['kantor']);
     });
 
-    it('detects consistent shorthand keys n:, c:, t:, m:, acc: with ticket ID', () => {
+    it('detects consistent shorthand keys n:, c:, l:, m:, acc: with ticket ID', () => {
       const intent = detectPendingConfirmationAction(
-        'Ya 2: n: Makan Siang c: Food t: jajan m: Warung Bu Sri acc: Mandiri Debit Card'
+        'Ya 2: n: Makan Siang c: Food l: jajan m: Warung Bu Sri acc: Mandiri Debit Card'
       );
       expect(intent).toEqual<PendingConfirmationIntent>({
         actionType: 'CONFIRM',
@@ -155,7 +155,7 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
         customTags: ['jajan'],
         counterParty: 'Warung Bu Sri',
         targetAccountHint: 'Mandiri Debit Card',
-        rawCustomInput: 'n: Makan Siang c: Food t: jajan m: Warung Bu Sri acc: Mandiri Debit Card',
+        rawCustomInput: 'n: Makan Siang c: Food l: jajan m: Warung Bu Sri acc: Mandiri Debit Card',
       });
     });
 
@@ -166,12 +166,12 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
       expect(intent?.customCategoryHint).toBe('Drinks');
     });
 
-    it('detects single shorthand key c: or t: or m: or acc:', () => {
+    it('detects single shorthand key c: or l: or m: or acc:', () => {
       const intentCat = detectPendingConfirmationAction('Ya: c: Food');
       expect(intentCat?.customCategoryHint).toBe('Food');
       expect(intentCat?.customNote).toBeUndefined();
 
-      const intentTag = detectPendingConfirmationAction('Ya: t: #sarapan, #kantor');
+      const intentTag = detectPendingConfirmationAction('Ya: l: #sarapan, #kantor');
       expect(intentTag?.customTags).toEqual(['sarapan', 'kantor']);
 
       const intentAcc = detectPendingConfirmationAction('Ya 1: acc: BCA');
@@ -1045,12 +1045,12 @@ describe('Inline Note & Category Override on Pending Confirmation', () => {
       });
 
       const intent = detectPendingConfirmationAction(
-        'Ya: n: Nasi Padang c: Food t: lunch, makan m: RM Sederhana acc: BCA Account'
+        'Ya: n: Nasi Padang c: Food l: lunch, makan m: RM Sederhana acc: BCA Account'
       );
       expect(intent).not.toBeNull();
 
       const handled = await handler.handlePendingAction(
-        createMockEvent('Ya: n: Nasi Padang c: Food t: lunch, makan m: RM Sederhana acc: BCA Account'),
+        createMockEvent('Ya: n: Nasi Padang c: Food l: lunch, makan m: RM Sederhana acc: BCA Account'),
         intent!,
         Date.now()
       );

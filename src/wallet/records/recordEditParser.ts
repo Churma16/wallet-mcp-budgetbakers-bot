@@ -240,25 +240,7 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
         break;
       }
 
-      case 't': {
-        // If 't:' is used with clear tokens (e.g. 't: -' or 't: none') or hashtag (e.g. 't: #jajan'),
-        // gracefully handle as tag/label for backward compatibility.
-        // Otherwise, treat as time/date edit command.
-        if (isClearToken(rawVal)) {
-          clearFieldsSet.add('labelIds');
-          tags = undefined;
-        } else if (cleanVal.startsWith('#')) {
-          const parsedTags = parseTagsHint(cleanVal);
-          if (parsedTags.length > 0) {
-            tags = parsedTags;
-            clearFieldsSet.delete('labelIds');
-          }
-        } else {
-          recordDate = cleanVal;
-        }
-        break;
-      }
-
+      case 't':
       case 'tgl':
       case 'tanggal':
       case 'w':
