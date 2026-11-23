@@ -800,7 +800,7 @@ describe('MessageDispatcher delete routing integration', () => {
     expect(mockMcpClient.deleteRecords).toHaveBeenCalledWith(['rec-old']);
     expect(messageStore.hasMapping('receipt-msg-old')).toBe(false);
   });
-  it('passes through edit commands like "c: Makan t: #jajan n: Kopi" to modifyRecordHandler', async () => {
+  it('passes through edit commands like "c: Makan l: #jajan n: Kopi" to modifyRecordHandler', async () => {
     const mockModifyRecordHandler = {
       handleModifyRecordReply: vi.fn().mockResolvedValue(true),
     };
@@ -824,7 +824,7 @@ describe('MessageDispatcher delete routing integration', () => {
       senderIdentifier: 'user-1',
       chatIdentifier: 'chat-1',
       messageType: 'text',
-      textPayload: 'c: Makan t: #jajan n: Kopi',
+      textPayload: 'c: Makan l: #jajan n: Kopi',
       replyToMessageId: 'receipt-msg-101',
     });
 

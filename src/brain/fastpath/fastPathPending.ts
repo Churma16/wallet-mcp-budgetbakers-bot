@@ -162,15 +162,27 @@ export function detectPendingConfirmationAction(userMessageText: string): Pendin
             break;
           }
 
-          case 't':
-          case 'tag':
-          case 'tags':
+          case 'l':
+          case 'lbl':
           case 'label':
-          case 'labels': {
+          case 'labels':
+          case 'tag':
+          case 'tags': {
             const parsedTags = parseTagsHint(cleanVal);
             if (parsedTags.length > 0) {
               customTags = [...(customTags || []), ...parsedTags];
             }
+            break;
+          }
+
+          case 't':
+          case 'tgl':
+          case 'tanggal':
+          case 'w':
+          case 'waktu':
+          case 'time':
+          case 'date':
+          case 'jam': {
             break;
           }
 

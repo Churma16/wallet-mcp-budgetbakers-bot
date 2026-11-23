@@ -809,6 +809,9 @@ export const englishDictionary: ResponseDictionary = {
         ? `⚠️ Could not automatically infer category for "${hint}".`
         : '⚠️ Could not automatically infer category for this transaction.';
     },
+    recordEditInvalidDate(hint: string): string {
+      return `⚠️ Date or time format "${hint}" was not recognized.`;
+    },
     recordEditNotFound: '⚠️ Transaction not found or the replied message has expired.',
     recordEditFailed(reason: string): string {
       return `❌ Failed to update transaction: ${reason}`;

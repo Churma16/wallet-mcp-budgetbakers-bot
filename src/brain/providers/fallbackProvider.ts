@@ -6,6 +6,7 @@ import {
   AccountClarificationQuestionContext,
   AccountClarificationProposal,
   CategoryClassificationProposal,
+  DateEditInterpretationProposal,
   UnifiedClarificationCandidate,
   AiProcessingExecutionOptions,
 } from '../types.js';
@@ -227,6 +228,25 @@ export class FallbackAiProvider implements FinancialAiProvider {
           );
         }
         return currentProvider.classifyCategory(text, availableCategoryList);
+      }
+    );
+  }
+
+  public async interpretRecordDateEdit(
+    inputHint: string,
+    existingDateIso: string,
+    referenceDate?: Date,
+    timezone?: string
+  ): Promise<DateEditInterpretationProposal | null> {
+    return this.executeWithFallback(
+      'interpretRecordDateEdit',
+      async (currentProvider: FinancialAiProvider) => {
+        if (typeof currentProvider.interpretRecordDateEdit !== 'function') {
+          throw new Error(
+            `Provider '${currentProvider.providerName}' does not implement interpretRecordDateEdit.`
+          );
+        }
+        return currentProvider.interpretRecordDateEdit(inputHint, existingDateIso, referenceDate, timezone);
       }
     );
   }

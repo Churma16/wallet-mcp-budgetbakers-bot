@@ -9,6 +9,7 @@ import {
   parseRecordEditCommand,
   isAutoCategoryToken,
   resolveAndEnsureLabels,
+  resolveRecordDateEdit,
   TransactionMessageStore,
   FILTER_ERROR_REASONS,
 } from '../../wallet/index.js';
@@ -19,7 +20,7 @@ import {
   formatTransactionDate,
   resolveTransactionDisplayTitle,
 } from '../../wallet/formatters/humanResponseFormatter.js';
-import { getDefaultCurrency } from '../../config/applicationConfig.js';
+import { getDefaultCurrency, getApplicationTimezone } from '../../config/applicationConfig.js';
 import { normalizeTransactionText } from '../../lib/textCasing.js';
 import { applicationLogger } from '../../lib/logger.js';
 import { getDictionary } from '../../i18n/index.js';
@@ -226,6 +227,7 @@ export class ModifyRecordHandler {
           editCommand.amount === undefined &&
           editCommand.counterParty === undefined &&
           editCommand.targetAccountHint === undefined &&
+          editCommand.recordDate === undefined &&
           (!editCommand.tags || editCommand.tags.length === 0) &&
           clearFields.length === 0;
 
@@ -286,6 +288,32 @@ export class ModifyRecordHandler {
       }
     }
 
+    let resolvedRecordDate: string | undefined;
+    if (editCommand.recordDate) {
+      const existingIso =
+        mapping.recordDate ||
+        (mapping.createdAt ? new Date(mapping.createdAt).toISOString() : new Date().toISOString());
+      const resolution = await resolveRecordDateEdit(
+        editCommand.recordDate,
+        existingIso,
+        {
+          aiProvider: this.financialAiProvider,
+          referenceDate: new Date(),
+          timezone: getApplicationTimezone(),
+        }
+      );
+      if (resolution) {
+        resolvedRecordDate = resolution.resolvedUtcIso;
+      } else {
+        await this.messagingGateway.sendMessage(
+          event.channel,
+          event.chatIdentifier,
+          dictionary.errors.recordEditInvalidDate(editCommand.recordDate)
+        );
+        return true;
+      }
+    }
+
     const patchPayload: PatchRecordInputPayload = {
       id: mapping.recordId,
       ...(resolvedTargetAccountId ? { accountId: resolvedTargetAccountId } : {}),
@@ -296,6 +324,7 @@ export class ModifyRecordHandler {
       ...(formattedCounterParty !== undefined && !clearFields.includes('counterParty')
         ? { counterParty: formattedCounterParty }
         : {}),
+      ...(resolvedRecordDate ? { recordDate: resolvedRecordDate } : {}),
       ...(clearFields.length > 0 ? { $clear: clearFields } : {}),
     };
 
@@ -323,6 +352,7 @@ export class ModifyRecordHandler {
         ...(resolvedAmount !== undefined ? { amount: resolvedAmount } : {}),
         ...(formattedCounterParty !== undefined ? { counterParty: formattedCounterParty } : {}),
         ...(clearFields.includes('counterParty') ? { counterParty: undefined } : {}),
+        ...(resolvedRecordDate ? { recordDate: resolvedRecordDate } : {}),
         ...(clearFields.includes('transfer')
           ? { isTransfer: false, partnerRecordId: undefined }
           : {}),
@@ -362,7 +392,7 @@ export class ModifyRecordHandler {
       }
 
       const recordTimestampDisplay = formatTransactionDate(
-        mapping.recordDate || mapping.createdAt,
+        resolvedRecordDate || mapping.recordDate || mapping.createdAt,
         dictionary.languageCode
       );
 
@@ -415,25 +445,6 @@ export class ModifyRecordHandler {
       if (sendReceipt && 'messageId' in sendReceipt && sendReceipt.messageId) {
         this.transactionMessageStore.recordMessageMapping(sendReceipt.messageId, {
           ...mapping,
-          ...(resolvedTargetAccountId
-            ? {
-                accountId: resolvedTargetAccountId,
-                accountName: resolvedTargetAccountName,
-                currency: resolvedTargetCurrency,
-              }
-            : {}),
-          ...(resolvedCategoryId ? { categoryId: resolvedCategoryId, categoryName: resolvedCategoryName } : {}),
-          ...(clearFields.includes('categoryId') ? { categoryId: undefined, categoryName: undefined } : {}),
-          ...(resolvedLabelIds ? { labelIds: resolvedLabelIds, labels: resolvedLabelNames } : {}),
-          ...(clearFields.includes('labelIds') ? { labelIds: [], labels: [] } : {}),
-          ...(formattedNote !== undefined ? { note: formattedNote } : {}),
-          ...(clearFields.includes('note') ? { note: undefined } : {}),
-          ...(resolvedAmount !== undefined ? { amount: resolvedAmount } : {}),
-          ...(formattedCounterParty !== undefined ? { counterParty: formattedCounterParty } : {}),
-          ...(clearFields.includes('counterParty') ? { counterParty: undefined } : {}),
-          ...(clearFields.includes('transfer')
-            ? { isTransfer: false, partnerRecordId: undefined }
-            : {}),
         });
       }
 

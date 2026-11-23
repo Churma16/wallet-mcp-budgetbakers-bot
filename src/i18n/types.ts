@@ -449,6 +449,7 @@ export interface ResponseDictionary {
     recordEditZeroAmount: string;
     recordEditCategoryNotFound(categoryHint: string): string;
     recordEditCategoryAutoNotFound(hint?: string): string;
+    recordEditInvalidDate(hint: string): string;
     recordEditNotFound: string;
     recordEditFailed(reason: string): string;
     recordDeleteNotFound: string;
