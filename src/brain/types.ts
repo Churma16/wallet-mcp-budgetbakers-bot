@@ -204,6 +204,13 @@ export interface FinancialAiProvider {
     availableCategoryList: WalletCategoryItem[]
   ): Promise<CategoryClassificationProposal>;
 
+  interpretRecordDateEdit?(
+    inputHint: string,
+    existingDateIso: string,
+    referenceDate?: Date,
+    timezone?: string
+  ): Promise<DateEditInterpretationProposal | null>;
+
   processStatementImages?(
     imageBuffers: Buffer[],
     mimeType: string,
@@ -218,6 +225,12 @@ export interface CategoryClassificationProposal {
   categoryName?: string | null;
   confidence?: 'high' | 'low';
   tokenUsage?: TokenUsageStatistics;
+}
+
+export interface DateEditInterpretationProposal {
+  readonly resolvedUtcIso: string;
+  readonly changeScope: 'TIME_ONLY' | 'DATE_ONLY' | 'BOTH';
+  readonly tokenUsage?: TokenUsageStatistics;
 }
 
 export interface AiExecutionResult {

@@ -9,6 +9,7 @@ import {
   AccountClarificationQuestionContext,
   AccountClarificationProposal,
   CategoryClassificationProposal,
+  DateEditInterpretationProposal,
   UnifiedClarificationCandidate,
   AiProcessingExecutionOptions,
   ModelFallbackProgressCallback,
@@ -24,6 +25,8 @@ import {
   buildAccountClarificationQuestionPrompt,
   buildAccountClarificationReplyPrompt,
   buildCategoryClassificationPrompt,
+  buildDateEditPrompt,
+  parseDateEditResponse,
 } from '../prompts/prompts.js';
 import {
   parseClarificationQuestionResponse,
@@ -328,5 +331,23 @@ export class GeminiAiProvider implements FinancialAiProvider {
     });
 
     return parseCategoryClassificationResponse(result.responseText, result.tokenUsage);
+  }
+
+  public async interpretRecordDateEdit(
+    inputHint: string,
+    existingDateIso: string,
+    referenceDate: Date = new Date(),
+    timezone: string = 'Asia/Jakarta'
+  ): Promise<DateEditInterpretationProposal | null> {
+    const { systemInstruction, promptText } = buildDateEditPrompt(inputHint, existingDateIso, referenceDate, timezone);
+    const result = await this.executeGeneration({
+      contents: [{ role: 'user', parts: [{ text: promptText }] }],
+      systemInstruction,
+      requestContextDescription: `Date/time edit interpretation for "${inputHint.slice(0, 30)}"`,
+      modality: 'text',
+      operation: 'date_edit_interpret',
+    });
+
+    return parseDateEditResponse(result.responseText, result.tokenUsage);
   }
 }

@@ -168,7 +168,7 @@ describe('ModifyRecordHandler', () => {
       senderIdentifier: 'user-1',
       chatIdentifier: 'chat-1',
       messageType: 'text',
-      textPayload: 't: #jajan, #kopi',
+      textPayload: 'l: #jajan, #kopi',
       replyToMessageId: 'bot-msg-tags',
     };
 
@@ -609,7 +609,7 @@ describe('ModifyRecordHandler', () => {
         senderIdentifier: 'user-1',
         chatIdentifier: 'chat-1',
         messageType: 'text',
-        textPayload: 'n: - t: -',
+        textPayload: 'n: - l: -',
         replyToMessageId: 'msg-clear-1',
       };
 
@@ -810,6 +810,154 @@ describe('ModifyRecordHandler', () => {
       const updated = store.getMessageMapping('msg-edit-auto-4');
       expect(updated?.note).toBe('Transaksi Khusus 123');
       expect(updated?.categoryId).toBe('cat-food');
+    });
+  });
+
+  describe('Date and Time Editing (t:, tgl:, w:)', () => {
+    it('updates recordDate with clock time only (t: 14:00), preserving existing date', async () => {
+      store.recordMessageMapping('msg-edit-time-1', {
+        recordId: 'rec-time-1',
+        accountId: 'acc-bca',
+        note: 'Makan Siang',
+        categoryId: 'cat-food',
+        recordDate: '2026-11-20T10:00:00.000Z', // 17:00 in Asia/Jakarta
+      });
+
+      const event: IncomingUserMessageEvent = {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-1',
+        messageType: 'text',
+        textPayload: 't: 14:00',
+        replyToMessageId: 'msg-edit-time-1',
+      };
+
+      const handled = await handler.handleModifyRecordReply(event, Date.now());
+      expect(handled).toBe(true);
+
+      // 14:00 Asia/Jakarta on 2026-11-20 -> 07:00 UTC
+      expect(mockClient.patchRecords).toHaveBeenCalledWith([
+        {
+          id: 'rec-time-1',
+          recordDate: '2026-11-20T07:00:00.000Z',
+        },
+      ]);
+
+      const updated = store.getMessageMapping('msg-edit-time-1');
+      expect(updated?.recordDate).toBe('2026-11-20T07:00:00.000Z');
+
+      const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
+      expect(sentMessage).toContain('✅ *Makan Siang* berhasil diperbarui!');
+    });
+
+    it('updates recordDate with date only (t: 2026-11-15), preserving existing clock time', async () => {
+      store.recordMessageMapping('msg-edit-date-1', {
+        recordId: 'rec-date-1',
+        accountId: 'acc-bca',
+        note: 'Beli Bensin',
+        categoryId: 'cat-food',
+        recordDate: '2026-11-20T10:00:00.000Z', // 17:00 in Asia/Jakarta
+      });
+
+      const event: IncomingUserMessageEvent = {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-1',
+        messageType: 'text',
+        textPayload: 'tgl: 2026-11-15',
+        replyToMessageId: 'msg-edit-date-1',
+      };
+
+      const handled = await handler.handleModifyRecordReply(event, Date.now());
+      expect(handled).toBe(true);
+
+      // Date: 2026-11-15, Time preserved: 17:00 Asia/Jakarta -> 10:00 UTC
+      expect(mockClient.patchRecords).toHaveBeenCalledWith([
+        {
+          id: 'rec-date-1',
+          recordDate: '2026-11-15T10:00:00.000Z',
+        },
+      ]);
+
+      const updated = store.getMessageMapping('msg-edit-date-1');
+      expect(updated?.recordDate).toBe('2026-11-15T10:00:00.000Z');
+    });
+
+    it('uses AI provider to smart-recognize conversational date edit when available', async () => {
+      const mockAiWithDateEdit: FinancialAiProvider = {
+        ...mockAiProvider,
+        interpretRecordDateEdit: vi.fn(async () => ({
+          resolvedUtcIso: '2026-11-22T09:30:00.000Z',
+          changeScope: 'BOTH' as const,
+        })),
+      };
+
+      const handlerWithAi = new ModifyRecordHandler(
+        mockClient,
+        mockCache,
+        mockGateway,
+        store,
+        undefined,
+        mockAiWithDateEdit
+      );
+
+      store.recordMessageMapping('msg-edit-ai-1', {
+        recordId: 'rec-ai-1',
+        accountId: 'acc-bca',
+        note: 'Kopi Kenangan',
+        recordDate: '2026-11-20T10:00:00.000Z',
+      });
+
+      const event: IncomingUserMessageEvent = {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-1',
+        messageType: 'text',
+        textPayload: 't: kemarin sorean dikit',
+        replyToMessageId: 'msg-edit-ai-1',
+      };
+
+      const handled = await handlerWithAi.handleModifyRecordReply(event, Date.now());
+      expect(handled).toBe(true);
+
+      expect(mockAiWithDateEdit.interpretRecordDateEdit).toHaveBeenCalledWith(
+        'kemarin sorean dikit',
+        '2026-11-20T10:00:00.000Z',
+        expect.any(Date),
+        'Asia/Jakarta'
+      );
+
+      expect(mockClient.patchRecords).toHaveBeenCalledWith([
+        {
+          id: 'rec-ai-1',
+          recordDate: '2026-11-22T09:30:00.000Z',
+        },
+      ]);
+    });
+
+    it('informs user with friendly warning when date format is unrecognized', async () => {
+      store.recordMessageMapping('msg-edit-invalid-date', {
+        recordId: 'rec-inv-1',
+        accountId: 'acc-bca',
+        note: 'Kopi',
+      });
+
+      const event: IncomingUserMessageEvent = {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-1',
+        messageType: 'text',
+        textPayload: 't: tanggal-ngaco-xyz',
+        replyToMessageId: 'msg-edit-invalid-date',
+      };
+
+      const handled = await handler.handleModifyRecordReply(event, Date.now());
+      expect(handled).toBe(true);
+
+      expect(mockClient.patchRecords).not.toHaveBeenCalled();
+
+      const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
+      expect(sentMessage).toContain('⚠️ Format tanggal atau waktu "tanggal-ngaco-xyz" tidak dikenali.');
     });
   });
 });

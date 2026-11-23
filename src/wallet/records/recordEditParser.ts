@@ -13,12 +13,13 @@ export interface ParsedRecordEditCommand {
   readonly hasExplicitPositiveSign?: boolean;
   readonly counterParty?: string;
   readonly targetAccountHint?: string;
+  readonly recordDate?: string;
   readonly clearFields?: ClearableRecordField[];
   readonly hasModifications: boolean;
 }
 
 export const KEY_NAME_REGEX =
-  /(?<=^|\s)(c|cat|kategori|category|t|tag|tags|label|labels|n|note|d|des|deskripsi|catatan|a|amt|amount|nominal|p|payee|m|merchant|rek|acc|rekening|account|tf|transfer):\s*/gi;
+  /(?<=^|\s)(c|cat|kategori|category|l|lbl|label|labels|tag|tags|t|tgl|tanggal|w|waktu|time|date|jam|n|note|d|des|deskripsi|catatan|a|amt|amount|nominal|p|payee|m|merchant|rek|acc|rekening|account|tf|transfer):\s*/gi;
 
 const CLEAR_VALUE_PATTERN = /^[-–—]$|^(?:none|kosong|hapus|clear|remove|delete)$/i;
 const TRANSFER_UNLINK_PATTERN = /^[-–—]$|^(?:none|kosong|hapus|clear|unlink|lepas|batal|cancel)$/i;
@@ -189,6 +190,7 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
   let hasExplicitPositiveSign: boolean | undefined;
   let counterParty: string | undefined;
   let targetAccountHint: string | undefined;
+  let recordDate: string | undefined;
   const clearFieldsSet = new Set<ClearableRecordField>();
 
   for (let i = 0; i < tokens.length; i++) {
@@ -219,11 +221,12 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
         }
         break;
 
-      case 't':
-      case 'tag':
-      case 'tags':
+      case 'l':
+      case 'lbl':
       case 'label':
-      case 'labels': {
+      case 'labels':
+      case 'tag':
+      case 'tags': {
         if (isClearToken(rawVal)) {
           clearFieldsSet.add('labelIds');
           tags = undefined;
@@ -234,6 +237,18 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
             clearFieldsSet.delete('labelIds');
           }
         }
+        break;
+      }
+
+      case 't':
+      case 'tgl':
+      case 'tanggal':
+      case 'w':
+      case 'waktu':
+      case 'time':
+      case 'date':
+      case 'jam': {
+        recordDate = cleanVal;
         break;
       }
 
@@ -304,6 +319,7 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
     amount !== undefined ||
     counterParty !== undefined ||
     targetAccountHint !== undefined ||
+    recordDate !== undefined ||
     (clearFields && clearFields.length > 0)
   );
 
@@ -320,6 +336,7 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
     hasExplicitPositiveSign,
     counterParty,
     targetAccountHint,
+    recordDate,
     clearFields,
     hasModifications,
   };

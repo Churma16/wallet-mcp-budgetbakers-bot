@@ -5,5 +5,6 @@ export * from './recordValidator.js';
 export * from './labelResolver.js';
 export * from './records.js';
 export * from './recordEditParser.js';
+export * from './recordDateEditResolver.js';
 export * from './transactionMessageStore.js';
 export * from './enrichmentPool.js';

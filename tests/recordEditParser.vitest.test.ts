@@ -4,12 +4,13 @@ import { parseRecordEditCommand } from '../src/wallet/records/recordEditParser.j
 describe('recordEditParser', () => {
   describe('Explicit Prefix Parsing (`e` and `edit`)', () => {
     it('parses multi-key edit command prefixed with `e`', () => {
-      const parsed = parseRecordEditCommand('e c: Makan t: #jajan n: Kopi susu a: -25000');
+      const parsed = parseRecordEditCommand('e c: Makan l: #jajan n: Kopi susu a: -25000 t: 14:00');
       expect(parsed).not.toBeNull();
       expect(parsed?.categoryName).toBe('Makan');
       expect(parsed?.tags).toEqual(['jajan']);
       expect(parsed?.note).toBe('Kopi susu');
       expect(parsed?.amount).toBe(-25000);
+      expect(parsed?.recordDate).toBe('14:00');
       expect(parsed?.hasModifications).toBe(true);
     });
 
@@ -32,7 +33,7 @@ describe('recordEditParser', () => {
 
   describe('Direct Parsing Without Prefix (Shorthand & Full Names)', () => {
     it('parses shorthand keys directly without `e` prefix', () => {
-      const parsed = parseRecordEditCommand('c: Transport t: #bensin n: Pertamax');
+      const parsed = parseRecordEditCommand('c: Transport l: #bensin n: Pertamax');
       expect(parsed).not.toBeNull();
       expect(parsed?.categoryName).toBe('Transport');
       expect(parsed?.tags).toEqual(['bensin']);
@@ -58,10 +59,27 @@ describe('recordEditParser', () => {
       expect(parsed3?.note).toBe('Catatan transaksi baru');
     });
 
-    it('parses single field update: tags only', () => {
-      const parsed = parseRecordEditCommand('t: #jajan #kopi #liburan');
+    it('parses single field update: tags only (using l:)', () => {
+      const parsed = parseRecordEditCommand('l: #jajan #kopi #liburan');
       expect(parsed).not.toBeNull();
       expect(parsed?.tags).toEqual(['jajan', 'kopi', 'liburan']);
+    });
+
+    it('parses single field update: date/time only (using t:)', () => {
+      const parsed1 = parseRecordEditCommand('t: 14:00');
+      expect(parsed1?.recordDate).toBe('14:00');
+
+      const parsed2 = parseRecordEditCommand('t: kemarin');
+      expect(parsed2?.recordDate).toBe('kemarin');
+
+      const parsed3 = parseRecordEditCommand('tgl: 2026-11-20');
+      expect(parsed3?.recordDate).toBe('2026-11-20');
+
+      const parsed4 = parseRecordEditCommand('w: 15:30');
+      expect(parsed4?.recordDate).toBe('15:30');
+
+      const parsed5 = parseRecordEditCommand('jam: jam 3 sore');
+      expect(parsed5?.recordDate).toBe('jam 3 sore');
     });
   });
 
@@ -178,7 +196,7 @@ describe('recordEditParser', () => {
     });
 
     it('parses tags clearing using dash or clear keywords', () => {
-      const parsed = parseRecordEditCommand('t: -');
+      const parsed = parseRecordEditCommand('l: -');
       expect(parsed?.clearFields).toEqual(['labelIds']);
       expect(parsed?.tags).toBeUndefined();
 
@@ -209,12 +227,13 @@ describe('recordEditParser', () => {
     });
 
     it('parses compound edits combining account move, field edits, and field clearing', () => {
-      const parsed = parseRecordEditCommand('rek: BCA c: Transport t: - n: Bensin');
+      const parsed = parseRecordEditCommand('rek: BCA c: Transport l: - n: Bensin t: 14:00');
       expect(parsed).not.toBeNull();
       expect(parsed?.targetAccountHint).toBe('BCA');
       expect(parsed?.categoryName).toBe('Transport');
       expect(parsed?.clearFields).toEqual(['labelIds']);
       expect(parsed?.note).toBe('Bensin');
+      expect(parsed?.recordDate).toBe('14:00');
     });
     it('returns null when tokens have invalid or empty values', () => {
       expect(parseRecordEditCommand('a: bukanAngka')).toBeNull();

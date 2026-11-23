@@ -808,6 +808,9 @@ export const indonesianDictionary: ResponseDictionary = {
         ? `⚠️ Tidak dapat menentukan kategori otomatis untuk "${hint}".`
         : '⚠️ Tidak dapat menentukan kategori otomatis untuk transaksi ini.';
     },
+    recordEditInvalidDate(hint: string): string {
+      return `⚠️ Format tanggal atau waktu "${hint}" tidak dikenali.`;
+    },
     recordEditNotFound: '⚠️ Transaksi tidak ditemukan atau pesan yang dibalas sudah kedaluwarsa.',
     recordEditFailed(reason: string): string {
       return `❌ Gagal memperbarui transaksi: ${reason}`;

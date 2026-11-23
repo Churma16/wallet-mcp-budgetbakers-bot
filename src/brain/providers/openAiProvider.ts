@@ -10,6 +10,7 @@ import {
   AccountClarificationQuestionContext,
   AccountClarificationProposal,
   CategoryClassificationProposal,
+  DateEditInterpretationProposal,
   UnifiedClarificationCandidate,
   AiProcessingExecutionOptions,
   ModelFallbackProgressCallback,
@@ -25,6 +26,8 @@ import {
   buildAccountClarificationQuestionPrompt,
   buildAccountClarificationReplyPrompt,
   buildCategoryClassificationPrompt,
+  buildDateEditPrompt,
+  parseDateEditResponse,
 } from '../prompts/prompts.js';
 import {
   SystemInstructionCache,
@@ -319,5 +322,27 @@ export class OpenAiCompatibleAiProvider implements FinancialAiProvider {
     );
 
     return parseCategoryClassificationResponse(result.responseText, result.tokenUsage);
+  }
+
+  public async interpretRecordDateEdit(
+    inputHint: string,
+    existingDateIso: string,
+    referenceDate: Date = new Date(),
+    timezone: string = 'Asia/Jakarta'
+  ): Promise<DateEditInterpretationProposal | null> {
+    const { systemInstruction, promptText } = buildDateEditPrompt(inputHint, existingDateIso, referenceDate, timezone);
+    const messages = [
+      { role: 'system', content: systemInstruction },
+      { role: 'user', content: promptText },
+    ];
+    const result = await this.executeChatCompletion(
+      messages,
+      `Date/time edit interpretation for "${inputHint.slice(0, 30)}"`,
+      true,
+      undefined,
+      'date_edit_interpret'
+    );
+
+    return parseDateEditResponse(result.responseText, result.tokenUsage);
   }
 }
