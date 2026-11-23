@@ -167,11 +167,22 @@ export function detectPendingConfirmationAction(userMessageText: string): Pendin
           case 'label':
           case 'labels':
           case 'tag':
-          case 'tags':
-          case 't': {
+          case 'tags': {
             const parsedTags = parseTagsHint(cleanVal);
             if (parsedTags.length > 0) {
               customTags = [...(customTags || []), ...parsedTags];
+            }
+            break;
+          }
+
+          case 't': {
+            // Backward compatibility: treat 't:' as tag unless it looks like a time or date expression
+            const isLikelyTimeOrDate = /^\d{1,2}[:.]\d{2}$|^\d{4}-\d{2}-\d{2}$|^(kemarin|tadi|besok|today|yesterday)/i.test(cleanVal);
+            if (!isLikelyTimeOrDate) {
+              const parsedTags = parseTagsHint(cleanVal);
+              if (parsedTags.length > 0) {
+                customTags = [...(customTags || []), ...parsedTags];
+              }
             }
             break;
           }

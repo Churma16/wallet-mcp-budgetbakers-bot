@@ -305,24 +305,12 @@ export class ModifyRecordHandler {
       if (resolution) {
         resolvedRecordDate = resolution.resolvedUtcIso;
       } else {
-        const onlyDateRequested =
-          editCommand.note === undefined &&
-          editCommand.amount === undefined &&
-          editCommand.counterParty === undefined &&
-          editCommand.targetAccountHint === undefined &&
-          editCommand.categoryName === undefined &&
-          !editCommand.isAutoCategory &&
-          (!editCommand.tags || editCommand.tags.length === 0) &&
-          clearFields.length === 0;
-
-        if (onlyDateRequested) {
-          await this.messagingGateway.sendMessage(
-            event.channel,
-            event.chatIdentifier,
-            dictionary.errors.recordEditInvalidDate(editCommand.recordDate)
-          );
-          return true;
-        }
+        await this.messagingGateway.sendMessage(
+          event.channel,
+          event.chatIdentifier,
+          dictionary.errors.recordEditInvalidDate(editCommand.recordDate)
+        );
+        return true;
       }
     }
 
@@ -457,25 +445,6 @@ export class ModifyRecordHandler {
       if (sendReceipt && 'messageId' in sendReceipt && sendReceipt.messageId) {
         this.transactionMessageStore.recordMessageMapping(sendReceipt.messageId, {
           ...mapping,
-          ...(resolvedTargetAccountId
-            ? {
-                accountId: resolvedTargetAccountId,
-                accountName: resolvedTargetAccountName,
-                currency: resolvedTargetCurrency,
-              }
-            : {}),
-          ...(resolvedCategoryId ? { categoryId: resolvedCategoryId, categoryName: resolvedCategoryName } : {}),
-          ...(clearFields.includes('categoryId') ? { categoryId: undefined, categoryName: undefined } : {}),
-          ...(resolvedLabelIds ? { labelIds: resolvedLabelIds, labels: resolvedLabelNames } : {}),
-          ...(clearFields.includes('labelIds') ? { labelIds: [], labels: [] } : {}),
-          ...(formattedNote !== undefined ? { note: formattedNote } : {}),
-          ...(clearFields.includes('note') ? { note: undefined } : {}),
-          ...(resolvedAmount !== undefined ? { amount: resolvedAmount } : {}),
-          ...(formattedCounterParty !== undefined ? { counterParty: formattedCounterParty } : {}),
-          ...(clearFields.includes('counterParty') ? { counterParty: undefined } : {}),
-          ...(clearFields.includes('transfer')
-            ? { isTransfer: false, partnerRecordId: undefined }
-            : {}),
         });
       }
 

@@ -191,7 +191,7 @@ export async function resolveRecordDateEdit(
     targetHour,
     targetMinute,
     timezone,
-    changeScope === 'TIME_ONLY' ? 0 : (existingLocal.second ?? 0),
+    changeScope === 'DATE_ONLY' ? (existingLocal.second ?? 0) : 0,
     0
   );
 

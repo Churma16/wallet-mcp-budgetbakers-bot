@@ -959,5 +959,30 @@ describe('ModifyRecordHandler', () => {
       const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
       expect(sentMessage).toContain('⚠️ Format tanggal atau waktu "tanggal-ngaco-xyz" tidak dikenali.');
     });
+
+    it('rejects multi-field edit and warns user when date format is unrecognized, preventing silent drop', async () => {
+      store.recordMessageMapping('msg-edit-multi-invalid-date', {
+        recordId: 'rec-inv-2',
+        accountId: 'acc-bca',
+        note: 'Kopi',
+      });
+
+      const event: IncomingUserMessageEvent = {
+        channel: 'telegram',
+        senderIdentifier: 'user-1',
+        chatIdentifier: 'chat-1',
+        messageType: 'text',
+        textPayload: 'n: Kopi Kenangan t: tanggal-ngaco-xyz',
+        replyToMessageId: 'msg-edit-multi-invalid-date',
+      };
+
+      const handled = await handler.handleModifyRecordReply(event, Date.now());
+      expect(handled).toBe(true);
+
+      expect(mockClient.patchRecords).not.toHaveBeenCalled();
+
+      const sentMessage = (mockGateway.sendMessage as any).mock.calls[0][2];
+      expect(sentMessage).toContain('⚠️ Format tanggal atau waktu "tanggal-ngaco-xyz" tidak dikenali.');
+    });
   });
 });

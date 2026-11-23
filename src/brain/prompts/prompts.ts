@@ -405,7 +405,9 @@ export function buildDateEditPrompt(
   referenceDate: Date = new Date(),
   timezone: string = 'Asia/Jakarta'
 ): { systemInstruction: string; promptText: string } {
-  const existingLocal = getLocalTimeParts(new Date(existingDateIso), timezone);
+  const parsedExisting = Date.parse(existingDateIso);
+  const existingDate = Number.isNaN(parsedExisting) ? referenceDate : new Date(parsedExisting);
+  const existingLocal = getLocalTimeParts(existingDate, timezone);
   const currentLocal = getLocalTimeParts(referenceDate, timezone);
 
   const existingLocalStr = `${existingLocal.dateString} ${String(existingLocal.hour).padStart(2, '0')}:${String(existingLocal.minute).padStart(2, '0')}:${String(existingLocal.second || 0).padStart(2, '0')}`;

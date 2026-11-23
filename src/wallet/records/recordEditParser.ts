@@ -123,11 +123,11 @@ interface KeyToken {
  * Parses user edit commands formatted as shorthand key-values.
  *
  * Supported formats:
- * - With prefix: `e c: Makan t: #jajan n: Kopi`
- * - With prefix: `edit cat: Makanan tag: #jajan note: Kopi`
- * - Directly without prefix: `c: Makan t: #jajan n: Kopi`
+ * - With prefix: `e c: Makan l: #jajan t: 14:00 n: Kopi`
+ * - With prefix: `edit cat: Makanan tag: #jajan date: kemarin note: Kopi`
+ * - Directly without prefix: `c: Makan l: #jajan t: 14:00 n: Kopi`
  * - Account move: `rek: BCA` or `acc: Mandiri`
- * - Clear field: `n: -` or `note: clear` or `t: none`
+ * - Clear field: `n: -` or `note: clear` or `l: none`
  * - Unlink transfer: `tf: -` or `unlink transfer`
  *
  * Returns null if the text does not match any recognized edit pattern.
@@ -240,7 +240,25 @@ export function parseRecordEditCommand(inputText: string | undefined): ParsedRec
         break;
       }
 
-      case 't':
+      case 't': {
+        // If 't:' is used with clear tokens (e.g. 't: -' or 't: none') or hashtag (e.g. 't: #jajan'),
+        // gracefully handle as tag/label for backward compatibility.
+        // Otherwise, treat as time/date edit command.
+        if (isClearToken(rawVal)) {
+          clearFieldsSet.add('labelIds');
+          tags = undefined;
+        } else if (cleanVal.startsWith('#')) {
+          const parsedTags = parseTagsHint(cleanVal);
+          if (parsedTags.length > 0) {
+            tags = parsedTags;
+            clearFieldsSet.delete('labelIds');
+          }
+        } else {
+          recordDate = cleanVal;
+        }
+        break;
+      }
+
       case 'tgl':
       case 'tanggal':
       case 'w':

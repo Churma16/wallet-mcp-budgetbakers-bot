@@ -195,13 +195,21 @@ describe('recordEditParser', () => {
       expect(parseRecordEditCommand('n: clear')?.clearFields).toEqual(['note']);
     });
 
-    it('parses tags clearing using dash or clear keywords', () => {
+    it('parses tags clearing using dash or clear keywords, including backward-compatible t: -', () => {
       const parsed = parseRecordEditCommand('l: -');
       expect(parsed?.clearFields).toEqual(['labelIds']);
       expect(parsed?.tags).toBeUndefined();
 
+      expect(parseRecordEditCommand('t: -')?.clearFields).toEqual(['labelIds']);
+      expect(parseRecordEditCommand('t: none')?.clearFields).toEqual(['labelIds']);
       expect(parseRecordEditCommand('tags: kosong')?.clearFields).toEqual(['labelIds']);
       expect(parseRecordEditCommand('label: clear')?.clearFields).toEqual(['labelIds']);
+    });
+
+    it('maintains backward compatibility for t: with hashtags as tags', () => {
+      const parsed = parseRecordEditCommand('t: #jajan, #kopi');
+      expect(parsed?.tags).toEqual(['jajan', 'kopi']);
+      expect(parsed?.recordDate).toBeUndefined();
     });
 
     it('parses category and counterparty clearing', () => {
