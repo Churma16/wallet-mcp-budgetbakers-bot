@@ -438,10 +438,7 @@ export const indonesianDictionary: ResponseDictionary = {
     },
 
     cancellation(params: PendingCancellationParams): string {
-      if (params.isBulk) {
-        return `❌ *${params.count} Transaksi Dibatalkan*\nSemua transaksi pending telah dihapus dan tidak dicatat ke Wallet.`;
-      }
-      return `❌ *Transaksi #${params.ticketId} Dibatalkan*\nTransaksi "${params.title}" (${params.formattedAmount}) tidak dicatat ke Wallet.`;
+      return `❌ *${params.count} Transaksi Dibatalkan*\nSemua transaksi pending telah dihapus dan tidak dicatat ke Wallet.`;
     },
 
     itemProcessing(ticketId: number): string {

@@ -663,8 +663,8 @@ export class PendingActionHandler {
 
     for (const item of rejectedItems) {
       const targetMessageId =
-        (rejectedItems.length === 1 ? event.replyToMessageId : undefined) ||
-        item.notificationMessageIds?.[event.channel];
+        item.notificationMessageIds?.[event.channel] ||
+        (rejectedItems.length === 1 ? event.replyToMessageId : undefined);
 
       let edited = false;
       if (targetMessageId && typeof this.messagingGateway.editMessage === 'function') {

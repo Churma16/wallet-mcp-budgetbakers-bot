@@ -1205,10 +1205,9 @@ export function formatPendingCancellationMessage(
   item: PendingTransactionItem | PendingTransactionItem[],
   languageCode?: SupportedLanguage
 ): string {
-  const dictionary = getDictionary(languageCode);
   if (Array.isArray(item)) {
+    const dictionary = getDictionary(languageCode);
     return dictionary.confirmation.cancellation({
-      isBulk: true,
       count: item.length,
     });
   }

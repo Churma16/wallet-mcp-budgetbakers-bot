@@ -632,6 +632,40 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery', () => {
       expect(messaging.messages).toHaveLength(0);
     });
 
+    it('prioritizes item notification bubble over replyToMessageId on cross-ticket cancellation', async () => {
+      const pendingService = new PendingTransactionService();
+      const walletMcp = new MockWalletMcpClient();
+      const messaging = new MockMessagingGateway();
+      const handler = createHandler(pendingService, walletMcp, messaging);
+
+      addExpense(pendingService, { note: 'Expense 1' });
+      addExpense(pendingService, { note: 'Expense 2' });
+
+      pendingService.updateNotificationMessageIds(1, { whatsapp: 'bubble-msg-1' });
+      pendingService.updateNotificationMessageIds(2, { whatsapp: 'bubble-msg-2' });
+
+      // User replies to bubble 1 with intent to reject Ticket 2 (e.g. 'batal 2')
+      const rejectIntent: PendingConfirmationIntent = {
+        actionType: 'REJECT',
+        targetScope: 2,
+      };
+
+      const event = createMockEvent('reply-msg-batal-2');
+      event.replyToMessageId = 'bubble-msg-1';
+
+      const handled = await handler.handlePendingAction(event, rejectIntent, Date.now());
+      expect(handled).toBe(true);
+      expect(pendingService.getPendingTransaction(1)).toBeDefined();
+      expect(pendingService.getPendingTransaction(2)).toBeUndefined();
+
+      expect(messaging.editedMessages).toHaveLength(1);
+      // Ensure bubble-msg-2 is edited, NOT bubble-msg-1
+      expect(messaging.editedMessages[0].messageId).toBe('bubble-msg-2');
+      expect(messaging.editedMessages[0].content).toContain('❌ *Transaksi Dibatalkan*');
+      expect(messaging.editedMessages[0].content).toContain('Expense 2');
+      expect(messaging.messages).toHaveLength(0);
+    });
+
     it('falls back to sending new message when editMessage fails', async () => {
       const pendingService = new PendingTransactionService();
       const walletMcp = new MockWalletMcpClient();
