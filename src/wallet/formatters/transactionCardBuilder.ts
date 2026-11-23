@@ -80,7 +80,7 @@ export interface ActionPromptCardParams {
   destinationAccountNameHint?: string;
   isBankSyncedAccount?: boolean;
   bankSyncedNotice?: string;
-  promptBody: string;
+  promptBody?: string;
   footerCue?: string;
 }
 
@@ -100,9 +100,15 @@ export function buildActionPromptCard(params: ActionPromptCardParams): string {
       `🔁 ${params.formattedAmount}`,
       `💳 ${route}`,
       `⏰ ${params.formattedTime}`,
-      '',
-      params.promptBody,
     ];
+
+    if (params.note) {
+      lines.push(`📝 ${params.note}`);
+    }
+
+    if (params.promptBody) {
+      lines.push('', params.promptBody);
+    }
 
     if (params.footerCue) {
       lines.push(params.footerCue);
@@ -134,7 +140,9 @@ export function buildActionPromptCard(params: ActionPromptCardParams): string {
     lines.push(params.bankSyncedNotice);
   }
 
-  lines.push('', params.promptBody);
+  if (params.promptBody) {
+    lines.push('', params.promptBody);
+  }
 
   if (params.footerCue) {
     lines.push(params.footerCue);

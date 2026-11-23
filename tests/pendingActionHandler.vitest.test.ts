@@ -62,10 +62,20 @@ class MockWalletMcpClient {
 
 class MockMessagingGateway {
   public readonly messages: Array<{ channel: string; chatId: string; content: string }> = [];
+  public readonly editedMessages: Array<{ channel: string; chatId: string; messageId: string; content: string }> = [];
+  public shouldFailEdit = false;
 
   async sendMessage(channel: string, chatId: string, content: string): Promise<void> {
     this.messages.push({ channel, chatId, content });
   }
+
+  async editMessage(channel: string, chatId: string, messageId: string, content: string): Promise<boolean> {
+    if (this.shouldFailEdit) return false;
+    this.editedMessages.push({ channel, chatId, messageId, content });
+    return true;
+  }
+
+  async clearNotificationReplyMarkup(): Promise<void> {}
 }
 
 function createMockEvent(messageId: string = 'msg-1'): IncomingUserMessageEvent {
@@ -581,6 +591,103 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery', () => {
 
     await handler.handlePendingAction(createMockEvent('msg-generic-retry'), confirmTicketOne, Date.now());
     expect(walletMcp.calls.length === 1, 'Generic UNKNOWN ticket is not redispatched').toBe(true);
+  });
+
+  describe('Pending Cancellation Bubble In-Place Update', () => {
+    it('updates notification bubble in place with uniform card and sends no new message when rejecting', async () => {
+      const pendingService = new PendingTransactionService();
+      const walletMcp = new MockWalletMcpClient();
+      const messaging = new MockMessagingGateway();
+      const handler = createHandler(pendingService, walletMcp, messaging);
+
+      addExpense(pendingService, {
+        counterParty: 'KATARINA KANTI MOKSA KAMARGA',
+        accountNameHint: 'Jago Expense',
+        matchedCategoryName: 'Income',
+        note: 'Penerimaan dana dari KATARINA KANTI MOKSA KAMARGA',
+        amount: 86159,
+        recordDate: '2026-11-23T16:48:00.000Z',
+      });
+
+      pendingService.updateNotificationMessageIds(1, { whatsapp: 'bubble-msg-1' });
+
+      const rejectIntent: PendingConfirmationIntent = {
+        actionType: 'REJECT',
+        targetScope: 1,
+      };
+
+      const event = createMockEvent('reply-msg-batal');
+      event.replyToMessageId = 'bubble-msg-1';
+
+      const handled = await handler.handlePendingAction(event, rejectIntent, Date.now());
+      expect(handled).toBe(true);
+      expect(pendingService.getPendingTransaction(1)).toBeUndefined();
+
+      expect(messaging.editedMessages).toHaveLength(1);
+      expect(messaging.editedMessages[0].messageId).toBe('bubble-msg-1');
+      expect(messaging.editedMessages[0].content).toContain('❌ *Transaksi Dibatalkan*');
+      expect(messaging.editedMessages[0].content).toContain('Rp 86.159 • Jago Expense');
+      expect(messaging.editedMessages[0].content).toContain('KATARINA KANTI MOKSA KAMARGA');
+      expect(messaging.editedMessages[0].content).toContain('Income');
+      expect(messaging.messages).toHaveLength(0);
+    });
+
+    it('falls back to sending new message when editMessage fails', async () => {
+      const pendingService = new PendingTransactionService();
+      const walletMcp = new MockWalletMcpClient();
+      const messaging = new MockMessagingGateway();
+      messaging.shouldFailEdit = true;
+      const handler = createHandler(pendingService, walletMcp, messaging);
+
+      addExpense(pendingService, {
+        counterParty: 'KATARINA KANTI MOKSA KAMARGA',
+        accountNameHint: 'Jago Expense',
+        amount: 86159,
+      });
+
+      pendingService.updateNotificationMessageIds(1, { whatsapp: 'bubble-msg-fail' });
+
+      const rejectIntent: PendingConfirmationIntent = {
+        actionType: 'REJECT',
+        targetScope: 1,
+      };
+
+      const event = createMockEvent('reply-msg-batal');
+      event.replyToMessageId = 'bubble-msg-fail';
+
+      const handled = await handler.handlePendingAction(event, rejectIntent, Date.now());
+      expect(handled).toBe(true);
+      expect(pendingService.getPendingTransaction(1)).toBeUndefined();
+
+      expect(messaging.messages).toHaveLength(1);
+      expect(messaging.messages[0].content).toContain('❌ *Transaksi Dibatalkan*');
+    });
+
+    it('edits all known notification bubbles when rejecting all pending transactions', async () => {
+      const pendingService = new PendingTransactionService();
+      const walletMcp = new MockWalletMcpClient();
+      const messaging = new MockMessagingGateway();
+      const handler = createHandler(pendingService, walletMcp, messaging);
+
+      addExpense(pendingService, { note: 'Expense 1' });
+      addExpense(pendingService, { note: 'Expense 2' });
+
+      pendingService.updateNotificationMessageIds(1, { whatsapp: 'bubble-all-1' });
+      pendingService.updateNotificationMessageIds(2, { whatsapp: 'bubble-all-2' });
+
+      const rejectAllIntent: PendingConfirmationIntent = {
+        actionType: 'REJECT',
+        targetScope: 'ALL',
+      };
+
+      const handled = await handler.handlePendingAction(createMockEvent(), rejectAllIntent, Date.now());
+      expect(handled).toBe(true);
+      expect(pendingService.getAllPendingTransactions()).toHaveLength(0);
+
+      expect(messaging.editedMessages).toHaveLength(2);
+      expect(messaging.editedMessages.map(m => m.messageId)).toEqual(['bubble-all-1', 'bubble-all-2']);
+      expect(messaging.messages).toHaveLength(0);
+    });
   });
 
 });
