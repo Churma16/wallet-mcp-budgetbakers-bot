@@ -26,6 +26,14 @@ class MockMessagingGateway {
     content: string;
     options?: any;
   }> = [];
+  public readonly editedMessages: Array<{
+    channel: string;
+    chatId: string;
+    messageId: string;
+    content: string;
+    options?: any;
+  }> = [];
+  public shouldFailEdit = false;
   private nextMessageId = 1000;
 
   async sendMessage(
@@ -37,6 +45,20 @@ class MockMessagingGateway {
     this.messages.push({ channel, chatId, content, options });
     return { messageId: String(this.nextMessageId++) };
   }
+
+  async editMessage(
+    channel: string,
+    chatId: string,
+    messageId: string,
+    content: string,
+    options?: any
+  ): Promise<boolean> {
+    if (this.shouldFailEdit) return false;
+    this.editedMessages.push({ channel, chatId, messageId, content, options });
+    return true;
+  }
+
+  async clearNotificationReplyMarkup(_messageIds?: Record<string, string>): Promise<void> {}
 
   async sendTypingPresence(): Promise<void> {}
   async clearTypingPresence(): Promise<void> {}
@@ -925,8 +947,58 @@ describe('Per-Bubble Queue Confirmation & Swipe-Reply Edit', () => {
       expect(mockMcpClient.createRecords).toHaveBeenCalledTimes(1);
     });
 
-    it('cancels pending transaction when swipe-reply says "batal"', async () => {
+    it('cancels pending transaction and updates bubble in place when swipe-reply says "batal"', async () => {
       const gateway = new MockMessagingGateway();
+      const pendingService = new PendingTransactionService();
+
+      const context = createTestAppContext({
+        gateway: gateway as any,
+        pending: pendingService,
+      });
+
+      const dispatcher = new MessageDispatcher(context);
+
+      const item = pendingService.addPendingTransaction({
+        sourceType: 'NOTIFICATION',
+        bankDisplayName: 'BCA',
+        amount: -50000,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        accountNameHint: 'BCA',
+        matchedAccountId: 'acc-1',
+        matchedCategoryName: 'Makanan & Minuman',
+        note: 'Salah Catat',
+        recordDate: new Date().toISOString(),
+      });
+
+      pendingService.updateNotificationMessageIds(item.ticketId, { telegram: 'msg_bubble_888' });
+
+      const replyEvent: IncomingUserMessageEvent = {
+        channel: 'telegram',
+        chatIdentifier: '12345678',
+        senderIdentifier: 'user_1',
+        messageType: 'text',
+        textPayload: 'batal',
+        replyToMessageId: 'msg_bubble_888',
+      };
+
+      await dispatcher.handleIncomingUserMessage(replyEvent);
+
+      // Verify transaction was canceled/rejected
+      expect(pendingService.getPendingTransaction(item.ticketId)).toBeUndefined();
+      // Verify bubble was edited in-place
+      expect(gateway.editedMessages).toHaveLength(1);
+      expect(gateway.editedMessages[0].messageId).toBe('msg_bubble_888');
+      expect(gateway.editedMessages[0].content).toContain('❌ *Transaksi Dibatalkan*');
+      expect(gateway.editedMessages[0].content).toContain('Rp 50.000 • BCA');
+      expect(gateway.editedMessages[0].content).toContain('Makanan & Minuman');
+      // No new message was sent
+      expect(gateway.messages).toHaveLength(0);
+    });
+
+    it('falls back to sending a new message if editMessage fails during cancellation', async () => {
+      const gateway = new MockMessagingGateway();
+      gateway.shouldFailEdit = true;
       const pendingService = new PendingTransactionService();
 
       const context = createTestAppContext({
@@ -961,8 +1033,9 @@ describe('Per-Bubble Queue Confirmation & Swipe-Reply Edit', () => {
 
       await dispatcher.handleIncomingUserMessage(replyEvent);
 
-      // Verify transaction was canceled/rejected
       expect(pendingService.getPendingTransaction(item.ticketId)).toBeUndefined();
+      expect(gateway.messages).toHaveLength(1);
+      expect(gateway.messages[0].content).toContain('❌ *Transaksi Dibatalkan*');
     });
 
     it('ignores casual conversational replies to pending bubble without structured edit keys', async () => {

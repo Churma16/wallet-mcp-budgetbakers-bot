@@ -1198,33 +1198,44 @@ export function formatBulkPendingConfirmationSuccess(
 }
 
 /**
- * Formats cancellation message when user rejects a pending transaction
+ * Formats cancellation message when user rejects a pending transaction.
+ * Renders a uniform cancelled card matching the pending transaction structure without edit cues.
  */
 export function formatPendingCancellationMessage(
   item: PendingTransactionItem | PendingTransactionItem[],
   languageCode?: SupportedLanguage
 ): string {
-  const dictionary = getDictionary(languageCode);
   if (Array.isArray(item)) {
+    const dictionary = getDictionary(languageCode);
     return dictionary.confirmation.cancellation({
-      isBulk: true,
       count: item.length,
     });
   }
+  const isEnglish = (languageCode || getActiveLanguage()) === 'en';
+  const headline = isEnglish ? '❌ *Transaction Cancelled*' : '❌ *Transaksi Dibatalkan*';
   const itemCurrency = item.currency || getDefaultCurrency();
-  const formattedAmount = formatCurrencyAmount(item.amount, itemCurrency, languageCode);
-  const defaultTitle = item.transactionType === 'TRANSFER'
-    ? dictionary.labels.transfer
-    : (item.amount < 0 ? dictionary.labels.expense : dictionary.labels.income);
-  const title = resolveTransactionDisplayTitle({
-    counterParty: item.counterParty || item.bankDisplayName,
-    note: item.note,
-    defaultTitle,
-  });
-  return dictionary.confirmation.cancellation({
-    isBulk: false,
-    ticketId: item.ticketId,
-    title,
+  const formattedBaseAmount = formatCurrencyAmount(item.amount, itemCurrency, languageCode);
+  const formattedAmount = item.adminFee && item.adminFee > 0
+    ? `${formattedBaseAmount} (+ Admin ${formatCurrencyAmount(item.adminFee, itemCurrency, languageCode)})`
+    : formattedBaseAmount;
+  const formattedTime = formatTransactionDate(item.recordDate, languageCode);
+  const isTransfer = item.transactionType === 'TRANSFER';
+
+  return buildActionPromptCard({
+    headline,
     formattedAmount,
+    accountNameHint: item.accountNameHint,
+    defaultAccountLabel: isEnglish ? 'Account' : 'Akun',
+    merchant: item.counterParty || item.bankDisplayName,
+    categoryName: item.matchedCategoryName,
+    defaultCategoryLabel: isEnglish ? 'General' : 'Umum',
+    formattedTime,
+    note: item.note,
+    isTransfer,
+    destinationAccountNameHint: item.destinationAccountNameHint,
+    isBankSyncedAccount: item.isBankSyncedAccount,
+    bankSyncedNotice: isEnglish
+      ? '💡 _This account is linked to Wallet bank sync._'
+      : '💡 _Rekening ini terhubung dengan bank sync Wallet._',
   });
 }

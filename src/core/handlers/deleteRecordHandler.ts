@@ -129,11 +129,26 @@ export class DeleteRecordHandler {
           const rejected = this.pendingTransactionService.rejectPendingTransaction(matchingPendingItem.ticketId);
           if (rejected) {
             const cancelMsg = formatPendingCancellationMessage(rejected);
-            await this.messagingGateway.sendMessage(
-              event.channel,
-              event.chatIdentifier,
-              cancelMsg
-            );
+            let edited = false;
+            if (event.replyToMessageId && typeof this.messagingGateway.editMessage === 'function') {
+              edited = await this.messagingGateway.editMessage(
+                event.channel,
+                event.chatIdentifier,
+                event.replyToMessageId,
+                cancelMsg
+              );
+              if (edited && typeof this.messagingGateway.clearNotificationReplyMarkup === 'function') {
+                void this.messagingGateway.clearNotificationReplyMarkup({ [event.channel]: event.replyToMessageId });
+              }
+            }
+
+            if (!edited) {
+              await this.messagingGateway.sendMessage(
+                event.channel,
+                event.chatIdentifier,
+                cancelMsg
+              );
+            }
             return true;
           }
         }

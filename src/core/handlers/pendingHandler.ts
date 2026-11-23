@@ -659,10 +659,36 @@ export class PendingActionHandler {
       }
     }
 
+    const itemsToSendMessage: PendingTransactionItem[] = [];
+
+    for (const item of rejectedItems) {
+      const targetMessageId =
+        item.notificationMessageIds?.[event.channel] ||
+        (rejectedItems.length === 1 ? event.replyToMessageId : undefined);
+
+      let edited = false;
+      if (targetMessageId && typeof this.messagingGateway.editMessage === 'function') {
+        const cardText = formatPendingCancellationMessage(item);
+        edited = await this.messagingGateway.editMessage(
+          event.channel,
+          event.chatIdentifier,
+          targetMessageId,
+          cardText
+        );
+        if (edited && typeof this.messagingGateway.clearNotificationReplyMarkup === 'function') {
+          void this.messagingGateway.clearNotificationReplyMarkup({ [event.channel]: targetMessageId });
+        }
+      }
+
+      if (!edited) {
+        itemsToSendMessage.push(item);
+      }
+    }
+
     const replyMessages: string[] = [];
-    if (rejectedItems.length > 0) {
+    if (itemsToSendMessage.length > 0) {
       replyMessages.push(formatPendingCancellationMessage(
-        rejectedItems.length === 1 ? rejectedItems[0] : rejectedItems
+        itemsToSendMessage.length === 1 ? itemsToSendMessage[0] : itemsToSendMessage
       ));
     }
 
@@ -678,6 +704,14 @@ export class PendingActionHandler {
     }
 
     if (replyMessages.length === 0) {
+      if (rejectedItems.length > 0) {
+        const processingDurationMs = Date.now() - processingStartTimestamp;
+        applicationLogger.success(
+          `[${event.channel.toUpperCase()}] Cancelled and updated ${rejectedItems.length} pending bubble(s) in place (${processingDurationMs}ms).`
+        );
+        return true;
+      }
+
       const outcomeMessage = this.formatRejectFailureOutcomeMessage(confirmationIntent);
       await this.messagingGateway.sendMessage(
         event.channel,

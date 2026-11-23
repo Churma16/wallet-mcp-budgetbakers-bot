@@ -440,10 +440,7 @@ export const englishDictionary: ResponseDictionary = {
     },
 
     cancellation(params: PendingCancellationParams): string {
-      if (params.isBulk) {
-        return `❌ *${params.count} Transactions Cancelled*\nAll pending transactions have been discarded and were not recorded to Wallet.`;
-      }
-      return `❌ *Transaction #${params.ticketId} Cancelled*\nTransaction "${params.title}" (${params.formattedAmount}) was not recorded to Wallet.`;
+      return `❌ *${params.count} Transactions Cancelled*\nAll pending transactions have been discarded and were not recorded to Wallet.`;
     },
 
     itemProcessing(ticketId: number): string {

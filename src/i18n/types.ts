@@ -114,11 +114,7 @@ export interface PendingBulkItemParams {
 }
 
 export interface PendingCancellationParams {
-  isBulk: boolean;
-  count?: number;
-  ticketId?: number;
-  title?: string;
-  formattedAmount?: string;
+  count: number;
 }
 
 export interface TelegramMenuDictionary {

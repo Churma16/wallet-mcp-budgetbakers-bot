@@ -205,8 +205,60 @@ describe('DeleteRecordHandler', () => {
     expect(mockGateway.sendMessage).toHaveBeenCalledWith(
       'telegram',
       'chat-1',
-      expect.stringContaining('#42')
+      expect.stringContaining('Dibatalkan')
     );
+  });
+
+  it('updates bubble in place when editMessage is available on gateway', async () => {
+    (mockGateway as any).editMessage = vi.fn().mockResolvedValue(true);
+    (mockGateway as any).clearNotificationReplyMarkup = vi.fn().mockResolvedValue(undefined);
+
+    const mockPendingService = {
+      getAllPendingTransactions: vi.fn().mockReturnValue([
+        {
+          ticketId: 42,
+          counterParty: 'Gojez Store',
+          amount: 27000,
+          currency: 'IDR',
+          transactionType: 'EXPENSE',
+          notificationMessageIds: { telegram: 'msg-pending-ticket-42' },
+        },
+      ]),
+      rejectPendingTransaction: vi.fn().mockReturnValue({
+        ticketId: 42,
+        counterParty: 'Gojez Store',
+        amount: 27000,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+      }),
+    } as any;
+
+    const handlerWithPending = new DeleteRecordHandler(
+      mockMcpClient as WalletMcpClientService,
+      mockCacheService as WalletCacheService,
+      mockGateway as MessagingGatewayService,
+      messageStore,
+      mockPendingService
+    );
+
+    const event: IncomingUserMessageEvent = {
+      channel: 'telegram',
+      senderIdentifier: 'user-1',
+      chatIdentifier: 'chat-1',
+      messageType: 'text',
+      textPayload: 'batal',
+      replyToMessageId: 'msg-pending-ticket-42',
+    };
+
+    const handled = await handlerWithPending.handleDeleteRecordReply(event, Date.now());
+    expect(handled).toBe(true);
+    expect(mockGateway.editMessage).toHaveBeenCalledWith(
+      'telegram',
+      'chat-1',
+      'msg-pending-ticket-42',
+      expect.stringContaining('❌ *Transaksi Dibatalkan*')
+    );
+    expect(mockGateway.sendMessage).not.toHaveBeenCalled();
   });
 
   it('prompts for confirmation with inline keyboard when delete command is received and deletes upon confirmation', async () => {

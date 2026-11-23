@@ -364,7 +364,7 @@ describe('Pending Transaction UX & Concurrency Improvements', () => {
         Date.now()
       );
 
-      expect(sentMessages[0]).toContain('Transaksi #1 Dibatalkan');
+      expect(sentMessages[0]).toContain('Transaksi Dibatalkan');
       expect(pendingService.getPendingTransaction(1)).toBeUndefined();
       expect(pendingService.getPendingTransaction(2)).toBeDefined();
     });
