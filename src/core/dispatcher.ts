@@ -451,7 +451,7 @@ export class MessageDispatcher {
         }
       }
 
-      // 0. Reply-to-message transaction deletion (e.g. "hapus", "delete") or edit command (e.g. "c: Makan t: #jajan n: Kopi" or "e c:...")
+      // 0. Reply-to-message transaction deletion (e.g. "hapus", "delete", "batal") or edit command (e.g. "c: Makan l: #jajan t: 14:00 n: Kopi" or "e c:...")
       if (
         event.messageType === 'text' &&
         event.textPayload &&

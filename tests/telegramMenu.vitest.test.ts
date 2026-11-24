@@ -180,6 +180,12 @@ describe('Telegram Menu and Keyboard Components', () => {
       expect(content).not.toBeNull();
       expect(content!.text).toContain(expectedKeyword);
       expect(content!.replyMarkup).toBeDefined();
+
+      if (topic === 'edit_delete') {
+        expect(content!.text).toContain('t: 14:00');
+        expect(content!.text).toContain('l: #kopi #ngopi');
+        expect(content!.text).not.toContain('t: #kopi');
+      }
     });
 
     it.each([
@@ -195,6 +201,12 @@ describe('Telegram Menu and Keyboard Components', () => {
       expect(content).not.toBeNull();
       expect(content!.text).toContain(expectedKeyword);
       expect(content!.replyMarkup).toBeDefined();
+
+      if (topic === 'edit_delete') {
+        expect(content!.text).toContain('t: 14:00');
+        expect(content!.text).toContain('l: #coffee #hangout');
+        expect(content!.text).not.toContain('t: #coffee');
+      }
     });
 
     it('returns null for unknown guide topics', () => {
