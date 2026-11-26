@@ -1070,6 +1070,9 @@ export function formatRetroactivelyEnrichedWalletRecordNotification(params: {
   languageCode?: SupportedLanguage;
   recordDate?: string | number | Date;
   labels?: string[];
+  sourceType?: string;
+  evidenceSources?: string[];
+  sourceIcon?: string;
 }): string {
   const {
     recordId: _recordId,
@@ -1082,6 +1085,9 @@ export function formatRetroactivelyEnrichedWalletRecordNotification(params: {
     languageCode,
     recordDate,
     labels,
+    sourceType,
+    evidenceSources,
+    sourceIcon: customSourceIcon,
   } = params;
   const dictionary = getDictionary(languageCode);
   const formattedAmount = formatCurrencyAmount(amount, currency, languageCode);
@@ -1101,9 +1107,11 @@ export function formatRetroactivelyEnrichedWalletRecordNotification(params: {
     defaultTitle,
   });
 
+  const sourceIcon = customSourceIcon || resolveEvidenceSourceIcons(sourceType, evidenceSources);
+
   const actionHeader = isEnglish
-    ? `✨ *${title}* successfully updated!`
-    : `✨ *${title}* berhasil diperbarui!`;
+    ? `${sourceIcon} *${title}* successfully updated!`
+    : `${sourceIcon} *${title}* berhasil diperbarui!`;
 
   return buildActionReceiptCard({
     actionHeader,
