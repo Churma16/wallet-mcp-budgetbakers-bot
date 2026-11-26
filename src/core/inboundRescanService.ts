@@ -417,6 +417,7 @@ export class InboundRescanService {
               note: patchPayload.note || matchedRecord.note || poolCandidate?.note,
               recordDate: matchedRecord.recordDate || evidence.occurredAt,
               labels: patchPayload.labels || poolCandidate?.labels,
+              sourceType: evidence.sourceType,
             });
 
             await this.deps.messagingGateway.broadcastNotification(enrichedNotif);
