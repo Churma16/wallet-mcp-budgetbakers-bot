@@ -418,7 +418,6 @@ export class InboundRescanService {
               recordDate: matchedRecord.recordDate || evidence.occurredAt,
               labels: patchPayload.labels || poolCandidate?.labels,
               sourceType: evidence.sourceType,
-              evidenceSources: evidence.sourceType ? [evidence.sourceType] : undefined,
             });
 
             await this.deps.messagingGateway.broadcastNotification(enrichedNotif);
