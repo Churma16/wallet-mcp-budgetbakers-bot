@@ -312,6 +312,12 @@ describe('InboundRescanService and Rescan Infrastructure', () => {
       mockPendingManager.getAllPendingTransactions.mockReturnValue([pendingTicket]);
       mockPendingManager.getPendingTransactionState.mockReturnValue('PENDING');
 
+      mockEnrichmentPoolService.getCandidate.mockReturnValue({
+        recordId: '321f074f-62e6-4319-a34e-f02d82723731',
+        sourceType: 'EMAIL',
+        evidenceSources: ['EMAIL'],
+      });
+
       mockWalletMcpClient.fetchRecords.mockResolvedValue({ records: [walletRecord] });
 
       mockCorrelationService.correlateEvidence.mockReturnValue({
@@ -366,7 +372,7 @@ describe('InboundRescanService and Rescan Infrastructure', () => {
       // Verify notification broadcasted
       expect(mockMessagingGateway.broadcastNotification).toHaveBeenCalledTimes(1);
       expect(mockMessagingGateway.broadcastNotification).toHaveBeenCalledWith(
-        expect.stringContaining('berhasil diperbarui!')
+        expect.stringContaining('✅ 📩📲 *GrabCar - Pembayaran* berhasil diperbarui!')
       );
 
       // Verify summary count
