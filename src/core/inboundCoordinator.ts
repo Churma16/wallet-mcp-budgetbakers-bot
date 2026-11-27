@@ -418,7 +418,7 @@ export async function coordinateInboundTransactionCandidate(
           recordDate: matchedRecord.recordDate || incomingEvidence.occurredAt,
           labels: patchPayload.labels || poolCandidate?.labels,
           sourceType: incomingEvidence.sourceType,
-          evidenceSources: combinedSources.length > 0 ? combinedSources : [incomingEvidence.sourceType],
+          evidenceSources: combinedSources,
         });
 
         let wasEdited = false;

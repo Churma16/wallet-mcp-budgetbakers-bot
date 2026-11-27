@@ -786,4 +786,77 @@ describe('InboundCoordinator Retroactive Record Enrichment', () => {
     expect(notificationCallArg).toContain('✅ 📩📲 *Grab booking A-A4048XTWWPEBAV* berhasil diperbarui!');
     expect(notificationCallArg).not.toContain('[Klarifikasi: #5]');
   });
+
+  it('handles retroactive enrichment when pool candidate is undefined and only incoming evidence source exists', async () => {
+    const recordId = 'rec-no-pool-candidate';
+
+    const mockMcpClient = {
+      fetchRecords: vi.fn().mockResolvedValue({
+        records: [
+          {
+            id: recordId,
+            accountId: 'acc-jago',
+            amount: -50000,
+            currency: 'IDR',
+            recordDate: '2026-11-05T12:00:00.000Z',
+            counterParty: 'Merchant',
+            note: 'Pembayaran kartu debit',
+            category: { id: 'cat-unknown', name: 'Unknown expense' },
+          },
+        ],
+      }),
+      createRecords: vi.fn(),
+      patchRecords: vi.fn().mockResolvedValue({
+        summary: { total: 1, succeeded: 1 },
+        results: [{ id: recordId, success: true }],
+      }),
+    };
+
+    const mockMessaging = {
+      broadcastNotification: vi.fn().mockResolvedValue({ telegram: { messageId: 'msg-no-pool' } }),
+      editBroadcastNotification: vi.fn().mockResolvedValue(false),
+      sendMessage: vi.fn(),
+    };
+
+    await coordinateInboundTransactionCandidate(
+      {
+        parsedData: {
+          isTransaction: true,
+          transactionType: 'EXPENSE',
+          amount: -50000,
+          counterParty: 'Starbucks',
+          accountNameHint: 'Jago Expense',
+          matchedAccountId: 'acc-jago',
+          matchedCategoryId: 'cat-food',
+          matchedCategoryName: 'Makanan & Minuman',
+          note: 'Caramel Macchiato',
+          recordDate: '2026-11-05T12:00:00.000Z',
+        },
+        gateResult: {
+          isCandidate: true,
+          matchedBankRule: { bankKey: 'starbucks', displayName: 'Starbucks' } as any,
+          ruleCategory: 'MERCHANT_RECEIPT' as any,
+        },
+        sourceType: 'EMAIL',
+        evidenceSourceType: 'EMAIL_PAYMENT',
+        sourceId: 'email-sbux-1',
+        sourceDate: new Date('2026-11-05T12:00:00.000Z'),
+        sourceDisplayName: 'Starbucks',
+      },
+      {
+        walletCacheService: mockWalletCache as any,
+        pendingTransactionManager: pendingManager,
+        messagingGateway: mockMessaging as any,
+        defaultCurrency: 'IDR',
+        correlationService,
+        walletMcpClient: mockMcpClient as any,
+        enrichmentPoolService: enrichmentPool,
+        transactionMessageStore,
+      }
+    );
+
+    expect(mockMessaging.broadcastNotification).toHaveBeenCalledTimes(1);
+    const notificationCallArg = mockMessaging.broadcastNotification.mock.calls[0][0];
+    expect(notificationCallArg).toContain('✅ 📩 *Starbucks - Caramel Macchiato* berhasil diperbarui!');
+  });
 });

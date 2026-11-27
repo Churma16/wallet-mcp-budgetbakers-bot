@@ -423,7 +423,7 @@ export class InboundRescanService {
               recordDate: matchedRecord.recordDate || evidence.occurredAt,
               labels: patchPayload.labels || poolCandidate?.labels,
               sourceType: evidence.sourceType,
-              evidenceSources: combinedSources.length > 0 ? combinedSources : [evidence.sourceType],
+              evidenceSources: combinedSources,
             });
 
             await this.deps.messagingGateway.broadcastNotification(enrichedNotif);
