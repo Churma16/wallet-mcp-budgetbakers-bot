@@ -402,6 +402,11 @@ export async function coordinateInboundTransactionCandidate(
         }
 
         // Send enriched notification
+        const priorSources = poolCandidate?.evidenceSources || (poolCandidate?.sourceType ? [poolCandidate.sourceType] : []);
+        const combinedSources = Array.from(
+          new Set([...priorSources, incomingEvidence.sourceType])
+        ).filter(Boolean);
+
         const enrichedNotif = formatRetroactivelyEnrichedWalletRecordNotification({
           recordId: matchedRecord.id,
           merchant: patchPayload.counterParty || matchedRecord.counterParty || incomingEvidence.merchant || 'Transaksi',
@@ -413,6 +418,7 @@ export async function coordinateInboundTransactionCandidate(
           recordDate: matchedRecord.recordDate || incomingEvidence.occurredAt,
           labels: patchPayload.labels || poolCandidate?.labels,
           sourceType: incomingEvidence.sourceType,
+          evidenceSources: combinedSources.length > 0 ? combinedSources : [incomingEvidence.sourceType],
         });
 
         let wasEdited = false;
@@ -668,6 +674,8 @@ export async function coordinateInboundTransactionCandidate(
                 channel: enrichedItem.notificationMessageIds
                   ? Object.keys(enrichedItem.notificationMessageIds)[0]
                   : undefined,
+                sourceType: enrichedItem.sourceType,
+                evidenceSources: enrichedItem.evidenceSources || (enrichedItem.sourceType ? [enrichedItem.sourceType] : undefined),
                 referenceNumbers:
                   enrichedItem.referenceNumbers ||
                   (enrichedItem.referenceNumber ? [enrichedItem.referenceNumber] : undefined),

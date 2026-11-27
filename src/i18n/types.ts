@@ -104,6 +104,9 @@ export interface PendingConfirmationSuccessParams {
   matchedCategoryName?: string;
   labels?: string[];
   note?: string;
+  sourceIcon?: string;
+  sourceType?: string;
+  evidenceSources?: string[];
 }
 
 export interface PendingBulkItemParams {

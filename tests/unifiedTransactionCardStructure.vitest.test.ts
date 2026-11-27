@@ -66,7 +66,7 @@ describe('Unified Final Transaction Card Structure Parity', () => {
 
     const card = formatPendingConfirmationSuccess(pendingItem, 'id');
 
-    expect(card).toContain('✅ *Grab booking A-AXTLANJGXX2TAV* berhasil dicatat!');
+    expect(card).toContain('✅ 📩 *Grab booking A-AXTLANJGXX2TAV* berhasil dicatat!');
     expect(card).toContain('💸 Rp 65.800  •  Jago Expense');
     expect(card).toContain('🏷️ Ojol  •  4 Nov 2026, 09:34 WIB');
     expect(card).not.toContain('📝'); // Note is promoted directly to title, no separate note line
@@ -94,7 +94,7 @@ describe('Unified Final Transaction Card Structure Parity', () => {
     const card = formatPendingConfirmationSuccess(blibliItem, 'id');
 
     expect(card).toBe([
-      '✅ *Bliblimart Sarana Jaya - Offline Store - Nasi Uduk + Telur, Bakwan Sayur* berhasil dicatat!',
+      '✅ 📩 *Bliblimart Sarana Jaya - Offline Store - Nasi Uduk + Telur, Bakwan Sayur* berhasil dicatat!',
       '',
       '💸 Rp 14.100  •  Jago Expense',
       '🏷️ Groceries  •  4 Nov 2026, 09:34 WIB',
@@ -115,7 +115,7 @@ describe('Unified Final Transaction Card Structure Parity', () => {
       languageCode: 'id',
     });
 
-    expect(card).toContain('📩 *Grab booking A-AXTLANJGXX2TAV* berhasil diperbarui!');
+    expect(card).toContain('✅ 📩 *Grab booking A-AXTLANJGXX2TAV* berhasil diperbarui!');
     expect(card).not.toContain('✨');
     expect(card).toContain('💸 Rp 65.800  •  Jago Expense');
     expect(card).toContain('🏷️ Ojol  •  4 Nov 2026, 09:34 WIB');
@@ -134,7 +134,7 @@ describe('Unified Final Transaction Card Structure Parity', () => {
       recordDate: fixedDate,
       languageCode: 'id',
     });
-    expect(pushCard).toContain('📲 *BCA QRIS* berhasil diperbarui!');
+    expect(pushCard).toContain('✅ 📲 *BCA QRIS* berhasil diperbarui!');
     expect(pushCard).not.toContain('✨');
 
     const fusedCard = formatRetroactivelyEnrichedWalletRecordNotification({
@@ -147,8 +147,44 @@ describe('Unified Final Transaction Card Structure Parity', () => {
       recordDate: fixedDate,
       languageCode: 'id',
     });
-    expect(fusedCard).toContain('📲📩 *GrabFood* berhasil diperbarui!');
+    expect(fusedCard).toContain('✅ 📲📩 *GrabFood* berhasil diperbarui!');
     expect(fusedCard).not.toContain('✨');
+
+    const fusedEmailFirstCard = formatRetroactivelyEnrichedWalletRecordNotification({
+      recordId: 'rec-fused-2',
+      merchant: 'GrabFood',
+      amount: -55000,
+      accountName: 'Jago Expense',
+      categoryName: 'Makan',
+      evidenceSources: ['RECEIPT', 'PUSH_NOTIFICATION'],
+      recordDate: fixedDate,
+      languageCode: 'id',
+    });
+    expect(fusedEmailFirstCard).toContain('✅ 📩📲 *GrabFood* berhasil diperbarui!');
+    expect(fusedEmailFirstCard).not.toContain('✨');
+  });
+
+  it('strips clarification prefix [Klarifikasi: #<id>] from display title', () => {
+    const pendingWithClarify: PendingTransactionItem = {
+      ticketId: 6,
+      sourceType: 'EMAIL',
+      amount: -36500,
+      currency: 'IDR',
+      counterParty: 'Grab',
+      note: '[Klarifikasi: #5] Grab booking A-A4OHNW3WXFRUAV • GrabFood dari Nasi Padang Sari Minang',
+      matchedAccountId: 'acc-jago',
+      accountNameHint: 'Jago Expense',
+      matchedCategoryId: 'cat-food',
+      matchedCategoryName: 'Makanan & Minuman',
+      transactionType: 'EXPENSE',
+      recordDate: fixedDate.toISOString(),
+      createdAt: fixedDate,
+      expiresAt: new Date(fixedDate.getTime() + 86400000),
+    };
+
+    const card = formatPendingConfirmationSuccess(pendingWithClarify, 'id');
+    expect(card).toContain('✅ 📩 *Grab booking A-A4OHNW3WXFRUAV • GrabFood dari Nasi Padang Sari Minang* berhasil dicatat!');
+    expect(card).not.toContain('[Klarifikasi: #5]');
   });
 
   it('matches manual recording structure in duplicate transaction correlation advisory card', () => {
@@ -187,7 +223,7 @@ describe('Unified Final Transaction Card Structure Parity', () => {
     };
 
     const confirmCard = formatPendingConfirmationSuccess(pendingItem, 'en');
-    expect(confirmCard).toContain('✅ *Gojek - GoFood: Ayam Geprek* successfully recorded!');
+    expect(confirmCard).toContain('✅ 📩 *Gojek - GoFood: Ayam Geprek* successfully recorded!');
     expect(confirmCard).toContain('💸 Rp 125,000  •  BCA Prioritas');
     expect(confirmCard).toContain('🏷️ Makanan & Minuman  •  Nov 4, 2026, 09:34 WIB');
     expect(confirmCard).not.toContain('📝');
@@ -202,7 +238,7 @@ describe('Unified Final Transaction Card Structure Parity', () => {
       recordDate: fixedDate,
       languageCode: 'en',
     });
-    expect(updateCard).toContain('📩 *Gojek - GoFood: Ayam Geprek* successfully updated!');
+    expect(updateCard).toContain('✅ 📩 *Gojek - GoFood: Ayam Geprek* successfully updated!');
     expect(updateCard).not.toContain('✨');
     expect(updateCard).toContain('💸 Rp 125,000  •  BCA Prioritas');
     expect(updateCard).toContain('🏷️ Makanan & Minuman  •  Nov 4, 2026, 09:34 WIB');
@@ -239,13 +275,13 @@ describe('Unified Final Transaction Card Structure Parity', () => {
     };
 
     const idCard = formatPendingConfirmationSuccess(transferWithDest, 'id');
-    expect(idCard).toContain('✅ *Transfer berhasil dicatat!*');
+    expect(idCard).toContain('✅ 📩 *Transfer berhasil dicatat!*');
     expect(idCard).toContain('🔁 Rp 250.000');
     expect(idCard).toContain('💳 BCA Prioritas ➔ Jago Utama');
     expect(idCard).toContain('⏰ 4 Nov 2026, 09:34 WIB');
 
     const enCard = formatPendingConfirmationSuccess(transferWithDest, 'en');
-    expect(enCard).toContain('✅ *Transfer successfully recorded!*');
+    expect(enCard).toContain('✅ 📩 *Transfer successfully recorded!*');
     expect(enCard).toContain('🔁 Rp 250,000');
     expect(enCard).toContain('💳 BCA Prioritas ➔ Jago Utama');
     expect(enCard).toContain('⏰ Nov 4, 2026, 09:34 WIB');
@@ -282,6 +318,7 @@ describe('Unified Final Transaction Card Structure Parity', () => {
     };
 
     const confirmId = formatPendingConfirmationSuccess(incomeItem, 'id');
+    expect(confirmId).toContain('✅ 📩 *Gaji Bonus* berhasil dicatat!');
     expect(confirmId).toContain('💰 Rp 1.500.000  •  BCA Prioritas');
     expect(confirmId).toContain('🏷️ Gaji  •  4 Nov 2026, 09:34 WIB');
     expect(confirmId).toContain('🔖 #bonus #tahunan');
@@ -298,7 +335,7 @@ describe('Unified Final Transaction Card Structure Parity', () => {
       recordDate: fixedDate,
       languageCode: 'id',
     });
-    expect(updateWithLabels).toContain('📩 *Bonus Kinerja* berhasil diperbarui!');
+    expect(updateWithLabels).toContain('✅ 📩 *Bonus Kinerja* berhasil diperbarui!');
     expect(updateWithLabels).not.toContain('✨');
     expect(updateWithLabels).toContain('💰 Rp 2.000.000  •  BCA Prioritas');
     expect(updateWithLabels).toContain('🏷️ Pendapatan  •  4 Nov 2026, 09:34 WIB');
@@ -311,7 +348,7 @@ describe('Unified Final Transaction Card Structure Parity', () => {
       amount: -50000,
       languageCode: 'id',
     });
-    expect(fallbackUpdateId).toContain('📩 *Transaksi* berhasil diperbarui!');
+    expect(fallbackUpdateId).toContain('✅ 📩 *Transaksi* berhasil diperbarui!');
     expect(fallbackUpdateId).not.toContain('✨');
     expect(fallbackUpdateId).toContain('💸 Rp 50.000  •  Akun');
     expect(fallbackUpdateId).toContain('🏷️ Umum');
@@ -322,7 +359,7 @@ describe('Unified Final Transaction Card Structure Parity', () => {
       amount: -50000,
       languageCode: 'en',
     });
-    expect(fallbackUpdateEn).toContain('📩 *Transaction* successfully updated!');
+    expect(fallbackUpdateEn).toContain('✅ 📩 *Transaction* successfully updated!');
     expect(fallbackUpdateEn).not.toContain('✨');
     expect(fallbackUpdateEn).toContain('💸 Rp 50,000  •  Account');
     expect(fallbackUpdateEn).toContain('🏷️ General');

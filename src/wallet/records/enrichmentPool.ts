@@ -22,6 +22,8 @@ export interface EnrichmentPoolItem {
   channel?: string;
   notificationMessageIds?: Record<string, string>;
   isBankSynced?: boolean;
+  sourceType?: string;
+  evidenceSources?: string[];
   readonly createdAt: number;
   readonly expiresAt: number;
 }

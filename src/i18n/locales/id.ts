@@ -405,9 +405,10 @@ export const indonesianDictionary: ResponseDictionary = {
 
   confirmation: {
     singleSuccess(params: PendingConfirmationSuccessParams): string {
+      const iconPrefix = params.sourceIcon ? `✅ ${params.sourceIcon}` : '✅';
       const actionHeader = params.isTransfer
-        ? '✅ *Transfer berhasil dicatat!*'
-        : `✅ *${params.merchantOrNote || 'Transaksi'}* berhasil dicatat!`;
+        ? `${iconPrefix} *Transfer berhasil dicatat!*`
+        : `${iconPrefix} *${params.merchantOrNote || 'Transaksi'}* berhasil dicatat!`;
 
       return buildActionReceiptCard({
         actionHeader,
