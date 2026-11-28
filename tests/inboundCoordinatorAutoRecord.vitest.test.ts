@@ -3,7 +3,7 @@ import { EmailTransactionHandler } from '../src/core/index.js';
 import { PendingTransactionService } from '../src/core/pending.js';
 import { TransactionCorrelationEngine, BANK_EMAIL_RULES } from '../src/email/index.js';
 import { RuntimeSettingsManager } from '../src/config/runtimeSettingsManager.js';
-import { TransactionMessageStore } from '../src/wallet/records/index.js';
+import { TransactionMessageStore, EnrichmentPoolService } from '../src/wallet/records/index.js';
 import { WalletMcpRequestError } from '../src/wallet/index.js';
 
 describe('Inbound Auto-Record Enriched Transactions Integration', () => {
@@ -60,6 +60,22 @@ describe('Inbound Auto-Record Enriched Transactions Integration', () => {
             recordDate: '2026-10-14T10:19:00.000Z',
             referenceNumber: 'BLIBLI-ORDER-200',
             explanation: 'Ambiguous merchant receipt',
+          });
+        }
+        if (subject === 'Struk Belanja Generic Terkategori') {
+          return Promise.resolve({
+            isTransaction: true,
+            transactionType: 'EXPENSE',
+            amount: -16700,
+            counterParty: 'Merchant',
+            accountNameHint: 'Cash',
+            matchedAccountId: 'acc-cash',
+            matchedCategoryId: 'cat-food',
+            matchedCategoryName: 'Makanan & Minuman',
+            note: 'Pembayaran QRIS',
+            recordDate: '2026-10-14T10:19:00.000Z',
+            referenceNumber: 'BLIBLI-ORDER-200',
+            explanation: 'Eligible for pool receipt',
           });
         }
         return Promise.resolve(null);
@@ -515,5 +531,74 @@ describe('Inbound Auto-Record Enriched Transactions Integration', () => {
     expect(pendingManager.getAllPendingTransactions()).toHaveLength(1);
     expect(messaging.broadcastNotification).toHaveBeenCalledTimes(broadcastCountBeforeUnknown);
     expect(messaging.editBroadcastNotification).toHaveBeenCalledTimes(editCountBeforeUnknown);
+  });
+
+  it('registers auto-recorded transaction into enrichment pool with sourceType and evidenceSources', async () => {
+    const pendingManager = new PendingTransactionService();
+    const messaging = {
+      broadcastNotification: vi.fn().mockResolvedValue({ telegram: { messageId: 'msg-pool-1' } }),
+      editBroadcastNotification: vi.fn().mockResolvedValue(true),
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+    };
+    const emailListener = {
+      recordProcessedTransaction: vi.fn(),
+    };
+    const correlationService = new TransactionCorrelationEngine();
+    const mockMcpClient = {
+      fetchRecords: vi.fn().mockResolvedValue({ records: [] }),
+      createRecords: vi.fn().mockResolvedValue({
+        results: [{ id: 'rec-pool-autorecord-1' }],
+      }),
+    };
+    const mockMessageStore = {
+      recordMessageMapping: vi.fn(),
+    };
+    const enrichmentPoolService = new EnrichmentPoolService();
+
+    const handler = new EmailTransactionHandler(
+      createMockAiProvider() as any,
+      createMockWalletCache() as any,
+      pendingManager,
+      messaging as any,
+      'IDR',
+      correlationService,
+      () => emailListener as any,
+      mockMcpClient as any,
+      mockMessageStore as any,
+      enrichmentPoolService
+    );
+
+    // Initial Bank email arrives -> creates pending ticket #1
+    await handler.handleEmailTransactionDetected({
+      emailId: 'email-pool-1',
+      emailSubject: 'Pembayaran Berhasil!',
+      emailSender: 'no-reply@bankmandiri.co.id',
+      emailDate: new Date('2026-10-14T10:18:00.000Z'),
+      gateResult: { isFinancialCandidate: true, matchedBankRule: mandiriRule },
+      accountNameHint: 'Mandiri Utama',
+      emailBodyText: 'Pembayaran QRIS Rp 16.700 di BLIBLI.COM KUDUS - ID Berhasil',
+    });
+
+    vi.spyOn(RuntimeSettingsManager, 'getInstance').mockReturnValue({
+      getSettings: () => ({ autoRecordEnriched: true }),
+    } as any);
+
+    // Struk belanja arrives with generic note -> auto records and adds to enrichment pool
+    await handler.handleEmailTransactionDetected({
+      emailId: 'email-pool-2',
+      emailSubject: 'Struk Belanja Generic Terkategori',
+      emailSender: 'notification@blibli.com',
+      emailDate: new Date('2026-10-14T10:19:00.000Z'),
+      gateResult: { isFinancialCandidate: true, matchedBankRule: blibliRule },
+      accountNameHint: 'Cash',
+      emailBodyText: 'Struk terverifikasi',
+    });
+
+    expect(mockMcpClient.createRecords).toHaveBeenCalled();
+    expect(enrichmentPoolService.size()).toBe(1);
+    const candidate = enrichmentPoolService.getCandidate('rec-pool-autorecord-1');
+    expect(candidate).toBeDefined();
+    expect(candidate?.sourceType).toBe('EMAIL');
+    expect(candidate?.evidenceSources).toEqual(['EMAIL_BANK', 'EMAIL_PAYMENT']);
   });
 });

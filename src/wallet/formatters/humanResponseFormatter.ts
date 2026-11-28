@@ -311,8 +311,10 @@ export function resolveTransactionDisplayTitle(params: {
   counterParty?: string;
   defaultTitle?: string;
 }): string {
-  const note = params.note?.trim();
-  const merchant = (params.merchant || params.counterParty)?.trim();
+  const rawNote = params.note?.trim();
+  const note = rawNote?.replace(/^\[Klarifikasi(?::\s*#?\d+)?\]\s*/i, '').trim();
+  const rawMerchant = (params.merchant || params.counterParty)?.trim();
+  const merchant = rawMerchant?.replace(/^\[Klarifikasi(?::\s*#?\d+)?\]\s*/i, '').trim();
   const defaultTitle = params.defaultTitle || 'Transaksi';
 
   if (note && merchant) {
@@ -1108,10 +1110,11 @@ export function formatRetroactivelyEnrichedWalletRecordNotification(params: {
   });
 
   const sourceIcon = customSourceIcon || resolveEvidenceSourceIcons(sourceType, evidenceSources);
+  const prefix = sourceIcon ? `✅ ${sourceIcon}` : '✅';
 
   const actionHeader = isEnglish
-    ? `${sourceIcon} *${title}* successfully updated!`
-    : `${sourceIcon} *${title}* berhasil diperbarui!`;
+    ? `${prefix} *${title}* successfully updated!`
+    : `${prefix} *${title}* berhasil diperbarui!`;
 
   return buildActionReceiptCard({
     actionHeader,
@@ -1137,6 +1140,7 @@ export function formatPendingConfirmationSuccess(
   const itemCurrency = item.currency || getDefaultCurrency();
   const formattedAmount = formatCurrencyAmount(item.amount, itemCurrency, languageCode);
   const formattedTime = formatTransactionDate(item.recordDate, languageCode);
+  const sourceIcon = resolveEvidenceSourceIcons(item.sourceType, item.evidenceSources);
 
   if (isTransfer) {
     return dictionary.confirmation.singleSuccess({
@@ -1146,6 +1150,9 @@ export function formatPendingConfirmationSuccess(
       formattedTime,
       accountNameHint: item.accountNameHint,
       destinationAccountNameHint: item.destinationAccountNameHint,
+      sourceIcon,
+      sourceType: item.sourceType,
+      evidenceSources: item.evidenceSources,
     });
   }
 
@@ -1172,6 +1179,9 @@ export function formatPendingConfirmationSuccess(
     icon,
     merchantOrNote: title,
     note: item.note,
+    sourceIcon,
+    sourceType: item.sourceType,
+    evidenceSources: item.evidenceSources,
   });
 }
 

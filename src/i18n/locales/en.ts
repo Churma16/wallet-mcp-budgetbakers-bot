@@ -407,9 +407,10 @@ export const englishDictionary: ResponseDictionary = {
 
   confirmation: {
     singleSuccess(params: PendingConfirmationSuccessParams): string {
+      const iconPrefix = params.sourceIcon ? `✅ ${params.sourceIcon}` : '✅';
       const actionHeader = params.isTransfer
-        ? '✅ *Transfer successfully recorded!*'
-        : `✅ *${params.merchantOrNote || 'Transaction'}* successfully recorded!`;
+        ? `${iconPrefix} *Transfer successfully recorded!*`
+        : `${iconPrefix} *${params.merchantOrNote || 'Transaction'}* successfully recorded!`;
 
       return buildActionReceiptCard({
         actionHeader,

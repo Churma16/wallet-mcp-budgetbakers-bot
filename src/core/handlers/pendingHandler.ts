@@ -330,6 +330,8 @@ export class PendingActionHandler {
               labels: item.labels,
               notificationMessageIds: item.notificationMessageIds,
               channel: event.channel,
+              sourceType: item.sourceType,
+              evidenceSources: item.evidenceSources || (item.sourceType ? [item.sourceType] : undefined),
               referenceNumbers:
                 item.referenceNumbers ||
                 (item.referenceNumber ? [item.referenceNumber] : undefined),

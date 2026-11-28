@@ -8,6 +8,7 @@ import {
 import { CreateRecordInputPayload, WalletCreateRecordsResponse } from '../src/wallet/index.js';
 import { IncomingUserMessageEvent } from '../src/gateway/index.js';
 import { PendingConfirmationIntent } from '../src/brain/index.js';
+import { EnrichmentPoolService } from '../src/wallet/records/enrichmentPool.js';
 import { describe, expect, it, vi } from 'vitest';
 
 
@@ -721,6 +722,70 @@ describe('Pending Transaction Data Integrity and MCP Failure Recovery', () => {
       expect(messaging.editedMessages).toHaveLength(2);
       expect(messaging.editedMessages.map(m => m.messageId)).toEqual(['bubble-all-1', 'bubble-all-2']);
       expect(messaging.messages).toHaveLength(0);
+    });
+
+    it('registers candidate with sourceType and evidenceSources into enrichment pool upon confirming eligible transaction', async () => {
+      const pendingService = new PendingTransactionService();
+      const walletMcp = new MockWalletMcpClient();
+      const messaging = new MockMessagingGateway();
+      const enrichmentPool = new EnrichmentPoolService();
+      const handler = new PendingActionHandler(
+        pendingService,
+        walletMcp as any,
+        messaging as any,
+        () => null,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        enrichmentPool
+      );
+
+      addExpense(pendingService, {
+        sourceType: 'EMAIL_PAYMENT',
+        evidenceSources: ['EMAIL_PAYMENT'],
+        counterParty: 'Merchant',
+        note: 'Pembayaran QRIS',
+      });
+
+      const handled = await handler.handlePendingAction(createMockEvent(), confirmTicketOne, Date.now());
+      expect(handled).toBe(true);
+      expect(enrichmentPool.size()).toBe(1);
+      const candidate = enrichmentPool.getAllCandidates()[0];
+      expect(candidate.sourceType).toBe('EMAIL_PAYMENT');
+      expect(candidate.evidenceSources).toEqual(['EMAIL_PAYMENT']);
+    });
+
+    it('registers candidate using sourceType fallback for evidenceSources when evidenceSources is undefined', async () => {
+      const pendingService = new PendingTransactionService();
+      const walletMcp = new MockWalletMcpClient();
+      const messaging = new MockMessagingGateway();
+      const enrichmentPool = new EnrichmentPoolService();
+      const handler = new PendingActionHandler(
+        pendingService,
+        walletMcp as any,
+        messaging as any,
+        () => null,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        enrichmentPool
+      );
+
+      addExpense(pendingService, {
+        sourceType: 'PUSH_NOTIFICATION',
+        evidenceSources: undefined,
+        counterParty: 'Merchant',
+        note: 'Pembayaran QRIS',
+      });
+
+      const handled = await handler.handlePendingAction(createMockEvent(), confirmTicketOne, Date.now());
+      expect(handled).toBe(true);
+      expect(enrichmentPool.size()).toBe(1);
+      const candidate = enrichmentPool.getAllCandidates()[0];
+      expect(candidate.sourceType).toBe('PUSH_NOTIFICATION');
+      expect(candidate.evidenceSources).toEqual(['PUSH_NOTIFICATION']);
     });
   });
 

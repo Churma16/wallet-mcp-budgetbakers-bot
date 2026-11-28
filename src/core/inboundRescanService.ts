@@ -399,6 +399,11 @@ export class InboundRescanService {
               });
             }
 
+            const priorSources = poolCandidate?.evidenceSources || (poolCandidate?.sourceType ? [poolCandidate.sourceType] : []);
+            const combinedSources = Array.from(
+              new Set([...priorSources, evidence.sourceType])
+            ).filter(Boolean);
+
             const enrichedNotif = formatRetroactivelyEnrichedWalletRecordNotification({
               recordId: matchedRecord.id,
               merchant:
@@ -418,6 +423,7 @@ export class InboundRescanService {
               recordDate: matchedRecord.recordDate || evidence.occurredAt,
               labels: patchPayload.labels || poolCandidate?.labels,
               sourceType: evidence.sourceType,
+              evidenceSources: combinedSources,
             });
 
             await this.deps.messagingGateway.broadcastNotification(enrichedNotif);

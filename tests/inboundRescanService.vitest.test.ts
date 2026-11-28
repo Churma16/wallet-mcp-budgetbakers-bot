@@ -312,6 +312,12 @@ describe('InboundRescanService and Rescan Infrastructure', () => {
       mockPendingManager.getAllPendingTransactions.mockReturnValue([pendingTicket]);
       mockPendingManager.getPendingTransactionState.mockReturnValue('PENDING');
 
+      mockEnrichmentPoolService.getCandidate.mockReturnValue({
+        recordId: '321f074f-62e6-4319-a34e-f02d82723731',
+        sourceType: 'EMAIL',
+        evidenceSources: ['EMAIL'],
+      });
+
       mockWalletMcpClient.fetchRecords.mockResolvedValue({ records: [walletRecord] });
 
       mockCorrelationService.correlateEvidence.mockReturnValue({
@@ -366,10 +372,79 @@ describe('InboundRescanService and Rescan Infrastructure', () => {
       // Verify notification broadcasted
       expect(mockMessagingGateway.broadcastNotification).toHaveBeenCalledTimes(1);
       expect(mockMessagingGateway.broadcastNotification).toHaveBeenCalledWith(
-        expect.stringContaining('berhasil diperbarui!')
+        expect.stringContaining('✅ 📩📲 *GrabCar - Pembayaran* berhasil diperbarui!')
       );
 
       // Verify summary count
+      expect(rescanResult.reconciledPendingCount).toBe(1);
+    });
+
+    it('reconciles pending transaction when pool candidate has only sourceType fallback without evidenceSources', async () => {
+      const pendingTicket = {
+        ticketId: 2,
+        sourceType: 'PUSH_NOTIFICATION',
+        bankDisplayName: 'Grab',
+        accountNameHint: 'Jago Expense',
+        counterParty: 'Grab',
+        amount: -35000,
+        currency: 'IDR',
+        transactionType: 'EXPENSE',
+        matchedAccountId: 'acc-jago',
+        matchedCategoryId: 'cat-food',
+        matchedCategoryName: 'Makanan',
+        note: 'GrabFood',
+        recordDate: '2026-11-05T11:32:00.000Z',
+        createdAt: new Date(),
+        expiresAt: new Date(Date.now() + 86400000),
+      };
+
+      const walletRecord = {
+        id: 'rec-fallback-source-rescan',
+        accountId: 'acc-jago',
+        accountName: 'Jago Expense',
+        amount: -35000,
+        currency: 'IDR',
+        recordDate: '2026-11-05T11:32:00.000Z',
+        recordType: 'expense',
+        counterParty: 'Merchant',
+        category: { id: 'cat-unknown', name: 'Unknown expense' },
+        note: 'Pembayaran kartu debit Bank Jago',
+      };
+
+      mockPendingManager.hasPendingTransactions.mockReturnValue(true);
+      mockPendingManager.getAllPendingTransactions.mockReturnValue([pendingTicket]);
+      mockPendingManager.getPendingTransactionState.mockReturnValue('PENDING');
+
+      mockEnrichmentPoolService.getCandidate.mockReturnValue({
+        recordId: 'rec-fallback-source-rescan',
+        sourceType: 'EMAIL',
+      });
+
+      mockWalletMcpClient.fetchRecords.mockResolvedValue({ records: [walletRecord] });
+
+      mockCorrelationService.correlateEvidence.mockReturnValue({
+        confidence: 'HIGH',
+        matchTarget: { type: 'WALLET_RECORD', record: walletRecord },
+        suggestedAction: 'ATTACH_WALLET_RECORD',
+      });
+
+      const service = new InboundRescanService({
+        notificationStore: mockNotificationStore,
+        notificationHandler: mockNotificationHandler,
+        emailListener: mockEmailListener,
+        pendingTransactionManager: mockPendingManager,
+        correlationService: mockCorrelationService,
+        walletCacheService: mockWalletCacheService,
+        messagingGateway: mockMessagingGateway,
+        walletMcpClient: mockWalletMcpClient,
+        transactionMessageStore: mockTransactionMessageStore,
+        enrichmentPoolService: mockEnrichmentPoolService,
+      });
+
+      const rescanResult = await service.rescanInbound(60);
+      expect(mockMessagingGateway.broadcastNotification).toHaveBeenCalledWith(
+        expect.stringContaining('✅ 📩📲 *GrabFood* berhasil diperbarui!')
+      );
       expect(rescanResult.reconciledPendingCount).toBe(1);
     });
 
